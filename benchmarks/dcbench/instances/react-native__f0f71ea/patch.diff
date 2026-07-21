@@ -1,0 +1,826 @@
+From f0f71ea914feae9fb98df4998508441009d6f702 Mon Sep 17 00:00:00 2001
+From: Tim Yung <yungsters@meta.com>
+Date: Wed, 11 Jun 2025 17:39:26 -0700
+Subject: [PATCH] RN: Move `{packages => private}/helloworld` (#51934)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/51934
+
+Moves `packages/helloworld` to `private/helloworld`.
+
+Changelog:
+[Internal]
+
+Reviewed By: huntie
+
+Differential Revision: D76356557
+
+fbshipit-source-id: 92b20d75a8f2badb3c685d4918fe692623d9c04d
+---
+ .flowconfig                                   |   2 +-
+ .../actions/test-ios-helloworld/action.yml    |   8 +++----
+ .github/workflows/test-all.yml                |   4 ++--
+ .gitignore                                    |  12 +++++------
+ jest.config.js                                |   2 +-
+ package.json                                  |   2 +-
+ .../helloworld/.bundle/config                 |   0
+ {packages => private}/helloworld/.gitignore   |   0
+ .../helloworld/.prettierrc.js                 |   0
+ .../helloworld/.react-native.config           |   0
+ {packages => private}/helloworld/App.tsx      |   0
+ {packages => private}/helloworld/Gemfile      |   0
+ {packages => private}/helloworld/Gemfile.lock |   0
+ {packages => private}/helloworld/README.md    |   0
+ .../helloworld/__tests__/App.test.tsx         |   0
+ .../helloworld/android/app/build.gradle       |   4 ++--
+ .../helloworld/android/app/debug.keystore     | Bin
+ .../helloworld/android/app/proguard-rules.pro |   0
+ .../android/app/src/debug/AndroidManifest.xml |   0
+ .../android/app/src/main/AndroidManifest.xml  |   0
+ .../main/java/com/helloworld/MainActivity.kt  |   0
+ .../java/com/helloworld/MainApplication.kt    |   0
+ .../res/drawable/rn_edit_text_material.xml    |   0
+ .../src/main/res/mipmap-hdpi/ic_launcher.png  | Bin
+ .../res/mipmap-hdpi/ic_launcher_round.png     | Bin
+ .../src/main/res/mipmap-mdpi/ic_launcher.png  | Bin
+ .../res/mipmap-mdpi/ic_launcher_round.png     | Bin
+ .../src/main/res/mipmap-xhdpi/ic_launcher.png | Bin
+ .../res/mipmap-xhdpi/ic_launcher_round.png    | Bin
+ .../main/res/mipmap-xxhdpi/ic_launcher.png    | Bin
+ .../res/mipmap-xxhdpi/ic_launcher_round.png   | Bin
+ .../main/res/mipmap-xxxhdpi/ic_launcher.png   | Bin
+ .../res/mipmap-xxxhdpi/ic_launcher_round.png  | Bin
+ .../app/src/main/res/values/strings.xml       |   0
+ .../app/src/main/res/values/styles.xml        |   0
+ .../helloworld/android/build.gradle           |   0
+ .../helloworld/android/gradle.properties      |   0
+ .../android/gradle/wrapper/gradle-wrapper.jar | Bin
+ .../gradle/wrapper/gradle-wrapper.properties  |   0
+ .../helloworld/android/gradlew                |   0
+ .../helloworld/android/gradlew.bat            |   0
+ .../helloworld/android/settings.gradle        |   4 ++--
+ .../helloworld/babel.config.js                |   0
+ {packages => private}/helloworld/cli.flow.js  |   0
+ {packages => private}/helloworld/cli.js       |   0
+ {packages => private}/helloworld/index.js     |   0
+ .../helloworld/ios/.xcode.env                 |   0
+ .../ios/HelloWorld.xcodeproj/project.pbxproj  |  14 ++++--------
+ .../xcschemes/HelloWorld.xcscheme             |   0
+ .../contents.xcworkspacedata                  |   0
+ .../ios/HelloWorld/AppDelegate.swift          |   0
+ .../AppIcon.appiconset/Contents.json          |   0
+ .../HelloWorld/Images.xcassets/Contents.json  |   0
+ .../helloworld/ios/HelloWorld/Info.plist      |   0
+ .../ios/HelloWorld/LaunchScreen.storyboard    |   0
+ .../ios/HelloWorld/PrivacyInfo.xcprivacy      |   0
+ .../ios/HelloWorldTests/HelloWorldTests.m     |   0
+ .../helloworld/ios/HelloWorldTests/Info.plist |   0
+ {packages => private}/helloworld/ios/Podfile  |   4 ++--
+ .../helloworld/jest.config.js                 |   0
+ {packages => private}/helloworld/lib/cli.js   |   0
+ .../helloworld/lib/filesystem.js              |   0
+ {packages => private}/helloworld/lib/ios.js   |   0
+ {packages => private}/helloworld/lib/xcode.js |   0
+ .../helloworld/metro.config.js                |  20 +++++++++++-------
+ {packages => private}/helloworld/package.json |   2 +-
+ .../helloworld/scripts/config.sh              |   2 +-
+ .../helloworld/scripts/metro.js               |   0
+ .../helloworld/scripts/monorepo.js            |  19 +++++++++++------
+ .../helloworld/tsconfig.json                  |   0
+ scripts/babel-register.js                     |   2 ++
+ scripts/consts.js                             |   6 ++++++
+ scripts/e2e/init-project-e2e.js               |   8 +++----
+ 73 files changed, 63 insertions(+), 52 deletions(-)
+ rename {packages => private}/helloworld/.bundle/config (100%)
+ rename {packages => private}/helloworld/.gitignore (100%)
+ rename {packages => private}/helloworld/.prettierrc.js (100%)
+ rename {packages => private}/helloworld/.react-native.config (100%)
+ rename {packages => private}/helloworld/App.tsx (100%)
+ rename {packages => private}/helloworld/Gemfile (100%)
+ rename {packages => private}/helloworld/Gemfile.lock (100%)
+ rename {packages => private}/helloworld/README.md (100%)
+ rename {packages => private}/helloworld/__tests__/App.test.tsx (100%)
+ rename {packages => private}/helloworld/android/app/build.gradle (96%)
+ rename {packages => private}/helloworld/android/app/debug.keystore (100%)
+ rename {packages => private}/helloworld/android/app/proguard-rules.pro (100%)
+ rename {packages => private}/helloworld/android/app/src/debug/AndroidManifest.xml (100%)
+ rename {packages => private}/helloworld/android/app/src/main/AndroidManifest.xml (100%)
+ rename {packages => private}/helloworld/android/app/src/main/java/com/helloworld/MainActivity.kt (100%)
+ rename {packages => private}/helloworld/android/app/src/main/java/com/helloworld/MainApplication.kt (100%)
+ rename {packages => private}/helloworld/android/app/src/main/res/drawable/rn_edit_text_material.xml (100%)
+ rename {packages => private}/helloworld/android/app/src/main/res/mipmap-hdpi/ic_launcher.png (100%)
+ rename {packages => private}/helloworld/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png (100%)
+ rename {packages => private}/helloworld/android/app/src/main/res/mipmap-mdpi/ic_launcher.png (100%)
+ rename {packages => private}/helloworld/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png (100%)
+ rename {packages => private}/helloworld/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png (100%)
+ rename {packages => private}/helloworld/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png (100%)
+ rename {packages => private}/helloworld/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png (100%)
+ rename {packages => private}/helloworld/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png (100%)
+ rename {packages => private}/helloworld/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png (100%)
+ rename {packages => private}/helloworld/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png (100%)
+ rename {packages => private}/helloworld/android/app/src/main/res/values/strings.xml (100%)
+ rename {packages => private}/helloworld/android/app/src/main/res/values/styles.xml (100%)
+ rename {packages => private}/helloworld/android/build.gradle (100%)
+ rename {packages => private}/helloworld/android/gradle.properties (100%)
+ rename {packages => private}/helloworld/android/gradle/wrapper/gradle-wrapper.jar (100%)
+ rename {packages => private}/helloworld/android/gradle/wrapper/gradle-wrapper.properties (100%)
+ rename {packages => private}/helloworld/android/gradlew (100%)
+ rename {packages => private}/helloworld/android/gradlew.bat (100%)
+ rename {packages => private}/helloworld/android/settings.gradle (79%)
+ rename {packages => private}/helloworld/babel.config.js (100%)
+ rename {packages => private}/helloworld/cli.flow.js (100%)
+ rename {packages => private}/helloworld/cli.js (100%)
+ rename {packages => private}/helloworld/index.js (100%)
+ rename {packages => private}/helloworld/ios/.xcode.env (100%)
+ rename {packages => private}/helloworld/ios/HelloWorld.xcodeproj/project.pbxproj (99%)
+ rename {packages => private}/helloworld/ios/HelloWorld.xcodeproj/xcshareddata/xcschemes/HelloWorld.xcscheme (100%)
+ rename {packages => private}/helloworld/ios/HelloWorld.xcworkspace/contents.xcworkspacedata (100%)
+ rename {packages => private}/helloworld/ios/HelloWorld/AppDelegate.swift (100%)
+ rename {packages => private}/helloworld/ios/HelloWorld/Images.xcassets/AppIcon.appiconset/Contents.json (100%)
+ rename {packages => private}/helloworld/ios/HelloWorld/Images.xcassets/Contents.json (100%)
+ rename {packages => private}/helloworld/ios/HelloWorld/Info.plist (100%)
+ rename {packages => private}/helloworld/ios/HelloWorld/LaunchScreen.storyboard (100%)
+ rename {packages => private}/helloworld/ios/HelloWorld/PrivacyInfo.xcprivacy (100%)
+ rename {packages => private}/helloworld/ios/HelloWorldTests/HelloWorldTests.m (100%)
+ rename {packages => private}/helloworld/ios/HelloWorldTests/Info.plist (100%)
+ rename {packages => private}/helloworld/ios/Podfile (86%)
+ rename {packages => private}/helloworld/jest.config.js (100%)
+ rename {packages => private}/helloworld/lib/cli.js (100%)
+ rename {packages => private}/helloworld/lib/filesystem.js (100%)
+ rename {packages => private}/helloworld/lib/ios.js (100%)
+ rename {packages => private}/helloworld/lib/xcode.js (100%)
+ rename {packages => private}/helloworld/metro.config.js (60%)
+ rename {packages => private}/helloworld/package.json (97%)
+ rename {packages => private}/helloworld/scripts/config.sh (86%)
+ rename {packages => private}/helloworld/scripts/metro.js (100%)
+ rename {packages => private}/helloworld/scripts/monorepo.js (74%)
+ rename {packages => private}/helloworld/tsconfig.json (100%)
+
+diff --git a/.flowconfig b/.flowconfig
+index 8b8c048128e..9b2e900757a 100644
+--- a/.flowconfig
++++ b/.flowconfig
+@@ -27,7 +27,7 @@
+ <PROJECT_ROOT>/packages/.*/dist
+ 
+ ; helloworld
+-<PROJECT_ROOT>/packages/helloworld/ios/Pods/
++<PROJECT_ROOT>/private/helloworld/ios/Pods/
+ 
+ ; Ignore rn-tester Pods
+ <PROJECT_ROOT>/packages/rn-tester/Pods/
+diff --git a/.github/actions/test-ios-helloworld/action.yml b/.github/actions/test-ios-helloworld/action.yml
+index 2ba71f3c3b3..137efb0a08b 100644
+--- a/.github/actions/test-ios-helloworld/action.yml
++++ b/.github/actions/test-ios-helloworld/action.yml
+@@ -51,7 +51,7 @@ runs:
+     - name: Install iOS dependencies - Configuration ${{ inputs.flavor }};
+       shell: bash
+       run: |
+-        cd packages/helloworld
++        cd private/helloworld
+         args=()
+ 
+         if [[ ${{ inputs.use-frameworks }} == "DynamicFrameworks" ]]; then
+@@ -70,7 +70,7 @@ runs:
+         fi
+ 
+         BUILD_TYPE="${{ inputs.flavor }}"
+-        TARBALL_FILENAME=$(node ../react-native/scripts/hermes/get-tarball-name.js --buildType "$BUILD_TYPE")
++        TARBALL_FILENAME=$(node ../../packages/react-native/scripts/hermes/get-tarball-name.js --buildType "$BUILD_TYPE")
+         export HERMES_ENGINE_TARBALL_PATH="$HERMES_WS_DIR/hermes-runtime-darwin/$TARBALL_FILENAME"
+         export RCT_USE_LOCAL_RN_DEP="/tmp/third-party/ReactNativeDependencies${{ inputs.flavor }}.xcframework.tar.gz"
+ 
+@@ -79,13 +79,13 @@ runs:
+     - name: Run Helloworld tests
+       shell: bash
+       run: |
+-        cd packages/helloworld
++        cd private/helloworld
+         yarn test
+ 
+     - name: Build HelloWorld project
+       shell: bash
+       run: |
+-        cd packages/helloworld
++        cd private/helloworld
+ 
+         args=()
+         if [[ ${{ inputs.flavor }} == "Release" ]]; then
+diff --git a/.github/workflows/test-all.yml b/.github/workflows/test-all.yml
+index 67ab3960f13..e4da3cec69c 100644
+--- a/.github/workflows/test-all.yml
++++ b/.github/workflows/test-all.yml
+@@ -533,7 +533,7 @@ jobs:
+       - name: Build the Helloworld application for ${{ matrix.flavor }} with Architecture set to New Architecture.
+         shell: bash
+         run: |
+-          cd packages/helloworld/android
++          cd private/helloworld/android
+           args=()
+           if [[ ${{ matrix.flavor }} == "Release" ]]; then
+             args+=(--prod)
+@@ -543,7 +543,7 @@ jobs:
+         uses: actions/upload-artifact@v4.3.4
+         with:
+           name: helloworld-apk-${{ matrix.flavor }}-NewArch-hermes
+-          path: ./packages/helloworld/android/app/build/outputs/apk/
++          path: ./private/helloworld/android/app/build/outputs/apk/
+           compression-level: 0
+ 
+   test_ios_helloworld_with_ruby_3_2_0:
+diff --git a/.gitignore b/.gitignore
+index 45c006752f5..a71a60db63e 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -40,8 +40,8 @@ project.xcworkspace
+ /packages/react-native/ReactAndroid/external-artifacts/artifacts/
+ /packages/react-native/ReactAndroid/hermes-engine/build/
+ /packages/react-native/ReactAndroid/hermes-engine/.cxx/
+-/packages/helloworld/android/app/build/
+-/packages/helloworld/android/build/
++/private/helloworld/android/app/build/
++/private/helloworld/android/build/
+ /packages/react-native-popup-menu-android/android/build/
+ /packages/react-native-test-library/android/build/
+ 
+@@ -108,15 +108,15 @@ package-lock.json
+ 
+ # Ruby Gems (Bundler)
+ /packages/react-native/vendor
+-/packages/helloworld/vendor
++/private/helloworld/vendor
+ .ruby-version
+ /**/.ruby-version
+ vendor/
+ 
+ # iOS / CocoaPods
+-/packages/helloworld/ios/build/
+-/packages/helloworld/ios/Pods/
+-/packages/helloworld/ios/Podfile.lock
++/private/helloworld/ios/build/
++/private/helloworld/ios/Pods/
++/private/helloworld/ios/Podfile.lock
+ /packages/rn-tester/bin/
+ /packages/rn-tester/cache/
+ /packages/rn-tester/extensions/
+diff --git a/jest.config.js b/jest.config.js
+index 9a6e58d9fb6..459afe9a8e3 100644
+--- a/jest.config.js
++++ b/jest.config.js
+@@ -16,7 +16,7 @@ const {defaults} = require('jest-config');
+ 
+ const PODS_LOCATIONS = [
+   'packages/rn-tester/Pods',
+-  'packages/helloworld/ios/Pods',
++  'private/helloworld/ios/Pods',
+ ];
+ 
+ module.exports = {
+diff --git a/package.json b/package.json
+index e4e32d0abae..c8ab0c6f198 100644
+--- a/package.json
++++ b/package.json
+@@ -40,7 +40,7 @@
+   "workspaces": [
+     "packages/*",
+     "private/*",
+-    "!packages/helloworld"
++    "!private/helloworld"
+   ],
+   "devDependencies": {
+     "@babel/core": "^7.25.2",
+diff --git a/packages/helloworld/.bundle/config b/private/helloworld/.bundle/config
+similarity index 100%
+rename from packages/helloworld/.bundle/config
+rename to private/helloworld/.bundle/config
+diff --git a/packages/helloworld/.gitignore b/private/helloworld/.gitignore
+similarity index 100%
+rename from packages/helloworld/.gitignore
+rename to private/helloworld/.gitignore
+diff --git a/packages/helloworld/.prettierrc.js b/private/helloworld/.prettierrc.js
+similarity index 100%
+rename from packages/helloworld/.prettierrc.js
+rename to private/helloworld/.prettierrc.js
+diff --git a/packages/helloworld/.react-native.config b/private/helloworld/.react-native.config
+similarity index 100%
+rename from packages/helloworld/.react-native.config
+rename to private/helloworld/.react-native.config
+diff --git a/packages/helloworld/App.tsx b/private/helloworld/App.tsx
+similarity index 100%
+rename from packages/helloworld/App.tsx
+rename to private/helloworld/App.tsx
+diff --git a/packages/helloworld/Gemfile b/private/helloworld/Gemfile
+similarity index 100%
+rename from packages/helloworld/Gemfile
+rename to private/helloworld/Gemfile
+diff --git a/packages/helloworld/Gemfile.lock b/private/helloworld/Gemfile.lock
+similarity index 100%
+rename from packages/helloworld/Gemfile.lock
+rename to private/helloworld/Gemfile.lock
+diff --git a/packages/helloworld/README.md b/private/helloworld/README.md
+similarity index 100%
+rename from packages/helloworld/README.md
+rename to private/helloworld/README.md
+diff --git a/packages/helloworld/__tests__/App.test.tsx b/private/helloworld/__tests__/App.test.tsx
+similarity index 100%
+rename from packages/helloworld/__tests__/App.test.tsx
+rename to private/helloworld/__tests__/App.test.tsx
+diff --git a/packages/helloworld/android/app/build.gradle b/private/helloworld/android/app/build.gradle
+similarity index 96%
+rename from packages/helloworld/android/app/build.gradle
+rename to private/helloworld/android/app/build.gradle
+index 847800a733c..592b0f75889 100644
+--- a/packages/helloworld/android/app/build.gradle
++++ b/private/helloworld/android/app/build.gradle
+@@ -13,7 +13,7 @@ apply plugin: "com.facebook.react"
+ def generatedConfig = file("../../.react-native.config")
+     .text
+     .replaceAll("HELLOWORLD_PATH", project.file("../../").absolutePath)
+-    .replaceAll("REACT_NATIVE_PATH", project.file("../../../react-native").absolutePath)
++    .replaceAll("REACT_NATIVE_PATH", project.file("../../../../packages/react-native").absolutePath)
+     .replaceAll('\n', '')
+ 
+ /**
+@@ -29,7 +29,7 @@ react {
+     //   The folder where the react-native Codegen package is. Default is ../../node_modules/@react-native/codegen
+     // codegenDir = file("../../node_modules/@react-native/codegen")
+     //   The cli.js file which is the React Native CLI entrypoint. Default is ../../node_modules/react-native/cli.js
+-    cliFile = file("../../../react-native/scripts/bundle.js")
++    cliFile = file("../../../../packages/react-native/scripts/bundle.js")
+     /* Variants */
+     //   The list of variants to that are debuggable. For those we're going to
+     //   skip the bundling of the JS bundle and the assets. By default is just 'debug'.
+diff --git a/packages/helloworld/android/app/debug.keystore b/private/helloworld/android/app/debug.keystore
+similarity index 100%
+rename from packages/helloworld/android/app/debug.keystore
+rename to private/helloworld/android/app/debug.keystore
+diff --git a/packages/helloworld/android/app/proguard-rules.pro b/private/helloworld/android/app/proguard-rules.pro
+similarity index 100%
+rename from packages/helloworld/android/app/proguard-rules.pro
+rename to private/helloworld/android/app/proguard-rules.pro
+diff --git a/packages/helloworld/android/app/src/debug/AndroidManifest.xml b/private/helloworld/android/app/src/debug/AndroidManifest.xml
+similarity index 100%
+rename from packages/helloworld/android/app/src/debug/AndroidManifest.xml
+rename to private/helloworld/android/app/src/debug/AndroidManifest.xml
+diff --git a/packages/helloworld/android/app/src/main/AndroidManifest.xml b/private/helloworld/android/app/src/main/AndroidManifest.xml
+similarity index 100%
+rename from packages/helloworld/android/app/src/main/AndroidManifest.xml
+rename to private/helloworld/android/app/src/main/AndroidManifest.xml
+diff --git a/packages/helloworld/android/app/src/main/java/com/helloworld/MainActivity.kt b/private/helloworld/android/app/src/main/java/com/helloworld/MainActivity.kt
+similarity index 100%
+rename from packages/helloworld/android/app/src/main/java/com/helloworld/MainActivity.kt
+rename to private/helloworld/android/app/src/main/java/com/helloworld/MainActivity.kt
+diff --git a/packages/helloworld/android/app/src/main/java/com/helloworld/MainApplication.kt b/private/helloworld/android/app/src/main/java/com/helloworld/MainApplication.kt
+similarity index 100%
+rename from packages/helloworld/android/app/src/main/java/com/helloworld/MainApplication.kt
+rename to private/helloworld/android/app/src/main/java/com/helloworld/MainApplication.kt
+diff --git a/packages/helloworld/android/app/src/main/res/drawable/rn_edit_text_material.xml b/private/helloworld/android/app/src/main/res/drawable/rn_edit_text_material.xml
+similarity index 100%
+rename from packages/helloworld/android/app/src/main/res/drawable/rn_edit_text_material.xml
+rename to private/helloworld/android/app/src/main/res/drawable/rn_edit_text_material.xml
+diff --git a/packages/helloworld/android/app/src/main/res/mipmap-hdpi/ic_launcher.png b/private/helloworld/android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+similarity index 100%
+rename from packages/helloworld/android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+rename to private/helloworld/android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+diff --git a/packages/helloworld/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png b/private/helloworld/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png
+similarity index 100%
+rename from packages/helloworld/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png
+rename to private/helloworld/android/app/src/main/res/mipmap-hdpi/ic_launcher_round.png
+diff --git a/packages/helloworld/android/app/src/main/res/mipmap-mdpi/ic_launcher.png b/private/helloworld/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+similarity index 100%
+rename from packages/helloworld/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+rename to private/helloworld/android/app/src/main/res/mipmap-mdpi/ic_launcher.png
+diff --git a/packages/helloworld/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png b/private/helloworld/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
+similarity index 100%
+rename from packages/helloworld/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
+rename to private/helloworld/android/app/src/main/res/mipmap-mdpi/ic_launcher_round.png
+diff --git a/packages/helloworld/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png b/private/helloworld/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+similarity index 100%
+rename from packages/helloworld/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+rename to private/helloworld/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png
+diff --git a/packages/helloworld/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png b/private/helloworld/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
+similarity index 100%
+rename from packages/helloworld/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
+rename to private/helloworld/android/app/src/main/res/mipmap-xhdpi/ic_launcher_round.png
+diff --git a/packages/helloworld/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png b/private/helloworld/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+similarity index 100%
+rename from packages/helloworld/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+rename to private/helloworld/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png
+diff --git a/packages/helloworld/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png b/private/helloworld/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
+similarity index 100%
+rename from packages/helloworld/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
+rename to private/helloworld/android/app/src/main/res/mipmap-xxhdpi/ic_launcher_round.png
+diff --git a/packages/helloworld/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png b/private/helloworld/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+similarity index 100%
+rename from packages/helloworld/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+rename to private/helloworld/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png
+diff --git a/packages/helloworld/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png b/private/helloworld/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+similarity index 100%
+rename from packages/helloworld/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+rename to private/helloworld/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher_round.png
+diff --git a/packages/helloworld/android/app/src/main/res/values/strings.xml b/private/helloworld/android/app/src/main/res/values/strings.xml
+similarity index 100%
+rename from packages/helloworld/android/app/src/main/res/values/strings.xml
+rename to private/helloworld/android/app/src/main/res/values/strings.xml
+diff --git a/packages/helloworld/android/app/src/main/res/values/styles.xml b/private/helloworld/android/app/src/main/res/values/styles.xml
+similarity index 100%
+rename from packages/helloworld/android/app/src/main/res/values/styles.xml
+rename to private/helloworld/android/app/src/main/res/values/styles.xml
+diff --git a/packages/helloworld/android/build.gradle b/private/helloworld/android/build.gradle
+similarity index 100%
+rename from packages/helloworld/android/build.gradle
+rename to private/helloworld/android/build.gradle
+diff --git a/packages/helloworld/android/gradle.properties b/private/helloworld/android/gradle.properties
+similarity index 100%
+rename from packages/helloworld/android/gradle.properties
+rename to private/helloworld/android/gradle.properties
+diff --git a/packages/helloworld/android/gradle/wrapper/gradle-wrapper.jar b/private/helloworld/android/gradle/wrapper/gradle-wrapper.jar
+similarity index 100%
+rename from packages/helloworld/android/gradle/wrapper/gradle-wrapper.jar
+rename to private/helloworld/android/gradle/wrapper/gradle-wrapper.jar
+diff --git a/packages/helloworld/android/gradle/wrapper/gradle-wrapper.properties b/private/helloworld/android/gradle/wrapper/gradle-wrapper.properties
+similarity index 100%
+rename from packages/helloworld/android/gradle/wrapper/gradle-wrapper.properties
+rename to private/helloworld/android/gradle/wrapper/gradle-wrapper.properties
+diff --git a/packages/helloworld/android/gradlew b/private/helloworld/android/gradlew
+similarity index 100%
+rename from packages/helloworld/android/gradlew
+rename to private/helloworld/android/gradlew
+diff --git a/packages/helloworld/android/gradlew.bat b/private/helloworld/android/gradlew.bat
+similarity index 100%
+rename from packages/helloworld/android/gradlew.bat
+rename to private/helloworld/android/gradlew.bat
+diff --git a/packages/helloworld/android/settings.gradle b/private/helloworld/android/settings.gradle
+similarity index 79%
+rename from packages/helloworld/android/settings.gradle
+rename to private/helloworld/android/settings.gradle
+index bffaca68d41..6f47e9ddf4c 100644
+--- a/packages/helloworld/android/settings.gradle
++++ b/private/helloworld/android/settings.gradle
+@@ -7,10 +7,10 @@
+ 
+ 
+ // Autolinking has now moved into the React Native Gradle Plugin
+-pluginManagement { includeBuild("../../gradle-plugin") }
++pluginManagement { includeBuild("../../../packages/gradle-plugin") }
+ plugins { id("com.facebook.react.settings") }
+ extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
+ 
+ rootProject.name = 'HelloWorld'
+ include ':app'
+-includeBuild('../../gradle-plugin')
++includeBuild('../../../packages/gradle-plugin')
+diff --git a/packages/helloworld/babel.config.js b/private/helloworld/babel.config.js
+similarity index 100%
+rename from packages/helloworld/babel.config.js
+rename to private/helloworld/babel.config.js
+diff --git a/packages/helloworld/cli.flow.js b/private/helloworld/cli.flow.js
+similarity index 100%
+rename from packages/helloworld/cli.flow.js
+rename to private/helloworld/cli.flow.js
+diff --git a/packages/helloworld/cli.js b/private/helloworld/cli.js
+similarity index 100%
+rename from packages/helloworld/cli.js
+rename to private/helloworld/cli.js
+diff --git a/packages/helloworld/index.js b/private/helloworld/index.js
+similarity index 100%
+rename from packages/helloworld/index.js
+rename to private/helloworld/index.js
+diff --git a/packages/helloworld/ios/.xcode.env b/private/helloworld/ios/.xcode.env
+similarity index 100%
+rename from packages/helloworld/ios/.xcode.env
+rename to private/helloworld/ios/.xcode.env
+diff --git a/packages/helloworld/ios/HelloWorld.xcodeproj/project.pbxproj b/private/helloworld/ios/HelloWorld.xcodeproj/project.pbxproj
+similarity index 99%
+rename from packages/helloworld/ios/HelloWorld.xcodeproj/project.pbxproj
+rename to private/helloworld/ios/HelloWorld.xcodeproj/project.pbxproj
+index 109908e9168..dca49419fb7 100644
+--- a/packages/helloworld/ios/HelloWorld.xcodeproj/project.pbxproj
++++ b/private/helloworld/ios/HelloWorld.xcodeproj/project.pbxproj
+@@ -483,7 +483,7 @@
+ 				);
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = HelloWorld;
+-				REACT_NATIVE_PATH = "${PODS_ROOT}/../../../react-native";
++				REACT_NATIVE_PATH = "${PODS_ROOT}/../../../../packages/react-native";
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+ 				SWIFT_VERSION = 5.0;
+ 				VERSIONING_SYSTEM = "apple-generic";
+@@ -510,7 +510,7 @@
+ 				);
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = HelloWorld;
+-				REACT_NATIVE_PATH = "${PODS_ROOT}/../../../react-native";
++				REACT_NATIVE_PATH = "${PODS_ROOT}/../../../../packages/react-native";
+ 				SWIFT_VERSION = 5.0;
+ 				VERSIONING_SYSTEM = "apple-generic";
+ 			};
+@@ -596,10 +596,7 @@
+ 					"-DFOLLY_CFG_NO_COROUTINES=1",
+ 					"-DFOLLY_HAVE_CLOCK_GETTIME=1",
+ 				);
+-				OTHER_LDFLAGS = (
+-					"$(inherited)",
+-					" ",
+-				);
++				OTHER_LDFLAGS = "$(inherited)  ";
+ 				REACT_NATIVE_PATH = "${PODS_ROOT}/../../../react-native";
+ 				SDKROOT = iphoneos;
+ 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) DEBUG";
+@@ -679,10 +676,7 @@
+ 					"-DFOLLY_CFG_NO_COROUTINES=1",
+ 					"-DFOLLY_HAVE_CLOCK_GETTIME=1",
+ 				);
+-				OTHER_LDFLAGS = (
+-					"$(inherited)",
+-					" ",
+-				);
++				OTHER_LDFLAGS = "$(inherited)  ";
+ 				REACT_NATIVE_PATH = "${PODS_ROOT}/../../../react-native";
+ 				SDKROOT = iphoneos;
+ 				USE_HERMES = true;
+diff --git a/packages/helloworld/ios/HelloWorld.xcodeproj/xcshareddata/xcschemes/HelloWorld.xcscheme b/private/helloworld/ios/HelloWorld.xcodeproj/xcshareddata/xcschemes/HelloWorld.xcscheme
+similarity index 100%
+rename from packages/helloworld/ios/HelloWorld.xcodeproj/xcshareddata/xcschemes/HelloWorld.xcscheme
+rename to private/helloworld/ios/HelloWorld.xcodeproj/xcshareddata/xcschemes/HelloWorld.xcscheme
+diff --git a/packages/helloworld/ios/HelloWorld.xcworkspace/contents.xcworkspacedata b/private/helloworld/ios/HelloWorld.xcworkspace/contents.xcworkspacedata
+similarity index 100%
+rename from packages/helloworld/ios/HelloWorld.xcworkspace/contents.xcworkspacedata
+rename to private/helloworld/ios/HelloWorld.xcworkspace/contents.xcworkspacedata
+diff --git a/packages/helloworld/ios/HelloWorld/AppDelegate.swift b/private/helloworld/ios/HelloWorld/AppDelegate.swift
+similarity index 100%
+rename from packages/helloworld/ios/HelloWorld/AppDelegate.swift
+rename to private/helloworld/ios/HelloWorld/AppDelegate.swift
+diff --git a/packages/helloworld/ios/HelloWorld/Images.xcassets/AppIcon.appiconset/Contents.json b/private/helloworld/ios/HelloWorld/Images.xcassets/AppIcon.appiconset/Contents.json
+similarity index 100%
+rename from packages/helloworld/ios/HelloWorld/Images.xcassets/AppIcon.appiconset/Contents.json
+rename to private/helloworld/ios/HelloWorld/Images.xcassets/AppIcon.appiconset/Contents.json
+diff --git a/packages/helloworld/ios/HelloWorld/Images.xcassets/Contents.json b/private/helloworld/ios/HelloWorld/Images.xcassets/Contents.json
+similarity index 100%
+rename from packages/helloworld/ios/HelloWorld/Images.xcassets/Contents.json
+rename to private/helloworld/ios/HelloWorld/Images.xcassets/Contents.json
+diff --git a/packages/helloworld/ios/HelloWorld/Info.plist b/private/helloworld/ios/HelloWorld/Info.plist
+similarity index 100%
+rename from packages/helloworld/ios/HelloWorld/Info.plist
+rename to private/helloworld/ios/HelloWorld/Info.plist
+diff --git a/packages/helloworld/ios/HelloWorld/LaunchScreen.storyboard b/private/helloworld/ios/HelloWorld/LaunchScreen.storyboard
+similarity index 100%
+rename from packages/helloworld/ios/HelloWorld/LaunchScreen.storyboard
+rename to private/helloworld/ios/HelloWorld/LaunchScreen.storyboard
+diff --git a/packages/helloworld/ios/HelloWorld/PrivacyInfo.xcprivacy b/private/helloworld/ios/HelloWorld/PrivacyInfo.xcprivacy
+similarity index 100%
+rename from packages/helloworld/ios/HelloWorld/PrivacyInfo.xcprivacy
+rename to private/helloworld/ios/HelloWorld/PrivacyInfo.xcprivacy
+diff --git a/packages/helloworld/ios/HelloWorldTests/HelloWorldTests.m b/private/helloworld/ios/HelloWorldTests/HelloWorldTests.m
+similarity index 100%
+rename from packages/helloworld/ios/HelloWorldTests/HelloWorldTests.m
+rename to private/helloworld/ios/HelloWorldTests/HelloWorldTests.m
+diff --git a/packages/helloworld/ios/HelloWorldTests/Info.plist b/private/helloworld/ios/HelloWorldTests/Info.plist
+similarity index 100%
+rename from packages/helloworld/ios/HelloWorldTests/Info.plist
+rename to private/helloworld/ios/HelloWorldTests/Info.plist
+diff --git a/packages/helloworld/ios/Podfile b/private/helloworld/ios/Podfile
+similarity index 86%
+rename from packages/helloworld/ios/Podfile
+rename to private/helloworld/ios/Podfile
+index cefe3e0d5fc..19bbc9faca0 100644
+--- a/packages/helloworld/ios/Podfile
++++ b/private/helloworld/ios/Podfile
+@@ -1,4 +1,4 @@
+-require "../../react-native/scripts/cocoapods/autolinking.rb"
++require "../../../packages/react-native/scripts/cocoapods/autolinking.rb"
+ 
+ platform :ios, min_ios_version_supported
+ prepare_react_native_project!
+@@ -13,7 +13,7 @@ target 'HelloWorld' do
+   config = use_native_modules!(['sh', '../scripts/config.sh'])
+ 
+   use_react_native!(
+-    :path => "../../react-native",
++    :path => "../../../packages/react-native",
+     # An absolute path to your application root.
+     :app_path => "#{Pod::Config.instance.installation_root}/.."
+   )
+diff --git a/packages/helloworld/jest.config.js b/private/helloworld/jest.config.js
+similarity index 100%
+rename from packages/helloworld/jest.config.js
+rename to private/helloworld/jest.config.js
+diff --git a/packages/helloworld/lib/cli.js b/private/helloworld/lib/cli.js
+similarity index 100%
+rename from packages/helloworld/lib/cli.js
+rename to private/helloworld/lib/cli.js
+diff --git a/packages/helloworld/lib/filesystem.js b/private/helloworld/lib/filesystem.js
+similarity index 100%
+rename from packages/helloworld/lib/filesystem.js
+rename to private/helloworld/lib/filesystem.js
+diff --git a/packages/helloworld/lib/ios.js b/private/helloworld/lib/ios.js
+similarity index 100%
+rename from packages/helloworld/lib/ios.js
+rename to private/helloworld/lib/ios.js
+diff --git a/packages/helloworld/lib/xcode.js b/private/helloworld/lib/xcode.js
+similarity index 100%
+rename from packages/helloworld/lib/xcode.js
+rename to private/helloworld/lib/xcode.js
+diff --git a/packages/helloworld/metro.config.js b/private/helloworld/metro.config.js
+similarity index 60%
+rename from packages/helloworld/metro.config.js
+rename to private/helloworld/metro.config.js
+index 785b5e129a8..543bfe6dd10 100644
+--- a/packages/helloworld/metro.config.js
++++ b/private/helloworld/metro.config.js
+@@ -15,6 +15,10 @@ import type {InputConfigT} from 'metro-config';
+ const {getDefaultConfig, mergeConfig} = require('@react-native/metro-config');
+ const path = require('path');
+ 
++function repositoryPath(relativePath /*: string */) {
++  return path.join(__dirname, '..', '..', relativePath);
++}
++
+ /**
+  * Metro configuration
+  * https://reactnative.dev/docs/metro
+@@ -24,17 +28,17 @@ const path = require('path');
+ const config = {
+   // Make Metro able to resolve required external dependencies
+   watchFolders: [
+-    path.resolve(__dirname, '../../node_modules'),
+-    path.resolve(__dirname, '../assets'),
+-    path.resolve(__dirname, '../normalize-color'),
+-    path.resolve(__dirname, '../polyfills'),
+-    path.resolve(__dirname, '../react-native'),
+-    path.resolve(__dirname, '../virtualized-lists'),
++    repositoryPath('node_modules'),
++    repositoryPath('packages/assets'),
++    repositoryPath('packages/normalize-color'),
++    repositoryPath('packages/polyfills'),
++    repositoryPath('packages/react-native'),
++    repositoryPath('packages/virtualized-lists'),
+   ],
+   resolver: {
+-    blockList: [/..\/react-native\/sdks\/hermes/],
++    blockList: [/..\/..\/packages\/react-native\/sdks\/hermes/],
+     extraNodeModules: {
+-      'react-native': path.resolve(__dirname, '../react-native'),
++      'react-native': repositoryPath('packages/react-native'),
+     },
+   },
+ };
+diff --git a/packages/helloworld/package.json b/private/helloworld/package.json
+similarity index 97%
+rename from packages/helloworld/package.json
+rename to private/helloworld/package.json
+index 7ea49422da8..082c9658eda 100644
+--- a/packages/helloworld/package.json
++++ b/private/helloworld/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "helloworld",
+-  "version": "0.80.0-main",
++  "version": "0.0.0",
+   "private": true,
+   "scripts": {
+     "bootstrap": "node ./cli.js bootstrap",
+diff --git a/packages/helloworld/scripts/config.sh b/private/helloworld/scripts/config.sh
+similarity index 86%
+rename from packages/helloworld/scripts/config.sh
+rename to private/helloworld/scripts/config.sh
+index 3886652620d..c4216b859bb 100755
+--- a/packages/helloworld/scripts/config.sh
++++ b/private/helloworld/scripts/config.sh
+@@ -9,6 +9,6 @@ set -e
+ script_dir=$(dirname "$(readlink -f "$0")")
+ 
+ HELLOWORLD_PATH=$(realpath ../)
+-REACT_NATIVE_PATH=$(realpath ../../react-native)
++REACT_NATIVE_PATH=$(realpath ../../../packages/react-native)
+ 
+ sed -e "s|HELLOWORLD_PATH|$HELLOWORLD_PATH|g" -e "s|REACT_NATIVE_PATH|$REACT_NATIVE_PATH|g" "$script_dir/../.react-native.config"
+diff --git a/packages/helloworld/scripts/metro.js b/private/helloworld/scripts/metro.js
+similarity index 100%
+rename from packages/helloworld/scripts/metro.js
+rename to private/helloworld/scripts/metro.js
+diff --git a/packages/helloworld/scripts/monorepo.js b/private/helloworld/scripts/monorepo.js
+similarity index 74%
+rename from packages/helloworld/scripts/monorepo.js
+rename to private/helloworld/scripts/monorepo.js
+index 7c0d72c2824..bd3d88bc6f4 100644
+--- a/packages/helloworld/scripts/monorepo.js
++++ b/private/helloworld/scripts/monorepo.js
+@@ -14,11 +14,19 @@
+ // - Github and Meta: dynamicly transpile our dependencies. They each have to register on the monorepo
+ // - NPM: `yarn run build`, and it should update the package.json's exports, main and files
+ function patchCoreCLIUtilsPackageJSON(patch /*: boolean */) {
+-  const fs = require('fs');
+   const log = require('debug');
+-  const pkg = JSON.parse(
+-    fs.readFileSync('../core-cli-utils/package.json', 'utf8'),
++  const fs = require('fs');
++  const path = require('path');
++
++  function repositoryPath(relativePath /*: string */) {
++    return path.join(__dirname, '..', '..', '..', relativePath);
++  }
++
++  const packageJsonPath = repositoryPath(
++    'packages/core-cli-utils/package.json',
+   );
++
++  const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+   const target = patch ? './src/monorepo.js' : './src/index.flow.js';
+   if (pkg.main === target) {
+     return;
+@@ -32,10 +40,7 @@ function patchCoreCLIUtilsPackageJSON(patch /*: boolean */) {
+       2,
+     )}`,
+   );
+-  fs.writeFileSync(
+-    '../core-cli-utils/package.json',
+-    JSON.stringify(pkg, null, 2),
+-  );
++  fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2));
+ }
+ 
+ module.exports.patchCoreCLIUtilsPackageJSON = patchCoreCLIUtilsPackageJSON;
+diff --git a/packages/helloworld/tsconfig.json b/private/helloworld/tsconfig.json
+similarity index 100%
+rename from packages/helloworld/tsconfig.json
+rename to private/helloworld/tsconfig.json
+diff --git a/scripts/babel-register.js b/scripts/babel-register.js
+index 50beeef95be..64439cd6355 100644
+--- a/scripts/babel-register.js
++++ b/scripts/babel-register.js
+@@ -10,6 +10,7 @@
+ 
+ const {
+   PACKAGES_DIR,
++  PRIVATE_DIR,
+   RN_INTEGRATION_TESTS_RUNNER_DIR,
+   SCRIPTS_DIR,
+ } = require('./consts');
+@@ -42,6 +43,7 @@ function registerForMonorepo() {
+   } else {
+     require('metro-babel-register')([
+       PACKAGES_DIR,
++      PRIVATE_DIR,
+       SCRIPTS_DIR,
+       RN_INTEGRATION_TESTS_RUNNER_DIR,
+     ]);
+diff --git a/scripts/consts.js b/scripts/consts.js
+index ba2fdb00ed2..a9a07faedff 100644
+--- a/scripts/consts.js
++++ b/scripts/consts.js
+@@ -21,6 +21,11 @@ const REPO_ROOT /*: string */ = path.resolve(__dirname, '..');
+  */
+ const PACKAGES_DIR /*: string */ = path.join(REPO_ROOT, 'packages');
+ 
++/**
++ * The absolute path to the repo private directory.
++ */
++const PRIVATE_DIR /*: string */ = path.join(REPO_ROOT, 'private');
++
+ /**
+  * The absolute path to the repo scripts directory.
+  */
+@@ -56,6 +61,7 @@ const RN_INTEGRATION_TESTS_RUNNER_DIR /*: string */ = path.join(
+ 
+ module.exports = {
+   PACKAGES_DIR,
++  PRIVATE_DIR,
+   REACT_NATIVE_PACKAGE_DIR,
+   REPO_ROOT,
+   RN_TESTER_DIR,
+diff --git a/scripts/e2e/init-project-e2e.js b/scripts/e2e/init-project-e2e.js
+index 1b83e10cb24..2f77e9f8c76 100644
+--- a/scripts/e2e/init-project-e2e.js
++++ b/scripts/e2e/init-project-e2e.js
+@@ -12,7 +12,7 @@
+ 
+ /*:: import type {ProjectInfo} from '../utils/monorepo'; */
+ 
+-const {PACKAGES_DIR, REPO_ROOT} = require('../consts');
++const {PRIVATE_DIR, REPO_ROOT} = require('../consts');
+ const {getPackages} = require('../utils/monorepo');
+ const {retry} = require('./utils/retry');
+ const {
+@@ -135,9 +135,9 @@ async function initNewProjectFromSource(
+     console.log('\nDone ✅');
+ 
+     if (useHelloWorld) {
+-      console.log('Preparing packages/helloworld/ to be built');
++      console.log('Preparing private/helloworld/ to be built');
+       _prepareHelloWorld(version, pathToLocalReactNative);
+-      directory = path.join(PACKAGES_DIR, 'helloworld');
++      directory = path.join(PRIVATE_DIR, 'helloworld');
+     } else {
+       const pathToTemplate = _prepareTemplate(
+         version,
+@@ -210,7 +210,7 @@ function _prepareHelloWorld(
+   version /*: string */,
+   pathToLocalReactNative /*: ?string*/,
+ ) {
+-  const helloworldDir = path.join(PACKAGES_DIR, 'helloworld');
++  const helloworldDir = path.join(PRIVATE_DIR, 'helloworld');
+   const helloworldPackageJson = path.join(helloworldDir, 'package.json');
+   const packageJson = JSON.parse(
+     fs.readFileSync(helloworldPackageJson, 'utf8'),

@@ -1,0 +1,61 @@
+repo: react-native
+base_commit: 0f55ef7754109c68a0bd10d958d8c81ead5e42e2
+commit: 9526406fc24ed0df10c63c54869814a26d69ece0
+patch_stored: true
+gold:
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManager.java
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManagerBinding.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/ReactClippingViewGroup.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactHorizontalScrollView.java
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactScrollView.java
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactScrollViewHelper.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/ReactViewGroup.java
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/react-native/ReactAndroid/api/ReactAndroid.api:2201-2400 chunk — a 200-line block of
+    unrelated public-API signatures (DevSupportManager, DevToolsReactPerfLogger, ComponentFactory, ErrorType,
+    RedBoxHandler) that has nothing to do with the FlatList/focus-search fix and was only pulled in because
+    it sits near the line range of the real diff hunk in this huge generated API-listing file
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: Diff.stat shows only 385 insertions/68 deletions across 30 files, yet ctx.md consumes 47,396 tokens
+  (~123 tokens per changed line) — a severe token-efficiency mismatch driven largely by dumping large,
+  mostly-irrelevant chunks of the generated ReactAndroid.api file (a mechanical public-API signature listing,
+  not source logic) around the insertion points. The genuinely relevant files (FabricUIManagerBinding
+  native bridge, ScrollView/ViewGroup focus-search additions, feature-flag plumbing) are present and correctly
+  changed-flagged, but drowned in generated-file noise, which is the over-selection pathology (#65) applied
+  to auto-generated build artifacts rather than co-located source.

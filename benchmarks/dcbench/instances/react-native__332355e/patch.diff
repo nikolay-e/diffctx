@@ -1,0 +1,1701 @@
+From 332355e80fffedbf35100b3576af289d6765de2a Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Rub=C3=A9n=20Norte?= <rubennorte@meta.com>
+Date: Mon, 25 Mar 2024 09:50:21 -0700
+Subject: [PATCH] Implement UI consistency mechanism for JS thread (#43581)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/43581
+
+Changelog: [internal]
+
+This implements a mechanism to ensure that JavaScript tasks have a consistent view of the state of the UI during their execution.
+
+## Context
+
+Fabric allows committing new revisions of the ShadowTree from any thread, but we don't make use of this capability and instead always commit them from the JS thread (e.g.: when we schedule Fabric state updates to update the offset of a list on scroll). This was done to make sure that JS work didn't see changes in the state of the tree at random points during its execution. E.g.:
+
+```
+useEffect(() => {
+  const rect = ref.current.getBoundingClientRect();
+  // do something
+  const newRect = ref.current.getBoundingClientRect();
+  // `rect` and `newRect` should always be the same
+}, []);
+```
+
+This isn't used by Reanimated at the moment, which means JS can inadvertently see the result of animations in non-specific times during execution.
+
+You can find additional context about this in the [RFC for DOM Traversal & Layout APIs in RN](https://github.com/react-native-community/discussions-and-proposals/blob/main/proposals/0607-dom-traversal-and-layout-apis.md#consistency-and-updates).
+
+This works correctly at the moment, but we introduce a limitation in the execution model to prevent updating the tree synchronously from the main thread. One of the main problems this introduces is that computing intersections (for `IntersectionObserver`) relies on the information in the shadow tree, but this is updated asynchronously on scroll.
+
+There are 2 potential solutions for that problem:
+1) Send the timestamp of the scroll even with the state update to backdate the timestamps of the intersections. This could work but introduces more complexity and possibly accuracy problems due to batching those state updates with other changes (e.g.: what happens if we update the state and commit another tree in the same task? should we use the backdated timestamp or wait for mount?).
+2) (**Preferred**/ this diff) Allow committing new revisions from any thread, but lock the JS thread into seeing a specific revision, which would only update/progress in specific moments when it's safe. Some of those moments would be:
+    1) When we start a new JS task.
+    2) When we commit a new tree from React (JS).
+
+## Changes
+
+This implements the solution outlined in 2), creating a few abstractions to handle what's the current tree that should be visible to JS and to lock/unlock it in specific moments.
+
+More specifically:
+* Creates `ShadowTreeRevisionProvider` as an abstract class for APIs consuming the visible revision of the ShadowTree (mainly DOM APIs and layout methods like `measure`, etc.).
+* Creates `ShadowTreeRevisionConsistencyManager` as an abstract class to handle what trees are visible (with a `lockRevision` and `unlockRevision` to be called from `RuntimeScheduler` at the beginning and end of each JS task).
+* Creates 2 different implementations of these abstractions:
+  * One that preserves the current behavior (`LatestShadowTreeRevisionProvider`, which just returns the last committed revision at the time of the call).
+  * One that locks revisions lazily (the first time they're accessed) (`LazyShadowTreeRevisionConsistencyManager`).
+
+Reviewed By: sammy-SC
+
+Differential Revision: D55024832
+
+fbshipit-source-id: b59985bc83714ae7ec915baba72bf92b3d6fa140
+---
+ .../React/React-RCTFabric.podspec             |  1 +
+ .../ReactAndroid/build.gradle.kts             |  2 +
+ .../featureflags/ReactNativeFeatureFlags.kt   |  8 ++-
+ .../ReactNativeFeatureFlagsCxxAccessor.kt     | 12 +++-
+ .../ReactNativeFeatureFlagsCxxInterop.kt      |  4 +-
+ .../ReactNativeFeatureFlagsDefaults.kt        |  4 +-
+ .../ReactNativeFeatureFlagsLocalAccessor.kt   | 13 +++-
+ .../ReactNativeFeatureFlagsProvider.kt        |  4 +-
+ .../ReactAndroid/src/main/jni/CMakeLists.txt  |  2 +
+ .../JReactNativeFeatureFlagsCxxInterop.cpp    | 16 ++++-
+ .../JReactNativeFeatureFlagsCxxInterop.h      |  5 +-
+ .../ReactCommon/React-Fabric.podspec          | 13 +++-
+ .../featureflags/ReactNativeFeatureFlags.cpp  |  6 +-
+ .../featureflags/ReactNativeFeatureFlags.h    |  7 +-
+ .../ReactNativeFeatureFlagsAccessor.cpp       | 26 +++++--
+ .../ReactNativeFeatureFlagsAccessor.h         |  6 +-
+ .../ReactNativeFeatureFlagsDefaults.h         |  6 +-
+ .../ReactNativeFeatureFlagsProvider.h         |  3 +-
+ .../NativeReactNativeFeatureFlags.cpp         |  7 +-
+ .../NativeReactNativeFeatureFlags.h           |  4 +-
+ .../react/renderer/consistency/CMakeLists.txt | 20 ++++++
+ .../React-rendererconsistency.podspec         | 45 ++++++++++++
+ .../ScopedShadowTreeRevisionLock.h            | 54 ++++++++++++++
+ .../ShadowTreeRevisionConsistencyManager.cpp  | 14 ++++
+ .../ShadowTreeRevisionConsistencyManager.h    | 24 +++++++
+ .../renderer/runtimescheduler/CMakeLists.txt  |  1 +
+ .../React-runtimescheduler.podspec            |  1 +
+ .../runtimescheduler/RuntimeScheduler.cpp     |  7 ++
+ .../runtimescheduler/RuntimeScheduler.h       |  7 ++
+ .../RuntimeScheduler_Legacy.cpp               | 37 +++++++---
+ .../RuntimeScheduler_Legacy.h                 |  8 +++
+ .../RuntimeScheduler_Modern.cpp               | 28 +++++---
+ .../RuntimeScheduler_Modern.h                 |  7 ++
+ .../react/renderer/scheduler/CMakeLists.txt   |  1 +
+ .../react/renderer/scheduler/Scheduler.cpp    |  6 ++
+ .../react/renderer/uimanager/CMakeLists.txt   |  2 +
+ .../react/renderer/uimanager/UIManager.cpp    | 61 ++++++++++++----
+ .../react/renderer/uimanager/UIManager.h      | 15 +++-
+ .../uimanager/consistency/CMakeLists.txt      | 26 +++++++
+ .../LatestShadowTreeRevisionProvider.cpp      | 29 ++++++++
+ .../LatestShadowTreeRevisionProvider.h        | 35 +++++++++
+ ...zyShadowTreeRevisionConsistencyManager.cpp | 72 +++++++++++++++++++
+ ...LazyShadowTreeRevisionConsistencyManager.h | 51 +++++++++++++
+ .../consistency/ShadowTreeRevisionProvider.h  | 27 +++++++
+ .../ReactNativeFeatureFlags.config.js         |  5 ++
+ .../react-native/scripts/react_native_pods.rb |  1 +
+ .../featureflags/ReactNativeFeatureFlags.js   |  7 +-
+ .../specs/NativeReactNativeFeatureFlags.js    |  3 +-
+ 48 files changed, 689 insertions(+), 54 deletions(-)
+ create mode 100644 packages/react-native/ReactCommon/react/renderer/consistency/CMakeLists.txt
+ create mode 100644 packages/react-native/ReactCommon/react/renderer/consistency/React-rendererconsistency.podspec
+ create mode 100644 packages/react-native/ReactCommon/react/renderer/consistency/ScopedShadowTreeRevisionLock.h
+ create mode 100644 packages/react-native/ReactCommon/react/renderer/consistency/ShadowTreeRevisionConsistencyManager.cpp
+ create mode 100644 packages/react-native/ReactCommon/react/renderer/consistency/ShadowTreeRevisionConsistencyManager.h
+ create mode 100644 packages/react-native/ReactCommon/react/renderer/uimanager/consistency/CMakeLists.txt
+ create mode 100644 packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LatestShadowTreeRevisionProvider.cpp
+ create mode 100644 packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LatestShadowTreeRevisionProvider.h
+ create mode 100644 packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LazyShadowTreeRevisionConsistencyManager.cpp
+ create mode 100644 packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LazyShadowTreeRevisionConsistencyManager.h
+ create mode 100644 packages/react-native/ReactCommon/react/renderer/uimanager/consistency/ShadowTreeRevisionProvider.h
+
+diff --git a/packages/react-native/React/React-RCTFabric.podspec b/packages/react-native/React/React-RCTFabric.podspec
+index 9a28eeec44d..7cfb18a8dd1 100644
+--- a/packages/react-native/React/React-RCTFabric.podspec
++++ b/packages/react-native/React/React-RCTFabric.podspec
+@@ -87,6 +87,7 @@ Pod::Spec.new do |s|
+   add_dependency(s, "React-debug")
+   add_dependency(s, "React-utils")
+   add_dependency(s, "React-rendererdebug")
++  add_dependency(s, "React-rendererconsistency")
+   add_dependency(s, "React-runtimescheduler")
+   add_dependency(s, "React-jsinspector", :framework_name => 'jsinspector_modern')
+ 
+diff --git a/packages/react-native/ReactAndroid/build.gradle.kts b/packages/react-native/ReactAndroid/build.gradle.kts
+index 711181509ed..3a73ee13681 100644
+--- a/packages/react-native/ReactAndroid/build.gradle.kts
++++ b/packages/react-native/ReactAndroid/build.gradle.kts
+@@ -563,6 +563,7 @@ android {
+             "react_cxxreactpackage",
+             "react_render_animations",
+             "react_render_core",
++            "react_render_consistency",
+             "react_render_graphics",
+             "rrc_image",
+             "rrc_root",
+@@ -580,6 +581,7 @@ android {
+             "react_nativemodule_core",
+             "react_render_imagemanager",
+             "react_render_uimanager",
++            "react_render_uimanager_consistency",
+             "react_render_scheduler",
+             "react_render_mounting",
+             "hermes_executor",
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+index a14811239d8..50eabadaab6 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<bdd9f28c6de15e64ce03c505a3f4f34b>>
++ * @generated SignedSource<<20c445fde7a1c2607b58b7797346431f>>
+  */
+ 
+ /**
+@@ -76,6 +76,12 @@ public object ReactNativeFeatureFlags {
+   @JvmStatic
+   public fun enableSpannableBuildingUnification(): Boolean = accessor.enableSpannableBuildingUnification()
+ 
++  /**
++   * Ensures that JavaScript always has a consistent view of the state of the UI (e.g.: commits done in other threads are not immediately propagated to JS during its execution).
++   */
++  @JvmStatic
++  public fun enableUIConsistency(): Boolean = accessor.enableUIConsistency()
++
+   /**
+    * Flag determining if the C++ implementation of InspectorPackagerConnection should be used instead of the per-platform one. This flag is global and should not be changed across React Host lifetimes.
+    */
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+index e65fa797452..7df37086a8a 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<7ae379135157666d9646f1d8eeec9989>>
++ * @generated SignedSource<<6e973dcdcdfae14c77a6130207333551>>
+  */
+ 
+ /**
+@@ -28,6 +28,7 @@ public class ReactNativeFeatureFlagsCxxAccessor : ReactNativeFeatureFlagsAccesso
+   private var enableMicrotasksCache: Boolean? = null
+   private var enableMountHooksAndroidCache: Boolean? = null
+   private var enableSpannableBuildingUnificationCache: Boolean? = null
++  private var enableUIConsistencyCache: Boolean? = null
+   private var inspectorEnableCxxInspectorPackagerConnectionCache: Boolean? = null
+   private var inspectorEnableModernCDPRegistryCache: Boolean? = null
+   private var useModernRuntimeSchedulerCache: Boolean? = null
+@@ -104,6 +105,15 @@ public class ReactNativeFeatureFlagsCxxAccessor : ReactNativeFeatureFlagsAccesso
+     return cached
+   }
+ 
++  override fun enableUIConsistency(): Boolean {
++    var cached = enableUIConsistencyCache
++    if (cached == null) {
++      cached = ReactNativeFeatureFlagsCxxInterop.enableUIConsistency()
++      enableUIConsistencyCache = cached
++    }
++    return cached
++  }
++
+   override fun inspectorEnableCxxInspectorPackagerConnection(): Boolean {
+     var cached = inspectorEnableCxxInspectorPackagerConnectionCache
+     if (cached == null) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+index d6093108c73..465c71cf32c 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<244a0656beee8e018585bdd4bb4e5cd1>>
++ * @generated SignedSource<<0d34567fc05555ae401e7f5180dc8771>>
+  */
+ 
+ /**
+@@ -44,6 +44,8 @@ public object ReactNativeFeatureFlagsCxxInterop {
+ 
+   @DoNotStrip @JvmStatic public external fun enableSpannableBuildingUnification(): Boolean
+ 
++  @DoNotStrip @JvmStatic public external fun enableUIConsistency(): Boolean
++
+   @DoNotStrip @JvmStatic public external fun inspectorEnableCxxInspectorPackagerConnection(): Boolean
+ 
+   @DoNotStrip @JvmStatic public external fun inspectorEnableModernCDPRegistry(): Boolean
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+index 7a2ac9d1601..1e0f7a392d8 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<d0985b19d61af8bdf47c322b7a59e203>>
++ * @generated SignedSource<<cfb3e4f5d83a939f4b034bc62762837e>>
+  */
+ 
+ /**
+@@ -39,6 +39,8 @@ public open class ReactNativeFeatureFlagsDefaults : ReactNativeFeatureFlagsProvi
+ 
+   override fun enableSpannableBuildingUnification(): Boolean = false
+ 
++  override fun enableUIConsistency(): Boolean = false
++
+   override fun inspectorEnableCxxInspectorPackagerConnection(): Boolean = false
+ 
+   override fun inspectorEnableModernCDPRegistry(): Boolean = false
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+index cae01383bef..698251ab09d 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<919eb0f27540e5dd7a1e028663c23264>>
++ * @generated SignedSource<<8908de9b9d0186f1916d8b55d5854cb2>>
+  */
+ 
+ /**
+@@ -32,6 +32,7 @@ public class ReactNativeFeatureFlagsLocalAccessor : ReactNativeFeatureFlagsAcces
+   private var enableMicrotasksCache: Boolean? = null
+   private var enableMountHooksAndroidCache: Boolean? = null
+   private var enableSpannableBuildingUnificationCache: Boolean? = null
++  private var enableUIConsistencyCache: Boolean? = null
+   private var inspectorEnableCxxInspectorPackagerConnectionCache: Boolean? = null
+   private var inspectorEnableModernCDPRegistryCache: Boolean? = null
+   private var useModernRuntimeSchedulerCache: Boolean? = null
+@@ -116,6 +117,16 @@ public class ReactNativeFeatureFlagsLocalAccessor : ReactNativeFeatureFlagsAcces
+     return cached
+   }
+ 
++  override fun enableUIConsistency(): Boolean {
++    var cached = enableUIConsistencyCache
++    if (cached == null) {
++      cached = currentProvider.enableUIConsistency()
++      accessedFeatureFlags.add("enableUIConsistency")
++      enableUIConsistencyCache = cached
++    }
++    return cached
++  }
++
+   override fun inspectorEnableCxxInspectorPackagerConnection(): Boolean {
+     var cached = inspectorEnableCxxInspectorPackagerConnectionCache
+     if (cached == null) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+index 451f64be6d9..1bd4b3ad6a4 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<ddbe652a9094bd6af4bdb741fc17ea7c>>
++ * @generated SignedSource<<7555a704535615fcea44c1261095419a>>
+  */
+ 
+ /**
+@@ -39,6 +39,8 @@ public interface ReactNativeFeatureFlagsProvider {
+ 
+   @DoNotStrip public fun enableSpannableBuildingUnification(): Boolean
+ 
++  @DoNotStrip public fun enableUIConsistency(): Boolean
++
+   @DoNotStrip public fun inspectorEnableCxxInspectorPackagerConnection(): Boolean
+ 
+   @DoNotStrip public fun inspectorEnableModernCDPRegistry(): Boolean
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+index af48dbd60ee..5c0d6a9cd7f 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+@@ -79,6 +79,8 @@ add_react_common_subdir(react/renderer/scheduler)
+ add_react_common_subdir(react/renderer/telemetry)
+ add_react_common_subdir(react/renderer/uimanager)
+ add_react_common_subdir(react/renderer/core)
++add_react_common_subdir(react/renderer/consistency)
++add_react_common_subdir(react/renderer/uimanager/consistency)
+ add_react_common_subdir(react/renderer/element)
+ add_react_common_subdir(react/renderer/graphics)
+ add_react_common_subdir(react/renderer/debug)
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+index 4add6436bbd..d24467eb205 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<393c6cf93399cfe0b0533927877531d5>>
++ * @generated SignedSource<<e6f57d186226377e4558f633433aa1fc>>
+  */
+ 
+ /**
+@@ -87,6 +87,12 @@ class ReactNativeFeatureFlagsProviderHolder
+     return method(javaProvider_);
+   }
+ 
++  bool enableUIConsistency() override {
++    static const auto method =
++        getReactNativeFeatureFlagsProviderJavaClass()->getMethod<jboolean()>("enableUIConsistency");
++    return method(javaProvider_);
++  }
++
+   bool inspectorEnableCxxInspectorPackagerConnection() override {
+     static const auto method =
+         getReactNativeFeatureFlagsProviderJavaClass()->getMethod<jboolean()>("inspectorEnableCxxInspectorPackagerConnection");
+@@ -149,6 +155,11 @@ bool JReactNativeFeatureFlagsCxxInterop::enableSpannableBuildingUnification(
+   return ReactNativeFeatureFlags::enableSpannableBuildingUnification();
+ }
+ 
++bool JReactNativeFeatureFlagsCxxInterop::enableUIConsistency(
++    facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop> /*unused*/) {
++  return ReactNativeFeatureFlags::enableUIConsistency();
++}
++
+ bool JReactNativeFeatureFlagsCxxInterop::inspectorEnableCxxInspectorPackagerConnection(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop> /*unused*/) {
+   return ReactNativeFeatureFlags::inspectorEnableCxxInspectorPackagerConnection();
+@@ -205,6 +216,9 @@ void JReactNativeFeatureFlagsCxxInterop::registerNatives() {
+       makeNativeMethod(
+         "enableSpannableBuildingUnification",
+         JReactNativeFeatureFlagsCxxInterop::enableSpannableBuildingUnification),
++      makeNativeMethod(
++        "enableUIConsistency",
++        JReactNativeFeatureFlagsCxxInterop::enableUIConsistency),
+       makeNativeMethod(
+         "inspectorEnableCxxInspectorPackagerConnection",
+         JReactNativeFeatureFlagsCxxInterop::inspectorEnableCxxInspectorPackagerConnection),
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+index d710f2c4052..27e41e73a4e 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<e0466f307c37b0c46a09d3a792060fcd>>
++ * @generated SignedSource<<a90ff7ce4734046fd9aab1c501ca22b4>>
+  */
+ 
+ /**
+@@ -54,6 +54,9 @@ class JReactNativeFeatureFlagsCxxInterop
+   static bool enableSpannableBuildingUnification(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
+ 
++  static bool enableUIConsistency(
++    facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
++
+   static bool inspectorEnableCxxInspectorPackagerConnection(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
+ 
+diff --git a/packages/react-native/ReactCommon/React-Fabric.podspec b/packages/react-native/ReactCommon/React-Fabric.podspec
+index 6662a301291..05d0e7259e5 100644
+--- a/packages/react-native/ReactCommon/React-Fabric.podspec
++++ b/packages/react-native/ReactCommon/React-Fabric.podspec
+@@ -213,7 +213,7 @@ Pod::Spec.new do |s|
+       sss.header_dir           = "react/renderer/components/textinput"
+ 
+     end
+-    
++
+     ss.subspec "unimplementedview" do |sss|
+       sss.dependency             folly_dep_name, folly_version
+       sss.compiler_flags       = folly_compiler_flags
+@@ -277,10 +277,17 @@ Pod::Spec.new do |s|
+   end
+ 
+   s.subspec "uimanager" do |ss|
++    ss.subspec "consistency" do |sss|
++      sss.dependency             folly_dep_name, folly_version
++      sss.compiler_flags       = folly_compiler_flags
++      sss.source_files         = "react/renderer/uimanager/consistency/*.{m,mm,cpp,h}"
++      sss.header_dir           = "react/renderer/uimanager/consistency"
++    end
++
+     ss.dependency             folly_dep_name, folly_version
++    ss.dependency             "React-rendererconsistency"
+     ss.compiler_flags       = folly_compiler_flags
+-    ss.source_files         = "react/renderer/uimanager/**/*.{m,mm,cpp,h}"
+-    ss.exclude_files        = "react/renderer/uimanager/tests"
++    ss.source_files         = "react/renderer/uimanager/*.{m,mm,cpp,h}"
+     ss.header_dir           = "react/renderer/uimanager"
+   end
+ 
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+index 163c9e23884..2a4c352c5a4 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<cc7c7aa6ac71f94f8dd8fc8cc0c18308>>
++ * @generated SignedSource<<a5c58cc8c0294fd073f43fda88b908f8>>
+  */
+ 
+ /**
+@@ -53,6 +53,10 @@ bool ReactNativeFeatureFlags::enableSpannableBuildingUnification() {
+   return getAccessor().enableSpannableBuildingUnification();
+ }
+ 
++bool ReactNativeFeatureFlags::enableUIConsistency() {
++  return getAccessor().enableUIConsistency();
++}
++
+ bool ReactNativeFeatureFlags::inspectorEnableCxxInspectorPackagerConnection() {
+   return getAccessor().inspectorEnableCxxInspectorPackagerConnection();
+ }
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+index 9f51ae019bc..0354f83b547 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<d104b9219b7658544101bbd175f8fa7d>>
++ * @generated SignedSource<<e94d55bad5f8bf6cf933ddc50e3b4886>>
+  */
+ 
+ /**
+@@ -77,6 +77,11 @@ class ReactNativeFeatureFlags {
+    */
+   RN_EXPORT static bool enableSpannableBuildingUnification();
+ 
++  /**
++   * Ensures that JavaScript always has a consistent view of the state of the UI (e.g.: commits done in other threads are not immediately propagated to JS during its execution).
++   */
++  RN_EXPORT static bool enableUIConsistency();
++
+   /**
+    * Flag determining if the C++ implementation of InspectorPackagerConnection should be used instead of the per-platform one. This flag is global and should not be changed across React Host lifetimes.
+    */
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+index 9adeb8f60d4..f7a4feb4dbb 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<f7d54fe8d458d80359a8d6e0e5816b1b>>
++ * @generated SignedSource<<2ff39fd4c8330ddca994fc40cdeaaf4c>>
+  */
+ 
+ /**
+@@ -173,6 +173,24 @@ bool ReactNativeFeatureFlagsAccessor::enableSpannableBuildingUnification() {
+   return flagValue.value();
+ }
+ 
++bool ReactNativeFeatureFlagsAccessor::enableUIConsistency() {
++  auto flagValue = enableUIConsistency_.load();
++
++  if (!flagValue.has_value()) {
++    // This block is not exclusive but it is not necessary.
++    // If multiple threads try to initialize the feature flag, we would only
++    // be accessing the provider multiple times but the end state of this
++    // instance and the returned flag value would be the same.
++
++    markFlagAsAccessed(8, "enableUIConsistency");
++
++    flagValue = currentProvider_->enableUIConsistency();
++    enableUIConsistency_ = flagValue;
++  }
++
++  return flagValue.value();
++}
++
+ bool ReactNativeFeatureFlagsAccessor::inspectorEnableCxxInspectorPackagerConnection() {
+   auto flagValue = inspectorEnableCxxInspectorPackagerConnection_.load();
+ 
+@@ -182,7 +200,7 @@ bool ReactNativeFeatureFlagsAccessor::inspectorEnableCxxInspectorPackagerConnect
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(8, "inspectorEnableCxxInspectorPackagerConnection");
++    markFlagAsAccessed(9, "inspectorEnableCxxInspectorPackagerConnection");
+ 
+     flagValue = currentProvider_->inspectorEnableCxxInspectorPackagerConnection();
+     inspectorEnableCxxInspectorPackagerConnection_ = flagValue;
+@@ -200,7 +218,7 @@ bool ReactNativeFeatureFlagsAccessor::inspectorEnableModernCDPRegistry() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(9, "inspectorEnableModernCDPRegistry");
++    markFlagAsAccessed(10, "inspectorEnableModernCDPRegistry");
+ 
+     flagValue = currentProvider_->inspectorEnableModernCDPRegistry();
+     inspectorEnableModernCDPRegistry_ = flagValue;
+@@ -218,7 +236,7 @@ bool ReactNativeFeatureFlagsAccessor::useModernRuntimeScheduler() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(10, "useModernRuntimeScheduler");
++    markFlagAsAccessed(11, "useModernRuntimeScheduler");
+ 
+     flagValue = currentProvider_->useModernRuntimeScheduler();
+     useModernRuntimeScheduler_ = flagValue;
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+index 5199fc1ca59..dc3b1f0b99c 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<d13ffc557c3874e9bdd78558cd309829>>
++ * @generated SignedSource<<a8e0d8c5bc041f814bffb1701a124646>>
+  */
+ 
+ /**
+@@ -39,6 +39,7 @@ class ReactNativeFeatureFlagsAccessor {
+   bool enableMicrotasks();
+   bool enableMountHooksAndroid();
+   bool enableSpannableBuildingUnification();
++  bool enableUIConsistency();
+   bool inspectorEnableCxxInspectorPackagerConnection();
+   bool inspectorEnableModernCDPRegistry();
+   bool useModernRuntimeScheduler();
+@@ -52,7 +53,7 @@ class ReactNativeFeatureFlagsAccessor {
+   std::unique_ptr<ReactNativeFeatureFlagsProvider> currentProvider_;
+   bool wasOverridden_;
+ 
+-  std::array<std::atomic<const char*>, 11> accessedFeatureFlags_;
++  std::array<std::atomic<const char*>, 12> accessedFeatureFlags_;
+ 
+   std::atomic<std::optional<bool>> commonTestFlag_;
+   std::atomic<std::optional<bool>> batchRenderingUpdatesInEventLoop_;
+@@ -62,6 +63,7 @@ class ReactNativeFeatureFlagsAccessor {
+   std::atomic<std::optional<bool>> enableMicrotasks_;
+   std::atomic<std::optional<bool>> enableMountHooksAndroid_;
+   std::atomic<std::optional<bool>> enableSpannableBuildingUnification_;
++  std::atomic<std::optional<bool>> enableUIConsistency_;
+   std::atomic<std::optional<bool>> inspectorEnableCxxInspectorPackagerConnection_;
+   std::atomic<std::optional<bool>> inspectorEnableModernCDPRegistry_;
+   std::atomic<std::optional<bool>> useModernRuntimeScheduler_;
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+index 85f6d322e89..0115a835c63 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<62de1b0e27590ad769296358a4f42c7a>>
++ * @generated SignedSource<<1450d89abc68821fb348574016874719>>
+  */
+ 
+ /**
+@@ -59,6 +59,10 @@ class ReactNativeFeatureFlagsDefaults : public ReactNativeFeatureFlagsProvider {
+     return false;
+   }
+ 
++  bool enableUIConsistency() override {
++    return false;
++  }
++
+   bool inspectorEnableCxxInspectorPackagerConnection() override {
+     return false;
+   }
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+index 48ec9f28697..cbf80cf641e 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<3117fc0389416297369a47ee480eb906>>
++ * @generated SignedSource<<d369db4d7cd374081941bff6c6f3e08f>>
+  */
+ 
+ /**
+@@ -33,6 +33,7 @@ class ReactNativeFeatureFlagsProvider {
+   virtual bool enableMicrotasks() = 0;
+   virtual bool enableMountHooksAndroid() = 0;
+   virtual bool enableSpannableBuildingUnification() = 0;
++  virtual bool enableUIConsistency() = 0;
+   virtual bool inspectorEnableCxxInspectorPackagerConnection() = 0;
+   virtual bool inspectorEnableModernCDPRegistry() = 0;
+   virtual bool useModernRuntimeScheduler() = 0;
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+index 30c6d98f483..8a957343c12 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<27923a2dbf1dcbad238a4d06ebb54fb5>>
++ * @generated SignedSource<<7e09a7ad1d178850bdcf73da3eb5623b>>
+  */
+ 
+ /**
+@@ -77,6 +77,11 @@ bool NativeReactNativeFeatureFlags::enableSpannableBuildingUnification(
+   return ReactNativeFeatureFlags::enableSpannableBuildingUnification();
+ }
+ 
++bool NativeReactNativeFeatureFlags::enableUIConsistency(
++    jsi::Runtime& /*runtime*/) {
++  return ReactNativeFeatureFlags::enableUIConsistency();
++}
++
+ bool NativeReactNativeFeatureFlags::inspectorEnableCxxInspectorPackagerConnection(
+     jsi::Runtime& /*runtime*/) {
+   return ReactNativeFeatureFlags::inspectorEnableCxxInspectorPackagerConnection();
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+index ffe0f7044d5..bdc52a818d5 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<53251a11631eccf1fcc334b14f9ca4c6>>
++ * @generated SignedSource<<a356c9a406454c7591fbfe23edeeaee6>>
+  */
+ 
+ /**
+@@ -51,6 +51,8 @@ class NativeReactNativeFeatureFlags
+ 
+   bool enableSpannableBuildingUnification(jsi::Runtime& runtime);
+ 
++  bool enableUIConsistency(jsi::Runtime& runtime);
++
+   bool inspectorEnableCxxInspectorPackagerConnection(jsi::Runtime& runtime);
+ 
+   bool inspectorEnableModernCDPRegistry(jsi::Runtime& runtime);
+diff --git a/packages/react-native/ReactCommon/react/renderer/consistency/CMakeLists.txt b/packages/react-native/ReactCommon/react/renderer/consistency/CMakeLists.txt
+new file mode 100644
+index 00000000000..4273bb45614
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/renderer/consistency/CMakeLists.txt
+@@ -0,0 +1,20 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++#
++# This source code is licensed under the MIT license found in the
++# LICENSE file in the root directory of this source tree.
++
++cmake_minimum_required(VERSION 3.13)
++set(CMAKE_VERBOSE_MAKEFILE on)
++
++add_compile_options(
++        -fexceptions
++        -frtti
++        -std=c++20
++        -Wall
++        -Wpedantic
++        -DLOG_TAG=\"Fabric\")
++
++file(GLOB react_render_consistency_SRC CONFIGURE_DEPENDS *.cpp)
++add_library(react_render_consistency SHARED ${react_render_consistency_SRC})
++
++target_include_directories(react_render_consistency PUBLIC ${REACT_COMMON_DIR})
+diff --git a/packages/react-native/ReactCommon/react/renderer/consistency/React-rendererconsistency.podspec b/packages/react-native/ReactCommon/react/renderer/consistency/React-rendererconsistency.podspec
+new file mode 100644
+index 00000000000..873eb7c9681
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/renderer/consistency/React-rendererconsistency.podspec
+@@ -0,0 +1,45 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++#
++# This source code is licensed under the MIT license found in the
++# LICENSE file in the root directory of this source tree.
++
++require "json"
++
++package = JSON.parse(File.read(File.join(__dir__, "..", "..", "..", "..", "package.json")))
++version = package['version']
++
++source = { :git => 'https://github.com/facebook/react-native.git' }
++if version == '1000.0.0'
++  # This is an unpublished version, use the latest commit hash of the react-native repo, which we’re presumably in.
++  source[:commit] = `git rev-parse HEAD`.strip if system("git rev-parse --git-dir > /dev/null 2>&1")
++else
++  source[:tag] = "v#{version}"
++end
++
++header_search_paths = []
++
++if ENV['USE_FRAMEWORKS']
++  header_search_paths << "\"$(PODS_TARGET_SRCROOT)/../../..\"" # this is needed to allow the rendererconsistency access its own files
++end
++
++Pod::Spec.new do |s|
++  s.name                   = "React-rendererconsistency"
++  s.version                = version
++  s.summary                = "Fabric UI consistency primitives"
++  s.homepage               = "https://reactnative.dev/"
++  s.license                = package["license"]
++  s.author                 = "Meta Platforms, Inc. and its affiliates"
++  s.platforms              = min_supported_versions
++  s.source                 = source
++  s.source_files           = "**/*.{cpp,h}"
++  s.header_dir             = "react/renderer/consistency"
++  s.exclude_files          = "tests"
++  s.pod_target_xcconfig    = {
++    "CLANG_CXX_LANGUAGE_STANDARD" => "c++20",
++    "HEADER_SEARCH_PATHS" => header_search_paths.join(' ')}
++
++  if ENV['USE_FRAMEWORKS']
++    s.module_name            = "React_rendererconsistency"
++    s.header_mappings_dir  = "../../.."
++  end
++end
+diff --git a/packages/react-native/ReactCommon/react/renderer/consistency/ScopedShadowTreeRevisionLock.h b/packages/react-native/ReactCommon/react/renderer/consistency/ScopedShadowTreeRevisionLock.h
+new file mode 100644
+index 00000000000..2bc68d8a2be
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/renderer/consistency/ScopedShadowTreeRevisionLock.h
+@@ -0,0 +1,54 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#pragma once
++
++#include <react/renderer/consistency/ShadowTreeRevisionConsistencyManager.h>
++
++namespace facebook::react {
++
++/**
++ * This is a RAII class that locks the shadow tree revisions during its
++ * lifetime.
++ *
++ * @example
++ *   {
++ *     ScopedShadowTreeRevisionLock lock(consistencyManager);
++ *     runJavaScriptTask(); // During this execution, the lock will be active.
++ *   }
++ */
++class ScopedShadowTreeRevisionLock {
++ public:
++  explicit ScopedShadowTreeRevisionLock(
++      ShadowTreeRevisionConsistencyManager* consistencyManager) noexcept
++      : consistencyManager_(consistencyManager) {
++    if (consistencyManager_ != nullptr) {
++      consistencyManager_->lockRevisions();
++    }
++  }
++
++  // Non-movable
++  ScopedShadowTreeRevisionLock(const ScopedShadowTreeRevisionLock&) = delete;
++  ScopedShadowTreeRevisionLock(ScopedShadowTreeRevisionLock&&) = delete;
++
++  // Non-copyable
++  ScopedShadowTreeRevisionLock& operator=(const ScopedShadowTreeRevisionLock&) =
++      delete;
++  ScopedShadowTreeRevisionLock& operator=(ScopedShadowTreeRevisionLock&&) =
++      delete;
++
++  ~ScopedShadowTreeRevisionLock() noexcept {
++    if (consistencyManager_ != nullptr) {
++      consistencyManager_->unlockRevisions();
++    }
++  }
++
++ private:
++  ShadowTreeRevisionConsistencyManager* consistencyManager_;
++};
++
++} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/consistency/ShadowTreeRevisionConsistencyManager.cpp b/packages/react-native/ReactCommon/react/renderer/consistency/ShadowTreeRevisionConsistencyManager.cpp
+new file mode 100644
+index 00000000000..686a0bfc0c8
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/renderer/consistency/ShadowTreeRevisionConsistencyManager.cpp
+@@ -0,0 +1,14 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#include "ShadowTreeRevisionConsistencyManager.h"
++
++namespace facebook::react {
++
++// This is a placeholder for CMakeFile not to complain
++
++} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/consistency/ShadowTreeRevisionConsistencyManager.h b/packages/react-native/ReactCommon/react/renderer/consistency/ShadowTreeRevisionConsistencyManager.h
+new file mode 100644
+index 00000000000..d5afba016f6
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/renderer/consistency/ShadowTreeRevisionConsistencyManager.h
+@@ -0,0 +1,24 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#pragma once
++
++namespace facebook::react {
++
++/**
++ * This interface is used for UI consistency, indicating the timeframe where
++ * users should see the same revision of the shadow tree.
++ */
++class ShadowTreeRevisionConsistencyManager {
++ public:
++  virtual ~ShadowTreeRevisionConsistencyManager() = default;
++
++  virtual void lockRevisions() = 0;
++  virtual void unlockRevisions() = 0;
++};
++
++} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/CMakeLists.txt b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/CMakeLists.txt
+index 85f9f2c125f..9149d39eeab 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/CMakeLists.txt
+@@ -23,6 +23,7 @@ target_link_libraries(react_render_runtimescheduler
+         callinvoker
+         jsi
+         react_debug
++        react_render_consistency
+         react_render_debug
+         react_utils
+         react_featureflags
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/React-runtimescheduler.podspec b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/React-runtimescheduler.podspec
+index 642d71980a9..739502a8903 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/React-runtimescheduler.podspec
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/React-runtimescheduler.podspec
+@@ -60,6 +60,7 @@ Pod::Spec.new do |s|
+   s.dependency "glog"
+   s.dependency "RCT-Folly", folly_version
+   s.dependency "React-jsi"
++  s.dependency "React-rendererconsistency"
+   add_dependency(s, "React-debug")
+ 
+   if ENV["USE_HERMES"] == nil || ENV["USE_HERMES"] == "1"
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler.cpp b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler.cpp
+index 4f2cf5d8646..ffad447dc36 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler.cpp
+@@ -84,4 +84,11 @@ void RuntimeScheduler::scheduleRenderingUpdate(
+       std::move(renderingUpdate));
+ }
+ 
++void RuntimeScheduler::setShadowTreeRevisionConsistencyManager(
++    ShadowTreeRevisionConsistencyManager*
++        shadowTreeRevisionConsistencyManager) {
++  return runtimeSchedulerImpl_->setShadowTreeRevisionConsistencyManager(
++      shadowTreeRevisionConsistencyManager);
++}
++
+ } // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler.h b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler.h
+index 115bc3ec3d9..cdb321cca02 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler.h
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler.h
+@@ -8,6 +8,7 @@
+ #pragma once
+ 
+ #include <ReactCommon/RuntimeExecutor.h>
++#include <react/renderer/consistency/ShadowTreeRevisionConsistencyManager.h>
+ #include <react/renderer/runtimescheduler/RuntimeSchedulerClock.h>
+ #include <react/renderer/runtimescheduler/Task.h>
+ 
+@@ -35,6 +36,8 @@ class RuntimeSchedulerBase {
+   virtual void callExpiredTasks(jsi::Runtime& runtime) = 0;
+   virtual void scheduleRenderingUpdate(
+       RuntimeSchedulerRenderingUpdate&& renderingUpdate) = 0;
++  virtual void setShadowTreeRevisionConsistencyManager(
++      ShadowTreeRevisionConsistencyManager* provider) = 0;
+ };
+ 
+ // This is a proxy for RuntimeScheduler implementation, which will be selected
+@@ -127,6 +130,10 @@ class RuntimeScheduler final : RuntimeSchedulerBase {
+   void scheduleRenderingUpdate(
+       RuntimeSchedulerRenderingUpdate&& renderingUpdate) override;
+ 
++  void setShadowTreeRevisionConsistencyManager(
++      ShadowTreeRevisionConsistencyManager*
++          shadowTreeRevisionConsistencyManager) override;
++
+  private:
+   // Actual implementation, stored as a unique pointer to simplify memory
+   // management.
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Legacy.cpp b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Legacy.cpp
+index 325de9f44c2..2d13b9b8e64 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Legacy.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Legacy.cpp
+@@ -8,6 +8,7 @@
+ #include "RuntimeScheduler_Legacy.h"
+ #include "SchedulerPriorityUtils.h"
+ 
++#include <react/renderer/consistency/ScopedShadowTreeRevisionLock.h>
+ #include <react/renderer/debug/SystraceSection.h>
+ #include <utility>
+ #include "ErrorUtils.h"
+@@ -30,7 +31,11 @@ void RuntimeScheduler_Legacy::scheduleWork(RawCallback&& callback) noexcept {
+       [this, callback = std::move(callback)](jsi::Runtime& runtime) {
+         SystraceSection s2("RuntimeScheduler::scheduleWork callback");
+         runtimeAccessRequests_ -= 1;
+-        callback(runtime);
++        {
++          ScopedShadowTreeRevisionLock revisionLock(
++              shadowTreeRevisionConsistencyManager_);
++          callback(runtime);
++        }
+         startWorkLoop(runtime);
+       });
+ }
+@@ -104,7 +109,11 @@ void RuntimeScheduler_Legacy::executeNowOnTheSameThread(
+             "RuntimeScheduler::executeNowOnTheSameThread callback");
+ 
+         runtimeAccessRequests_ -= 1;
+-        callback(runtime);
++        {
++          ScopedShadowTreeRevisionLock revisionLock(
++              shadowTreeRevisionConsistencyManager_);
++          callback(runtime);
++        }
+       });
+ 
+   // Resume work loop if needed. In synchronous mode
+@@ -145,6 +154,12 @@ void RuntimeScheduler_Legacy::scheduleRenderingUpdate(
+   }
+ }
+ 
++void RuntimeScheduler_Legacy::setShadowTreeRevisionConsistencyManager(
++    ShadowTreeRevisionConsistencyManager*
++        shadowTreeRevisionConsistencyManager) {
++  shadowTreeRevisionConsistencyManager_ = shadowTreeRevisionConsistencyManager;
++}
++
+ #pragma mark - Private
+ 
+ void RuntimeScheduler_Legacy::scheduleWorkLoopIfNecessary() {
+@@ -195,13 +210,19 @@ void RuntimeScheduler_Legacy::executeTask(
+       didUserCallbackTimeout);
+ 
+   currentPriority_ = task->priority;
+-  auto result = task->execute(runtime, didUserCallbackTimeout);
+ 
+-  if (result.isObject() && result.getObject(runtime).isFunction(runtime)) {
+-    task->callback = result.getObject(runtime).getFunction(runtime);
+-  } else {
+-    if (taskQueue_.top() == task) {
+-      taskQueue_.pop();
++  {
++    ScopedShadowTreeRevisionLock revisionLock(
++        shadowTreeRevisionConsistencyManager_);
++
++    auto result = task->execute(runtime, didUserCallbackTimeout);
++
++    if (result.isObject() && result.getObject(runtime).isFunction(runtime)) {
++      task->callback = result.getObject(runtime).getFunction(runtime);
++    } else {
++      if (taskQueue_.top() == task) {
++        taskQueue_.pop();
++      }
+     }
+   }
+ }
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Legacy.h b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Legacy.h
+index fc436b5d228..d5f673d39b6 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Legacy.h
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Legacy.h
+@@ -8,6 +8,7 @@
+ #pragma once
+ 
+ #include <ReactCommon/RuntimeExecutor.h>
++#include <react/renderer/consistency/ShadowTreeRevisionConsistencyManager.h>
+ #include <react/renderer/runtimescheduler/RuntimeScheduler.h>
+ #include <react/renderer/runtimescheduler/RuntimeSchedulerClock.h>
+ #include <react/renderer/runtimescheduler/Task.h>
+@@ -105,6 +106,10 @@ class RuntimeScheduler_Legacy final : public RuntimeSchedulerBase {
+   void scheduleRenderingUpdate(
+       RuntimeSchedulerRenderingUpdate&& renderingUpdate) override;
+ 
++  void setShadowTreeRevisionConsistencyManager(
++      ShadowTreeRevisionConsistencyManager*
++          shadowTreeRevisionConsistencyManager) override;
++
+  private:
+   std::priority_queue<
+       std::shared_ptr<Task>,
+@@ -151,6 +156,9 @@ class RuntimeScheduler_Legacy final : public RuntimeSchedulerBase {
+    * This flag is set while performing work, to prevent re-entrancy.
+    */
+   std::atomic_bool isPerformingWork_{false};
++
++  ShadowTreeRevisionConsistencyManager* shadowTreeRevisionConsistencyManager_{
++      nullptr};
+ };
+ 
+ } // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.cpp b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.cpp
+index 76011d0a272..c07e2f8c2e9 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.cpp
+@@ -10,6 +10,7 @@
+ 
+ #include <cxxreact/ErrorUtils.h>
+ #include <react/featureflags/ReactNativeFeatureFlags.h>
++#include <react/renderer/consistency/ScopedShadowTreeRevisionLock.h>
+ #include <react/renderer/debug/SystraceSection.h>
+ #include <react/utils/OnScopeExit.h>
+ #include <utility>
+@@ -153,6 +154,12 @@ void RuntimeScheduler_Modern::scheduleRenderingUpdate(
+   }
+ }
+ 
++void RuntimeScheduler_Modern::setShadowTreeRevisionConsistencyManager(
++    ShadowTreeRevisionConsistencyManager*
++        shadowTreeRevisionConsistencyManager) {
++  shadowTreeRevisionConsistencyManager_ = shadowTreeRevisionConsistencyManager;
++}
++
+ #pragma mark - Private
+ 
+ void RuntimeScheduler_Modern::scheduleTask(std::shared_ptr<Task> task) {
+@@ -253,16 +260,21 @@ void RuntimeScheduler_Modern::executeTask(
+   currentTask_ = task;
+   currentPriority_ = task->priority;
+ 
+-  executeMacrotask(runtime, task, didUserCallbackTimeout);
++  {
++    ScopedShadowTreeRevisionLock revisionLock(
++        shadowTreeRevisionConsistencyManager_);
+ 
+-  if (ReactNativeFeatureFlags::enableMicrotasks()) {
+-    // "Perform a microtask checkpoint" step.
+-    performMicrotaskCheckpoint(runtime);
+-  }
++    executeMacrotask(runtime, task, didUserCallbackTimeout);
+ 
+-  if (ReactNativeFeatureFlags::batchRenderingUpdatesInEventLoop()) {
+-    // "Update the rendering" step.
+-    updateRendering();
++    if (ReactNativeFeatureFlags::enableMicrotasks()) {
++      // "Perform a microtask checkpoint" step.
++      performMicrotaskCheckpoint(runtime);
++    }
++
++    if (ReactNativeFeatureFlags::batchRenderingUpdatesInEventLoop()) {
++      // "Update the rendering" step.
++      updateRendering();
++    }
+   }
+ }
+ 
+diff --git a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.h b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.h
+index d31707f5217..372d8c5da19 100644
+--- a/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.h
++++ b/packages/react-native/ReactCommon/react/renderer/runtimescheduler/RuntimeScheduler_Modern.h
+@@ -8,6 +8,7 @@
+ #pragma once
+ 
+ #include <ReactCommon/RuntimeExecutor.h>
++#include <react/renderer/consistency/ShadowTreeRevisionConsistencyManager.h>
+ #include <react/renderer/runtimescheduler/RuntimeScheduler.h>
+ #include <react/renderer/runtimescheduler/RuntimeSchedulerClock.h>
+ #include <react/renderer/runtimescheduler/Task.h>
+@@ -122,6 +123,10 @@ class RuntimeScheduler_Modern final : public RuntimeSchedulerBase {
+   void scheduleRenderingUpdate(
+       RuntimeSchedulerRenderingUpdate&& renderingUpdate) override;
+ 
++  void setShadowTreeRevisionConsistencyManager(
++      ShadowTreeRevisionConsistencyManager*
++          shadowTreeRevisionConsistencyManager) override;
++
+  private:
+   std::atomic<uint_fast8_t> syncTaskRequests_{0};
+ 
+@@ -184,6 +189,8 @@ class RuntimeScheduler_Modern final : public RuntimeSchedulerBase {
+   bool isWorkLoopScheduled_{false};
+ 
+   std::queue<RuntimeSchedulerRenderingUpdate> pendingRenderingUpdates_;
++  ShadowTreeRevisionConsistencyManager* shadowTreeRevisionConsistencyManager_{
++      nullptr};
+ };
+ 
+ } // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/scheduler/CMakeLists.txt b/packages/react-native/ReactCommon/react/renderer/scheduler/CMakeLists.txt
+index 38fdcb66e86..44fda8bc85f 100644
+--- a/packages/react-native/ReactCommon/react/renderer/scheduler/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/react/renderer/scheduler/CMakeLists.txt
+@@ -25,6 +25,7 @@ target_link_libraries(react_render_scheduler
+         jsi
+         react_config
+         react_debug
++        react_featureflags
+         react_render_componentregistry
+         react_render_core
+         react_render_debug
+diff --git a/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp b/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp
+index 908e01904dd..9f5dc0e75f4 100644
+--- a/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp
+@@ -11,6 +11,7 @@
+ #include <jsi/jsi.h>
+ 
+ #include <react/debug/react_native_assert.h>
++#include <react/featureflags/ReactNativeFeatureFlags.h>
+ #include <react/renderer/componentregistry/ComponentDescriptorRegistry.h>
+ #include <react/renderer/core/EventQueueProcessor.h>
+ #include <react/renderer/core/LayoutContext.h>
+@@ -54,6 +55,11 @@ Scheduler::Scheduler(
+       ? weakRuntimeScheduler.value().lock()
+       : nullptr;
+ 
++  if (runtimeScheduler && ReactNativeFeatureFlags::enableUIConsistency()) {
++    runtimeScheduler->setShadowTreeRevisionConsistencyManager(
++        uiManager->getShadowTreeRevisionConsistencyManager());
++  }
++
+   auto eventPipe = [uiManager, runtimeScheduler = runtimeScheduler.get()](
+                        jsi::Runtime& runtime,
+                        const EventTarget* eventTarget,
+diff --git a/packages/react-native/ReactCommon/react/renderer/uimanager/CMakeLists.txt b/packages/react-native/ReactCommon/react/renderer/uimanager/CMakeLists.txt
+index badeb64afcf..c57725e3e63 100644
+--- a/packages/react-native/ReactCommon/react/renderer/uimanager/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/react/renderer/uimanager/CMakeLists.txt
+@@ -27,6 +27,8 @@ target_link_libraries(react_render_uimanager
+         react_debug
+         react_featureflags
+         react_render_componentregistry
++        react_render_consistency
++        react_render_uimanager_consistency
+         react_render_core
+         react_render_debug
+         react_render_graphics
+diff --git a/packages/react-native/ReactCommon/react/renderer/uimanager/UIManager.cpp b/packages/react-native/ReactCommon/react/renderer/uimanager/UIManager.cpp
+index 0ad24461223..4f000b89246 100644
+--- a/packages/react-native/ReactCommon/react/renderer/uimanager/UIManager.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/uimanager/UIManager.cpp
+@@ -29,6 +29,15 @@ constexpr int DOCUMENT_POSITION_PRECEDING = 2;
+ constexpr int DOCUMENT_POSITION_FOLLOWING = 4;
+ constexpr int DOCUMENT_POSITION_CONTAINS = 8;
+ constexpr int DOCUMENT_POSITION_CONTAINED_BY = 16;
++
++std::unique_ptr<facebook::react::LeakChecker> constructLeakCheckerIfNeeded(
++    const facebook::react::RuntimeExecutor& runtimeExecutor) {
++#ifdef REACT_NATIVE_DEBUG
++  return std::make_unique<facebook::react::LeakChecker>(runtimeExecutor);
++#else
++  return {};
++#endif
++}
+ } // namespace
+ 
+ namespace facebook::react {
+@@ -39,23 +48,25 @@ namespace facebook::react {
+ // isHostObject method)
+ ShadowNodeListWrapper::~ShadowNodeListWrapper() = default;
+ 
+-static std::unique_ptr<LeakChecker> constructLeakCheckerIfNeeded(
+-    const RuntimeExecutor& runtimeExecutor) {
+-#ifdef REACT_NATIVE_DEBUG
+-  return std::make_unique<LeakChecker>(runtimeExecutor);
+-#else
+-  return {};
+-#endif
+-}
+-
+ UIManager::UIManager(
+     const RuntimeExecutor& runtimeExecutor,
+     BackgroundExecutor backgroundExecutor,
+     ContextContainer::Shared contextContainer)
+     : runtimeExecutor_(runtimeExecutor),
++      shadowTreeRegistry_(),
+       backgroundExecutor_(std::move(backgroundExecutor)),
+       contextContainer_(std::move(contextContainer)),
+-      leakChecker_(constructLeakCheckerIfNeeded(runtimeExecutor)) {}
++      leakChecker_(constructLeakCheckerIfNeeded(runtimeExecutor)),
++      lazyShadowTreeRevisionConsistencyManager_(
++          ReactNativeFeatureFlags::enableUIConsistency()
++              ? std::make_unique<LazyShadowTreeRevisionConsistencyManager>(
++                    shadowTreeRegistry_)
++              : nullptr),
++      latestShadowTreeRevisionProvider_(
++          ReactNativeFeatureFlags::enableUIConsistency()
++              ? nullptr
++              : std::make_unique<LatestShadowTreeRevisionProvider>(
++                    shadowTreeRegistry_)) {}
+ 
+ UIManager::~UIManager() {
+   LOG(WARNING) << "UIManager::~UIManager() was called (address: " << this
+@@ -166,11 +177,11 @@ void UIManager::appendChild(
+ void UIManager::completeSurface(
+     SurfaceId surfaceId,
+     const ShadowNode::UnsharedListOfShared& rootChildren,
+-    ShadowTree::CommitOptions commitOptions) const {
++    ShadowTree::CommitOptions commitOptions) {
+   SystraceSection s("UIManager::completeSurface", "surfaceId", surfaceId);
+ 
+   shadowTreeRegistry_.visit(surfaceId, [&](const ShadowTree& shadowTree) {
+-    shadowTree.commit(
++    auto result = shadowTree.commit(
+         [&](RootShadowNode const& oldRootShadowNode) {
+           return std::make_shared<RootShadowNode>(
+               oldRootShadowNode,
+@@ -180,6 +191,14 @@ void UIManager::completeSurface(
+               });
+         },
+         commitOptions);
++
++    if (result == ShadowTree::CommitStatus::Succeeded &&
++        lazyShadowTreeRevisionConsistencyManager_ != nullptr) {
++      // It's safe to update the visible revision of the shadow tree immediately
++      // after we commit a specific one.
++      lazyShadowTreeRevisionConsistencyManager_->updateCurrentRevision(
++          surfaceId, shadowTree.getCurrentRevision().rootShadowNode);
++    }
+   });
+ }
+ 
+@@ -408,6 +427,24 @@ int UIManager::compareDocumentPosition(
+   return DOCUMENT_POSITION_FOLLOWING;
+ }
+ 
++ShadowTreeRevisionConsistencyManager*
++UIManager::getShadowTreeRevisionConsistencyManager() {
++  return lazyShadowTreeRevisionConsistencyManager_.get();
++}
++
++ShadowTreeRevisionProvider* UIManager::getShadowTreeRevisionProvider() {
++  if (lazyShadowTreeRevisionConsistencyManager_ != nullptr) {
++    return lazyShadowTreeRevisionConsistencyManager_.get();
++  } else if (latestShadowTreeRevisionProvider_ != nullptr) {
++    return latestShadowTreeRevisionProvider_.get();
++  }
++
++  LOG(ERROR) << "Unexpected state found in UIManager where both "
++             << "lazyShadowTreeRevisionConsistencyManager_ and "
++             << "latestShadowTreeRevisionProvider_ were null";
++  return nullptr;
++}
++
+ ShadowNode::Shared UIManager::findNodeAtPoint(
+     const ShadowNode::Shared& node,
+     Point point) const {
+diff --git a/packages/react-native/ReactCommon/react/renderer/uimanager/UIManager.h b/packages/react-native/ReactCommon/react/renderer/uimanager/UIManager.h
+index c0f443ff568..936b963a4ce 100644
+--- a/packages/react-native/ReactCommon/react/renderer/uimanager/UIManager.h
++++ b/packages/react-native/ReactCommon/react/renderer/uimanager/UIManager.h
+@@ -14,6 +14,7 @@
+ #include <shared_mutex>
+ 
+ #include <react/renderer/componentregistry/ComponentDescriptorRegistry.h>
++#include <react/renderer/consistency/ShadowTreeRevisionConsistencyManager.h>
+ #include <react/renderer/core/InstanceHandle.h>
+ #include <react/renderer/core/RawValue.h>
+ #include <react/renderer/core/ShadowNode.h>
+@@ -24,6 +25,9 @@
+ #include <react/renderer/mounting/ShadowTreeRegistry.h>
+ #include <react/renderer/uimanager/UIManagerAnimationDelegate.h>
+ #include <react/renderer/uimanager/UIManagerDelegate.h>
++#include <react/renderer/uimanager/consistency/LatestShadowTreeRevisionProvider.h>
++#include <react/renderer/uimanager/consistency/LazyShadowTreeRevisionConsistencyManager.h>
++#include <react/renderer/uimanager/consistency/ShadowTreeRevisionProvider.h>
+ #include <react/renderer/uimanager/primitives.h>
+ #include <react/utils/ContextContainer.h>
+ 
+@@ -106,6 +110,10 @@ class UIManager final : public ShadowTreeDelegate {
+       const ShadowNode& shadowNode,
+       const ShadowNode& otherShadowNode) const;
+ 
++  ShadowTreeRevisionConsistencyManager*
++  getShadowTreeRevisionConsistencyManager();
++  ShadowTreeRevisionProvider* getShadowTreeRevisionProvider();
++
+ #pragma mark - Surface Start & Stop
+ 
+   void startSurface(
+@@ -152,7 +160,7 @@ class UIManager final : public ShadowTreeDelegate {
+   void completeSurface(
+       SurfaceId surfaceId,
+       const ShadowNode::UnsharedListOfShared& rootChildren,
+-      ShadowTree::CommitOptions commitOptions) const;
++      ShadowTree::CommitOptions commitOptions);
+ 
+   void setIsJSResponder(
+       const ShadowNode::Shared& shadowNode,
+@@ -238,6 +246,11 @@ class UIManager final : public ShadowTreeDelegate {
+   mutable std::vector<UIManagerMountHook*> mountHooks_;
+ 
+   std::unique_ptr<LeakChecker> leakChecker_;
++
++  std::unique_ptr<LazyShadowTreeRevisionConsistencyManager>
++      lazyShadowTreeRevisionConsistencyManager_;
++  std::unique_ptr<LatestShadowTreeRevisionProvider>
++      latestShadowTreeRevisionProvider_;
+ };
+ 
+ } // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/CMakeLists.txt b/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/CMakeLists.txt
+new file mode 100644
+index 00000000000..543713ef0b8
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/CMakeLists.txt
+@@ -0,0 +1,26 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++#
++# This source code is licensed under the MIT license found in the
++# LICENSE file in the root directory of this source tree.
++
++cmake_minimum_required(VERSION 3.13)
++set(CMAKE_VERBOSE_MAKEFILE on)
++
++add_compile_options(
++        -fexceptions
++        -frtti
++        -std=c++20
++        -Wall
++        -Wpedantic
++        -DLOG_TAG=\"Fabric\")
++
++file(GLOB react_render_uimanager_consistency_SRC CONFIGURE_DEPENDS *.cpp)
++add_library(react_render_uimanager_consistency SHARED ${react_render_uimanager_consistency_SRC})
++
++target_include_directories(react_render_uimanager_consistency PUBLIC ${REACT_COMMON_DIR})
++
++target_link_libraries(react_render_uimanager_consistency
++        glog
++        rrc_root
++        react_render_consistency
++        react_render_mounting)
+diff --git a/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LatestShadowTreeRevisionProvider.cpp b/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LatestShadowTreeRevisionProvider.cpp
+new file mode 100644
+index 00000000000..3bf77f2a9be
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LatestShadowTreeRevisionProvider.cpp
+@@ -0,0 +1,29 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#include "LatestShadowTreeRevisionProvider.h"
++
++namespace facebook::react {
++
++LatestShadowTreeRevisionProvider::LatestShadowTreeRevisionProvider(
++    ShadowTreeRegistry& shadowTreeRegistry)
++    : shadowTreeRegistry_(shadowTreeRegistry) {}
++
++#pragma mark - ShadowTreeRevisionProvider
++
++RootShadowNode::Shared LatestShadowTreeRevisionProvider::getCurrentRevision(
++    SurfaceId surfaceId) {
++  RootShadowNode::Shared rootShadowNode;
++
++  shadowTreeRegistry_.visit(surfaceId, [&](const ShadowTree& shadowTree) {
++    rootShadowNode = shadowTree.getCurrentRevision().rootShadowNode;
++  });
++
++  return rootShadowNode;
++}
++
++} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LatestShadowTreeRevisionProvider.h b/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LatestShadowTreeRevisionProvider.h
+new file mode 100644
+index 00000000000..30b688e1ca4
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LatestShadowTreeRevisionProvider.h
+@@ -0,0 +1,35 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#pragma once
++
++#include <react/renderer/components/root/RootShadowNode.h>
++#include <react/renderer/mounting/ShadowTreeRegistry.h>
++#include <react/renderer/uimanager/consistency/ShadowTreeRevisionProvider.h>
++#include <memory>
++
++namespace facebook::react {
++
++/**
++ * This is a drop-in replacement for `LazyShadowTreeRevisionConsistencyManager`
++ * that preserves the current behavior (always providing the latest committed
++ * revision instead of locking to a specific one).
++ */
++class LatestShadowTreeRevisionProvider : public ShadowTreeRevisionProvider {
++ public:
++  explicit LatestShadowTreeRevisionProvider(
++      ShadowTreeRegistry& shadowTreeRegistry);
++
++#pragma mark - ShadowTreeRevisionProvider
++
++  RootShadowNode::Shared getCurrentRevision(SurfaceId surfaceId) override;
++
++ private:
++  ShadowTreeRegistry& shadowTreeRegistry_;
++};
++
++} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LazyShadowTreeRevisionConsistencyManager.cpp b/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LazyShadowTreeRevisionConsistencyManager.cpp
+new file mode 100644
+index 00000000000..c195a9b9136
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LazyShadowTreeRevisionConsistencyManager.cpp
+@@ -0,0 +1,72 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#include "LazyShadowTreeRevisionConsistencyManager.h"
++#include <glog/logging.h>
++
++namespace facebook::react {
++
++LazyShadowTreeRevisionConsistencyManager::
++    LazyShadowTreeRevisionConsistencyManager(
++        ShadowTreeRegistry& shadowTreeRegistry)
++    : shadowTreeRegistry_(shadowTreeRegistry) {}
++
++void LazyShadowTreeRevisionConsistencyManager::updateCurrentRevision(
++    SurfaceId surfaceId,
++    RootShadowNode::Shared rootShadowNode) {
++  capturedRootShadowNodesForConsistency_.emplace(
++      surfaceId, std::move(rootShadowNode));
++}
++
++#pragma mark - ShadowTreeRevisionProvider
++
++RootShadowNode::Shared
++LazyShadowTreeRevisionConsistencyManager::getCurrentRevision(
++    SurfaceId surfaceId) {
++  auto it = capturedRootShadowNodesForConsistency_.find(surfaceId);
++  if (it != capturedRootShadowNodesForConsistency_.end()) {
++    return it->second;
++  }
++
++  RootShadowNode::Shared rootShadowNode;
++
++  shadowTreeRegistry_.visit(surfaceId, [&](const ShadowTree& shadowTree) {
++    rootShadowNode = shadowTree.getCurrentRevision().rootShadowNode;
++  });
++
++  capturedRootShadowNodesForConsistency_.emplace(surfaceId, rootShadowNode);
++
++  return rootShadowNode;
++}
++
++#pragma mark - ConsistentShadowTreeRevisionProvider
++
++void LazyShadowTreeRevisionConsistencyManager::lockRevisions() {
++  if (isLocked_) {
++    LOG(WARNING)
++        << "LazyShadowTreeRevisionConsistencyManager::lockRevisions() called without unlocking a previous lock";
++    return;
++  }
++
++  // We actually capture the state lazily the first time we access it, so we
++  // don't need to do anything here.
++  isLocked_ = true;
++}
++
++void LazyShadowTreeRevisionConsistencyManager::unlockRevisions() {
++  if (!isLocked_) {
++    LOG(WARNING)
++        << "LazyShadowTreeRevisionConsistencyManager::unlockRevisions() called without a previous lock";
++    // We don't return here because we want to do the cleanup anyway
++    // to free up resources.
++  }
++
++  isLocked_ = false;
++  capturedRootShadowNodesForConsistency_.clear();
++}
++
++} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LazyShadowTreeRevisionConsistencyManager.h b/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LazyShadowTreeRevisionConsistencyManager.h
+new file mode 100644
+index 00000000000..d507263cce5
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/LazyShadowTreeRevisionConsistencyManager.h
+@@ -0,0 +1,51 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#pragma once
++
++#include <react/renderer/components/root/RootShadowNode.h>
++#include <react/renderer/consistency/ShadowTreeRevisionConsistencyManager.h>
++#include <react/renderer/mounting/ShadowTreeRegistry.h>
++#include <react/renderer/uimanager/consistency/ShadowTreeRevisionProvider.h>
++#include <memory>
++
++namespace facebook::react {
++
++/**
++ * This class implements UI consistency for the JavaScript thread.
++ * This implementation forces JavaScript to see a stable revision of the shadow
++ * tree for a given surface ID, only updating it when React commits a new tree
++ * or between JS tasks.
++ */
++class LazyShadowTreeRevisionConsistencyManager
++    : public ShadowTreeRevisionConsistencyManager,
++      public ShadowTreeRevisionProvider {
++ public:
++  explicit LazyShadowTreeRevisionConsistencyManager(
++      ShadowTreeRegistry& shadowTreeRegistry);
++
++  void updateCurrentRevision(
++      SurfaceId surfaceId,
++      RootShadowNode::Shared rootShadowNode);
++
++#pragma mark - ShadowTreeRevisionProvider
++
++  RootShadowNode::Shared getCurrentRevision(SurfaceId surfaceId) override;
++
++#pragma mark - ShadowTreeRevisionConsistencyManager
++
++  void lockRevisions() override;
++  void unlockRevisions() override;
++
++ private:
++  std::unordered_map<SurfaceId, RootShadowNode::Shared>
++      capturedRootShadowNodesForConsistency_;
++  ShadowTreeRegistry& shadowTreeRegistry_;
++  bool isLocked_{false};
++};
++
++} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/ShadowTreeRevisionProvider.h b/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/ShadowTreeRevisionProvider.h
+new file mode 100644
+index 00000000000..66c36d4aa91
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/renderer/uimanager/consistency/ShadowTreeRevisionProvider.h
+@@ -0,0 +1,27 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#pragma once
++
++#include <react/renderer/components/root/RootShadowNode.h>
++#include <react/renderer/core/ReactPrimitives.h>
++#include <memory>
++
++namespace facebook::react {
++
++/**
++ * This interface is used for UI consistency, indicating the revision of the
++ * shadow tree that a caller should have access to.
++ */
++class ShadowTreeRevisionProvider {
++ public:
++  virtual ~ShadowTreeRevisionProvider() = default;
++
++  virtual RootShadowNode::Shared getCurrentRevision(SurfaceId surfaceId) = 0;
++};
++
++} // namespace facebook::react
+diff --git a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+index bec7fcf7f23..91e3dd69c8f 100644
+--- a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
++++ b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+@@ -67,6 +67,11 @@ const definitions: FeatureFlagDefinitions = {
+       description:
+         'Uses new, deduplicated logic for constructing Android Spannables from text fragments',
+     },
++    enableUIConsistency: {
++      defaultValue: false,
++      description:
++        'Ensures that JavaScript always has a consistent view of the state of the UI (e.g.: commits done in other threads are not immediately propagated to JS during its execution).',
++    },
+     inspectorEnableCxxInspectorPackagerConnection: {
+       defaultValue: false,
+       description:
+diff --git a/packages/react-native/scripts/react_native_pods.rb b/packages/react-native/scripts/react_native_pods.rb
+index 462048d8996..cacfbda1ffe 100644
+--- a/packages/react-native/scripts/react_native_pods.rb
++++ b/packages/react-native/scripts/react_native_pods.rb
+@@ -147,6 +147,7 @@ def use_react_native! (
+   pod 'React-runtimeexecutor', :path => "#{prefix}/ReactCommon/runtimeexecutor"
+   pod 'React-runtimescheduler', :path => "#{prefix}/ReactCommon/react/renderer/runtimescheduler"
+   pod 'React-rendererdebug', :path => "#{prefix}/ReactCommon/react/renderer/debug"
++  pod 'React-rendererconsistency', :path => "#{prefix}/ReactCommon/react/renderer/consistency"
+   pod 'React-perflogger', :path => "#{prefix}/ReactCommon/reactperflogger"
+   pod 'React-logger', :path => "#{prefix}/ReactCommon/logger"
+   pod 'ReactCommon/turbomodule/core', :path => "#{prefix}/ReactCommon", :modular_headers => true
+diff --git a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+index 3d68cd7572a..dffe28a86f1 100644
+--- a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<aade6c478e09fb1f92319c3f46adaf13>>
++ * @generated SignedSource<<c653f884a1ebb7556d0f59a4fdcf2fed>>
+  * @flow strict-local
+  */
+ 
+@@ -48,6 +48,7 @@ export type ReactNativeFeatureFlags = {
+   enableMicrotasks: Getter<boolean>,
+   enableMountHooksAndroid: Getter<boolean>,
+   enableSpannableBuildingUnification: Getter<boolean>,
++  enableUIConsistency: Getter<boolean>,
+   inspectorEnableCxxInspectorPackagerConnection: Getter<boolean>,
+   inspectorEnableModernCDPRegistry: Getter<boolean>,
+   useModernRuntimeScheduler: Getter<boolean>,
+@@ -125,6 +126,10 @@ export const enableMountHooksAndroid: Getter<boolean> = createNativeFlagGetter('
+  * Uses new, deduplicated logic for constructing Android Spannables from text fragments
+  */
+ export const enableSpannableBuildingUnification: Getter<boolean> = createNativeFlagGetter('enableSpannableBuildingUnification', false);
++/**
++ * Ensures that JavaScript always has a consistent view of the state of the UI (e.g.: commits done in other threads are not immediately propagated to JS during its execution).
++ */
++export const enableUIConsistency: Getter<boolean> = createNativeFlagGetter('enableUIConsistency', false);
+ /**
+  * Flag determining if the C++ implementation of InspectorPackagerConnection should be used instead of the per-platform one. This flag is global and should not be changed across React Host lifetimes.
+  */
+diff --git a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+index 24c095337f8..ac17e38ee02 100644
+--- a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<8fcd655a9837ad155fd71efe8b05e3d0>>
++ * @generated SignedSource<<2f4c06a0e456d55a4bbd6b8c48c7f22d>>
+  * @flow strict-local
+  */
+ 
+@@ -31,6 +31,7 @@ export interface Spec extends TurboModule {
+   +enableMicrotasks?: () => boolean;
+   +enableMountHooksAndroid?: () => boolean;
+   +enableSpannableBuildingUnification?: () => boolean;
++  +enableUIConsistency?: () => boolean;
+   +inspectorEnableCxxInspectorPackagerConnection?: () => boolean;
+   +inspectorEnableModernCDPRegistry?: () => boolean;
+   +useModernRuntimeScheduler?: () => boolean;

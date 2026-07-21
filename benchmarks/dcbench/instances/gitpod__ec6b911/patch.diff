@@ -1,0 +1,3756 @@
+From ec6b911f24e91a6c0aeffca6d4bead72270369f1 Mon Sep 17 00:00:00 2001
+From: Manuel Alejandro de Brito Fontes <aledbf@gmail.com>
+Date: Fri, 3 Mar 2023 15:48:01 -0300
+Subject: [PATCH] Simplify image-builder-mk3 and registry-facade init
+ containers (#16633)
+
+* Simplify image-builder-mk3 and registry-facade init containers
+
+* Include new image-builder-mk3-wsman deployment
+
+* Wait before updating node labels
+
+* Ensure the loop runs more than once
+---
+ components/BUILD.yaml                         |   1 -
+ components/image-builder-mk3/cmd/setup.go     |  35 +++++
+ .../image-builder-mk3/leeway.Dockerfile       |   2 +-
+ .../registry-facade/ca-updater/BUILD.yaml     |  14 --
+ .../registry-facade/ca-updater/Dockerfile     |  11 --
+ .../registry-facade/ca-updater/README.md      |   7 -
+ .../ca-updater/install-packages               |  27 ----
+ components/registry-facade/cmd/setup.go       | 130 ++++++++++++++++++
+ components/registry-facade/leeway.Dockerfile  |   3 +-
+ components/ws-manager/pkg/manager/manager.go  |   2 +-
+ dev/ready-probe-labeler/main.go               |   2 +
+ .../testdata/render/agent-smith/output.golden |  83 +++++------
+ .../testdata/render/aws-setup/output.golden   |  83 +++++------
+ .../custom-pull-repository/output.golden      |  83 +++++------
+ .../render/customization/output.golden        |  83 +++++------
+ .../render/external-registry/output.golden    |  83 +++++------
+ .../testdata/render/gcp-setup/output.golden   |  83 +++++------
+ .../testdata/render/http-proxy/output.golden  |  83 +++++------
+ .../testdata/render/ide-config/output.golden  |  83 +++++------
+ .../render/kind-workspace/output.golden       |  83 +++++------
+ .../render/message-bus-password/output.golden |  83 +++++------
+ .../cmd/testdata/render/minimal/output.golden |  83 +++++------
+ .../render/overrides-inline/output.golden     |  83 +++++------
+ .../testdata/render/pod-config/output.golden  |  83 +++++------
+ .../testdata/render/shortname/output.golden   |  83 +++++------
+ .../statefulset-customization/output.golden   |  83 +++++------
+ .../testdata/render/telemetry/output.golden   |  83 +++++------
+ .../use-pod-security-policies/output.golden   |  83 +++++------
+ .../render/vsxproxy-pvc/output.golden         |  83 +++++------
+ .../workspace-requests-limits/output.golden   |  83 +++++------
+ install/installer/pkg/common/ca.go            |  49 -------
+ install/installer/pkg/common/common.go        |   9 ++
+ .../image-builder-mk3-wsman/deployment.go     |  30 +++-
+ .../image-builder-mk3/deployment.go           |  30 +++-
+ .../components/registry-facade/configmap.go   |   2 +-
+ .../components/registry-facade/constants.go   |   1 -
+ .../components/registry-facade/daemonset.go   |  75 ++++------
+ .../pkg/components/registry-facade/objects.go |   2 +-
+ 38 files changed, 887 insertions(+), 1122 deletions(-)
+ create mode 100644 components/image-builder-mk3/cmd/setup.go
+ delete mode 100644 components/registry-facade/ca-updater/BUILD.yaml
+ delete mode 100644 components/registry-facade/ca-updater/Dockerfile
+ delete mode 100644 components/registry-facade/ca-updater/README.md
+ delete mode 100755 components/registry-facade/ca-updater/install-packages
+ create mode 100644 components/registry-facade/cmd/setup.go
+
+diff --git a/components/BUILD.yaml b/components/BUILD.yaml
+index 1fa99675c..f03576aae 100644
+--- a/components/BUILD.yaml
++++ b/components/BUILD.yaml
+@@ -68,7 +68,6 @@ packages:
+       - components/openvsx-proxy:docker
+       - components/proxy:docker
+       - components/registry-facade:docker
+-      - components/registry-facade/ca-updater:docker
+       - components/server:docker
+       - components/service-waiter:docker
+       - components/supervisor:docker
+diff --git a/components/image-builder-mk3/cmd/setup.go b/components/image-builder-mk3/cmd/setup.go
+new file mode 100644
+index 000000000..214801d8c
+--- /dev/null
++++ b/components/image-builder-mk3/cmd/setup.go
+@@ -0,0 +1,35 @@
++// Copyright (c) 2020 Gitpod GmbH. All rights reserved.
++// Licensed under the GNU Affero General Public License (AGPL).
++// See License.AGPL.txt in the project root for license information.
++
++package cmd
++
++import (
++	"os"
++	"os/exec"
++
++	"github.com/spf13/cobra"
++
++	"github.com/gitpod-io/gitpod/common-go/log"
++)
++
++var setupCmd = &cobra.Command{
++	Use:   "setup",
++	Short: "Updates the CA certificates",
++	Run: func(cmd *cobra.Command, args []string) {
++		log.Info("Updating CA certificates...")
++		shCmd := exec.Command("update-ca-certificates", "-f")
++		shCmd.Stdin = os.Stdin
++		shCmd.Stderr = os.Stderr
++		shCmd.Stdout = os.Stdout
++
++		err := shCmd.Run()
++		if err != nil {
++			log.Fatalf("cannot update CA certificates: %v", err)
++		}
++	},
++}
++
++func init() {
++	rootCmd.AddCommand(setupCmd)
++}
+diff --git a/components/image-builder-mk3/leeway.Dockerfile b/components/image-builder-mk3/leeway.Dockerfile
+index d890bf170..bf66fe734 100644
+--- a/components/image-builder-mk3/leeway.Dockerfile
++++ b/components/image-builder-mk3/leeway.Dockerfile
+@@ -5,7 +5,7 @@
+ FROM cgr.dev/chainguard/wolfi-base@sha256:ad3c07c4f23df2a8082beae4636025dba212b4495aa9faa0b5d8acda914a2673
+ 
+ # Ensure latest packages are present, like security updates.
+-RUN  apk upgrade --no-cache \
++RUN apk upgrade --no-cache \
+   && apk add --no-cache git bash ca-certificates
+ 
+ COPY components-image-builder-mk3--app/image-builder /app/
+diff --git a/components/registry-facade/ca-updater/BUILD.yaml b/components/registry-facade/ca-updater/BUILD.yaml
+deleted file mode 100644
+index 42e0ee914..000000000
+--- a/components/registry-facade/ca-updater/BUILD.yaml
++++ /dev/null
+@@ -1,14 +0,0 @@
+-packages:
+-  - name: docker
+-    type: docker
+-    srcs:
+-      - "install-packages"
+-    argdeps:
+-      - imageRepoBase
+-    config:
+-      dockerfile: Dockerfile
+-      metadata:
+-        helm-component: caUpdater
+-      image:
+-        - ${imageRepoBase}/ca-updater:${version}
+-        - ${imageRepoBase}/ca-updater:commit-${__git_commit}
+\ No newline at end of file
+diff --git a/components/registry-facade/ca-updater/Dockerfile b/components/registry-facade/ca-updater/Dockerfile
+deleted file mode 100644
+index 076ce9f3f..000000000
+--- a/components/registry-facade/ca-updater/Dockerfile
++++ /dev/null
+@@ -1,11 +0,0 @@
+-# Copyright (c) 2021 Gitpod GmbH. All rights reserved.
+-# Licensed under the GNU Affero General Public License (AGPL).
+-# See License.AGPL.txt in the project root for license information.
+-
+-FROM ubuntu:22.04
+-
+-COPY install-packages /usr/bin
+-
+-RUN install-packages ca-certificates openssl curl
+-
+-CMD ["update-ca-certificates"]
+diff --git a/components/registry-facade/ca-updater/README.md b/components/registry-facade/ca-updater/README.md
+deleted file mode 100644
+index dc8f8cbc3..000000000
+--- a/components/registry-facade/ca-updater/README.md
++++ /dev/null
+@@ -1,7 +0,0 @@
+-# gitpod-ca-updater
+-
+-Container image to update CA certificates in environments where is
+-not possible to download updates or with restricted Internet access.
+-
+-The container uses **Ubuntu** as base image due to [issues in alpine](https://github.com/gliderlabs/docker-alpine/issues/52)
+-to add custom CA certificates.
+diff --git a/components/registry-facade/ca-updater/install-packages b/components/registry-facade/ca-updater/install-packages
+deleted file mode 100755
+index 6559a5c84..000000000
+--- a/components/registry-facade/ca-updater/install-packages
++++ /dev/null
+@@ -1,27 +0,0 @@
+-#!/bin/bash
+-
+-set -o errexit
+-
+-if [ $# = 0 ]; then
+-  echo >&2 "No packages specified"
+-  exit 1
+-fi
+-
+-# Set a runlevel to avoid invoke-rc.d warnings
+-# http://manpages.ubuntu.com/manpages/focal/man8/runlevel.8.html#environment
+-# shellcheck disable=SC2034
+-RUNLEVEL=1
+-
+-# shellcheck disable=SC2034
+-DEBIAN_FRONTEND=noninteractive
+-
+-apt-get update
+-apt-get install -yq --no-install-recommends "$@"
+-
+-apt-get clean -y
+-
+-rm -rf \
+-   /var/cache/debconf/* \
+-   /var/lib/apt/lists/* \
+-   /tmp/* \
+-   /var/tmp/*
+diff --git a/components/registry-facade/cmd/setup.go b/components/registry-facade/cmd/setup.go
+new file mode 100644
+index 000000000..5cd071903
+--- /dev/null
++++ b/components/registry-facade/cmd/setup.go
+@@ -0,0 +1,130 @@
++// Copyright (c) 2020 Gitpod GmbH. All rights reserved.
++// Licensed under the GNU Affero General Public License (AGPL).
++// See License.AGPL.txt in the project root for license information.
++
++package cmd
++
++import (
++	"fmt"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"regexp"
++
++	"github.com/spf13/cobra"
++
++	"github.com/gitpod-io/gitpod/common-go/log"
++)
++
++var (
++	hostname string
++	hostfs   string
++	port     int
++)
++
++var setupCmd = &cobra.Command{
++	Use:   "setup",
++	Short: "Updates the /etc/hosts file, updates the CA certificates and creates the registry host for containerd",
++	Run: func(cmd *cobra.Command, args []string) {
++		{
++			log.Info("Creating containerd registry directory...")
++			regPath := filepath.Join(hostfs, fmt.Sprintf("/etc/containerd/certs.d/%v:%v", hostname, port))
++			err := os.MkdirAll(regPath, 0644)
++			if err != nil {
++				log.Fatalf("cannot create containerd cert directory: %v", err)
++			}
++
++			err = copyFile("/usr/local/share/ca-certificates/gitpod-ca.crt", filepath.Join(regPath, "ca.crt"))
++			if err != nil {
++				log.Fatal(err)
++			}
++		}
++
++		{
++			log.Info("Updating /etc/hosts file...")
++			hostsPath := filepath.Join(hostfs, "/etc/hosts")
++			if !hostExists(hostname, hostsPath) {
++				err := addHost(hostname, "127.0.0.1", hostsPath)
++				if err != nil {
++					log.Fatalf("cannot update hosts file: %v", err)
++				}
++			}
++		}
++
++		{
++			log.Info("Updating CA certificates in the node...")
++			shCmd := exec.Command("update-ca-certificates", "-f")
++			shCmd.Stdin = os.Stdin
++			shCmd.Stderr = os.Stderr
++			shCmd.Stdout = os.Stdout
++
++			err := shCmd.Run()
++			if err != nil {
++				log.Fatalf("cannot update CA certificates: %v", err)
++			}
++
++			sourceCA := "/etc/ssl/certs/ca-certificates.crt"
++			targetCA := filepath.Join(hostfs, "/etc/ssl/certs/ca-certificates.crt")
++
++			err = copyFile(sourceCA, targetCA)
++			if err != nil {
++				log.Fatal(err)
++			}
++		}
++	},
++}
++
++func init() {
++	rootCmd.AddCommand(setupCmd)
++
++	setupCmd.Flags().StringVar(&hostname, "hostname", "", "registry facade host <hostname:port>")
++	setupCmd.Flags().StringVar(&hostfs, "hostfs", "", "Mount point path for the root filesystem")
++	setupCmd.Flags().IntVar(&port, "port", 31750, "Listening port for the new registry hostname")
++
++	_ = setupCmd.MarkFlagRequired("hostname")
++	_ = setupCmd.MarkFlagRequired("hostfs")
++	_ = setupCmd.MarkFlagRequired("ca-directory")
++}
++
++func hostExists(hostname, hostsPath string) bool {
++	b, err := os.ReadFile(hostsPath)
++	if err != nil {
++		panic(err)
++	}
++
++	exist, err := regexp.Match(hostname, b)
++	if err != nil {
++		return false
++	}
++
++	return exist
++}
++
++func addHost(hostname, ip, hostPath string) error {
++	f, err := os.OpenFile(hostPath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
++	if err != nil {
++		return err
++	}
++	defer f.Close()
++
++	_, err = f.WriteString(fmt.Sprintf("%v %v\n", ip, hostname))
++	if err != nil {
++		return err
++	}
++
++	return nil
++}
++
++func copyFile(source, target string) error {
++	input, err := os.ReadFile(source)
++	if err != nil {
++		return fmt.Errorf("cannot read source file %v: %v", source, err)
++	}
++
++	err = os.WriteFile(target, input, 0644)
++	if err != nil {
++		return fmt.Errorf("cannot write to target file %v: %v", source, err)
++	}
++
++	return nil
++}
+diff --git a/components/registry-facade/leeway.Dockerfile b/components/registry-facade/leeway.Dockerfile
+index 4cf4b030f..682a60251 100644
+--- a/components/registry-facade/leeway.Dockerfile
++++ b/components/registry-facade/leeway.Dockerfile
+@@ -5,7 +5,8 @@
+ FROM cgr.dev/chainguard/wolfi-base@sha256:ad3c07c4f23df2a8082beae4636025dba212b4495aa9faa0b5d8acda914a2673
+ 
+ # Ensure latest packages are present, like security updates.
+-RUN  apk upgrade --no-cache
++RUN apk upgrade --no-cache \
++  && apk add ca-certificates --no-cache
+ 
+ RUN adduser -S -D -H -h /app -u 1000 appuser
+ COPY components-registry-facade--app/registry-facade /app/registry-facade
+diff --git a/components/ws-manager/pkg/manager/manager.go b/components/ws-manager/pkg/manager/manager.go
+index 93f7c2436..0d5cba3c2 100644
+--- a/components/ws-manager/pkg/manager/manager.go
++++ b/components/ws-manager/pkg/manager/manager.go
+@@ -1604,7 +1604,7 @@ func waitForTCPPortToBeReachable(host string, port string, timeout time.Duration
+ 		case <-ctx.Done():
+ 			return xerrors.Errorf("port %v on host %v never reachable", port, host)
+ 		case <-ticker.C:
+-			conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), timeout)
++			conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), 500*time.Millisecond)
+ 			if err != nil {
+ 				continue
+ 			}
+diff --git a/dev/ready-probe-labeler/main.go b/dev/ready-probe-labeler/main.go
+index fecd37e83..c740566bb 100644
+--- a/dev/ready-probe-labeler/main.go
++++ b/dev/ready-probe-labeler/main.go
+@@ -85,6 +85,8 @@ func main() {
+ 		log.Fatalf("Unexpected error waiting for probe URL: %v", err)
+ 	}
+ 
++	time.Sleep(5 * time.Second)
++
+ 	err = updateLabel(opts.Label, true, nodeName, client)
+ 	if err != nil {
+ 		log.Fatalf("Unexpected error while trying to add the label: %v", err)
+diff --git a/install/installer/cmd/testdata/render/agent-smith/output.golden b/install/installer/cmd/testdata/render/agent-smith/output.golden
+index 7616059b0..f154702bb 100644
+--- a/install/installer/cmd/testdata/render/agent-smith/output.golden
++++ b/install/installer/cmd/testdata/render/agent-smith/output.golden
+@@ -5348,7 +5348,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -7616,7 +7616,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -7887,7 +7887,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 8b550110d60404fddff7b9f58346f214466970ebae7927d14398663a2e58e363
++        gitpod.io/checksum_config: 53543392bb98bf72bf8da8f462b6486edab938de7bebc87ef5322683e28ba9ca
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -7929,10 +7929,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -7946,7 +7942,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8034,37 +8030,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -8091,10 +8073,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -9684,18 +9668,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -9715,10 +9696,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: builtin-registry-auth
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment minio
+diff --git a/install/installer/cmd/testdata/render/aws-setup/output.golden b/install/installer/cmd/testdata/render/aws-setup/output.golden
+index 0a8c738db..5758538a5 100644
+--- a/install/installer/cmd/testdata/render/aws-setup/output.golden
++++ b/install/installer/cmd/testdata/render/aws-setup/output.golden
+@@ -4689,7 +4689,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -6784,7 +6784,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -7055,7 +7055,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: b8db96b6f1363f6138d2804e360bcaad1c0badbe9a1ddf3efa81dc4fa1912643
++        gitpod.io/checksum_config: 5df6b06201fdd1df95157b9a1d1b7c24541aa0c9855293a84469afce436375e7
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -7097,10 +7097,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -7114,7 +7110,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -7202,37 +7198,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -7259,10 +7241,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -8705,18 +8689,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -8736,10 +8717,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: aws-ecr-credential
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment proxy
+diff --git a/install/installer/cmd/testdata/render/custom-pull-repository/output.golden b/install/installer/cmd/testdata/render/custom-pull-repository/output.golden
+index c08f56d51..bd75c6b48 100644
+--- a/install/installer/cmd/testdata/render/custom-pull-repository/output.golden
++++ b/install/installer/cmd/testdata/render/custom-pull-repository/output.golden
+@@ -5165,7 +5165,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -7433,7 +7433,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -7704,7 +7704,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: ee0807f7ff85ffd1b86248b9fd88374a55921b62310110936095144377436d3a
++        gitpod.io/checksum_config: efecf0c4149ccb9591c9a0303fcf65a98c9e287424a7d6cdd695efae6ffbb733
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -7746,10 +7746,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: registry.mydomain.com/namespace/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -7763,7 +7759,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -7851,37 +7847,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: registry.mydomain.com/namespace/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: registry.mydomain.com/namespace/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: registry.mydomain.com/namespace/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -7908,10 +7890,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -9501,18 +9485,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: registry.mydomain.com/namespace/ca-updater:test
++      - args:
++        - setup
++        image: registry.mydomain.com/namespace/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -9532,10 +9513,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: builtin-registry-auth
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment minio
+diff --git a/install/installer/cmd/testdata/render/customization/output.golden b/install/installer/cmd/testdata/render/customization/output.golden
+index 7ca279db6..05251d615 100644
+--- a/install/installer/cmd/testdata/render/customization/output.golden
++++ b/install/installer/cmd/testdata/render/customization/output.golden
+@@ -5752,7 +5752,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -8117,7 +8117,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -8423,7 +8423,7 @@ spec:
+     metadata:
+       annotations:
+         gitpod.io: hello
+-        gitpod.io/checksum_config: 55dae790b4d616e85abb79ca47d9146bd35daaf1eac479ab68337f80699ce374
++        gitpod.io/checksum_config: 6c63295fb98c04a96cd4a9be753151cea5e37cfb4ab0158a09412ed2256f70c0
+         hello: world
+       creationTimestamp: null
+       labels:
+@@ -8468,10 +8468,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -8485,7 +8481,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8573,37 +8569,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -8630,10 +8612,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -10306,18 +10290,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -10337,10 +10318,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: builtin-registry-auth
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment minio
+diff --git a/install/installer/cmd/testdata/render/external-registry/output.golden b/install/installer/cmd/testdata/render/external-registry/output.golden
+index 4139df674..f7f092898 100644
+--- a/install/installer/cmd/testdata/render/external-registry/output.golden
++++ b/install/installer/cmd/testdata/render/external-registry/output.golden
+@@ -4945,7 +4945,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -7153,7 +7153,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -7424,7 +7424,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: b8db96b6f1363f6138d2804e360bcaad1c0badbe9a1ddf3efa81dc4fa1912643
++        gitpod.io/checksum_config: 5df6b06201fdd1df95157b9a1d1b7c24541aa0c9855293a84469afce436375e7
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -7466,10 +7466,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -7483,7 +7479,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -7571,37 +7567,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -7628,10 +7610,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -9221,18 +9205,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -9252,10 +9233,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: my-registry-credentials
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment minio
+diff --git a/install/installer/cmd/testdata/render/gcp-setup/output.golden b/install/installer/cmd/testdata/render/gcp-setup/output.golden
+index 17d95510c..8842937e5 100644
+--- a/install/installer/cmd/testdata/render/gcp-setup/output.golden
++++ b/install/installer/cmd/testdata/render/gcp-setup/output.golden
+@@ -4716,7 +4716,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -6843,7 +6843,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -7114,7 +7114,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: b8db96b6f1363f6138d2804e360bcaad1c0badbe9a1ddf3efa81dc4fa1912643
++        gitpod.io/checksum_config: 5df6b06201fdd1df95157b9a1d1b7c24541aa0c9855293a84469afce436375e7
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -7156,10 +7156,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -7173,7 +7169,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -7261,37 +7257,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -7318,10 +7300,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -8834,18 +8818,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -8865,10 +8846,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: gcp-registry
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment proxy
+diff --git a/install/installer/cmd/testdata/render/http-proxy/output.golden b/install/installer/cmd/testdata/render/http-proxy/output.golden
+index 6fd37c6b2..256640cd4 100644
+--- a/install/installer/cmd/testdata/render/http-proxy/output.golden
++++ b/install/installer/cmd/testdata/render/http-proxy/output.golden
+@@ -5168,7 +5168,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -7436,7 +7436,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -7787,7 +7787,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 8b550110d60404fddff7b9f58346f214466970ebae7927d14398663a2e58e363
++        gitpod.io/checksum_config: 53543392bb98bf72bf8da8f462b6486edab938de7bebc87ef5322683e28ba9ca
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -7869,10 +7869,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -7886,7 +7882,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8054,11 +8050,11 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
+         env:
+         - name: HTTP_PROXY
+           valueFrom:
+@@ -8100,32 +8096,18 @@ spec:
+           value: ws-manager,wsdaemon,$(CUSTOM_NO_PROXY)
+         - name: no_proxy
+           value: ws-manager,wsdaemon,$(CUSTOM_NO_PROXY)
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -8152,10 +8134,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -10425,11 +10409,8 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
++      - args:
++        - setup
+         env:
+         - name: HTTP_PROXY
+           valueFrom:
+@@ -10471,13 +10452,13 @@ spec:
+           value: ws-manager,wsdaemon,$(CUSTOM_NO_PROXY)
+         - name: no_proxy
+           value: ws-manager,wsdaemon,$(CUSTOM_NO_PROXY)
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -10497,10 +10478,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: builtin-registry-auth
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment minio
+diff --git a/install/installer/cmd/testdata/render/ide-config/output.golden b/install/installer/cmd/testdata/render/ide-config/output.golden
+index 9ba9fb5a3..3fcda1348 100644
+--- a/install/installer/cmd/testdata/render/ide-config/output.golden
++++ b/install/installer/cmd/testdata/render/ide-config/output.golden
+@@ -5181,7 +5181,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -7453,7 +7453,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -7724,7 +7724,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 8b550110d60404fddff7b9f58346f214466970ebae7927d14398663a2e58e363
++        gitpod.io/checksum_config: 53543392bb98bf72bf8da8f462b6486edab938de7bebc87ef5322683e28ba9ca
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -7766,10 +7766,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -7783,7 +7779,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -7871,37 +7867,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -7928,10 +7910,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -9523,18 +9507,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -9554,10 +9535,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: builtin-registry-auth
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment minio
+diff --git a/install/installer/cmd/testdata/render/kind-workspace/output.golden b/install/installer/cmd/testdata/render/kind-workspace/output.golden
+index a34d4b907..13207f518 100644
+--- a/install/installer/cmd/testdata/render/kind-workspace/output.golden
++++ b/install/installer/cmd/testdata/render/kind-workspace/output.golden
+@@ -1730,7 +1730,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -2775,7 +2775,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -3002,7 +3002,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 8b550110d60404fddff7b9f58346f214466970ebae7927d14398663a2e58e363
++        gitpod.io/checksum_config: 53543392bb98bf72bf8da8f462b6486edab938de7bebc87ef5322683e28ba9ca
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -3044,10 +3044,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -3061,7 +3057,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -3149,37 +3145,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -3206,10 +3188,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -3603,18 +3587,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -3634,10 +3615,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: builtin-registry-auth
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: image-builder-mk3-tls-certs
+         secret:
+           secretName: image-builder-mk3-tls
+diff --git a/install/installer/cmd/testdata/render/message-bus-password/output.golden b/install/installer/cmd/testdata/render/message-bus-password/output.golden
+index 31d1ac8b8..716eb2fe5 100644
+--- a/install/installer/cmd/testdata/render/message-bus-password/output.golden
++++ b/install/installer/cmd/testdata/render/message-bus-password/output.golden
+@@ -5168,7 +5168,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -7436,7 +7436,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -7707,7 +7707,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 8b550110d60404fddff7b9f58346f214466970ebae7927d14398663a2e58e363
++        gitpod.io/checksum_config: 53543392bb98bf72bf8da8f462b6486edab938de7bebc87ef5322683e28ba9ca
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -7749,10 +7749,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -7766,7 +7762,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -7854,37 +7850,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -7911,10 +7893,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -9504,18 +9488,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -9535,10 +9516,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: builtin-registry-auth
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment minio
+diff --git a/install/installer/cmd/testdata/render/minimal/output.golden b/install/installer/cmd/testdata/render/minimal/output.golden
+index 15f244f2d..42b276287 100644
+--- a/install/installer/cmd/testdata/render/minimal/output.golden
++++ b/install/installer/cmd/testdata/render/minimal/output.golden
+@@ -5165,7 +5165,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -7433,7 +7433,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -7704,7 +7704,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 8b550110d60404fddff7b9f58346f214466970ebae7927d14398663a2e58e363
++        gitpod.io/checksum_config: 53543392bb98bf72bf8da8f462b6486edab938de7bebc87ef5322683e28ba9ca
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -7746,10 +7746,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -7763,7 +7759,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -7851,37 +7847,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -7908,10 +7890,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -9501,18 +9485,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -9532,10 +9513,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: builtin-registry-auth
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment minio
+diff --git a/install/installer/cmd/testdata/render/overrides-inline/output.golden b/install/installer/cmd/testdata/render/overrides-inline/output.golden
+index 1d05998ce..aca52ecf5 100644
+--- a/install/installer/cmd/testdata/render/overrides-inline/output.golden
++++ b/install/installer/cmd/testdata/render/overrides-inline/output.golden
+@@ -5163,7 +5163,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -7434,7 +7434,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -7714,7 +7714,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 8b550110d60404fddff7b9f58346f214466970ebae7927d14398663a2e58e363
++        gitpod.io/checksum_config: 53543392bb98bf72bf8da8f462b6486edab938de7bebc87ef5322683e28ba9ca
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -7756,10 +7756,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -7773,7 +7769,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -7861,37 +7857,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -7918,10 +7900,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -9511,18 +9495,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -9542,10 +9523,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: builtin-registry-auth
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment minio
+diff --git a/install/installer/cmd/testdata/render/pod-config/output.golden b/install/installer/cmd/testdata/render/pod-config/output.golden
+index c0ee5fba9..472932b8a 100644
+--- a/install/installer/cmd/testdata/render/pod-config/output.golden
++++ b/install/installer/cmd/testdata/render/pod-config/output.golden
+@@ -5172,7 +5172,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -7440,7 +7440,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -7711,7 +7711,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 8b550110d60404fddff7b9f58346f214466970ebae7927d14398663a2e58e363
++        gitpod.io/checksum_config: 53543392bb98bf72bf8da8f462b6486edab938de7bebc87ef5322683e28ba9ca
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -7753,10 +7753,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -7770,7 +7766,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -7858,37 +7854,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -7915,10 +7897,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -9508,18 +9492,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -9539,10 +9520,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: builtin-registry-auth
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment minio
+diff --git a/install/installer/cmd/testdata/render/shortname/output.golden b/install/installer/cmd/testdata/render/shortname/output.golden
+index 461f05c8c..d523d2059 100644
+--- a/install/installer/cmd/testdata/render/shortname/output.golden
++++ b/install/installer/cmd/testdata/render/shortname/output.golden
+@@ -5165,7 +5165,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -7433,7 +7433,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -7704,7 +7704,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 8b550110d60404fddff7b9f58346f214466970ebae7927d14398663a2e58e363
++        gitpod.io/checksum_config: 53543392bb98bf72bf8da8f462b6486edab938de7bebc87ef5322683e28ba9ca
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -7746,10 +7746,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -7763,7 +7759,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -7851,37 +7847,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -7908,10 +7890,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -9501,18 +9485,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -9532,10 +9513,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: builtin-registry-auth
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment minio
+diff --git a/install/installer/cmd/testdata/render/statefulset-customization/output.golden b/install/installer/cmd/testdata/render/statefulset-customization/output.golden
+index d1fb4ac49..4959f4903 100644
+--- a/install/installer/cmd/testdata/render/statefulset-customization/output.golden
++++ b/install/installer/cmd/testdata/render/statefulset-customization/output.golden
+@@ -5177,7 +5177,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -7445,7 +7445,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -7716,7 +7716,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 8b550110d60404fddff7b9f58346f214466970ebae7927d14398663a2e58e363
++        gitpod.io/checksum_config: 53543392bb98bf72bf8da8f462b6486edab938de7bebc87ef5322683e28ba9ca
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -7758,10 +7758,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -7775,7 +7771,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -7863,37 +7859,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -7920,10 +7902,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -9513,18 +9497,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -9544,10 +9525,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: builtin-registry-auth
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment minio
+diff --git a/install/installer/cmd/testdata/render/telemetry/output.golden b/install/installer/cmd/testdata/render/telemetry/output.golden
+index e79e8d713..745d0c3de 100644
+--- a/install/installer/cmd/testdata/render/telemetry/output.golden
++++ b/install/installer/cmd/testdata/render/telemetry/output.golden
+@@ -5168,7 +5168,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -7436,7 +7436,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -7707,7 +7707,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 8b550110d60404fddff7b9f58346f214466970ebae7927d14398663a2e58e363
++        gitpod.io/checksum_config: 53543392bb98bf72bf8da8f462b6486edab938de7bebc87ef5322683e28ba9ca
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -7749,10 +7749,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -7766,7 +7762,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -7854,37 +7850,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -7911,10 +7893,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -9504,18 +9488,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -9535,10 +9516,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: builtin-registry-auth
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment minio
+diff --git a/install/installer/cmd/testdata/render/use-pod-security-policies/output.golden b/install/installer/cmd/testdata/render/use-pod-security-policies/output.golden
+index 2e3dfe61f..6722601b1 100644
+--- a/install/installer/cmd/testdata/render/use-pod-security-policies/output.golden
++++ b/install/installer/cmd/testdata/render/use-pod-security-policies/output.golden
+@@ -5498,7 +5498,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -7877,7 +7877,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -8148,7 +8148,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 8b550110d60404fddff7b9f58346f214466970ebae7927d14398663a2e58e363
++        gitpod.io/checksum_config: 53543392bb98bf72bf8da8f462b6486edab938de7bebc87ef5322683e28ba9ca
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -8190,10 +8190,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -8207,7 +8203,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8295,37 +8291,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -8352,10 +8334,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -9945,18 +9929,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -9976,10 +9957,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: builtin-registry-auth
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment minio
+diff --git a/install/installer/cmd/testdata/render/vsxproxy-pvc/output.golden b/install/installer/cmd/testdata/render/vsxproxy-pvc/output.golden
+index 6bd3150c6..55a3f763b 100644
+--- a/install/installer/cmd/testdata/render/vsxproxy-pvc/output.golden
++++ b/install/installer/cmd/testdata/render/vsxproxy-pvc/output.golden
+@@ -5168,7 +5168,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -7436,7 +7436,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -7707,7 +7707,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 8b550110d60404fddff7b9f58346f214466970ebae7927d14398663a2e58e363
++        gitpod.io/checksum_config: 53543392bb98bf72bf8da8f462b6486edab938de7bebc87ef5322683e28ba9ca
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -7749,10 +7749,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -7766,7 +7762,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -7854,37 +7850,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -7911,10 +7893,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -9492,18 +9476,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -9523,10 +9504,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: builtin-registry-auth
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment minio
+diff --git a/install/installer/cmd/testdata/render/workspace-requests-limits/output.golden b/install/installer/cmd/testdata/render/workspace-requests-limits/output.golden
+index 653a63ae6..93d6aab35 100644
+--- a/install/installer/cmd/testdata/render/workspace-requests-limits/output.golden
++++ b/install/installer/cmd/testdata/render/workspace-requests-limits/output.golden
+@@ -5168,7 +5168,7 @@ data:
+   config.json: |-
+     {
+       "registry": {
+-        "port": 32223,
++        "port": 31750,
+         "prefix": "",
+         "staticLayer": [
+           {
+@@ -7436,7 +7436,7 @@ spec:
+     nodePort: 31750
+     port: 31750
+     protocol: TCP
+-    targetPort: 32223
++    targetPort: 31750
+   selector:
+     app: gitpod
+     component: registry-facade
+@@ -7707,7 +7707,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 8b550110d60404fddff7b9f58346f214466970ebae7927d14398663a2e58e363
++        gitpod.io/checksum_config: 53543392bb98bf72bf8da8f462b6486edab938de7bebc87ef5322683e28ba9ca
+       creationTimestamp: null
+       labels:
+         app: gitpod
+@@ -7749,10 +7749,6 @@ spec:
+           value: "true"
+         - name: GRPC_GO_RETRY
+           value: "on"
+-        - name: NODENAME
+-          valueFrom:
+-            fieldRef:
+-              fieldPath: spec.nodeName
+         image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+         livenessProbe:
+@@ -7766,7 +7762,7 @@ spec:
+           timeoutSeconds: 2
+         name: registry-facade
+         ports:
+-        - containerPort: 32223
++        - containerPort: 31750
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -7854,37 +7850,23 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        - --hostfs=/mnt/dst
++        - --hostname=reg.gitpod.example.com
++        - --port=31750
++        image: eu.gcr.io/gitpod-core-dev/build/registry-facade:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
++        - mountPath: /mnt/dst
++          name: hostfs
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+-      - command:
+-        - bash
+-        - -c
+-        - $(HOSTS_SCRIPT)
+-        env:
+-        - name: HOSTS_SCRIPT
+-          value: if [ -n "$(grep -P "reg.gitpod.example.com" /mnt/dst/etc/hosts)"
+-            ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1
+-            reg.gitpod.example.com" >>/mnt/dst/etc/hosts && echo "OK";fi
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
+-        imagePullPolicy: IfNotPresent
+-        name: update-hosts-file
+-        resources: {}
+-        volumeMounts:
+-        - mountPath: /mnt/dst
+-          name: hostfs
+       priorityClassName: system-node-critical
+       restartPolicy: Always
+       serviceAccountName: registry-facade
+@@ -7911,10 +7893,12 @@ spec:
+       - hostPath:
+           path: /
+         name: hostfs
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+       - name: config-certificates
+         secret:
+           secretName: https-certificates
+@@ -9504,18 +9488,15 @@ spec:
+       dnsPolicy: ClusterFirst
+       enableServiceLinks: false
+       initContainers:
+-      - command:
+-        - bash
+-        - -c
+-        - set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo
+-          'OK'
+-        image: eu.gcr.io/gitpod-core-dev/build/ca-updater:test
++      - args:
++        - setup
++        image: eu.gcr.io/gitpod-core-dev/build/image-builder-mk3:test
+         imagePullPolicy: IfNotPresent
+-        name: update-ca-certificates
++        name: setup
+         resources: {}
++        securityContext:
++          runAsUser: 0
+         volumeMounts:
+-        - mountPath: /ssl-certs
+-          name: cacerts
+         - mountPath: /usr/local/share/ca-certificates/gitpod-ca.crt
+           name: gitpod-ca-certificate
+           subPath: ca.crt
+@@ -9535,10 +9516,12 @@ spec:
+           - key: .dockerconfigjson
+             path: pull-secret.json
+           secretName: builtin-registry-auth
+-      - emptyDir: {}
+-        name: gitpod-ca-certificate
+-      - emptyDir: {}
+-        name: cacerts
++      - name: gitpod-ca-certificate
++        secret:
++          items:
++          - key: ca.crt
++            path: ca.crt
++          secretName: builtin-registry-facade-cert
+ status: {}
+ ---
+ # apps/v1/Deployment minio
+diff --git a/install/installer/pkg/common/ca.go b/install/installer/pkg/common/ca.go
+index ee0a37683..5c4c7aed0 100644
+--- a/install/installer/pkg/common/ca.go
++++ b/install/installer/pkg/common/ca.go
+@@ -8,55 +8,6 @@ import (
+ 	corev1 "k8s.io/api/core/v1"
+ )
+ 
+-const (
+-	cacerts      = "cacerts"
+-	caVolumeName = "gitpod-ca-certificate"
+-)
+-
+-func InternalCAVolume() *corev1.Volume {
+-	return &corev1.Volume{
+-		Name: caVolumeName,
+-		VolumeSource: corev1.VolumeSource{
+-			EmptyDir: &corev1.EmptyDirVolumeSource{},
+-		},
+-	}
+-}
+-
+-// InternalCAContainer returns a container that updates the CA certificates
+-// adding the internal Gitpod self-generated CA.
+-// This is required for components that communicate with registry-facade
+-// and cannot use certificates signed by unknown authority, like containerd or buildkit
+-func InternalCAContainer(ctx *RenderContext, mod ...func(*corev1.Container)) *corev1.Container {
+-	res := &corev1.Container{
+-		Name: "update-ca-certificates",
+-		// It's not possible to use images based on alpine due to errors running update-ca-certificates
+-		Image:           ctx.ImageName(ctx.Config.Repository, "ca-updater", ctx.VersionManifest.Components.CAUpdater.Version),
+-		ImagePullPolicy: corev1.PullIfNotPresent,
+-		Command: []string{
+-			"bash", "-c",
+-			"set -e; update-ca-certificates -f; cp /etc/ssl/certs/* /ssl-certs; echo 'OK'",
+-		},
+-		VolumeMounts: []corev1.VolumeMount{
+-			{
+-				Name:      cacerts,
+-				MountPath: "/ssl-certs",
+-			},
+-			{
+-				Name:      caVolumeName,
+-				SubPath:   "ca.crt",
+-				MountPath: "/usr/local/share/ca-certificates/gitpod-ca.crt",
+-			},
+-		},
+-		Env: ProxyEnv(&ctx.Config),
+-	}
+-
+-	for _, m := range mod {
+-		m(res)
+-	}
+-
+-	return res
+-}
+-
+ // CustomCACertVolume produces the objects required to mount custom CA certificates
+ func CustomCACertVolume(ctx *RenderContext) (vol *corev1.Volume, mnt *corev1.VolumeMount, env []corev1.EnvVar, ok bool) {
+ 	if ctx.Config.CustomCACert == nil {
+diff --git a/install/installer/pkg/common/common.go b/install/installer/pkg/common/common.go
+index bd4476562..f54174663 100644
+--- a/install/installer/pkg/common/common.go
++++ b/install/installer/pkg/common/common.go
+@@ -789,6 +789,15 @@ func NodeNameEnv(context *RenderContext) []corev1.EnvVar {
+ 	}}
+ }
+ 
++func NodeIPEnv(context *RenderContext) []corev1.EnvVar {
++	return []corev1.EnvVar{{
++		Name: "NODE_IP",
++		ValueFrom: &corev1.EnvVarSource{
++			FieldRef: &corev1.ObjectFieldSelector{FieldPath: "status.hostIP"},
++		},
++	}}
++}
++
+ // ExperimentalWebappConfig extracts webapp experimental config from the render context.
+ // When the experimental config is not defined, the result will be nil.
+ func ExperimentalWebappConfig(ctx *RenderContext) *experimental.WebAppConfig {
+diff --git a/install/installer/pkg/components/image-builder-mk3-wsman/deployment.go b/install/installer/pkg/components/image-builder-mk3-wsman/deployment.go
+index 6fe13606c..b0a407280 100644
+--- a/install/installer/pkg/components/image-builder-mk3-wsman/deployment.go
++++ b/install/installer/pkg/components/image-builder-mk3-wsman/deployment.go
+@@ -87,8 +87,17 @@ func deployment(ctx *common.RenderContext) ([]runtime.Object, error) {
+ 				},
+ 			},
+ 		},
+-		*common.InternalCAVolume(),
+-		*common.NewEmptyDirVolume("cacerts"),
++		{
++			Name: "gitpod-ca-certificate",
++			VolumeSource: corev1.VolumeSource{
++				Secret: &corev1.SecretVolumeSource{
++					SecretName: "builtin-registry-facade-cert",
++					Items: []corev1.KeyToPath{
++						{Key: "ca.crt", Path: "ca.crt"},
++					},
++				},
++			},
++		},
+ 	}
+ 	volumeMounts := []corev1.VolumeMount{
+ 		{
+@@ -164,7 +173,22 @@ func deployment(ctx *common.RenderContext) ([]runtime.Object, error) {
+ 					TerminationGracePeriodSeconds: pointer.Int64(30),
+ 					Volumes:                       volumes,
+ 					InitContainers: []corev1.Container{
+-						*common.InternalCAContainer(ctx),
++						{
++							Name:  "setup",
++							Image: ctx.ImageName(ctx.Config.Repository, Component, ctx.VersionManifest.Components.ImageBuilderMk3.Version), ImagePullPolicy: corev1.PullIfNotPresent,
++							Args: []string{
++								"setup",
++							},
++							SecurityContext: &corev1.SecurityContext{RunAsUser: pointer.Int64(0)},
++							VolumeMounts: []corev1.VolumeMount{
++								{
++									Name:      "gitpod-ca-certificate",
++									SubPath:   "ca.crt",
++									MountPath: "/usr/local/share/ca-certificates/gitpod-ca.crt",
++								},
++							},
++							Env: common.ProxyEnv(&ctx.Config),
++						},
+ 					},
+ 					Containers: []corev1.Container{{
+ 						Name:            Component,
+diff --git a/install/installer/pkg/components/image-builder-mk3/deployment.go b/install/installer/pkg/components/image-builder-mk3/deployment.go
+index a2d55b906..3a3133d54 100644
+--- a/install/installer/pkg/components/image-builder-mk3/deployment.go
++++ b/install/installer/pkg/components/image-builder-mk3/deployment.go
+@@ -86,8 +86,17 @@ func deployment(ctx *common.RenderContext) ([]runtime.Object, error) {
+ 				},
+ 			},
+ 		},
+-		*common.InternalCAVolume(),
+-		*common.NewEmptyDirVolume("cacerts"),
++		{
++			Name: "gitpod-ca-certificate",
++			VolumeSource: corev1.VolumeSource{
++				Secret: &corev1.SecretVolumeSource{
++					SecretName: "builtin-registry-facade-cert",
++					Items: []corev1.KeyToPath{
++						{Key: "ca.crt", Path: "ca.crt"},
++					},
++				},
++			},
++		},
+ 	}
+ 	volumeMounts := []corev1.VolumeMount{
+ 		{
+@@ -163,7 +172,22 @@ func deployment(ctx *common.RenderContext) ([]runtime.Object, error) {
+ 					TerminationGracePeriodSeconds: pointer.Int64(30),
+ 					Volumes:                       volumes,
+ 					InitContainers: []corev1.Container{
+-						*common.InternalCAContainer(ctx),
++						{
++							Name:  "setup",
++							Image: ctx.ImageName(ctx.Config.Repository, Component, ctx.VersionManifest.Components.ImageBuilderMk3.Version), ImagePullPolicy: corev1.PullIfNotPresent,
++							Args: []string{
++								"setup",
++							},
++							SecurityContext: &corev1.SecurityContext{RunAsUser: pointer.Int64(0)},
++							VolumeMounts: []corev1.VolumeMount{
++								{
++									Name:      "gitpod-ca-certificate",
++									SubPath:   "ca.crt",
++									MountPath: "/usr/local/share/ca-certificates/gitpod-ca.crt",
++								},
++							},
++							Env: common.ProxyEnv(&ctx.Config),
++						},
+ 					},
+ 					Containers: []corev1.Container{{
+ 						Name:            Component,
+diff --git a/install/installer/pkg/components/registry-facade/configmap.go b/install/installer/pkg/components/registry-facade/configmap.go
+index 459a63804..b72f25359 100644
+--- a/install/installer/pkg/components/registry-facade/configmap.go
++++ b/install/installer/pkg/components/registry-facade/configmap.go
+@@ -84,7 +84,7 @@ func configmap(ctx *common.RenderContext) ([]runtime.Object, error) {
+ 
+ 	rfcfg := regfac.ServiceConfig{
+ 		Registry: regfac.Config{
+-			Port:               ContainerPort,
++			Port:               ServicePort,
+ 			RemoteSpecProvider: remoteSpecProviders,
+ 			TLS:                &tls,
+ 			Store:              "/mnt/cache/registry",
+diff --git a/install/installer/pkg/components/registry-facade/constants.go b/install/installer/pkg/components/registry-facade/constants.go
+index 038a86da1..38faece43 100644
+--- a/install/installer/pkg/components/registry-facade/constants.go
++++ b/install/installer/pkg/components/registry-facade/constants.go
+@@ -12,7 +12,6 @@ import (
+ const (
+ 	Component         = common.RegistryFacadeComponent
+ 	ContainerPortName = "registry"
+-	ContainerPort     = 32223
+ 	ServicePort       = common.RegistryFacadeServicePort
+ 	DockerUpImage     = workspace.DockerUpImage
+ 	SupervisorImage   = workspace.SupervisorImage
+diff --git a/install/installer/pkg/components/registry-facade/daemonset.go b/install/installer/pkg/components/registry-facade/daemonset.go
+index 5e800bf31..d0d9f7ed5 100644
+--- a/install/installer/pkg/components/registry-facade/daemonset.go
++++ b/install/installer/pkg/components/registry-facade/daemonset.go
+@@ -166,67 +166,32 @@ func daemonset(ctx *common.RenderContext) ([]runtime.Object, error) {
+ 		return nil, err
+ 	}
+ 
+-	regHostname := fmt.Sprintf("reg.%s", ctx.Config.Domain)
+-
+ 	initContainers := []corev1.Container{
+-		*common.InternalCAContainer(ctx),
+ 		{
+-			Name:            "update-hosts-file",
+-			Image:           ctx.ImageName(ctx.Config.Repository, "ca-updater", ctx.VersionManifest.Components.CAUpdater.Version),
+-			ImagePullPolicy: corev1.PullIfNotPresent,
+-			Command: []string{
+-				"bash", "-c", "$(HOSTS_SCRIPT)",
++			Name:  "setup",
++			Image: ctx.ImageName(ctx.Config.Repository, Component, ctx.VersionManifest.Components.RegistryFacade.Version), ImagePullPolicy: corev1.PullIfNotPresent,
++			Args: []string{
++				"setup",
++				"--hostfs=/mnt/dst",
++				fmt.Sprintf("--hostname=reg.%s", ctx.Config.Domain),
++				fmt.Sprintf("--port=%v", ServicePort),
+ 			},
++			SecurityContext: &corev1.SecurityContext{RunAsUser: pointer.Int64(0)},
+ 			VolumeMounts: []corev1.VolumeMount{
+ 				{
+ 					Name:      "hostfs",
+ 					MountPath: "/mnt/dst",
+ 				},
+-			},
+-			Env: []corev1.EnvVar{
+ 				{
+-					Name:  "HOSTS_SCRIPT",
+-					Value: fmt.Sprintf(`if [ -n "$(grep -P "%v" /mnt/dst/etc/hosts)" ];then echo "file /etc/hosts/ already up to date"; else echo "127.0.0.1 %v" >>/mnt/dst/etc/hosts && echo "OK";fi`, regHostname, regHostname),
++					Name:      "gitpod-ca-certificate",
++					SubPath:   "ca.crt",
++					MountPath: "/usr/local/share/ca-certificates/gitpod-ca.crt",
+ 				},
+ 			},
++			Env: common.ProxyEnv(&ctx.Config),
+ 		},
+ 	}
+ 
+-	// Load `customCACert` into Kubelet's only if its self-signed
+-	if ctx.Config.CustomCACert != nil && ctx.Config.CustomCACert.Name != "" {
+-		initContainers = append(initContainers,
+-			*common.InternalCAContainer(ctx, func(c *corev1.Container) {
+-				c.Name = "update-containerd-certificates"
+-				c.Env = append(c.Env,
+-					corev1.EnvVar{
+-						Name: "GITPOD_CA_CERT",
+-						ValueFrom: &corev1.EnvVarSource{
+-							SecretKeyRef: &corev1.SecretKeySelector{
+-								Key: "ca.crt",
+-								LocalObjectReference: corev1.LocalObjectReference{
+-									Name: ctx.Config.CustomCACert.Name,
+-								},
+-							},
+-						},
+-					},
+-					corev1.EnvVar{
+-						// Install gitpod ca.crt in containerd to allow pulls from the host
+-						// https://github.com/containerd/containerd/blob/main/docs/hosts.md
+-						Name:  "SETUP_SCRIPT",
+-						Value: fmt.Sprintf(`TARGETS="docker containerd";for TARGET in $TARGETS;do mkdir -p /mnt/dst/etc/$TARGET/certs.d/reg.%s:%v && echo "$GITPOD_CA_CERT" > /mnt/dst/etc/$TARGET/certs.d/reg.%s:%v/ca.crt && echo "OK";done`, ctx.Config.Domain, ServicePort, ctx.Config.Domain, ServicePort),
+-					},
+-				)
+-				c.VolumeMounts = append(c.VolumeMounts,
+-					corev1.VolumeMount{
+-						Name:      "hostfs",
+-						MountPath: "/mnt/dst",
+-					},
+-				)
+-				c.Command = []string{"sh", "-c", "$(SETUP_SCRIPT)"}
+-			}),
+-		)
+-	}
+-
+ 	return []runtime.Object{&appsv1.DaemonSet{
+ 		TypeMeta: common.TypeMetaDaemonset,
+ 		ObjectMeta: metav1.ObjectMeta{
+@@ -269,7 +234,7 @@ func daemonset(ctx *common.RenderContext) ([]runtime.Object, error) {
+ 						}),
+ 						Ports: []corev1.ContainerPort{{
+ 							Name:          ContainerPortName,
+-							ContainerPort: ContainerPort,
++							ContainerPort: ServicePort,
+ 						}},
+ 						SecurityContext: &corev1.SecurityContext{
+ 							Privileged:               pointer.Bool(false),
+@@ -285,7 +250,6 @@ func daemonset(ctx *common.RenderContext) ([]runtime.Object, error) {
+ 									Value: "on",
+ 								},
+ 							},
+-							common.NodeNameEnv(ctx),
+ 							envvars,
+ 						)),
+ 						VolumeMounts: append(
+@@ -407,8 +371,17 @@ func daemonset(ctx *common.RenderContext) ([]runtime.Object, error) {
+ 							Path: "/",
+ 						}},
+ 					},
+-						*common.InternalCAVolume(),
+-						*common.NewEmptyDirVolume("cacerts"),
++						{
++							Name: "gitpod-ca-certificate",
++							VolumeSource: corev1.VolumeSource{
++								Secret: &corev1.SecretVolumeSource{
++									SecretName: "builtin-registry-facade-cert",
++									Items: []corev1.KeyToPath{
++										{Key: "ca.crt", Path: "ca.crt"},
++									},
++								},
++							},
++						},
+ 					}, volumes...),
+ 					Tolerations: common.GPUToleration(),
+ 				},
+diff --git a/install/installer/pkg/components/registry-facade/objects.go b/install/installer/pkg/components/registry-facade/objects.go
+index 6072681dd..8a6965b16 100644
+--- a/install/installer/pkg/components/registry-facade/objects.go
++++ b/install/installer/pkg/components/registry-facade/objects.go
+@@ -21,7 +21,7 @@ var Objects = common.CompositeRenderFunc(
+ 	common.GenerateService(Component, []common.ServicePort{
+ 		{
+ 			Name:          ContainerPortName,
+-			ContainerPort: ContainerPort,
++			ContainerPort: ServicePort,
+ 			ServicePort:   ServicePort,
+ 		},
+ 	}, func(svc *corev1.Service) {

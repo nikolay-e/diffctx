@@ -1,0 +1,36 @@
+repo: sentry
+base_commit: d11aaf9636bfcd15db09993a54c19f18e2a08bb1
+commit: 45fc05cb37c7ae397d50a3ec9e85a69e536e4b9a
+patch_stored: false
+gold:
+- path: .eslintrc.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/workflows/scripts/deploy.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .pre-commit-config.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .vscode/settings.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: package.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: status=hang on the largest diff in the batch (245 files, 39342 truth.diff lines) — a tooling migration
+  from Prettier to Biome where the vast majority of files are pure reformatting noise and only a handful
+  of config files (.eslintrc.js, removed .prettierrc/.prettierignore, .pre-commit-config.yaml, package.json)
+  carry the actual semantic change. ctx.md is empty, so nothing is recoverable; this is plausibly a scale-triggered
+  hang (largest git_files count of the 4 sentry hangs) but sibling commits with far smaller diffs (e.g.
+  sentry/035, 12 files) hang too, so size alone doesn't explain it.

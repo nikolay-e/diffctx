@@ -1,0 +1,65 @@
+repo: sentry
+base_commit: 21f5bb063a7dd2a3d35d1e0b290ff3f197a6fe4c
+commit: 2a0cf6e45bbf6ec9f55fc13f1a33b8aa313760de
+patch_stored: true
+gold:
+- path: src/sentry/conf/server.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/integrations/grpc/interceptors/auth.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/integrations/grpc/middleware.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/integrations/grpc/protos/scm.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/integrations/grpc/protos/scm_v2.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/integrations/grpc/services/base.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/integrations/grpc/services/scm_service.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/wsgi.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: tests/sentry/integrations/grpc/services/test_scm_service.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: tests/sentry/integrations/grpc/test_wsgi_integration.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: .claude/agents/cl/*.md and .claude/commands/cl/*.md (generic AI-agent tooling config, unrelated
+    to the gRPC feature)
+- path: .cursor/rules/*.mdc
+- path: docs/research/2025-11-14-scm-grpc-comprehensive.md (661-line research doc)
+- path: docs/shared/plans/2025-11-20-scm-grpc-service.md (1740-line planning doc)
+- path: examples/grpc_client_example.py
+- path: index.html
+- path: release-deployment-erd.md
+- path: test_grpc_minimal.py, test_grpc_request.py, test_grpc_server.py, test_grpc_web_client.py, test_wsgi_direct.py
+    (root-level scratch/exploratory scripts duplicating the real tests under tests/sentry/integrations/grpc/)
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'This is a large (47 files, 8821 insertions, all-new) but real feature commit; the hang is more
+  excusable given genuine size than sentry/001/011, though still a #70 failure. Notably the commit itself
+  is messy/unfocused — it bundles unrelated .claude/.cursor agent-tooling files, giant planning/research
+  markdown, and throwaway root-level test scripts alongside the actual grpc/ service code, so even a working
+  tool would need strong filtering to avoid dumping non-code artifacts as ''context''.'

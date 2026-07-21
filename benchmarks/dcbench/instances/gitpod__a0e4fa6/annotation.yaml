@@ -1,0 +1,28 @@
+repo: gitpod
+base_commit: 9b21205074aff9fb4474354195e77b8827fdf7aa
+commit: a0e4fa651e8c3eb408d144ac3fa54ba538b1e33f
+patch_stored: true
+gold:
+- path: .github/CODEOWNERS
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .werft/build.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .werft/cleanup-installer-tests.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 179-file 'IaC mega-removal' (10850 deletions vs 7 insertions) of the Replicated/KOTS self-hosted
+  installer stack — almost entirely whole-file deletions plus a few small edits removing REPLICATED_*
+  env-var blocks from .werft/build.yaml and cleanup-installer-tests.yaml and one CODEOWNERS line. Deletion-heavy
+  diffs like this are exactly the case the spec says should render cheaply as a deleted_files list, yet
+  the tool produced zero output (status=hang) — a total regression on what should be the easy case, not
+  the hard one. No signal reached the reader at all.

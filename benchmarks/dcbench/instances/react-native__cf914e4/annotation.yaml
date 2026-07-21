@@ -1,0 +1,75 @@
+repo: react-native
+base_commit: d8a0d30e70c75bd10ecabdf8d90dd70191c19845
+commit: cf914e412dcf7fbaa8aa6215141f08b9bb3e8c49
+patch_stored: true
+gold:
+- path: packages/helloworld/android/app/build.gradle
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/helloworld/android/app/src/main/java/com/helloworld/MainApplication.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native-gradle-plugin/build.gradle.kts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native-gradle-plugin/react-native-gradle-plugin/build.gradle.kts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactExtension.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactPlugin.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/TaskConfiguration.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTask.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native-gradle-plugin/settings.gradle.kts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingProjectJson.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: settings.gradle.kts
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: CODE_OF_CONDUCT.md
+- path: packages/asset-utils/package.json
+- path: packages/babel-plugin-codegen/package.json
+- path: packages/community-cli-plugin/package.json
+- path: packages/debugger-frontend/package.json
+- path: packages/jest-preset/package.json
+- path: packages/metro-config/package.json
+- path: packages/react-native/ReactCommon/cxxreact/NativeToJsBridge.cpp
+- path: packages/react-native/ReactCommon/jsi/jsi/jsi.cpp
+- path: packages/react-native/ReactCommon/jsi/jsi/jsi.h
+- path: packages/react-native/ReactCommon/react/nativemodule/core/ReactCommon/TurboModule.h
+- path: packages/react-native/ReactCommon/react/nativemodule/core/ReactCommon/TurboModuleBinding.h
+- path: packages/react-native/cli.js
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'This RNGP autolinking restructure is a genuine 103-file change (dir move + real Kotlin logic),
+  and renames are handled correctly (old->new mapping shown, full content present for renamed files like
+  ReactExtension.kt) giving strong recall. However cross-checking file-for-file against truth.diff shows
+  real noise: dozens of unrelated package.json files from packages that were never touched (asset-utils,
+  community-cli-plugin, debugger-frontend, jest-preset, metro-config, etc.) and unrelated native JSI/TurboModule
+  core files (jsi.cpp, TurboModule.h, NativeToJsBridge.cpp) got pulled in alongside the real gradle-plugin
+  restructure. Whole-file dumps (e.g. entire 165-line .gitignore for a 1-line deletion) also inflate tokens
+  beyond what the actual diff needs.'

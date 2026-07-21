@@ -1,0 +1,65 @@
+repo: sentry
+base_commit: 7f2884aeb81b3707022b46df813ce7bf8d9cb492
+commit: 6082b7fe6d2c1cf1ffb0dd80809b442eea177b72
+patch_stored: true
+gold:
+- path: static/app/components/events/interfaces/spans/newTraceDetailsSpanDetails.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/newTraceDetails/index.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/newTraceDetails/trace.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/newTraceDetails/traceGuards.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/newTraceDetails/traceIcons.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/newTraceDetails/traceModels/missingInstrumentationNode.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/newTraceDetails/traceModels/parentAutogroupNode.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/newTraceDetails/traceModels/siblingAutogroupNode.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/newTraceDetails/traceModels/traceTree.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/newTraceDetails/traceModels/traceTreeEventDispatcher.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/performance/newTraceDetails/traceModels/traceTreeNode.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: static/app/views/performance/newTraceDetails/traceModels/__snapshots__/traceTree.autogrouping.spec.tsx.snap
+- path: static/app/views/performance/newTraceDetails/traceModels/__snapshots__/traceTree.missinginstrumentation.spec.tsx.snap
+- path: static/app/views/performance/newTraceDetails/traceModels/__snapshots__/traceTree.spec.tsx.snap
+- path: static/app/views/performance/newTraceDetails/traceModels/__snapshots__/traceTree.ssr.spec.tsx.snap
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'status=hang on the largest human-authored refactor in the sample (92 files, 5,184 insertions/5,322
+  deletions): a single monolithic traceTree.tsx (3,098-line net change) split into traceTreeNode.tsx,
+  parentAutogroupNode.tsx, siblingAutogroupNode.tsx, missingInstrumentationNode.tsx, traceTreeEventDispatcher.tsx,
+  plus two renames (guards.tsx->traceGuards.tsx, icons.tsx->traceIcons.tsx) with import updates rippling
+  across ~30 consumer files. This is a legitimately hard case (large file-level moves/renames plus heavy
+  churn in a single file) so a hang is more explicable here than in the other hang cases, but it''s still
+  a complete failure to deliver any signal on the largest, most consequential refactor in the corpus.'

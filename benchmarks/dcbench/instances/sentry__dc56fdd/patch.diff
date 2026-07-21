@@ -1,0 +1,657 @@
+From dc56fdd54ed840aa8efbc73533897afaf9e2aae8 Mon Sep 17 00:00:00 2001
+From: klochek <christopher.klochek@sentry.io>
+Date: Mon, 12 Jan 2026 11:44:07 -0500
+Subject: [PATCH] feat(uptime): Add uptime test endpoint (#104969)
+
+Adds an endpoint that invokes an uptime checker on a specified uptime check config.
+
+---------
+
+Co-authored-by: getsantry[bot] <66042841+getsantry[bot]@users.noreply.github.com>
+---
+ pyproject.toml                                |   2 +-
+ src/sentry/api/urls.py                        |   8 ++
+ src/sentry/conf/types/uptime.py               |   2 +
+ src/sentry/features/temporary.py              |   2 +
+ src/sentry/uptime/checker_api.py              |  62 ++++++++++
+ ...organization_uptime_alert_preview_check.py |  89 ++++++++++++++
+ .../endpoints/project_uptime_alert_details.py |   6 +-
+ .../endpoints/project_uptime_alert_index.py   |   5 +
+ src/sentry/uptime/endpoints/validators.py     | 110 ++++++++++++++----
+ src/sentry/uptime/types.py                    |   7 +-
+ .../utils/api/knownSentryApiUrls.generated.ts |   1 +
+ .../test_organization_uptime_alert_preview.py |  98 ++++++++++++++++
+ uv.lock                                       |   6 +-
+ 13 files changed, 370 insertions(+), 28 deletions(-)
+ create mode 100644 src/sentry/uptime/checker_api.py
+ create mode 100644 src/sentry/uptime/endpoints/organization_uptime_alert_preview_check.py
+ create mode 100644 tests/sentry/uptime/endpoints/test_organization_uptime_alert_preview.py
+
+diff --git a/pyproject.toml b/pyproject.toml
+index 0694df501e2..58aa601806d 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -83,7 +83,7 @@ dependencies = [
+     "sentry-arroyo>=2.35.0",
+     "sentry-conventions>=0.3.0",
+     "sentry-forked-email-reply-parser>=0.5.12.post1",
+-    "sentry-kafka-schemas>=2.1.16",
++    "sentry-kafka-schemas>=2.1.19",
+     "sentry-ophio>=1.1.3",
+     "sentry-protos>=0.4.11",
+     "sentry-redis-tools>=0.5.0",
+diff --git a/src/sentry/api/urls.py b/src/sentry/api/urls.py
+index a3fa10c94d8..9b445d21468 100644
+--- a/src/sentry/api/urls.py
++++ b/src/sentry/api/urls.py
+@@ -602,6 +602,9 @@ from sentry.uptime.endpoints.organiation_uptime_alert_index import (
+ from sentry.uptime.endpoints.organization_uptime_alert_index_count import (
+     OrganizationUptimeAlertIndexCountEndpoint,
+ )
++from sentry.uptime.endpoints.organization_uptime_alert_preview_check import (
++    OrganizationUptimeAlertPreviewCheckEndpoint,
++)
+ from sentry.uptime.endpoints.organization_uptime_stats import OrganizationUptimeStatsEndpoint
+ from sentry.uptime.endpoints.organization_uptime_summary import OrganizationUptimeSummaryEndpoint
+ from sentry.uptime.endpoints.project_uptime_alert_checks_index import (
+@@ -2612,6 +2615,11 @@ ORGANIZATION_URLS: list[URLPattern | URLResolver] = [
+         OrganizationUptimeAlertIndexEndpoint.as_view(),
+         name="sentry-api-0-organization-uptime-alert-index",
+     ),
++    re_path(
++        r"^(?P<organization_id_or_slug>[^/]+)/uptime-preview-check/$",
++        OrganizationUptimeAlertPreviewCheckEndpoint.as_view(),
++        name="sentry-api-0-organization-uptime-alert-preview-check",
++    ),
+     re_path(
+         r"^(?P<organization_id_or_slug>[^/]+)/uptime-count/$",
+         OrganizationUptimeAlertIndexCountEndpoint.as_view(),
+diff --git a/src/sentry/conf/types/uptime.py b/src/sentry/conf/types/uptime.py
+index 8e2787067ab..9254c78c755 100644
+--- a/src/sentry/conf/types/uptime.py
++++ b/src/sentry/conf/types/uptime.py
+@@ -13,3 +13,5 @@ class UptimeRegionConfig:
+     config_redis_cluster: str = "default"
+     # Prefix we'll add to keys in the redis config. Currently just used in tests
+     config_redis_key_prefix: str = ""
++    # The API endpoint against which we'll invoke preview checks.
++    api_endpoint: str = ""
+diff --git a/src/sentry/features/temporary.py b/src/sentry/features/temporary.py
+index a2d137d1922..aac3599da01 100644
+--- a/src/sentry/features/temporary.py
++++ b/src/sentry/features/temporary.py
+@@ -530,6 +530,8 @@ def register_temporary_features(manager: FeatureManager) -> None:
+     manager.add("organizations:uptime-auto-detected-monitor-emails", OrganizationFeature, FeatureHandlerStrategy.FLAGPOLE, api_expose=False)
+     # Enable task-based retry for out-of-order uptime results
+     manager.add("organizations:uptime-backlog-retry", OrganizationFeature, FeatureHandlerStrategy.FLAGPOLE, api_expose=False)
++    # Enable runtime assertions for uptime monitors
++    manager.add("organizations:uptime-runtime-assertions", OrganizationFeature, FeatureHandlerStrategy.FLAGPOLE, api_expose=False)
+     manager.add("organizations:use-metrics-layer", OrganizationFeature, FeatureHandlerStrategy.FLAGPOLE, api_expose=False)
+     # Enable endpoint and frontend for AI-powered UF summaries
+     manager.add("organizations:user-feedback-ai-summaries", OrganizationFeature, FeatureHandlerStrategy.FLAGPOLE, api_expose=True)
+diff --git a/src/sentry/uptime/checker_api.py b/src/sentry/uptime/checker_api.py
+new file mode 100644
+index 00000000000..0eb224e9a8e
+--- /dev/null
++++ b/src/sentry/uptime/checker_api.py
+@@ -0,0 +1,62 @@
++import uuid
++
++import requests
++
++from sentry.conf.types.uptime import UptimeRegionConfig
++from sentry.uptime.models import UptimeRegionScheduleMode
++from sentry.uptime.types import CheckConfig
++
++
++# Create a "preview check" that we send to an uptime checker to validate the config
++# (in particular, the assertion.)
++def create_preview_check(validated_data, region: UptimeRegionConfig) -> CheckConfig:
++    config: CheckConfig = {
++        "subscription_id": uuid.UUID(int=0).hex,
++        "url": validated_data.get("url"),
++        "interval_seconds": 3600,
++        "timeout_ms": validated_data.get("timeout_ms"),
++        "trace_sampling": False,
++        # We're only going to run in the one specified region.
++        "active_regions": [region.slug],
++        "region_schedule_mode": UptimeRegionScheduleMode.ROUND_ROBIN.value,
++    }
++
++    config["request_method"] = validated_data.get("method")
++    config["request_headers"] = validated_data.get("headers")
++    config["request_body"] = validated_data.get("body")
++    config["assertion"] = validated_data.get("assertion")
++
++    return config
++
++
++# Call into the uptime checker to validation the check config, throwing a validation
++# error if the config does not pass validation.
++def invoke_checker_validator(
++    validation_enabled: bool, check_config: CheckConfig, region: UptimeRegionConfig
++) -> requests.Response | None:
++    if not validation_enabled:
++        return None
++
++    result = requests.post(
++        f"http://{region.api_endpoint}/validate_check",
++        json=check_config,
++        timeout=10,
++    )
++
++    return result
++
++
++# Call into the uptime checker to execute the check config
++def invoke_checker_preview(
++    assertions_enabled: bool, check_config: CheckConfig, region: UptimeRegionConfig
++) -> requests.Response | None:
++    if not assertions_enabled:
++        return None
++
++    result = requests.post(
++        f"http://{region.api_endpoint}/execute_config",
++        json=check_config,
++        timeout=10,
++    )
++
++    return result
+diff --git a/src/sentry/uptime/endpoints/organization_uptime_alert_preview_check.py b/src/sentry/uptime/endpoints/organization_uptime_alert_preview_check.py
+new file mode 100644
+index 00000000000..95de546b249
+--- /dev/null
++++ b/src/sentry/uptime/endpoints/organization_uptime_alert_preview_check.py
+@@ -0,0 +1,89 @@
++import logging
++
++from drf_spectacular.utils import extend_schema
++from rest_framework.request import Request
++from rest_framework.response import Response
++
++from sentry import features
++from sentry.api.api_owners import ApiOwner
++from sentry.api.api_publish_status import ApiPublishStatus
++from sentry.api.base import region_silo_endpoint
++from sentry.api.bases.organization import OrganizationEndpoint
++from sentry.apidocs.constants import (
++    RESPONSE_BAD_REQUEST,
++    RESPONSE_FORBIDDEN,
++    RESPONSE_NOT_FOUND,
++    RESPONSE_SUCCESS,
++    RESPONSE_UNAUTHORIZED,
++)
++from sentry.apidocs.parameters import GlobalParams
++from sentry.models.organization import Organization
++from sentry.ratelimits.config import RateLimitConfig
++from sentry.types.ratelimit import RateLimit, RateLimitCategory
++from sentry.uptime import checker_api
++from sentry.uptime.endpoints.validators import UptimeCheckPreviewValidator
++from sentry.uptime.subscriptions.regions import get_region_config
++from sentry.uptime.types import CheckConfig
++
++logger = logging.getLogger(__name__)
++
++
++@region_silo_endpoint
++class OrganizationUptimeAlertPreviewCheckEndpoint(OrganizationEndpoint):
++    owner = ApiOwner.CRONS
++
++    publish_status = {
++        "POST": ApiPublishStatus.EXPERIMENTAL,
++    }
++
++    rate_limits = RateLimitConfig(
++        limit_overrides={
++            "POST": {
++                RateLimitCategory.USER: RateLimit(limit=1, window=1, concurrent_limit=5),
++                RateLimitCategory.ORGANIZATION: RateLimit(limit=40, window=1, concurrent_limit=5),
++            },
++        }
++    )
++
++    @extend_schema(
++        operation_id="Execute an Uptime Alert Rule for a supplied CheckConfig",
++        parameters=[
++            GlobalParams.ORG_ID_OR_SLUG,
++        ],
++        responses={
++            200: RESPONSE_SUCCESS,
++            400: RESPONSE_BAD_REQUEST,
++            401: RESPONSE_UNAUTHORIZED,
++            403: RESPONSE_FORBIDDEN,
++            404: RESPONSE_NOT_FOUND,
++        },
++    )
++    def post(
++        self,
++        request: Request,
++        organization: Organization,
++    ) -> Response:
++        assertions_enabled = features.has(
++            "organizations:uptime-runtime-assertions", organization, actor=request.user
++        )
++        validator = UptimeCheckPreviewValidator(assertions_enabled, data=request.data)
++        if not validator.is_valid():
++            return self.respond(validator.errors, status=400)
++
++        check_config: CheckConfig = validator.save()
++
++        # We made it through validation, so this region is non-null
++        region = get_region_config(check_config["active_regions"][0])
++        assert region is not None
++
++        result = checker_api.invoke_checker_preview(assertions_enabled, check_config, region)
++
++        if result is None:
++            return self.respond(status=400)
++
++        # Make sure we propagate the error json in the case of a 400 error
++        if result.status_code >= 400 and result.status_code < 500:
++            return self.respond(result.json(), status=result.status_code)
++
++        result.raise_for_status()
++        return self.respond(result.json())
+diff --git a/src/sentry/uptime/endpoints/project_uptime_alert_details.py b/src/sentry/uptime/endpoints/project_uptime_alert_details.py
+index c0afcb97e10..fcdef9fb257 100644
+--- a/src/sentry/uptime/endpoints/project_uptime_alert_details.py
++++ b/src/sentry/uptime/endpoints/project_uptime_alert_details.py
+@@ -2,7 +2,7 @@ from drf_spectacular.utils import extend_schema
+ from rest_framework.request import Request
+ from rest_framework.response import Response
+ 
+-from sentry import audit_log
++from sentry import audit_log, features
+ from sentry.api.api_owners import ApiOwner
+ from sentry.api.api_publish_status import ApiPublishStatus
+ from sentry.api.base import region_silo_endpoint
+@@ -85,7 +85,11 @@ class ProjectUptimeAlertDetailsEndpoint(ProjectUptimeAlertEndpoint):
+         """
+         Update an uptime monitor.
+         """
++        assertions_enabled = features.has(
++            "organizations:uptime-runtime-assertions", project.organization, actor=request.user
++        )
+         validator = UptimeMonitorValidator(
++            assertions_enabled,
+             data=request.data,
+             partial=True,
+             instance=uptime_detector,
+diff --git a/src/sentry/uptime/endpoints/project_uptime_alert_index.py b/src/sentry/uptime/endpoints/project_uptime_alert_index.py
+index 722fac87bb6..e85dc2153c9 100644
+--- a/src/sentry/uptime/endpoints/project_uptime_alert_index.py
++++ b/src/sentry/uptime/endpoints/project_uptime_alert_index.py
+@@ -2,6 +2,7 @@ from drf_spectacular.utils import extend_schema
+ from rest_framework.request import Request
+ from rest_framework.response import Response
+ 
++from sentry import features
+ from sentry.api.api_owners import ApiOwner
+ from sentry.api.api_publish_status import ApiPublishStatus
+ from sentry.api.base import region_silo_endpoint
+@@ -45,7 +46,11 @@ class ProjectUptimeAlertIndexEndpoint(ProjectEndpoint):
+         """
+         Create a new monitor.
+         """
++        assertions_enabled = features.has(
++            "organizations:uptime-runtime-assertions", project.organization, actor=request.user
++        )
+         validator = UptimeMonitorValidator(
++            assertions_enabled,
+             data=request.data,
+             context={
+                 "organization": project.organization,
+diff --git a/src/sentry/uptime/endpoints/validators.py b/src/sentry/uptime/endpoints/validators.py
+index 23b11546a58..dab2341308b 100644
+--- a/src/sentry/uptime/endpoints/validators.py
++++ b/src/sentry/uptime/endpoints/validators.py
+@@ -1,7 +1,9 @@
++import logging
+ from collections.abc import Sequence
+ from typing import Any, override
+ 
+ import jsonschema
++from django.conf import settings
+ from django.db import router
+ from drf_spectacular.utils import extend_schema_serializer
+ from rest_framework import serializers
+@@ -13,12 +15,14 @@ from sentry.api.serializers.rest_framework import CamelSnakeSerializer
+ from sentry.auth.superuser import is_active_superuser
+ from sentry.constants import DataCategory, ObjectStatus
+ from sentry.models.environment import Environment
++from sentry.uptime import checker_api
+ from sentry.uptime.models import (
+     UptimeSubscription,
+     UptimeSubscriptionDataSourceHandler,
+     get_audit_log_data,
+     get_uptime_subscription,
+ )
++from sentry.uptime.subscriptions.regions import get_active_regions, get_region_config
+ from sentry.uptime.subscriptions.subscriptions import (
+     MAX_MANUAL_SUBSCRIPTIONS_PER_ORG,
+     MaxManualUptimeSubscriptionsReached,
+@@ -65,6 +69,8 @@ MONITOR_STATUSES = {
+     "disabled": ObjectStatus.DISABLED,
+ }
+ 
++logger = logging.getLogger(__name__)
++
+ HEADERS_LIST_SCHEMA = {
+     "type": "array",
+     "items": {
+@@ -137,8 +143,78 @@ def _validate_request_size(method, url, headers, body):
+         )
+ 
+ 
++class UptimeValidatorBase(CamelSnakeSerializer):
++    url = URLField(required=True, max_length=255)
++    timeout_ms = serializers.IntegerField(
++        required=True,
++        min_value=1000,
++        max_value=60_000,
++        help_text="The number of milliseconds the request will wait for a response before timing-out.",
++    )
++    method = serializers.ChoiceField(
++        required=False,
++        choices=UptimeSubscription.SupportedHTTPMethods.choices,
++        help_text="The HTTP method used to make the check request.",
++    )
++    headers = serializers.JSONField(
++        required=False,
++        help_text="Additional headers to send with the check request.",
++    )
++    body = serializers.CharField(
++        required=False,
++        allow_null=True,
++        allow_blank=True,
++        help_text="The body to send with the check request.",
++    )
++    assertion = serializers.JSONField(
++        required=False,
++        allow_null=True,
++        help_text="The assertion to send with the check request.",
++    )
++
++
++@extend_schema_serializer()
++class UptimeCheckPreviewValidator(UptimeValidatorBase):
++    region = serializers.ChoiceField(
++        choices=[r.slug for r in settings.UPTIME_REGIONS],
++    )
++
++    def __init__(self, assertions_enabled, **kwargs: Any):
++        super().__init__(**kwargs)
++        self.assertions_enabled = assertions_enabled
++
++    def validate(self, attrs):
++        _validate_request_size(
++            attrs.get("method", "GET"),
++            attrs.get("url", ""),
++            attrs.get("headers", []),
++            attrs.get("body", None),
++        )
++        region_config = get_region_config(attrs["region"])
++        assert region_config is not None
++        check_config = checker_api.create_preview_check(attrs, region_config)
++
++        result = checker_api.invoke_checker_validator(
++            self.assertions_enabled, check_config, region_config
++        )
++        if result is not None and result.status_code >= 400:
++            raise serializers.ValidationError({"assertion": result.json()})
++        return attrs
++
++    def validate_url(self, url):
++        return _validate_url(url)
++
++    def validate_headers(self, headers):
++        return _validate_headers(headers)
++
++    def create(self, validated_data):
++        region_config = get_region_config(validated_data["region"])
++        assert region_config is not None
++        return checker_api.create_preview_check(validated_data, region_config)
++
++
+ @extend_schema_serializer()
+-class UptimeMonitorValidator(CamelSnakeSerializer):
++class UptimeMonitorValidator(UptimeValidatorBase):
+     name = serializers.CharField(
+         required=True,
+         max_length=128,
+@@ -160,38 +236,17 @@ class UptimeMonitorValidator(CamelSnakeSerializer):
+         allow_null=True,
+         help_text="Name of the environment to create uptime issues in.",
+     )
+-    url = URLField(required=True, max_length=255)
+     interval_seconds = serializers.ChoiceField(
+         required=True,
+         choices=UptimeSubscription.IntervalSeconds.choices,
+         help_text="Time in seconds between uptime checks.",
+     )
+-    timeout_ms = serializers.IntegerField(
+-        required=True,
+-        min_value=1000,
+-        max_value=60_000,
+-        help_text="The number of milliseconds the request will wait for a response before timing-out.",
+-    )
+     mode = serializers.IntegerField(required=False)
+-    method = serializers.ChoiceField(
+-        required=False,
+-        choices=UptimeSubscription.SupportedHTTPMethods.choices,
+-        help_text="The HTTP method used to make the check request.",
+-    )
+-    headers = serializers.JSONField(
+-        required=False,
+-        help_text="Additional headers to send with the check request.",
+-    )
+     trace_sampling = serializers.BooleanField(
+         required=False,
+         default=False,
+         help_text="When enabled allows check requets to be considered for dowstream performance tracing.",
+     )
+-    body = serializers.CharField(
+-        required=False,
+-        allow_null=True,
+-        help_text="The body to send with the check request.",
+-    )
+     recovery_threshold = serializers.IntegerField(
+         required=False,
+         default=DEFAULT_RECOVERY_THRESHOLD,
+@@ -205,6 +260,10 @@ class UptimeMonitorValidator(CamelSnakeSerializer):
+         help_text="Number of consecutive failed checks required to mark monitor as down.",
+     )
+ 
++    def __init__(self, assertions_enabled, **kwargs):
++        super().__init__(**kwargs)
++        self.assertions_enabled = assertions_enabled
++
+     def validate(self, attrs):
+         # When creating a new uptime monitor, check if we would exceed the organization limit
+         if not self.instance:
+@@ -234,6 +293,13 @@ class UptimeMonitorValidator(CamelSnakeSerializer):
+             attrs.get("body", body),
+         )
+ 
++        region = get_region_config(get_active_regions()[0].slug)
++        assert region is not None
++        check_config = checker_api.create_preview_check(attrs, region)
++        result = checker_api.invoke_checker_validator(self.assertions_enabled, check_config, region)
++        if result is not None and result.status_code >= 400:
++            raise serializers.ValidationError({"assertion": result.json()})
++
+         return attrs
+ 
+     def validate_url(self, url):
+diff --git a/src/sentry/uptime/types.py b/src/sentry/uptime/types.py
+index 4ae50f35104..3b009f1c32c 100644
+--- a/src/sentry/uptime/types.py
++++ b/src/sentry/uptime/types.py
+@@ -3,7 +3,7 @@ from collections.abc import Sequence
+ from dataclasses import dataclass
+ from datetime import datetime
+ from enum import IntEnum
+-from typing import Literal, Required, TypedDict
++from typing import Any, Literal, Required, TypedDict
+ 
+ from sentry_kafka_schemas.schema_types.uptime_results_v1 import CheckStatus, CheckStatusReasonType
+ 
+@@ -105,6 +105,11 @@ class CheckConfig(TypedDict, total=False):
+     Defines how we'll schedule checks based on other active regions.
+     """
+ 
++    assertion: Any | None
++    """
++    The runtime assertion to execute, or null.
++    """
++
+ 
+ class IncidentStatus(IntEnum):
+     """
+diff --git a/static/app/utils/api/knownSentryApiUrls.generated.ts b/static/app/utils/api/knownSentryApiUrls.generated.ts
+index e3ad2a7bd5c..37997ef6292 100644
+--- a/static/app/utils/api/knownSentryApiUrls.generated.ts
++++ b/static/app/utils/api/knownSentryApiUrls.generated.ts
+@@ -579,6 +579,7 @@ export type KnownSentryApiUrls =
+   | '/organizations/$organizationIdOrSlug/unsubscribe/issue/$id/'
+   | '/organizations/$organizationIdOrSlug/unsubscribe/project/$id/'
+   | '/organizations/$organizationIdOrSlug/uptime-count/'
++  | '/organizations/$organizationIdOrSlug/uptime-preview-check/'
+   | '/organizations/$organizationIdOrSlug/uptime-stats/'
+   | '/organizations/$organizationIdOrSlug/uptime-summary/'
+   | '/organizations/$organizationIdOrSlug/uptime/'
+diff --git a/tests/sentry/uptime/endpoints/test_organization_uptime_alert_preview.py b/tests/sentry/uptime/endpoints/test_organization_uptime_alert_preview.py
+new file mode 100644
+index 00000000000..dd87119230a
+--- /dev/null
++++ b/tests/sentry/uptime/endpoints/test_organization_uptime_alert_preview.py
+@@ -0,0 +1,98 @@
++import responses
++from django.test import override_settings
++
++from sentry.conf.types.uptime import UptimeRegionConfig
++from tests.sentry.uptime.endpoints import UptimeAlertBaseEndpointTest
++
++
++@override_settings(
++    UPTIME_REGIONS=[
++        UptimeRegionConfig(
++            slug="default",
++            name="Default Region",
++            config_redis_key_prefix="default",
++            api_endpoint="pop-st-1.uptime-checker.s4s.sentry.internal:80",
++        )
++    ]
++)
++class OrganizationUptimeAlertPreview(UptimeAlertBaseEndpointTest):
++    endpoint = "sentry-api-0-organization-uptime-alert-preview-check"
++    method = "post"
++    features: dict[str, bool] = {"organizations:uptime-runtime-assertions": True}
++
++    def test_bad_region(self) -> None:
++        with self.feature(self.features):
++            response = self.get_error_response(
++                self.organization.slug,
++                name="test",
++                environment="uptime-prod",
++                owner=f"user:{self.user.id}",
++                url="http://sentry.io",
++                timeout_ms=1500,
++                body=None,
++                region="does_not_exist",
++            )
++            assert "region" in response.data
++            assert '"does_not_exist" is not a valid choice.' in response.data["region"][0]
++
++    def test_bad_config(self) -> None:
++        with self.feature(self.features):
++            response = self.get_error_response(
++                self.organization.slug, name="test", region="default"
++            )
++            assert "url" in response.data
++            assert response.data["url"][0].code == "required"
++            assert "timeoutMs" in response.data
++            assert response.data["timeoutMs"][0].code == "required"
++
++    @responses.activate
++    def test_bad_checker_validation(self) -> None:
++        with self.feature(self.features):
++            # (We issue a validate call before the actual check execution.)
++            responses.add(
++                responses.POST,
++                "http://pop-st-1.uptime-checker.s4s.sentry.internal:80/validate_check",
++                status=400,
++                json={"error": True},
++            )
++            response = self.get_error_response(
++                self.organization.slug,
++                name="test",
++                environment="uptime-prod",
++                owner=f"user:{self.user.id}",
++                url="http://sentry.io",
++                timeout_ms=1500,
++                body=None,
++                region="default",
++            )
++
++            assert "assertion" in response.data
++            assert "error" in response.data["assertion"]
++            assert response.data["assertion"]["error"].code == "invalid"
++
++    @responses.activate
++    def test_success(self) -> None:
++        with self.feature(self.features):
++            # (We issue a validate call before the actual check execution.)
++            responses.add(
++                responses.POST,
++                "http://pop-st-1.uptime-checker.s4s.sentry.internal:80/validate_check",
++                status=200,
++                json={"succeeded": True},
++            )
++            responses.add(
++                responses.POST,
++                "http://pop-st-1.uptime-checker.s4s.sentry.internal:80/execute_config",
++                status=200,
++                json={"succeeded": True},
++            )
++            self.get_success_response(
++                self.organization.slug,
++                name="test",
++                environment="uptime-prod",
++                owner=f"user:{self.user.id}",
++                url="http://sentry.io",
++                timeout_ms=1500,
++                body=None,
++                region="default",
++            )
+diff --git a/uv.lock b/uv.lock
+index c0229ff12ad..c878c359d38 100644
+--- a/uv.lock
++++ b/uv.lock
+@@ -2194,7 +2194,7 @@ requires-dist = [
+     { name = "sentry-arroyo", specifier = ">=2.35.0" },
+     { name = "sentry-conventions", specifier = ">=0.3.0" },
+     { name = "sentry-forked-email-reply-parser", specifier = ">=0.5.12.post1" },
+-    { name = "sentry-kafka-schemas", specifier = ">=2.1.16" },
++    { name = "sentry-kafka-schemas", specifier = ">=2.1.19" },
+     { name = "sentry-ophio", specifier = ">=1.1.3" },
+     { name = "sentry-protos", specifier = ">=0.4.11" },
+     { name = "sentry-redis-tools", specifier = ">=0.5.0" },
+@@ -2374,7 +2374,7 @@ wheels = [
+ 
+ [[package]]
+ name = "sentry-kafka-schemas"
+-version = "2.1.16"
++version = "2.1.19"
+ source = { registry = "https://pypi.devinfra.sentry.io/simple" }
+ dependencies = [
+     { name = "fastjsonschema", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+@@ -2385,7 +2385,7 @@ dependencies = [
+     { name = "typing-extensions", marker = "sys_platform == 'darwin' or sys_platform == 'linux'" },
+ ]
+ wheels = [
+-    { url = "https://pypi.devinfra.sentry.io/wheels/sentry_kafka_schemas-2.1.16-py2.py3-none-any.whl", hash = "sha256:65450a0ee0fa4a0972681e57acb9a9dd88a42fea014f3b1066b2b4320a6e2095" },
++    { url = "https://pypi.devinfra.sentry.io/wheels/sentry_kafka_schemas-2.1.19-py2.py3-none-any.whl", hash = "sha256:df363f8352bd125b0e86b381f007954f860efc9edc359afe5cd01fe89e9e6732" },
+ ]
+ 
+ [[package]]

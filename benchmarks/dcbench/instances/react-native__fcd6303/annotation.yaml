@@ -1,0 +1,68 @@
+repo: react-native
+base_commit: 4851fb2fc30c45da496bb982d13568767ddbad02
+commit: fcd63032d029cf9ec31605e9be4bb63d5e44ce1e
+patch_stored: true
+gold:
+- path: packages/react-native/Libraries/Utilities/DevLoadingView.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/Libraries/Utilities/HMRClient.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/React/CoreModules/RCTDevLoadingView.mm
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/React/DevSupport/RCTDevLoadingViewProtocol.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/api/ReactAndroid.api
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DefaultDevLoadingViewImplementation.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/interfaces/DevLoadingViewManager.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/devloading/DevLoadingModule.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/res/devsupport/layout/dev_loading_view.xml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/res/devsupport/values/strings.xml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCxxPlatform/react/devsupport/DevLoadingViewModule.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCxxPlatform/react/devsupport/DevLoadingViewModule.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/src/private/specs_DEPRECATED/modules/NativeDevLoadingView.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Worst file-count blowup observed in the sample: 13 files actually changed (a cross-platform ''Dismiss''
+  button added to the dev-loading overlay) but diffctx surfaces content from 120 files (ctx_files=120),
+  a >9x multiplier. The ''Changed files'' header in ctx.md correctly lists only the 13 real files, so
+  the extra ~107 are appended later as ''supporting'' context we did not page into — this is issue #65
+  (co-located/whole-tree over-selection) in its most extreme observed form here. md_tokens=26827 for a
+  ~256-line diff (203+/53-) is also individually bloated even before counting the file-count explosion.'

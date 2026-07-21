@@ -1,0 +1,86 @@
+repo: react-native
+base_commit: 85f0dec4005c40346f1a4f5dbeae8ab410364b5e
+commit: f0f71ea914feae9fb98df4998508441009d6f702
+patch_stored: true
+gold:
+- path: .flowconfig
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/actions/test-ios-helloworld/action.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/workflows/test-all.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .gitignore
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: jest.config.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: package.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: private/helloworld/android/app/build.gradle
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: private/helloworld/android/settings.gradle
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: private/helloworld/ios/HelloWorld.xcodeproj/project.pbxproj
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: private/helloworld/ios/Podfile
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: private/helloworld/metro.config.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: private/helloworld/scripts/config.sh
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: private/helloworld/scripts/monorepo.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: scripts/babel-register.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: scripts/consts.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: scripts/e2e/init-project-e2e.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: private/helloworld/App.tsx
+- path: private/helloworld/Gemfile
+- path: private/helloworld/README.md
+- path: private/helloworld/android/app/debug.keystore
+- path: private/helloworld/android/app/src/main/res/mipmap-hdpi/ic_launcher.png
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Complete hang (0-byte ctx.md/md.err, rc_md=142) on what is mostly a pure directory rename (packages/helloworld
+  -> private/helloworld): of 73 changed paths, the large majority are 100%-similarity renames (icons,
+  gradle wrapper, Gemfile, README, App.tsx, etc.) that need no fragment dump at all, just a rename-list
+  entry. Only ~16 files carry real path-string edits (CI configs, gitignore, jest config, package.json
+  workspaces list, build.gradle relative-path fixes, Xcode project, monorepo scripts). A correct tool
+  should have produced a small, cheap result here (mostly rename bookkeeping) — instead it produced nothing,
+  which is the more surprising kind of hang since the actual code-comprehension surface is trivial.'

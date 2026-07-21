@@ -1,0 +1,2957 @@
+From 329e56580ec49a180676a123ca72480ae3de7b3e Mon Sep 17 00:00:00 2001
+From: Manuel Alejandro de Brito Fontes <aledbf@gmail.com>
+Date: Fri, 24 Feb 2023 17:40:54 -0300
+Subject: [PATCH] Switch registry-facade from hostPort to nodePort and remove
+ hostPort from ws-daemon (#16518)
+
+* Switch registry-facade and ws-daemon from hostPort to nodePort
+
+* Update golden files
+
+* Update ports
+
+* Remove old setting
+
+* Remove $WS_DAEMON_PORT
+
+* Switch to podIP
+
+* Tune GCE VM
+
+* Use withObservability flag
+---
+ .../build/deploy-to-preview-environment.ts    |  5 ++
+ .werft/jobs/build/installer/post-process.sh   | 37 ++---------
+ components/ws-manager/pkg/manager/manager.go  | 45 +++++++++++--
+ .../infrastructure/modules/gce/variables.tf   |  2 +-
+ dev/preview/infrastructure/modules/gce/vm.tf  |  1 +
+ .../testdata/render/agent-smith/output.golden | 65 ++++---------------
+ .../testdata/render/aws-setup/output.golden   | 65 ++++---------------
+ .../custom-pull-repository/output.golden      | 65 ++++---------------
+ .../render/customization/output.golden        | 65 ++++---------------
+ .../render/external-registry/output.golden    | 65 ++++---------------
+ .../testdata/render/gcp-setup/output.golden   | 65 ++++---------------
+ .../testdata/render/http-proxy/output.golden  | 65 ++++---------------
+ .../testdata/render/ide-config/output.golden  | 65 ++++---------------
+ .../render/kind-workspace/output.golden       | 65 ++++---------------
+ .../render/message-bus-password/output.golden | 65 ++++---------------
+ .../cmd/testdata/render/minimal/output.golden | 65 ++++---------------
+ .../render/overrides-inline/output.golden     | 65 ++++---------------
+ .../testdata/render/pod-config/output.golden  | 65 ++++---------------
+ .../testdata/render/shortname/output.golden   | 65 ++++---------------
+ .../statefulset-customization/output.golden   | 65 ++++---------------
+ .../testdata/render/telemetry/output.golden   | 65 ++++---------------
+ .../use-pod-security-policies/output.golden   | 65 ++++---------------
+ .../render/vsxproxy-pvc/output.golden         | 65 ++++---------------
+ .../workspace-requests-limits/output.golden   | 65 ++++---------------
+ install/installer/pkg/common/constants.go     |  2 +-
+ .../components/registry-facade/daemonset.go   |  1 -
+ .../pkg/components/registry-facade/objects.go | 10 +++
+ .../pkg/components/ws-daemon/daemonset.go     |  1 -
+ .../pkg/components/ws-daemon/networkpolicy.go | 48 --------------
+ .../pkg/components/ws-daemon/objects.go       | 10 +--
+ .../pkg/components/ws-manager/configmap.go    |  2 +-
+ 31 files changed, 297 insertions(+), 1102 deletions(-)
+ delete mode 100644 install/installer/pkg/components/ws-daemon/networkpolicy.go
+
+diff --git a/.werft/jobs/build/deploy-to-preview-environment.ts b/.werft/jobs/build/deploy-to-preview-environment.ts
+index c8c3a15a7..822fd740f 100644
+--- a/.werft/jobs/build/deploy-to-preview-environment.ts
++++ b/.werft/jobs/build/deploy-to-preview-environment.ts
+@@ -79,6 +79,11 @@ export async function deployToPreviewEnvironment(werft: Werft, jobConfig: JobCon
+     werft.phase(phases.DEPLOY, "Deploying Gitpod and Observability Stack");
+ 
+     const installMonitoringSatellite = (async () => {
++        if (!jobConfig.withObservability) {
++            werft.log(installerSlices.INSTALL, "skipping installation of Observability Stack");
++            return;
++        }
++
+         const sliceID = "Install monitoring satellite";
+         const monitoringSatelliteInstaller = new MonitoringSatelliteInstaller({
+             branch: jobConfig.observability.branch,
+diff --git a/.werft/jobs/build/installer/post-process.sh b/.werft/jobs/build/installer/post-process.sh
+index 40dd9e6b1..9ec9125aa 100755
+--- a/.werft/jobs/build/installer/post-process.sh
++++ b/.werft/jobs/build/installer/post-process.sh
+@@ -12,18 +12,17 @@ set -euo pipefail
+ NODE_POOL_INDEX=0
+ 
+ # These were previously using "findLastPort" etc. but in harvester-based preview environments they can be stable
+-REG_DAEMON_PORT="30000"
+-WS_DAEMON_PORT="10000"
++REG_DAEMON_PORT="31750"
+ 
+ # Required params
+ DEV_BRANCH=$1
+ SMITH_TOKEN=$2
+ 
+-if [[ -z ${REG_DAEMON_PORT} ]] || [[ -z ${WS_DAEMON_PORT} ]] || [[ -z ${DEV_BRANCH} ]] || [[ -z ${SMITH_TOKEN} ]]; then
+-   echo "One or more input params were invalid: ${REG_DAEMON_PORT} ${WS_DAEMON_PORT} ${DEV_BRANCH} ${SMITH_TOKEN}"
++if [[ -z ${REG_DAEMON_PORT} ]] || [[ -z ${DEV_BRANCH} ]] || [[ -z ${SMITH_TOKEN} ]]; then
++   echo "One or more input params were invalid: ${REG_DAEMON_PORT} ${DEV_BRANCH} ${SMITH_TOKEN}"
+    exit 1
+ else
+-   echo "Running with the following params: ${REG_DAEMON_PORT} ${WS_DAEMON_PORT} ${DEV_BRANCH}"
++   echo "Running with the following params: ${REG_DAEMON_PORT} ${DEV_BRANCH}"
+ fi
+ 
+ echo "Use node pool index $NODE_POOL_INDEX"
+@@ -79,11 +78,6 @@ while [ "$documentIndex" -le "$DOCS" ]; do
+       yq w -i k8s.yaml -d "$documentIndex" spec.template.spec.containers.[0].readinessProbe.periodSeconds 120
+       yq w -i k8s.yaml -d "$documentIndex" spec.template.spec.containers.[0].livenessProbe.initialDelaySeconds 15
+    fi
+-   if [[ "$SIZE" -ne "0" ]] && [[ "$NAME" == "ws-daemon" ]] && [[ "$KIND" == "DaemonSet" ]] ; then
+-      echo "setting $NAME to $WS_DAEMON_PORT"
+-      yq w -i k8s.yaml -d "$documentIndex" spec.template.spec.containers.[0].ports.[0].hostPort "$WS_DAEMON_PORT"
+-      yq w -i k8s.yaml -d "$documentIndex" spec.template.spec.containers.[0].ports.[0].containerPort "$WS_DAEMON_PORT"
+-   fi
+ 
+    # override details for registry-facade service
+    if [[ "registry-facade" == "$NAME" ]] && [[ "$KIND" == "Service" ]]; then
+@@ -205,8 +199,7 @@ while [ "$documentIndex" -le "$DOCS" ]; do
+          REGISTRY_FACADE_HOST="reg.$DEV_BRANCH.preview.gitpod-dev.com:$REG_DAEMON_PORT"
+       fi
+       yq r /tmp/"$NAME"overrides.yaml 'data.[config.json]' \
+-      | jq --arg REGISTRY_FACADE_HOST "$REGISTRY_FACADE_HOST" '.manager.registryFacadeHost = $REGISTRY_FACADE_HOST' \
+-      | jq ".manager.wsdaemon.port = $WS_DAEMON_PORT" > /tmp/"$NAME"-cm-overrides.json
++      | jq --arg REGISTRY_FACADE_HOST "$REGISTRY_FACADE_HOST" '.manager.registryFacadeHost = $REGISTRY_FACADE_HOST' > /tmp/"$NAME"-cm-overrides.json
+ 
+       touch /tmp/"$NAME"-cm-overrides.yaml
+       # write a yaml file with the json as a multiline string
+@@ -299,13 +292,6 @@ while [ "$documentIndex" -le "$DOCS" ]; do
+       yq w -i k8s.yaml -d "$documentIndex" "data.[default.yaml]" -- "$(< /tmp/"$NAME"overrides.yaml)"
+    fi
+ 
+-   # NetworkPolicy for ws-daemon
+-   if [[ "ws-daemon" == "$NAME" ]] && [[ "$KIND" == "NetworkPolicy" ]]; then
+-      WORK="overrides for $NAME $KIND"
+-      echo "$WORK"
+-      yq w -i k8s.yaml -d "$documentIndex" spec.ingress[0].ports[0].port "$WS_DAEMON_PORT"
+-   fi
+-
+    # NetworkPolicy for workspace-default
+    if [[ "workspace-default" == "$NAME" ]] && [[ "$KIND" == "NetworkPolicy" ]]; then
+       WORK="overrides for $NAME $KIND"
+@@ -313,7 +299,6 @@ while [ "$documentIndex" -le "$DOCS" ]; do
+       yq w -i k8s.yaml -d "$documentIndex" spec.egress[0].to[0].ipBlock.except[0] 169.254.169.254/30
+    fi
+ 
+-   # host ws-daemon on $WS_DAEMON_PORT
+    if [[ "ws-daemon" == "$NAME" ]] && [[ "$KIND" == "ConfigMap" ]]; then
+       WORK="overrides for $NAME $KIND"
+       echo "$WORK"
+@@ -321,15 +306,10 @@ while [ "$documentIndex" -le "$DOCS" ]; do
+       yq r k8s.yaml -d "$documentIndex" > /tmp/"$NAME"-"$KIND"-overrides.yaml
+       # Parse and update the JSON, and write it to a file
+       yq r /tmp/"$NAME"-"$KIND"-overrides.yaml 'data.[config.json]' \
+-      | jq ".service.address = $WS_DAEMON_PORT" \
+       | jq ".daemon.cpulimit.enabled = true" \
+       | jq ".daemon.cpulimit.totalBandwidth = \"12\"" \
+       | jq ".daemon.cpulimit.limit = \"2\"" \
+       | jq ".daemon.cpulimit.burstLimit = \"6\"" > /tmp/"$NAME"-"$KIND"-overrides.json
+-      # Give the port a colon prefix, ("5678" to ":5678")
+-      # jq would not have it, hence the usage of sed to do the transformation
+-      PORT_NUM_FORMAT_EXPR="s/\"address\": $WS_DAEMON_PORT/\"address\": \":$WS_DAEMON_PORT\"/"
+-      sed -i "$PORT_NUM_FORMAT_EXPR" /tmp/"$NAME"-"$KIND"-overrides.json
+       # write a yaml file with new json as a multiline string
+       touch /tmp/"$NAME"-"$KIND"-data-overrides.yaml
+       yq w -i /tmp/"$NAME"-"$KIND"-data-overrides.yaml "data.[config.json]" -- "$(< /tmp/"$NAME"-"$KIND"-overrides.json)"
+@@ -365,13 +345,6 @@ while [ "$documentIndex" -le "$DOCS" ]; do
+       yq w -i k8s.yaml -d "$documentIndex" spec.suspend "true"
+    fi
+ 
+-   # change registry-facade PodSecurityPolicy
+-   NAMESPACE=$(kubens -c)
+-   if [[ "$NAMESPACE-ns-registry-facade" == "$NAME" ]] && [[ "$KIND" == "PodSecurityPolicy" ]]; then
+-      yq w -i k8s.yaml -d "$documentIndex" spec.hostPorts[0].min "$REG_DAEMON_PORT"
+-      yq w -i k8s.yaml -d "$documentIndex" spec.hostPorts[0].max "$REG_DAEMON_PORT"
+-   fi
+-
+    # Uncomment to change or remove resources from the configmap which can be used to uninstall Gitpod
+    # There are a couple use cases where you may want to do this:
+    # 1. We don't want to uninstall a shared resource that is needed by other preview env namespaces
+diff --git a/components/ws-manager/pkg/manager/manager.go b/components/ws-manager/pkg/manager/manager.go
+index 70c69a6a0..93f7c2436 100644
+--- a/components/ws-manager/pkg/manager/manager.go
++++ b/components/ws-manager/pkg/manager/manager.go
+@@ -10,6 +10,7 @@ import (
+ 	"encoding/base64"
+ 	"encoding/json"
+ 	"fmt"
++	"net"
+ 	"net/http"
+ 	"strings"
+ 	"sync"
+@@ -1524,9 +1525,9 @@ func (m *Manager) connectToWorkspaceDaemon(ctx context.Context, wso workspaceObj
+ 	}
+ 
+ 	// find the ws-daemon on this node
+-	var hostIP string
++	var podIP string
+ 
+-	waitErr := wait.PollImmediate(1*time.Second, 30*time.Second, func() (bool, error) {
++	waitErr := wait.PollImmediate(1*time.Second, 1*time.Minute, func() (bool, error) {
+ 		var podList corev1.PodList
+ 		err := m.Clientset.List(ctx, &podList,
+ 			&client.ListOptions{
+@@ -1558,11 +1559,16 @@ func (m *Manager) connectToWorkspaceDaemon(ctx context.Context, wso workspaceObj
+ 				return false, nil
+ 			}
+ 
+-			hostIP = pod.Status.PodIP
++			err = waitForTCPPortToBeReachable(pod.Status.PodIP, "8080", 5*time.Second)
++			if err != nil {
++				return false, nil
++			}
++
++			podIP = pod.Status.PodIP
+ 			break
+ 		}
+ 
+-		if hostIP == "" {
++		if podIP == "" {
+ 			return false, nil
+ 		}
+ 
+@@ -1575,10 +1581,10 @@ func (m *Manager) connectToWorkspaceDaemon(ctx context.Context, wso workspaceObj
+ 		return nil, xerrors.Errorf("cannot connect to Gitpod ws-daemon")
+ 	}
+ 
+-	if hostIP == "" {
++	if podIP == "" {
+ 		return nil, xerrors.Errorf("no running ws-daemon pod found")
+ 	}
+-	conn, err := m.wsdaemonPool.Get(hostIP)
++	conn, err := m.wsdaemonPool.Get(podIP)
+ 	if err != nil {
+ 		return nil, xerrors.Errorf("unexpected error creating connection to Gitpod ws-daemon: %w", err)
+ 	}
+@@ -1586,6 +1592,33 @@ func (m *Manager) connectToWorkspaceDaemon(ctx context.Context, wso workspaceObj
+ 	return wsdaemon.NewWorkspaceContentServiceClient(conn), nil
+ }
+ 
++func waitForTCPPortToBeReachable(host string, port string, timeout time.Duration) error {
++	ctx, cancel := context.WithTimeout(context.Background(), timeout)
++	defer cancel()
++
++	ticker := time.NewTicker(1 * time.Second)
++	defer ticker.Stop()
++
++	for {
++		select {
++		case <-ctx.Done():
++			return xerrors.Errorf("port %v on host %v never reachable", port, host)
++		case <-ticker.C:
++			conn, err := net.DialTimeout("tcp", net.JoinHostPort(host, port), timeout)
++			if err != nil {
++				continue
++			}
++
++			if conn != nil {
++				conn.Close()
++				return nil
++			}
++
++			continue
++		}
++	}
++}
++
+ func (m *Manager) createWorkspaceSnapshotFromPVC(ctx context.Context, pvcName string, pvcVolumeSnapshotName string, pvcVolumeSnapshotClassName string, workspaceID string, labels map[string]string) error {
+ 	// create snapshot object out of PVC
+ 	volumeSnapshot := &volumesnapshotv1.VolumeSnapshot{
+diff --git a/dev/preview/infrastructure/modules/gce/variables.tf b/dev/preview/infrastructure/modules/gce/variables.tf
+index c40b6b30a..6487703cb 100644
+--- a/dev/preview/infrastructure/modules/gce/variables.tf
++++ b/dev/preview/infrastructure/modules/gce/variables.tf
+@@ -44,7 +44,7 @@ variable "harvester_ingress_ip" {
+ variable "vm_image" {
+   type        = string
+   description = "The VM image"
+-  default     = "gitpod-k3s-202209251218"
++  default     = "gitpod-k3s-202302132222"
+ }
+ 
+ variable "cert_issuer" {
+diff --git a/dev/preview/infrastructure/modules/gce/vm.tf b/dev/preview/infrastructure/modules/gce/vm.tf
+index 4dfd0e9d6..5b069c35a 100644
+--- a/dev/preview/infrastructure/modules/gce/vm.tf
++++ b/dev/preview/infrastructure/modules/gce/vm.tf
+@@ -13,6 +13,7 @@ resource "google_compute_instance" "default" {
+   boot_disk {
+     initialize_params {
+       image = "projects/workspace-clusters/global/images/${var.vm_image}"
++      type  = "pd-ssd"
+     }
+   }
+ 
+diff --git a/install/installer/cmd/testdata/render/agent-smith/output.golden b/install/installer/cmd/testdata/render/agent-smith/output.golden
+index 573b07b0b..ee5f5b1e0 100644
+--- a/install/installer/cmd/testdata/render/agent-smith/output.golden
++++ b/install/installer/cmd/testdata/render/agent-smith/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -3211,16 +3175,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -5783,7 +5737,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -7669,15 +7623,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -7737,7 +7694,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -8000,7 +7961,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8215,7 +8175,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -10706,7 +10665,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: a9cdd3ea5f6917ed937156fdd24eeb10a2bfc38d17438dcba87e774e5f92945e
++        gitpod.io/checksum_config: 6bccb0af0666fedca427bf7e904bb6ad0760871f8272d37c095015b1917a8a3b
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/cmd/testdata/render/aws-setup/output.golden b/install/installer/cmd/testdata/render/aws-setup/output.golden
+index 917792087..18c7e4d64 100644
+--- a/install/installer/cmd/testdata/render/aws-setup/output.golden
++++ b/install/installer/cmd/testdata/render/aws-setup/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -2824,16 +2788,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -5128,7 +5082,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -6837,15 +6791,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -6905,7 +6862,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -7168,7 +7129,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -7383,7 +7343,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -9519,7 +9478,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 0ab9d7760143bf8290d3e8a496ea2ffc81e6e4ea6cea438f2857121a893867da
++        gitpod.io/checksum_config: b7da41879471e13b5f45ca5d34265974ed68c3c77c93f8d9b6c0d188ac9724e5
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/cmd/testdata/render/custom-pull-repository/output.golden b/install/installer/cmd/testdata/render/custom-pull-repository/output.golden
+index c2fb703ee..febe81ee9 100644
+--- a/install/installer/cmd/testdata/render/custom-pull-repository/output.golden
++++ b/install/installer/cmd/testdata/render/custom-pull-repository/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -3028,16 +2992,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -5600,7 +5554,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -7486,15 +7440,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -7554,7 +7511,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -7817,7 +7778,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8032,7 +7992,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -10523,7 +10482,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: a9cdd3ea5f6917ed937156fdd24eeb10a2bfc38d17438dcba87e774e5f92945e
++        gitpod.io/checksum_config: 6bccb0af0666fedca427bf7e904bb6ad0760871f8272d37c095015b1917a8a3b
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/cmd/testdata/render/customization/output.golden b/install/installer/cmd/testdata/render/customization/output.golden
+index 7e79229e3..20e199d73 100644
+--- a/install/installer/cmd/testdata/render/customization/output.golden
++++ b/install/installer/cmd/testdata/render/customization/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -3502,16 +3466,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -6202,7 +6156,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -8170,15 +8124,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -8248,7 +8205,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -8539,7 +8500,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8763,7 +8723,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -11376,7 +11335,7 @@ spec:
+     metadata:
+       annotations:
+         gitpod.io: hello
+-        gitpod.io/checksum_config: 6b983353d1c4c0423d1f5df73a747cc6c897e1cfc515bbf0c5539110c172618b
++        gitpod.io/checksum_config: 6ea687679b10a3046a6840985edd56495c512b0d5bf4b5a9f85d46f41de49036
+         hello: world
+       creationTimestamp: null
+       labels:
+diff --git a/install/installer/cmd/testdata/render/external-registry/output.golden b/install/installer/cmd/testdata/render/external-registry/output.golden
+index f849f3ec6..7e49cbd8e 100644
+--- a/install/installer/cmd/testdata/render/external-registry/output.golden
++++ b/install/installer/cmd/testdata/render/external-registry/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -2922,16 +2886,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -5380,7 +5334,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -7206,15 +7160,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -7274,7 +7231,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -7537,7 +7498,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -7752,7 +7712,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -10146,7 +10105,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: a9cdd3ea5f6917ed937156fdd24eeb10a2bfc38d17438dcba87e774e5f92945e
++        gitpod.io/checksum_config: 6bccb0af0666fedca427bf7e904bb6ad0760871f8272d37c095015b1917a8a3b
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/cmd/testdata/render/gcp-setup/output.golden b/install/installer/cmd/testdata/render/gcp-setup/output.golden
+index 9921a25db..6bbf1d435 100644
+--- a/install/installer/cmd/testdata/render/gcp-setup/output.golden
++++ b/install/installer/cmd/testdata/render/gcp-setup/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -2919,16 +2883,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -5208,7 +5162,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -6996,15 +6950,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -7064,7 +7021,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -7327,7 +7288,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -7542,7 +7502,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -9794,7 +9753,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: cb9fc88be6ff1bc54f6c0ef99de1bdbd6df5916cdb00b455677da2db540f116e
++        gitpod.io/checksum_config: e2866e24a01f026d164c591d5c649a0a5589feea38a0d90d785d1167483cd02e
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/cmd/testdata/render/http-proxy/output.golden b/install/installer/cmd/testdata/render/http-proxy/output.golden
+index 5261ea2bf..e0b646099 100644
+--- a/install/installer/cmd/testdata/render/http-proxy/output.golden
++++ b/install/installer/cmd/testdata/render/http-proxy/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -3031,16 +2995,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -5603,7 +5557,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -7489,15 +7443,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -7557,7 +7514,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -7940,7 +7901,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8316,7 +8276,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -11850,7 +11809,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: a9cdd3ea5f6917ed937156fdd24eeb10a2bfc38d17438dcba87e774e5f92945e
++        gitpod.io/checksum_config: 6bccb0af0666fedca427bf7e904bb6ad0760871f8272d37c095015b1917a8a3b
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/cmd/testdata/render/ide-config/output.golden b/install/installer/cmd/testdata/render/ide-config/output.golden
+index 23fa5a21e..b5d241dc0 100644
+--- a/install/installer/cmd/testdata/render/ide-config/output.golden
++++ b/install/installer/cmd/testdata/render/ide-config/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -3044,16 +3008,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -5616,7 +5570,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -7506,15 +7460,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -7574,7 +7531,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -7837,7 +7798,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8052,7 +8012,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -10545,7 +10504,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: a9cdd3ea5f6917ed937156fdd24eeb10a2bfc38d17438dcba87e774e5f92945e
++        gitpod.io/checksum_config: 6bccb0af0666fedca427bf7e904bb6ad0760871f8272d37c095015b1917a8a3b
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/cmd/testdata/render/kind-workspace/output.golden b/install/installer/cmd/testdata/render/kind-workspace/output.golden
+index 18b3aad29..4f5cd0435 100644
+--- a/install/installer/cmd/testdata/render/kind-workspace/output.golden
++++ b/install/installer/cmd/testdata/render/kind-workspace/output.golden
+@@ -137,42 +137,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -1251,16 +1215,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -2017,7 +1971,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -2829,15 +2783,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -2853,7 +2810,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -3116,7 +3077,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -3331,7 +3291,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -3788,7 +3747,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 648f63162a7f659e2867d6bdbbc3d5865aab8e614da867bd0ca5d157a011ddf6
++        gitpod.io/checksum_config: 220f4f84d031d4a23cf0177b3e94a85a25707d132a8313a51602a3d8b9255414
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/cmd/testdata/render/message-bus-password/output.golden b/install/installer/cmd/testdata/render/message-bus-password/output.golden
+index 81af8f447..12c92ddcb 100644
+--- a/install/installer/cmd/testdata/render/message-bus-password/output.golden
++++ b/install/installer/cmd/testdata/render/message-bus-password/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -3031,16 +2995,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -5603,7 +5557,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -7489,15 +7443,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -7557,7 +7514,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -7820,7 +7781,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8035,7 +7995,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -10526,7 +10485,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: a9cdd3ea5f6917ed937156fdd24eeb10a2bfc38d17438dcba87e774e5f92945e
++        gitpod.io/checksum_config: 6bccb0af0666fedca427bf7e904bb6ad0760871f8272d37c095015b1917a8a3b
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/cmd/testdata/render/minimal/output.golden b/install/installer/cmd/testdata/render/minimal/output.golden
+index e39cbb5b8..d2b186e72 100644
+--- a/install/installer/cmd/testdata/render/minimal/output.golden
++++ b/install/installer/cmd/testdata/render/minimal/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -3028,16 +2992,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -5600,7 +5554,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -7486,15 +7440,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -7554,7 +7511,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -7817,7 +7778,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8032,7 +7992,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -10523,7 +10482,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: a9cdd3ea5f6917ed937156fdd24eeb10a2bfc38d17438dcba87e774e5f92945e
++        gitpod.io/checksum_config: 6bccb0af0666fedca427bf7e904bb6ad0760871f8272d37c095015b1917a8a3b
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/cmd/testdata/render/overrides-inline/output.golden b/install/installer/cmd/testdata/render/overrides-inline/output.golden
+index 837610e6d..4fc33145b 100644
+--- a/install/installer/cmd/testdata/render/overrides-inline/output.golden
++++ b/install/installer/cmd/testdata/render/overrides-inline/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -3026,16 +2990,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -5598,7 +5552,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -7487,15 +7441,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -7555,7 +7512,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -7827,7 +7788,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8042,7 +8002,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -10533,7 +10492,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: a9cdd3ea5f6917ed937156fdd24eeb10a2bfc38d17438dcba87e774e5f92945e
++        gitpod.io/checksum_config: 6bccb0af0666fedca427bf7e904bb6ad0760871f8272d37c095015b1917a8a3b
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/cmd/testdata/render/pod-config/output.golden b/install/installer/cmd/testdata/render/pod-config/output.golden
+index 4d4a78f47..cd90d6d89 100644
+--- a/install/installer/cmd/testdata/render/pod-config/output.golden
++++ b/install/installer/cmd/testdata/render/pod-config/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -3035,16 +2999,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -5607,7 +5561,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -7493,15 +7447,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -7561,7 +7518,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -7824,7 +7785,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8039,7 +7999,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -10530,7 +10489,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: a9cdd3ea5f6917ed937156fdd24eeb10a2bfc38d17438dcba87e774e5f92945e
++        gitpod.io/checksum_config: 6bccb0af0666fedca427bf7e904bb6ad0760871f8272d37c095015b1917a8a3b
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/cmd/testdata/render/shortname/output.golden b/install/installer/cmd/testdata/render/shortname/output.golden
+index 9c1810333..5e37c607b 100644
+--- a/install/installer/cmd/testdata/render/shortname/output.golden
++++ b/install/installer/cmd/testdata/render/shortname/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -3028,16 +2992,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -5600,7 +5554,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws-dev.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -7486,15 +7440,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -7554,7 +7511,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -7817,7 +7778,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8032,7 +7992,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -10523,7 +10482,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 2a4b67934129e4c19a1a2570378a2a1de9cdedb8e565e0f28b5416cd3c3c2ebb
++        gitpod.io/checksum_config: b86c15b7ccf53d8f812d381760022c16e8bf00aa5385b5cf2acd870f0bc901db
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/cmd/testdata/render/statefulset-customization/output.golden b/install/installer/cmd/testdata/render/statefulset-customization/output.golden
+index 52ae886e0..ec09c329d 100644
+--- a/install/installer/cmd/testdata/render/statefulset-customization/output.golden
++++ b/install/installer/cmd/testdata/render/statefulset-customization/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -3040,16 +3004,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -5612,7 +5566,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -7498,15 +7452,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -7566,7 +7523,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -7829,7 +7790,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8044,7 +8004,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -10535,7 +10494,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: a9cdd3ea5f6917ed937156fdd24eeb10a2bfc38d17438dcba87e774e5f92945e
++        gitpod.io/checksum_config: 6bccb0af0666fedca427bf7e904bb6ad0760871f8272d37c095015b1917a8a3b
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/cmd/testdata/render/telemetry/output.golden b/install/installer/cmd/testdata/render/telemetry/output.golden
+index 7d8c5d466..8dbb3a5b4 100644
+--- a/install/installer/cmd/testdata/render/telemetry/output.golden
++++ b/install/installer/cmd/testdata/render/telemetry/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -3031,16 +2995,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -5603,7 +5557,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -7489,15 +7443,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -7557,7 +7514,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -7820,7 +7781,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8035,7 +7995,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -10526,7 +10485,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: a9cdd3ea5f6917ed937156fdd24eeb10a2bfc38d17438dcba87e774e5f92945e
++        gitpod.io/checksum_config: 6bccb0af0666fedca427bf7e904bb6ad0760871f8272d37c095015b1917a8a3b
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/cmd/testdata/render/use-pod-security-policies/output.golden b/install/installer/cmd/testdata/render/use-pod-security-policies/output.golden
+index 75b88d246..9b17290e9 100644
+--- a/install/installer/cmd/testdata/render/use-pod-security-policies/output.golden
++++ b/install/installer/cmd/testdata/render/use-pod-security-policies/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -3352,16 +3316,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -5933,7 +5887,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -7930,15 +7884,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -7998,7 +7955,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -8261,7 +8222,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8476,7 +8436,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -10967,7 +10926,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: a9cdd3ea5f6917ed937156fdd24eeb10a2bfc38d17438dcba87e774e5f92945e
++        gitpod.io/checksum_config: 6bccb0af0666fedca427bf7e904bb6ad0760871f8272d37c095015b1917a8a3b
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/cmd/testdata/render/vsxproxy-pvc/output.golden b/install/installer/cmd/testdata/render/vsxproxy-pvc/output.golden
+index 0aeb57cfb..2a7d15c8b 100644
+--- a/install/installer/cmd/testdata/render/vsxproxy-pvc/output.golden
++++ b/install/installer/cmd/testdata/render/vsxproxy-pvc/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -3031,16 +2995,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -5603,7 +5557,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -7489,15 +7443,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -7557,7 +7514,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -7820,7 +7781,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8035,7 +7995,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -10514,7 +10473,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: a9cdd3ea5f6917ed937156fdd24eeb10a2bfc38d17438dcba87e774e5f92945e
++        gitpod.io/checksum_config: 6bccb0af0666fedca427bf7e904bb6ad0760871f8272d37c095015b1917a8a3b
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/cmd/testdata/render/workspace-requests-limits/output.golden b/install/installer/cmd/testdata/render/workspace-requests-limits/output.golden
+index fb8ff7e40..26f06e6a2 100644
+--- a/install/installer/cmd/testdata/render/workspace-requests-limits/output.golden
++++ b/install/installer/cmd/testdata/render/workspace-requests-limits/output.golden
+@@ -459,42 +459,6 @@ spec:
+     - Ingress
+     - Egress
+ 
+----
+-# networking.k8s.io/v1/NetworkPolicy ws-daemon
+-apiVersion: networking.k8s.io/v1
+-kind: NetworkPolicy
+-metadata:
+-  creationTimestamp: null
+-  labels:
+-    app: gitpod
+-    component: ws-daemon
+-  name: ws-daemon
+-  namespace: default
+-spec:
+-  ingress:
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: gitpod
+-              component: ws-manager
+-      ports:
+-        - port: 8080
+-          protocol: TCP
+-    - from:
+-        - podSelector:
+-            matchLabels:
+-              app: prometheus
+-              component: server
+-      ports:
+-        - port: 9500
+-          protocol: TCP
+-  podSelector:
+-    matchLabels:
+-      app: gitpod
+-      component: ws-daemon
+-  policyTypes:
+-    - Ingress
+-
+ ---
+ # networking.k8s.io/v1/NetworkPolicy ws-manager
+ apiVersion: networking.k8s.io/v1
+@@ -3031,16 +2995,6 @@ data:
+       name: ws-daemon
+       namespace: default
+     ---
+-    apiVersion: networking.k8s.io/v1
+-    kind: NetworkPolicy
+-    metadata:
+-      creationTimestamp: null
+-      labels:
+-        app: gitpod
+-        component: ws-daemon
+-      name: ws-daemon
+-      namespace: default
+-    ---
+     apiVersion: rbac.authorization.k8s.io/v1
+     kind: ClusterRoleBinding
+     metadata:
+@@ -5603,7 +5557,7 @@ data:
+             "key": "/ws-daemon-tls-certs/tls.key"
+           }
+         },
+-        "registryFacadeHost": "reg.gitpod.example.com:20000",
++        "registryFacadeHost": "reg.gitpod.example.com:31750",
+         "workspaceClusterHost": "ws.gitpod.example.com",
+         "workspaceClass": {
+           "default": {
+@@ -7489,15 +7443,18 @@ metadata:
+   name: registry-facade
+   namespace: default
+ spec:
++  externalTrafficPolicy: Local
++  internalTrafficPolicy: Local
+   ports:
+   - name: registry
+-    port: 20000
++    nodePort: 31750
++    port: 31750
+     protocol: TCP
+     targetPort: 32223
+   selector:
+     app: gitpod
+     component: registry-facade
+-  type: ClusterIP
++  type: NodePort
+ status:
+   loadBalancer: {}
+ ---
+@@ -7557,7 +7514,11 @@ metadata:
+   name: ws-daemon
+   namespace: default
+ spec:
+-  clusterIP: None
++  ports:
++  - name: rpc
++    port: 8080
++    protocol: TCP
++    targetPort: 8080
+   selector:
+     app: gitpod
+     component: ws-daemon
+@@ -7820,7 +7781,6 @@ spec:
+         name: registry-facade
+         ports:
+         - containerPort: 32223
+-          hostPort: 20000
+           name: registry
+         readinessProbe:
+           failureThreshold: 5
+@@ -8035,7 +7995,6 @@ spec:
+         name: ws-daemon
+         ports:
+         - containerPort: 8080
+-          hostPort: 8080
+           name: rpc
+         readinessProbe:
+           failureThreshold: 5
+@@ -10526,7 +10485,7 @@ spec:
+   template:
+     metadata:
+       annotations:
+-        gitpod.io/checksum_config: 0edfc50e6da7944f0140cfedf0f6e34cf78fd0ad9c8195e9415eb7679227e3a2
++        gitpod.io/checksum_config: 903ddd6b5567f5831d07f643a85942f7c7891ec40745b0aeb508a7c115389511
+       creationTimestamp: null
+       labels:
+         app: gitpod
+diff --git a/install/installer/pkg/common/constants.go b/install/installer/pkg/common/constants.go
+index 99370009d..3a61ff8e2 100644
+--- a/install/installer/pkg/common/constants.go
++++ b/install/installer/pkg/common/constants.go
+@@ -35,7 +35,7 @@ const (
+ 	RegistryAuthSecret          = "builtin-registry-auth"
+ 	RegistryTLSCertSecret       = "builtin-registry-certs"
+ 	RegistryFacadeComponent     = "registry-facade"
+-	RegistryFacadeServicePort   = 20000
++	RegistryFacadeServicePort   = 31750
+ 	RegistryFacadeTLSCertSecret = "builtin-registry-facade-cert"
+ 	ServerComponent             = "server"
+ 	SlowServerComponent         = "slow-server"
+diff --git a/install/installer/pkg/components/registry-facade/daemonset.go b/install/installer/pkg/components/registry-facade/daemonset.go
+index 5f2e0dd92..fb6b5e1ee 100644
+--- a/install/installer/pkg/components/registry-facade/daemonset.go
++++ b/install/installer/pkg/components/registry-facade/daemonset.go
+@@ -247,7 +247,6 @@ func daemonset(ctx *common.RenderContext) ([]runtime.Object, error) {
+ 						Ports: []corev1.ContainerPort{{
+ 							Name:          ContainerPortName,
+ 							ContainerPort: ContainerPort,
+-							HostPort:      ServicePort,
+ 						}},
+ 						SecurityContext: &corev1.SecurityContext{
+ 							Privileged:               pointer.Bool(false),
+diff --git a/install/installer/pkg/components/registry-facade/objects.go b/install/installer/pkg/components/registry-facade/objects.go
+index 7078f80e4..6072681dd 100644
+--- a/install/installer/pkg/components/registry-facade/objects.go
++++ b/install/installer/pkg/components/registry-facade/objects.go
+@@ -5,6 +5,8 @@
+ package registryfacade
+ 
+ import (
++	corev1 "k8s.io/api/core/v1"
++
+ 	"github.com/gitpod-io/gitpod/installer/pkg/common"
+ )
+ 
+@@ -22,6 +24,14 @@ var Objects = common.CompositeRenderFunc(
+ 			ContainerPort: ContainerPort,
+ 			ServicePort:   ServicePort,
+ 		},
++	}, func(svc *corev1.Service) {
++		svc.Spec.Type = corev1.ServiceTypeNodePort
++		svc.Spec.ExternalTrafficPolicy = corev1.ServiceExternalTrafficPolicyTypeLocal
++
++		clusterInternalTrafficPolicy := corev1.ServiceInternalTrafficPolicyLocal
++		svc.Spec.InternalTrafficPolicy = &clusterInternalTrafficPolicy
++
++		svc.Spec.Ports[0].NodePort = common.RegistryFacadeServicePort
+ 	}),
+ 	common.DefaultServiceAccount(Component),
+ )
+diff --git a/install/installer/pkg/components/ws-daemon/daemonset.go b/install/installer/pkg/components/ws-daemon/daemonset.go
+index 82c06b1e5..ddc46e5d9 100644
+--- a/install/installer/pkg/components/ws-daemon/daemonset.go
++++ b/install/installer/pkg/components/ws-daemon/daemonset.go
+@@ -224,7 +224,6 @@ func daemonset(ctx *common.RenderContext) ([]runtime.Object, error) {
+ 				},
+ 				Ports: []corev1.ContainerPort{{
+ 					Name:          "rpc",
+-					HostPort:      ServicePort,
+ 					ContainerPort: ServicePort,
+ 				}},
+ 				Env: common.CustomizeEnvvar(ctx, Component, common.MergeEnv(
+diff --git a/install/installer/pkg/components/ws-daemon/networkpolicy.go b/install/installer/pkg/components/ws-daemon/networkpolicy.go
+deleted file mode 100644
+index 1aa80a02b..000000000
+--- a/install/installer/pkg/components/ws-daemon/networkpolicy.go
++++ /dev/null
+@@ -1,48 +0,0 @@
+-// Copyright (c) 2021 Gitpod GmbH. All rights reserved.
+-// Licensed under the GNU Affero General Public License (AGPL).
+-// See License.AGPL.txt in the project root for license information.
+-
+-package wsdaemon
+-
+-import (
+-	"github.com/gitpod-io/gitpod/installer/pkg/common"
+-	networkingv1 "k8s.io/api/networking/v1"
+-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+-	"k8s.io/apimachinery/pkg/runtime"
+-	"k8s.io/apimachinery/pkg/util/intstr"
+-)
+-
+-func networkpolicy(ctx *common.RenderContext) ([]runtime.Object, error) {
+-	labels := common.DefaultLabels(Component)
+-
+-	return []runtime.Object{
+-		&networkingv1.NetworkPolicy{
+-			TypeMeta: common.TypeMetaNetworkPolicy,
+-			ObjectMeta: metav1.ObjectMeta{
+-				Name:      Component,
+-				Namespace: ctx.Namespace,
+-				Labels:    labels,
+-			},
+-			Spec: networkingv1.NetworkPolicySpec{
+-				PodSelector: metav1.LabelSelector{MatchLabels: labels},
+-				PolicyTypes: []networkingv1.PolicyType{"Ingress"},
+-				Ingress: []networkingv1.NetworkPolicyIngressRule{
+-					{
+-						Ports: []networkingv1.NetworkPolicyPort{
+-							{
+-								Protocol: common.TCPProtocol,
+-								Port:     &intstr.IntOrString{IntVal: ServicePort},
+-							},
+-						},
+-						From: []networkingv1.NetworkPolicyPeer{
+-							{
+-								PodSelector: &metav1.LabelSelector{MatchLabels: common.DefaultLabels(common.WSManagerComponent)},
+-							},
+-						},
+-					},
+-					common.PrometheusIngressRule,
+-				},
+-			},
+-		},
+-	}, nil
+-}
+diff --git a/install/installer/pkg/components/ws-daemon/objects.go b/install/installer/pkg/components/ws-daemon/objects.go
+index e17289606..b2113e8ac 100644
+--- a/install/installer/pkg/components/ws-daemon/objects.go
++++ b/install/installer/pkg/components/ws-daemon/objects.go
+@@ -6,7 +6,6 @@ package wsdaemon
+ 
+ import (
+ 	"github.com/gitpod-io/gitpod/installer/pkg/common"
+-	corev1 "k8s.io/api/core/v1"
+ )
+ 
+ var Objects = common.CompositeRenderFunc(
+@@ -14,10 +13,13 @@ var Objects = common.CompositeRenderFunc(
+ 	configmap,
+ 	common.DefaultServiceAccount(Component),
+ 	daemonset,
+-	networkpolicy,
+ 	rolebinding,
+-	common.GenerateService(Component, nil, func(service *corev1.Service) {
+-		service.Spec.ClusterIP = "None"
++	common.GenerateService(Component, []common.ServicePort{
++		{
++			Name:          "rpc",
++			ContainerPort: ServicePort,
++			ServicePort:   ServicePort,
++		},
+ 	}),
+ 	tlssecret,
+ )
+diff --git a/install/installer/pkg/components/ws-manager/configmap.go b/install/installer/pkg/components/ws-manager/configmap.go
+index 46ea967e3..074318d10 100644
+--- a/install/installer/pkg/components/ws-manager/configmap.go
++++ b/install/installer/pkg/components/ws-manager/configmap.go
+@@ -189,7 +189,7 @@ func configmap(ctx *common.RenderContext) ([]runtime.Object, error) {
+ 			SchedulerName:  schedulerName,
+ 			SeccompProfile: fmt.Sprintf("workspace_default_%s.json", ctx.VersionManifest.Version),
+ 			WorkspaceDaemon: config.WorkspaceDaemonConfiguration{
+-				Port: 8080,
++				Port: wsdaemon.ServicePort,
+ 				TLS: struct {
+ 					Authority   string `json:"ca"`
+ 					Certificate string `json:"crt"`

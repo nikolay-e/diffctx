@@ -1,0 +1,46 @@
+repo: sentry
+base_commit: 050d10d9cba5f9660caa85e96ac1a4a98e6b8a9d
+commit: 6d218089433b8595d300d9215a651ee3da26f046
+patch_stored: true
+gold:
+- path: bin/split-silo-database
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: devenv/sync.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/runner/commands/devserver.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/runner/commands/devservices.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/testutils/pytest/relay.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/testutils/skips.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: config/clickhouse/dist_config.xml
+- path: config/clickhouse/loc_config.xml
+- path: config/relay/config.yml
+- path: config/relay/credentials.json
+- path: config/symbolicator/config.yml
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Removes the legacy devservices implementation: devservices.py loses 842 of ~846 lines (a near-total
+  in-file rewrite, not a whole-file delete, so it genuinely needs a changed-fragment view), devenv/sync.py
+  drops the USE_OLD_DEVSERVICES branch entirely, and several now-obsolete config files (ClickHouse XML,
+  relay config/credentials, symbolicator config) are correctly deletion-only. The smallest diff among
+  the 4 sentry commits here (17 files, 38/1264 lines) and still hung with zero output, reinforcing that
+  file count is not the hang predictor — this one is dominated by one large in-file deletion plus several
+  full-file deletions.'

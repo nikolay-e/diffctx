@@ -1,0 +1,76 @@
+repo: gitpod
+base_commit: e4e05143e268122b145b354a83f92ddf14acc6cf
+commit: da4cafd5e53a40b09b9550061da41286c51b7cae
+patch_stored: true
+gold:
+- path: components/gitpod-cli/cmd/idp-login-aws.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-cli/cmd/idp-login-vault.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-cli/cmd/idp-login.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-cli/cmd/idp-token.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-cli/cmd/idp.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-protocol/go/gitpod-service.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-protocol/go/mock.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api-server/pkg/apiv1/identityprovider.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api-server/pkg/apiv1/identityprovider_test.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api-server/pkg/identityprovider/cache.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api-server/pkg/identityprovider/cache_test.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api-server/pkg/identityprovider/idp.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api-server/pkg/identityprovider/idp_test.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api-server/pkg/server/server.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/gitpod/experimental/v1/identityprovider.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'A substantial new feature (OIDC Identity Provider: new cache, idp core logic, 4 new CLI subcommands,
+  generated protobuf/connect bindings, 15 golden testdata files) produces empty ctx.md — total unbounded
+  hang on a 57-file diff with ~2440 insertions. No signal at all reaches the reader, worse than over-selection
+  since a human/LLM gets nothing to reason about. The mix of real logic files plus generated .pb.go/.connect.go/golden
+  files suggests the selector may be choking while trying to rank/parse the large generated Go/TS protobuf
+  outputs.'

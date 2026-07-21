@@ -1,0 +1,3993 @@
+From dc4fb35aff0ceebecee769af2d88891d59915a5f Mon Sep 17 00:00:00 2001
+From: "Armen Zambrano G." <44410+armenzg@users.noreply.github.com>
+Date: Mon, 19 Jan 2026 08:32:56 -0500
+Subject: [PATCH] chore(overwatch): Remove Overwatch forwarding infrastructure
+ (#106447)
+
+This PR removes all Overwatch-related forwarding infrastructure from
+Sentry, simplifying the code review webhook flow to send events directly
+to Seer.
+
+**Key Changes:**
+
+- **Removed modules**: Deleted `src/sentry/overwatch/` and
+`src/sentry/overwatch_webhooks/` directories entirely
+- **Removed RPC endpoints**: Deleted 4 internal RPC endpoints
+(`/internal/prevent/pr-review/*` and
+`/internal/code-review/repo-settings/`)
+- **Removed RPC service**: Deleted `OverwatchConsentService` and related
+consent checking logic
+- **Simplified webhook routing**: GitHub webhooks (`pull_request`,
+`issue_comment`) now flow directly to Seer without conditional routing
+- **Removed configuration**: Cleaned up Overwatch-specific settings
+(`OVERWATCH_RPC_SHARED_SECRET`, `OVERWATCH_REGION_URLS`, webhook
+forwarding options)
+- **Updated metrics**: Changed `overwatch.code_review.*` metric to
+`seer.code_review.error.*`
+- **Removed organization deletion hooks**: No longer notifies Overwatch
+when organizations are deleted
+
+The webhook flow is now simpler and more direct, with no intermediate
+Overwatch layer.
+
+---------
+
+Co-authored-by: getsantry[bot] <66042841+getsantry[bot]@users.noreply.github.com>
+---
+ .github/CODEOWNERS                            |    2 -
+ pyproject.toml                                |    1 -
+ src/sentry/api/urls.py                        |   27 -
+ src/sentry/conf/server.py                     |   14 +-
+ src/sentry/deletions/defaults/organization.py |   15 -
+ src/sentry/deletions/tasks/overwatch.py       |  141 ---
+ .../middleware/integrations/parsers/github.py |    8 +-
+ src/sentry/options/defaults.py                |   12 -
+ src/sentry/overwatch/__init__.py              |    0
+ src/sentry/overwatch/endpoints/__init__.py    |    0
+ .../overwatch/endpoints/overwatch_rpc.py      |  381 ------
+ .../overwatch_consent/impl.py                 |   50 -
+ .../overwatch_consent/model.py                |   15 -
+ .../overwatch_consent/service.py              |   41 -
+ src/sentry/overwatch_webhooks/types.py        |   50 -
+ .../overwatch_webhooks/webhook_forwarder.py   |  232 ----
+ .../overwatch_webhooks/webhook_publisher.py   |   52 -
+ src/sentry/seer/code_review/billing.py        |    2 +-
+ src/sentry/seer/code_review/utils.py          |   73 --
+ .../seer/code_review/webhooks/config.py       |    7 -
+ .../code_review/webhooks/issue_comment.py     |   45 +-
+ .../seer/code_review/webhooks/pull_request.py |   21 +-
+ .../utils/api/knownSentryApiUrls.generated.ts |    4 -
+ .../sentry/deletions/tasks/test_overwatch.py  |  293 -----
+ tests/sentry/deletions/test_organization.py   |   34 -
+ .../integrations/parsers/test_github.py       |  115 +-
+ tests/sentry/overwatch/__init__.py            |    0
+ tests/sentry/overwatch/endpoints/__init__.py  |    0
+ .../overwatch/endpoints/test_overwatch_rpc.py | 1109 -----------------
+ tests/sentry/overwatch_webhooks/__init__.py   |    0
+ .../overwatch_consent/test_service.py         |   85 --
+ .../test_webhook_forwarder.py                 |  524 --------
+ tests/sentry/seer/code_review/test_billing.py |    2 +-
+ .../webhooks/test_issue_comment.py            |   62 +-
+ .../code_review/webhooks/test_pull_request.py |   49 +-
+ 35 files changed, 50 insertions(+), 3416 deletions(-)
+ delete mode 100644 src/sentry/deletions/tasks/overwatch.py
+ delete mode 100644 src/sentry/overwatch/__init__.py
+ delete mode 100644 src/sentry/overwatch/endpoints/__init__.py
+ delete mode 100644 src/sentry/overwatch/endpoints/overwatch_rpc.py
+ delete mode 100644 src/sentry/overwatch_webhooks/overwatch_consent/impl.py
+ delete mode 100644 src/sentry/overwatch_webhooks/overwatch_consent/model.py
+ delete mode 100644 src/sentry/overwatch_webhooks/overwatch_consent/service.py
+ delete mode 100644 src/sentry/overwatch_webhooks/types.py
+ delete mode 100644 src/sentry/overwatch_webhooks/webhook_forwarder.py
+ delete mode 100644 src/sentry/overwatch_webhooks/webhook_publisher.py
+ delete mode 100644 src/sentry/seer/code_review/webhooks/config.py
+ delete mode 100644 tests/sentry/deletions/tasks/test_overwatch.py
+ delete mode 100644 tests/sentry/overwatch/__init__.py
+ delete mode 100644 tests/sentry/overwatch/endpoints/__init__.py
+ delete mode 100644 tests/sentry/overwatch/endpoints/test_overwatch_rpc.py
+ delete mode 100644 tests/sentry/overwatch_webhooks/__init__.py
+ delete mode 100644 tests/sentry/overwatch_webhooks/overwatch_consent/test_service.py
+ delete mode 100644 tests/sentry/overwatch_webhooks/test_webhook_forwarder.py
+
+diff --git a/.github/CODEOWNERS b/.github/CODEOWNERS
+index 23a29f79a4f..8f9010175dd 100644
+--- a/.github/CODEOWNERS
++++ b/.github/CODEOWNERS
+@@ -706,8 +706,6 @@ tests/sentry/api/endpoints/test_organization_attribute_mappings.py          @get
+ 
+ # Prevent
+ /src/sentry/prevent/                                      @getsentry/coding-workflows
+-/src/sentry/overwatch/                                    @getsentry/coding-workflows
+-/src/sentry/overwatch_webhooks/                           @getsentry/coding-workflows
+ /static/app/components/prevent/                           @getsentry/coding-workflows
+ /static/app/views/prevent/                                @getsentry/coding-workflows
+ /static/app/views/nav/secondary/sections/prevent/         @getsentry/coding-workflows
+diff --git a/pyproject.toml b/pyproject.toml
+index 5ef085a226a..751f04246f3 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -562,7 +562,6 @@ module = [
+     "sentry.notifications.utils.*",
+     "sentry.options.rollout",
+     "sentry.organizations.*",
+-    "sentry.overwatch.*",
+     "sentry.ownership.*",
+     "sentry.pipeline.*",
+     "sentry.plugins.base.response",
+diff --git a/src/sentry/api/urls.py b/src/sentry/api/urls.py
+index a84d02a4256..bff53e7b60d 100644
+--- a/src/sentry/api/urls.py
++++ b/src/sentry/api/urls.py
+@@ -448,12 +448,6 @@ from sentry.notifications.api.endpoints.user_notification_settings_providers imp
+ )
+ from sentry.notifications.platform.api.endpoints import urls as notification_platform_urls
+ from sentry.objectstore.endpoints.organization import OrganizationObjectstoreEndpoint
+-from sentry.overwatch.endpoints.overwatch_rpc import (
+-    CodeReviewRepoSettingsEndpoint,
+-    PreventPrReviewEligibilityEndpoint,
+-    PreventPrReviewResolvedConfigsEndpoint,
+-    PreventPrReviewSentryOrgEndpoint,
+-)
+ from sentry.preprod.api.endpoints import urls as preprod_urls
+ from sentry.prevent.endpoints.organization_github_repos import (
+     OrganizationPreventGitHubReposEndpoint,
+@@ -3578,27 +3572,6 @@ INTERNAL_URLS = [
+         SeerRpcServiceEndpoint.as_view(),
+         name="sentry-api-0-seer-rpc-service",
+     ),
+-    # Prevent AI (Overwatch) endpoints
+-    re_path(
+-        r"^prevent/pr-review/configs/resolved/$",
+-        PreventPrReviewResolvedConfigsEndpoint.as_view(),
+-        name="sentry-api-0-prevent-pr-review-configs-resolved",
+-    ),
+-    re_path(
+-        r"^prevent/pr-review/eligibility/$",
+-        PreventPrReviewEligibilityEndpoint.as_view(),
+-        name="sentry-api-0-prevent-pr-review-eligibility",
+-    ),
+-    re_path(
+-        r"^prevent/pr-review/github/sentry-org/$",
+-        PreventPrReviewSentryOrgEndpoint.as_view(),
+-        name="sentry-api-0-prevent-pr-review-github-sentry-org",
+-    ),
+-    re_path(
+-        r"^code-review/repo-settings/$",
+-        CodeReviewRepoSettingsEndpoint.as_view(),
+-        name="sentry-api-0-code-review-repo-settings",
+-    ),
+     re_path(
+         r"^feature-flags/$",
+         InternalFeatureFlagsEndpoint.as_view(),
+diff --git a/src/sentry/conf/server.py b/src/sentry/conf/server.py
+index 5d0219815af..c70bab31c6e 100644
+--- a/src/sentry/conf/server.py
++++ b/src/sentry/conf/server.py
+@@ -11,7 +11,7 @@ import socket
+ import sys
+ from collections.abc import Callable, Mapping, MutableSequence
+ from datetime import datetime, timedelta
+-from typing import Any, Final, Literal, Union, cast, overload
++from typing import Any, Final, Literal, Union, overload
+ from urllib.parse import urlparse
+ 
+ import sentry
+@@ -836,7 +836,6 @@ TASKWORKER_IMPORTS: tuple[str, ...] = (
+     "sentry.deletions.tasks.groups",
+     "sentry.deletions.tasks.hybrid_cloud",
+     "sentry.deletions.tasks.nodestore",
+-    "sentry.deletions.tasks.overwatch",
+     "sentry.deletions.tasks.scheduled",
+     "sentry.demo_mode.tasks",
+     "sentry.dynamic_sampling.tasks.boost_low_volume_projects",
+@@ -2860,11 +2859,6 @@ SEER_AUTOFIX_FORCE_USE_REPOS: list[dict] = []
+ # For encrypting the access token for the GHE integration
+ SEER_GHE_ENCRYPT_KEY: str | None = os.getenv("SEER_GHE_ENCRYPT_KEY")
+ 
+-# Used to validate RPC requests from the Overwatch service
+-OVERWATCH_RPC_SHARED_SECRET: list[str] | None = None
+-if (val := os.environ.get("OVERWATCH_RPC_SHARED_SECRET")) is not None:
+-    OVERWATCH_RPC_SHARED_SECRET = [val]
+-
+ # This is the URL to the profiling service
+ SENTRY_VROOM = os.getenv("VROOM", "http://127.0.0.1:8085")
+ 
+@@ -3176,12 +3170,6 @@ MARKETO_FORM_ID = os.getenv("MARKETO_FORM_ID")
+ # Stage: "https://stage-api.codecov.dev/"
+ CODECOV_API_BASE_URL = "https://api.codecov.io"
+ 
+-OVERWATCH_REGION_URLS: dict[str, str] = cast(
+-    dict[str, str], env("OVERWATCH_REGION_URLS", {}, type=env_types.Dict)
+-)
+-OVERWATCH_REGION_URL: str | None = os.getenv("OVERWATCH_REGION_URL")
+-OVERWATCH_WEBHOOK_SECRET: str | None = os.getenv("OVERWATCH_WEBHOOK_SECRET")
+-
+ # Devserver configuration overrides.
+ ngrok_host = os.environ.get("SENTRY_DEVSERVER_NGROK")
+ if ngrok_host:
+diff --git a/src/sentry/deletions/defaults/organization.py b/src/sentry/deletions/defaults/organization.py
+index d8e3af5d0ea..879f46cbcf6 100644
+--- a/src/sentry/deletions/defaults/organization.py
++++ b/src/sentry/deletions/defaults/organization.py
+@@ -1,9 +1,6 @@
+ from collections.abc import Sequence
+ 
+-from django.db import router, transaction
+-
+ from sentry.deletions.base import BaseRelation, ModelDeletionTask, ModelRelation
+-from sentry.deletions.tasks.overwatch import notify_overwatch_organization_deleted
+ from sentry.models.organization import Organization, OrganizationStatus
+ from sentry.organizations.services.organization_actions.impl import (
+     update_organization_with_outbox_message,
+@@ -71,18 +68,6 @@ class OrganizationDeletionTask(ModelDeletionTask[Organization]):
+ 
+         return relations
+ 
+-    def delete_instance(self, instance: Organization) -> None:
+-
+-        org_id = instance.id
+-        org_slug = instance.slug
+-
+-        transaction.on_commit(
+-            lambda: notify_overwatch_organization_deleted.delay(org_id, org_slug),
+-            using=router.db_for_write(Organization),
+-        )
+-
+-        super().delete_instance(instance)
+-
+     def mark_deletion_in_progress(self, instance_list: Sequence[Organization]) -> None:
+         from sentry.models.organization import OrganizationStatus
+ 
+diff --git a/src/sentry/deletions/tasks/overwatch.py b/src/sentry/deletions/tasks/overwatch.py
+deleted file mode 100644
+index e883722dbcf..00000000000
+--- a/src/sentry/deletions/tasks/overwatch.py
++++ /dev/null
+@@ -1,141 +0,0 @@
+-import hashlib
+-import hmac
+-import logging
+-from typing import Any
+-
+-import requests
+-from django.conf import settings
+-
+-from sentry import options
+-from sentry.tasks.base import instrumented_task
+-from sentry.taskworker.namespaces import deletion_tasks
+-from sentry.types.region import get_local_region
+-from sentry.utils import json, metrics
+-
+-logger = logging.getLogger(__name__)
+-
+-
+-@instrumented_task(
+-    name="sentry.deletions.overwatch_notify_organization_deleted",
+-    namespace=deletion_tasks,
+-    max_retries=3,
+-    default_retry_delay=60,
+-)
+-def notify_overwatch_organization_deleted(
+-    organization_id: int, organization_slug: str, **kwargs: Any
+-) -> None:
+-    """
+-    Notify Overwatch for the current region that an organization has been deleted.
+-    Sends organization_id and slug to the /webhooks/sentry endpoint for the local region.
+-    """
+-    if not settings.OVERWATCH_WEBHOOK_SECRET:
+-        logger.warning(
+-            "overwatch.organization_deleted.no_secret",
+-            extra={"organization_id": organization_id, "organization_slug": organization_slug},
+-        )
+-        return
+-
+-    try:
+-        local_region = get_local_region()
+-        region_name = local_region.name
+-    except Exception as e:
+-        logger.exception(
+-            "overwatch.organization_deleted.region_error",
+-            extra={
+-                "organization_id": organization_id,
+-                "organization_slug": organization_slug,
+-                "error": str(e),
+-            },
+-        )
+-        return
+-
+-    # Check if this region is enabled for Overwatch notifications
+-    enabled_regions = options.get("overwatch.enabled-regions")
+-    if not enabled_regions or region_name not in enabled_regions:
+-        logger.debug(
+-            "overwatch.organization_deleted.region_not_enabled",
+-            extra={
+-                "organization_id": organization_id,
+-                "organization_slug": organization_slug,
+-                "region_name": region_name,
+-            },
+-        )
+-        return
+-
+-    # Get the Overwatch URL
+-    base_url = settings.OVERWATCH_REGION_URL
+-    if not base_url:
+-        logger.warning(
+-            "overwatch.organization_deleted.missing_region_url",
+-            extra={
+-                "organization_id": organization_id,
+-                "organization_slug": organization_slug,
+-                "region_name": region_name,
+-            },
+-        )
+-        metrics.incr(
+-            "overwatch.organization_deleted.sent",
+-            amount=1,
+-            tags={"status": "failure", "region": region_name},
+-        )
+-        return
+-
+-    payload_data = {
+-        "event_type": "organization_delete",
+-        "organization_id": organization_id,
+-        "organization_slug": organization_slug,
+-        "region": region_name,
+-    }
+-    payload = json.dumps(payload_data).encode("utf-8")
+-
+-    signature = hmac.new(
+-        settings.OVERWATCH_WEBHOOK_SECRET.encode("utf-8"),
+-        payload,
+-        hashlib.sha256,
+-    ).hexdigest()
+-
+-    headers = {
+-        "content-type": "application/json;charset=utf-8",
+-        "x-sentry-overwatch-signature": signature,
+-    }
+-
+-    try:
+-        endpoint = f"{base_url}/webhooks/sentry"
+-        response = requests.post(
+-            endpoint,
+-            data=payload,
+-            headers=headers,
+-            timeout=10,
+-        )
+-        response.raise_for_status()
+-
+-        logger.info(
+-            "overwatch.organization_deleted.success",
+-            extra={
+-                "organization_id": organization_id,
+-                "organization_slug": organization_slug,
+-                "region_name": region_name,
+-                "status_code": response.status_code,
+-            },
+-        )
+-        metrics.incr(
+-            "overwatch.organization_deleted.sent",
+-            amount=1,
+-            tags={"status": "success", "region": region_name},
+-        )
+-
+-    except requests.RequestException as e:
+-        logger.exception(
+-            "overwatch.organization_deleted.failed",
+-            extra={
+-                "organization_id": organization_id,
+-                "organization_slug": organization_slug,
+-                "region_name": region_name,
+-                "error": str(e),
+-            },
+-        )
+-        metrics.incr(
+-            "overwatch.organization_deleted.sent",
+-            amount=1,
+-            tags={"status": "failure", "region": region_name},
+-        )
+diff --git a/src/sentry/middleware/integrations/parsers/github.py b/src/sentry/middleware/integrations/parsers/github.py
+index 7fd954e8040..0af3eb9191c 100644
+--- a/src/sentry/middleware/integrations/parsers/github.py
++++ b/src/sentry/middleware/integrations/parsers/github.py
+@@ -18,7 +18,6 @@ from sentry.integrations.github.webhook_types import GITHUB_WEBHOOK_TYPE_HEADER,
+ from sentry.integrations.middleware.hybrid_cloud.parser import BaseRequestParser
+ from sentry.integrations.models.integration import Integration
+ from sentry.integrations.types import IntegrationProviderSlug
+-from sentry.overwatch_webhooks.webhook_forwarder import OverwatchGithubWebhookForwarder
+ from sentry.silo.base import control_silo_function
+ from sentry.utils import metrics
+ 
+@@ -65,7 +64,7 @@ class GithubRequestParser(BaseRequestParser):
+ 
+         Handles installation events in control silo, distributes webhooks to appropriate
+         region silos based on organization locations, and conditionally forwards to
+-        external services (Codecov, Overwatch) based on configuration and region.
++        external services (Codecov) based on configuration and region.
+         """
+         if self.view_class != self.webhook_endpoint:
+             return self.get_response_from_control_silo()
+@@ -104,9 +103,4 @@ class GithubRequestParser(BaseRequestParser):
+             regions=regions, identifier=integration.id, integration_id=integration.id
+         )
+ 
+-        # The overwatch forwarder implements its own region-based checks
+-        OverwatchGithubWebhookForwarder(integration=integration).forward_if_applicable(
+-            event=event, headers=self.request.headers
+-        )
+-
+         return response
+diff --git a/src/sentry/options/defaults.py b/src/sentry/options/defaults.py
+index 2385ff7ae68..968523fbc13 100644
+--- a/src/sentry/options/defaults.py
++++ b/src/sentry/options/defaults.py
+@@ -685,19 +685,7 @@ register("codecov.api-bridge-signing-secret", flags=FLAG_CREDENTIAL | FLAG_PRIOR
+ register("codecov.forward-webhooks.rollout", default=0.0, flags=FLAG_AUTOMATOR_MODIFIABLE)
+ # if a region is in this list, it's safe to forward to codecov
+ register("codecov.forward-webhooks.regions", default=[], flags=FLAG_AUTOMATOR_MODIFIABLE)
+-# if a region is in this list, it's safe to forward to overwatch
+-register("overwatch.enabled-regions", default=[], flags=FLAG_AUTOMATOR_MODIFIABLE)
+-# enable verbose debug logging for overwatch webhook forwarding
+-register("overwatch.forward-webhooks.verbose", default=False, flags=FLAG_AUTOMATOR_MODIFIABLE)
+ 
+-# Control forwarding of GitHub webhook events to Overwatch
+-register("github.webhook.issue-comment", default=True, flags=FLAG_AUTOMATOR_MODIFIABLE)
+-register("github.webhook.pr", default=True, flags=FLAG_AUTOMATOR_MODIFIABLE)
+-
+-# List of GitHub org names that should always send directly to Seer (bypass Overwatch)
+-register(
+-    "seer.code-review.direct-to-seer-enabled-gh-orgs", default=[], flags=FLAG_AUTOMATOR_MODIFIABLE
+-)
+ 
+ # GitHub Integration
+ register("github-app.id", default=0, flags=FLAG_AUTOMATOR_MODIFIABLE)
+diff --git a/src/sentry/overwatch/__init__.py b/src/sentry/overwatch/__init__.py
+deleted file mode 100644
+index e69de29bb2d..00000000000
+diff --git a/src/sentry/overwatch/endpoints/__init__.py b/src/sentry/overwatch/endpoints/__init__.py
+deleted file mode 100644
+index e69de29bb2d..00000000000
+diff --git a/src/sentry/overwatch/endpoints/overwatch_rpc.py b/src/sentry/overwatch/endpoints/overwatch_rpc.py
+deleted file mode 100644
+index 82622766a71..00000000000
+--- a/src/sentry/overwatch/endpoints/overwatch_rpc.py
++++ /dev/null
+@@ -1,381 +0,0 @@
+-import hashlib
+-import hmac
+-import logging
+-from copy import deepcopy
+-from typing import Any
+-
+-import sentry_sdk
+-from django.conf import settings
+-from django.contrib.auth.models import AnonymousUser
+-from rest_framework.exceptions import AuthenticationFailed, ParseError, PermissionDenied
+-from rest_framework.request import Request
+-from rest_framework.response import Response
+-
+-from sentry import features
+-from sentry.api.api_owners import ApiOwner
+-from sentry.api.api_publish_status import ApiPublishStatus
+-from sentry.api.authentication import AuthenticationSiloLimit, StandardAuthentication
+-from sentry.api.base import Endpoint, region_silo_endpoint
+-from sentry.constants import DEFAULT_CODE_REVIEW_TRIGGERS, ObjectStatus
+-from sentry.integrations.services.integration import integration_service
+-from sentry.models.organization import Organization
+-from sentry.models.repository import Repository
+-from sentry.models.repositorysettings import RepositorySettings
+-from sentry.prevent.models import PreventAIConfiguration
+-from sentry.prevent.types.config import PREVENT_AI_CONFIG_DEFAULT, PREVENT_AI_CONFIG_DEFAULT_V1
+-from sentry.seer.code_review.billing import passes_code_review_billing_check
+-from sentry.silo.base import SiloMode
+-from sentry.utils.seer import can_use_prevent_ai_features
+-
+-logger = logging.getLogger(__name__)
+-
+-
+-def _signature_input_from_request(request: Request) -> bytes:
+-    """Build message to sign: raw request body bytes."""
+-    body_bytes = request.body if request.body not in (None, b"") else b"[]"
+-    return body_bytes
+-
+-
+-def compare_signature(request: Request, signature: str) -> bool:
+-    """Validate HMAC signature using OVERWATCH_RPC_SHARED_SECRET.
+-
+-    - Header format: `Authorization: Rpcsignature rpc0:<hex>`
+-    - Input: raw body bytes
+-    - Secret exists in settings.OVERWATCH_RPC_SHARED_SECRET
+-    """
+-    if not settings.OVERWATCH_RPC_SHARED_SECRET:
+-        raise AuthenticationFailed("Missing OVERWATCH shared secret")
+-
+-    if not signature.startswith("rpc0:"):
+-        raise AuthenticationFailed("Invalid signature prefix: expected 'rpc0:'")
+-
+-    try:
+-        _, signature_data = signature.split(":", 1)
+-    except ValueError:
+-        raise AuthenticationFailed("Invalid Authorization format. Expected 'rpc0:<hex>'")
+-
+-    message = _signature_input_from_request(request)
+-    for secret in settings.OVERWATCH_RPC_SHARED_SECRET:
+-        computed = hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
+-        if hmac.compare_digest(computed, signature_data):
+-            return True
+-
+-    body_len = len(message)
+-    sig_len = len(signature_data)
+-
+-    raise AuthenticationFailed(f"Signature mismatch. body_len={body_len} sig_len={sig_len}")
+-
+-
+-@AuthenticationSiloLimit(SiloMode.CONTROL, SiloMode.REGION)
+-class OverwatchRpcSignatureAuthentication(StandardAuthentication):
+-    """Authentication for Overwatch-style HMAC signed requests."""
+-
+-    token_name = b"rpcsignature"
+-
+-    def accepts_auth(self, auth: list[bytes]) -> bool:
+-        if not auth or len(auth) < 2:
+-            return False
+-        return auth[0].lower() == self.token_name
+-
+-    def authenticate_token(self, request: Request, token: str) -> tuple[Any, Any]:
+-        compare_signature(request, token)
+-
+-        sentry_sdk.get_isolation_scope().set_tag("overwatch_rpc_auth", True)
+-
+-        return (AnonymousUser(), token)
+-
+-
+-@region_silo_endpoint
+-class PreventPrReviewResolvedConfigsEndpoint(Endpoint):
+-    """
+-    Returns the resolved config for a Sentry organization.
+-
+-    GET /prevent/pr-review/configs/resolved?sentryOrgId={orgId}&gitOrgName={gitOrgName}&provider={provider}
+-    """
+-
+-    publish_status = {
+-        "GET": ApiPublishStatus.EXPERIMENTAL,
+-    }
+-    owner = ApiOwner.CODECOV
+-    authentication_classes = (OverwatchRpcSignatureAuthentication,)
+-    permission_classes = ()
+-    enforce_rate_limit = False
+-
+-    def get(self, request: Request) -> Response:
+-        if not request.auth or not isinstance(
+-            request.successful_authenticator, OverwatchRpcSignatureAuthentication
+-        ):
+-            raise PermissionDenied
+-
+-        sentry_org_id_str = request.GET.get("sentryOrgId")
+-        if not sentry_org_id_str:
+-            raise ParseError("Missing required query parameter: sentryOrgId")
+-        try:
+-            sentry_org_id = int(sentry_org_id_str)
+-            if sentry_org_id <= 0:
+-                raise ParseError("sentryOrgId must be a positive integer")
+-        except ValueError:
+-            raise ParseError("sentryOrgId must be a valid integer")
+-
+-        git_org_name = request.GET.get("gitOrgName")
+-        if not git_org_name:
+-            raise ParseError("Missing required query parameter: gitOrgName")
+-        provider = request.GET.get("provider")
+-        if not provider:
+-            raise ParseError("Missing required query parameter: provider")
+-
+-        github_org_integrations = integration_service.get_organization_integrations(
+-            organization_id=sentry_org_id,
+-            providers=[provider],
+-            status=ObjectStatus.ACTIVE,
+-            name=git_org_name,
+-        )
+-        if not github_org_integrations:
+-            return Response({"detail": "GitHub integration not found"}, status=404)
+-
+-        config = PreventAIConfiguration.objects.filter(
+-            organization_id=sentry_org_id,
+-            integration_id=github_org_integrations[0].integration_id,
+-        ).first()
+-
+-        organization = Organization.objects.filter(id=sentry_org_id).first()
+-
+-        default_config = PREVENT_AI_CONFIG_DEFAULT
+-        if features.has("organizations:code-review-run-per-commit", organization):
+-            default_config = PREVENT_AI_CONFIG_DEFAULT_V1
+-
+-        response_data: dict[str, Any] = deepcopy(default_config)
+-        if config:
+-            response_data["organization"] = config.data
+-
+-        return Response(data=response_data)
+-
+-
+-@region_silo_endpoint
+-class CodeReviewRepoSettingsEndpoint(Endpoint):
+-    """
+-    Returns the code review repository settings for a specific repo within a Sentry organization.
+-
+-    GET /code-review/repo-settings?sentryOrgId={orgId}&externalRepoId={externalRepoId}&provider={provider}
+-    """
+-
+-    publish_status = {
+-        "GET": ApiPublishStatus.EXPERIMENTAL,
+-    }
+-    owner = ApiOwner.CODECOV
+-    authentication_classes = (OverwatchRpcSignatureAuthentication,)
+-    permission_classes = ()
+-    enforce_rate_limit = False
+-
+-    def get(self, request: Request) -> Response:
+-        if not request.auth or not isinstance(
+-            request.successful_authenticator, OverwatchRpcSignatureAuthentication
+-        ):
+-            raise PermissionDenied
+-
+-        sentry_org_id_str = request.GET.get("sentryOrgId")
+-        if not sentry_org_id_str:
+-            raise ParseError("Missing required query parameter: sentryOrgId")
+-        try:
+-            sentry_org_id = int(sentry_org_id_str)
+-            if sentry_org_id <= 0:
+-                raise ParseError("sentryOrgId must be a positive integer")
+-        except ValueError:
+-            raise ParseError("sentryOrgId must be a valid integer")
+-
+-        external_repo_id = request.GET.get("externalRepoId")
+-        if not external_repo_id:
+-            raise ParseError("Missing required query parameter: externalRepoId")
+-
+-        provider = request.GET.get("provider")
+-        if not provider:
+-            raise ParseError("Missing required query parameter: provider")
+-
+-        repo_settings = (
+-            RepositorySettings.objects.select_related("repository")
+-            .filter(
+-                repository__external_id=external_repo_id,
+-                repository__organization_id=sentry_org_id,
+-                repository__provider=provider,
+-                repository__status=ObjectStatus.ACTIVE,
+-            )
+-            .first()
+-        )
+-
+-        if repo_settings is None:
+-            organization = Organization.objects.filter(id=sentry_org_id).first()
+-            if organization and (
+-                features.has("organizations:code-review-beta", organization)
+-                or bool(
+-                    organization.get_option(
+-                        "sentry:enable_pr_review_test_generation",
+-                        False,
+-                    )
+-                )
+-            ):
+-                return Response(
+-                    {
+-                        "enabledCodeReview": True,
+-                        "codeReviewTriggers": DEFAULT_CODE_REVIEW_TRIGGERS,
+-                    }
+-                )
+-
+-            return Response(
+-                {
+-                    "enabledCodeReview": False,
+-                    "codeReviewTriggers": [],
+-                }
+-            )
+-
+-        return Response(
+-            {
+-                "enabledCodeReview": repo_settings.enabled_code_review,
+-                "codeReviewTriggers": repo_settings.code_review_triggers,
+-            }
+-        )
+-
+-
+-@region_silo_endpoint
+-class PreventPrReviewSentryOrgEndpoint(Endpoint):
+-    """
+-    Get Sentry organization IDs for a GitHub repository.
+-
+-    GET /prevent/pr-review/github/sentry-org?repoId={repoId}
+-    """
+-
+-    publish_status = {
+-        "GET": ApiPublishStatus.EXPERIMENTAL,
+-    }
+-    owner = ApiOwner.CODECOV
+-    authentication_classes = (OverwatchRpcSignatureAuthentication,)
+-    permission_classes = ()
+-    enforce_rate_limit = False
+-
+-    def get(self, request: Request) -> Response:
+-        if not request.auth or not isinstance(
+-            request.successful_authenticator, OverwatchRpcSignatureAuthentication
+-        ):
+-            raise PermissionDenied
+-
+-        repo_id = request.GET.get("repoId")
+-
+-        if not repo_id:
+-            raise ParseError("Missing required query parameter: repoId")
+-
+-        organization_ids = Repository.objects.filter(
+-            external_id=repo_id,
+-            provider="integrations:github",
+-            status=ObjectStatus.ACTIVE,
+-        ).values_list("organization_id", flat=True)
+-
+-        organizations = Organization.objects.filter(id__in=organization_ids)
+-
+-        # Return all orgs with their consent status for AI features
+-        return Response(
+-            data={
+-                "organizations": [
+-                    {
+-                        "org_id": org.id,
+-                        "org_slug": org.slug,
+-                        "org_name": org.name,
+-                        "has_consent": can_use_prevent_ai_features(org),
+-                    }
+-                    for org in organizations
+-                ]
+-            }
+-        )
+-
+-
+-def _is_eligible_for_code_review(
+-    organization: Organization, repository_id: int, integration_id: int, external_identifier: str
+-) -> bool:
+-    """
+-    Check if a PR author is eligible for Overwatch code review forwarding.
+-
+-    Returns True if:
+-    1. Organization IS in code-review-beta cohort (always forward), OR
+-    2. Repository has code review explicitly enabled AND contributor has a seat
+-    """
+-    if features.has("organizations:code-review-beta", organization) or features.has(
+-        "organizations:seer-added", organization
+-    ):
+-        pr_test_generation_enabled = organization.get_option(
+-            "sentry:enable_pr_review_test_generation", False
+-        )
+-        return pr_test_generation_enabled
+-
+-    # Check if code review is enabled for this repository
+-    code_review_enabled = RepositorySettings.objects.filter(
+-        repository_id=repository_id,
+-        enabled_code_review=True,
+-    ).exists()
+-
+-    if not code_review_enabled:
+-        return False
+-
+-    return passes_code_review_billing_check(
+-        organization_id=organization.id,
+-        integration_id=integration_id,
+-        external_identifier=external_identifier,
+-    )
+-
+-
+-@region_silo_endpoint
+-class PreventPrReviewEligibilityEndpoint(Endpoint):
+-    """
+-    Check if a PR author is eligible for Overwatch code review forwarding.
+-
+-    GET /prevent/pr-review/eligibility?repoId={repoId}&prAuthorId={prAuthorId}
+-
+-    Returns true if the PR author is eligible for code review in any organization.
+-    """
+-
+-    publish_status = {
+-        "GET": ApiPublishStatus.EXPERIMENTAL,
+-    }
+-    owner = ApiOwner.CODECOV
+-    authentication_classes = (OverwatchRpcSignatureAuthentication,)
+-    permission_classes = ()
+-    enforce_rate_limit = False
+-
+-    def get(self, request: Request) -> Response:
+-        if not request.auth or not isinstance(
+-            request.successful_authenticator, OverwatchRpcSignatureAuthentication
+-        ):
+-            raise PermissionDenied
+-
+-        repo_id = request.GET.get("repoId")
+-        pr_author_id = request.GET.get("prAuthorId")
+-
+-        if not repo_id:
+-            raise ParseError("Missing required query parameter: repoId")
+-        if not pr_author_id:
+-            raise ParseError("Missing required query parameter: prAuthorId")
+-
+-        repositories = Repository.objects.filter(
+-            external_id=repo_id,
+-            provider="integrations:github",
+-            status=ObjectStatus.ACTIVE,
+-        )
+-
+-        if not repositories.exists():
+-            return Response(data={"is_eligible": False})
+-
+-        org_ids = repositories.values_list("organization_id", flat=True)
+-        organizations = {org.id: org for org in Organization.objects.filter(id__in=org_ids)}
+-
+-        # Just need a single org to be eligible
+-        for repo in repositories:
+-            org = organizations.get(repo.organization_id)
+-            if not org or repo.integration_id is None:
+-                continue
+-
+-            if _is_eligible_for_code_review(
+-                organization=org,
+-                repository_id=repo.id,
+-                integration_id=repo.integration_id,
+-                external_identifier=pr_author_id,
+-            ):
+-                return Response(data={"is_eligible": True})
+-
+-        return Response(data={"is_eligible": False})
+diff --git a/src/sentry/overwatch_webhooks/overwatch_consent/impl.py b/src/sentry/overwatch_webhooks/overwatch_consent/impl.py
+deleted file mode 100644
+index b84d1a180e4..00000000000
+--- a/src/sentry/overwatch_webhooks/overwatch_consent/impl.py
++++ /dev/null
+@@ -1,50 +0,0 @@
+-# Please do not use
+-#     from __future__ import annotations
+-# in modules such as this one where hybrid cloud data models or service classes are
+-# defined, because we want to reflect on type annotations and avoid forward references.
+-
+-from sentry import features
+-from sentry.constants import ENABLE_PR_REVIEW_TEST_GENERATION_DEFAULT, HIDE_AI_FEATURES_DEFAULT
+-from sentry.models.organization import Organization
+-from sentry.overwatch_webhooks.overwatch_consent.model import RpcOrganizationConsentStatus
+-from sentry.overwatch_webhooks.overwatch_consent.service import OverwatchConsentService
+-
+-
+-class DatabaseBackedOverwatchConsentService(OverwatchConsentService):
+-    def get_organization_consent_status(
+-        self, *, organization_ids: list[int], region_name: str
+-    ) -> dict[int, RpcOrganizationConsentStatus]:
+-        """
+-        Get consent status for multiple organizations in a region.
+-
+-        Consent is determined by the combination of 2 different organization option values:
+-        - sentry:hide_ai_features should be False (default)
+-        - sentry:enable_pr_review_test_generation should be True (default is False)
+-        """
+-        organizations = Organization.objects.filter(id__in=organization_ids)
+-
+-        result: dict[int, RpcOrganizationConsentStatus] = {}
+-
+-        for org in organizations:
+-            hide_ai_features = bool(
+-                org.get_option("sentry:hide_ai_features", HIDE_AI_FEATURES_DEFAULT)
+-            )
+-            if features.has("organizations:seat-based-seer-enabled", org):
+-                # Seat-based plan orgs don't need to check the PR review toggle
+-                has_consent = not hide_ai_features
+-            else:
+-                # Usage-based plan orgs and others need to check the PR review toggle
+-                pr_review_test_generation_enabled = bool(
+-                    org.get_option(
+-                        "sentry:enable_pr_review_test_generation",
+-                        ENABLE_PR_REVIEW_TEST_GENERATION_DEFAULT,
+-                    )
+-                )
+-                has_consent = not hide_ai_features and pr_review_test_generation_enabled
+-
+-            result[org.id] = RpcOrganizationConsentStatus(
+-                organization_id=org.id,
+-                has_consent=has_consent,
+-            )
+-
+-        return result
+diff --git a/src/sentry/overwatch_webhooks/overwatch_consent/model.py b/src/sentry/overwatch_webhooks/overwatch_consent/model.py
+deleted file mode 100644
+index 08ea19d4393..00000000000
+--- a/src/sentry/overwatch_webhooks/overwatch_consent/model.py
++++ /dev/null
+@@ -1,15 +0,0 @@
+-# Please do not use
+-#     from __future__ import annotations
+-# in modules such as this one where hybrid cloud data models or service classes are
+-# defined, because we want to reflect on type annotations and avoid forward references.
+-
+-from sentry.hybridcloud.rpc import RpcModel
+-
+-
+-class RpcOrganizationConsentStatus(RpcModel):
+-    """
+-    Represents consent status for an organization.
+-    """
+-
+-    organization_id: int
+-    has_consent: bool
+diff --git a/src/sentry/overwatch_webhooks/overwatch_consent/service.py b/src/sentry/overwatch_webhooks/overwatch_consent/service.py
+deleted file mode 100644
+index 9a2b1f5aa49..00000000000
+--- a/src/sentry/overwatch_webhooks/overwatch_consent/service.py
++++ /dev/null
+@@ -1,41 +0,0 @@
+-# Please do not use
+-#     from __future__ import annotations
+-# in modules such as this one where hybrid cloud data models or service classes are
+-# defined, because we want to reflect on type annotations and avoid forward references.
+-
+-from abc import abstractmethod
+-
+-from sentry.hybridcloud.rpc.resolvers import ByRegionName
+-from sentry.hybridcloud.rpc.service import RpcService, regional_rpc_method
+-from sentry.overwatch_webhooks.overwatch_consent.model import RpcOrganizationConsentStatus
+-from sentry.silo.base import SiloMode
+-
+-
+-class OverwatchConsentService(RpcService):
+-    key = "overwatch_consent"
+-    local_mode = SiloMode.REGION
+-
+-    @classmethod
+-    def get_local_implementation(cls) -> RpcService:
+-        from sentry.overwatch_webhooks.overwatch_consent.impl import (
+-            DatabaseBackedOverwatchConsentService,
+-        )
+-
+-        return DatabaseBackedOverwatchConsentService()
+-
+-    @regional_rpc_method(resolve=ByRegionName())
+-    @abstractmethod
+-    def get_organization_consent_status(
+-        self, *, organization_ids: list[int], region_name: str
+-    ) -> dict[int, RpcOrganizationConsentStatus]:
+-        """
+-        Get consent status for multiple organizations in a region.
+-
+-        :param organization_ids: List of organization IDs to check
+-        :param region_name: The region name
+-        :return: Dictionary mapping organization ID to consent status
+-        """
+-        pass
+-
+-
+-overwatch_consent_service = OverwatchConsentService.create_delegation()
+diff --git a/src/sentry/overwatch_webhooks/types.py b/src/sentry/overwatch_webhooks/types.py
+deleted file mode 100644
+index cd08e7f97fb..00000000000
+--- a/src/sentry/overwatch_webhooks/types.py
++++ /dev/null
+@@ -1,50 +0,0 @@
+-from __future__ import annotations
+-
+-from collections.abc import Mapping
+-from dataclasses import asdict, dataclass
+-from typing import Any
+-
+-from sentry.integrations.models.organization_integration import OrganizationIntegration
+-from sentry.models.organizationmapping import OrganizationMapping
+-from sentry.utils import json
+-
+-# Default request type for webhook details
+-DEFAULT_REQUEST_TYPE = "webhook_sentry_github"
+-
+-
+-@dataclass
+-class OrganizationSummary:
+-    name: str
+-    slug: str
+-    id: int
+-    region: str
+-    github_integration_id: int
+-    organization_integration_id: int
+-
+-    @classmethod
+-    def from_organization_mapping_and_integration(
+-        cls, organization_mapping: OrganizationMapping, org_integration: OrganizationIntegration
+-    ) -> OrganizationSummary:
+-        return cls(
+-            name=organization_mapping.name,
+-            slug=organization_mapping.slug,
+-            id=organization_mapping.organization_id,
+-            region=organization_mapping.region_name,
+-            github_integration_id=org_integration.integration_id,
+-            organization_integration_id=org_integration.id,
+-        )
+-
+-
+-@dataclass
+-class WebhookDetails:
+-    organizations: list[OrganizationSummary]
+-    webhook_body: dict[str, Any]
+-    webhook_headers: Mapping[str, str]
+-    integration_provider: str
+-    region: str
+-    event_type: str = "github"
+-    app_id: int | None = None
+-    request_type: str = DEFAULT_REQUEST_TYPE
+-
+-    def to_json(self) -> str:
+-        return json.dumps(asdict(self))
+diff --git a/src/sentry/overwatch_webhooks/webhook_forwarder.py b/src/sentry/overwatch_webhooks/webhook_forwarder.py
+deleted file mode 100644
+index b3f1dc7959e..00000000000
+--- a/src/sentry/overwatch_webhooks/webhook_forwarder.py
++++ /dev/null
+@@ -1,232 +0,0 @@
+-import logging
+-from collections import defaultdict
+-from collections.abc import Mapping
+-from dataclasses import dataclass
+-from typing import Any
+-
+-from sentry import options
+-from sentry.constants import ObjectStatus
+-from sentry.integrations.github.webhook_types import (
+-    GITHUB_INSTALLATION_TARGET_ID_HEADER,
+-    GITHUB_WEBHOOK_TYPE_HEADER_KEY,
+-    GithubWebhookType,
+-)
+-from sentry.integrations.models.integration import Integration
+-from sentry.integrations.models.organization_integration import OrganizationIntegration
+-from sentry.models.organizationmapping import OrganizationMapping
+-from sentry.overwatch_webhooks.types import OrganizationSummary, WebhookDetails
+-from sentry.overwatch_webhooks.webhook_publisher import OverwatchWebhookPublisher
+-from sentry.seer.code_review.utils import is_github_org_direct_to_seer
+-from sentry.seer.code_review.utils import (
+-    should_forward_to_overwatch as should_forward_to_overwatch_for_event,
+-)
+-from sentry.types.region import get_region_by_name
+-from sentry.utils import metrics
+-
+-# Installation webhooks are always forwarded (not configurable)
+-_INSTALLATION_EVENTS = {
+-    GithubWebhookType.INSTALLATION,
+-    GithubWebhookType.INSTALLATION_REPOSITORIES,
+-}
+-
+-
+-@dataclass(frozen=True)
+-class OverwatchOrganizationContext:
+-    organization_integration: OrganizationIntegration
+-    organization_mapping: OrganizationMapping
+-
+-
+-logger = logging.getLogger("sentry.overwatch_webhook_forwarder")
+-
+-
+-def verbose_log(msg: str, *, extra: dict | None = None) -> None:
+-    if bool(options.get("overwatch.forward-webhooks.verbose", False)):
+-        logger.info(msg, extra=extra)
+-
+-
+-class OverwatchGithubWebhookForwarder:
+-    integration: Integration
+-
+-    def __init__(self, integration: Integration):
+-        self.integration = integration
+-
+-    def should_forward_to_overwatch(self, headers: Mapping[str, str]) -> bool:
+-        event_type = headers.get(GITHUB_WEBHOOK_TYPE_HEADER_KEY)
+-        if event_type is None:
+-            return False
+-        try:
+-            event_type_enum = GithubWebhookType(event_type)
+-        except ValueError:
+-            return False
+-        # Installation events are always forwarded
+-        is_installation = event_type_enum in _INSTALLATION_EVENTS
+-        # Other events are controlled by options
+-        should_forward = is_installation or should_forward_to_overwatch_for_event(event_type_enum)
+-        verbose_log(
+-            "overwatch.debug.should_forward_to_overwatch.checked",
+-            extra={
+-                "event_type": event_type,
+-                "should_forward": should_forward,
+-                "is_installation": is_installation,
+-            },
+-        )
+-        return should_forward
+-
+-    def _get_org_summaries_by_region_for_integration(
+-        self, integration: Integration
+-    ) -> dict[str, list[OrganizationSummary]]:
+-        org_integrations = OrganizationIntegration.objects.filter(
+-            integration=integration, status=ObjectStatus.ACTIVE
+-        )
+-        verbose_log(
+-            "overwatch.debug.org_integrations.fetched",
+-            extra={
+-                "integration_id": integration.id,
+-                "org_integration_ids": [oi.organization_id for oi in org_integrations],
+-                "count": len(org_integrations),
+-            },
+-        )
+-        organization_ids = [org_integration.organization_id for org_integration in org_integrations]
+-        org_mappings = OrganizationMapping.objects.filter(organization_id__in=organization_ids)
+-        verbose_log(
+-            "overwatch.debug.org_mappings.fetched",
+-            extra={
+-                "org_mapping_ids": [om.organization_id for om in org_mappings],
+-                "count": len(org_mappings),
+-            },
+-        )
+-        org_mappings_by_id = {
+-            org_mapping.organization_id: org_mapping for org_mapping in org_mappings
+-        }
+-
+-        org_contexts_by_region: dict[str, list[OrganizationSummary]] = defaultdict(list)
+-
+-        for org_integration in org_integrations:
+-            org_mapping = org_mappings_by_id[org_integration.organization_id]
+-            region_name = org_mapping.region_name
+-
+-            org_contexts_by_region[region_name].append(
+-                OrganizationSummary.from_organization_mapping_and_integration(
+-                    org_integration=org_integration,
+-                    organization_mapping=org_mapping,
+-                )
+-            )
+-            verbose_log(
+-                "overwatch.debug.organizations.grouped_by_region",
+-                extra={
+-                    "region_name": region_name,
+-                    "org_id": org_integration.organization_id,
+-                },
+-            )
+-
+-        verbose_log(
+-            "overwatch.debug.org_contexts_by_region.final",
+-            extra={
+-                "regions": list(org_contexts_by_region.keys()),
+-                "counts_per_region": {k: len(v) for k, v in org_contexts_by_region.items()},
+-            },
+-        )
+-
+-        return org_contexts_by_region
+-
+-    # This is called from the middleware after the webhook has been processed by the integration webhook handler
+-    def forward_if_applicable(self, event: Mapping[str, Any], headers: Mapping[str, str]):
+-        region_name = None
+-        try:
+-            enabled_regions = options.get("overwatch.enabled-regions")
+-            if not enabled_regions:
+-                # feature isn't enabled, no work to do
+-                return
+-
+-            orgs_by_region = self._get_org_summaries_by_region_for_integration(
+-                integration=self.integration
+-            )
+-            verbose_log(
+-                "overwatch.debug.orgs_by_region",
+-                extra={
+-                    "regions": list(orgs_by_region.keys()),
+-                    "counts_per_region": {k: len(v) for k, v in orgs_by_region.items()},
+-                },
+-            )
+-
+-            if not orgs_by_region or not self.should_forward_to_overwatch(headers):
+-                verbose_log(
+-                    "overwatch.debug.skipped_forwarding",
+-                    extra={
+-                        "orgs_by_region_empty": not orgs_by_region,
+-                        "event_in_forward_list": self.should_forward_to_overwatch(headers),
+-                    },
+-                )
+-                return
+-
+-            if is_github_org_direct_to_seer(event):
+-                github_org = event.get("repository", {}).get("owner", {}).get("login")
+-                verbose_log(
+-                    "overwatch.debug.github_org_whitelisted_for_direct_to_seer",
+-                    extra={"github_org": github_org},
+-                )
+-                return
+-
+-            # We can conditionally opt into forwarding on a per-region basis,
+-            # similar to codecov's current implementation.
+-            for region_name, org_summaries in orgs_by_region.items():
+-                verbose_log(
+-                    "overwatch.debug.check_region",
+-                    extra={
+-                        "region_name": region_name,
+-                        "enabled": region_name in enabled_regions,
+-                        "org_summaries_count": len(org_summaries),
+-                    },
+-                )
+-                if region_name not in enabled_regions:
+-                    continue
+-
+-                raw_app_id = headers.get(
+-                    GITHUB_INSTALLATION_TARGET_ID_HEADER,
+-                )
+-                verbose_log(
+-                    "overwatch.debug.raw_app_id",
+-                    extra={"region_name": region_name, "raw_app_id": raw_app_id},
+-                )
+-                app_id: int | None = None
+-                if raw_app_id is not None:
+-                    try:
+-                        app_id = int(raw_app_id)
+-                    except (TypeError, ValueError):
+-                        verbose_log(
+-                            "overwatch.debug.app_id_parse_error",
+-                            extra={"region_name": region_name, "raw_app_id": raw_app_id},
+-                        )
+-                        app_id = None
+-
+-                formatted_headers = {k: v for k, v in headers.items()}
+-
+-                webhook_detail = WebhookDetails(
+-                    organizations=org_summaries,
+-                    webhook_body=dict(event),
+-                    webhook_headers=formatted_headers,
+-                    integration_provider=self.integration.provider,
+-                    region=region_name,
+-                    app_id=app_id,
+-                )
+-
+-                publisher = OverwatchWebhookPublisher(
+-                    integration_provider=self.integration.provider,
+-                    region=get_region_by_name(region_name),
+-                )
+-                verbose_log("overwatch.debug.enqueue_webhook", extra={"region_name": region_name})
+-                publisher.enqueue_webhook(webhook_detail)
+-                metrics.incr(
+-                    "overwatch.forward-webhooks.success",
+-                    sample_rate=1.0,
+-                    tags={"forward_region": region_name},
+-                )
+-        except Exception:
+-            metrics.incr(
+-                "overwatch.forward-webhooks.forward-error",
+-                sample_rate=1.0,
+-                tags={"forward_region": region_name},
+-            )
+-            logger.exception(
+-                "overwatch.forward-webhooks.forward-error", extra={"forward_region": region_name}
+-            )
+diff --git a/src/sentry/overwatch_webhooks/webhook_publisher.py b/src/sentry/overwatch_webhooks/webhook_publisher.py
+deleted file mode 100644
+index 16d2cf37ecb..00000000000
+--- a/src/sentry/overwatch_webhooks/webhook_publisher.py
++++ /dev/null
+@@ -1,52 +0,0 @@
+-import hashlib
+-import hmac
+-import logging
+-
+-import requests
+-from django.conf import settings
+-from google.cloud.pubsub import PublisherClient
+-
+-from sentry.overwatch_webhooks.types import WebhookDetails
+-from sentry.types.region import Region
+-
+-logger = logging.getLogger("sentry.overwatch_webhooks")
+-
+-
+-class OverwatchWebhookPublisher:
+-    _publisher_client: PublisherClient
+-    _region: Region
+-    _integration_provider: str
+-
+-    def __init__(self, integration_provider: str, region: Region):
+-        self._integration_provider = integration_provider
+-        self._region = region
+-
+-    def enqueue_webhook(self, webhook_details: WebhookDetails):
+-        base_addr = self._get_request_address()
+-
+-        body = webhook_details.to_json()
+-        requests.post(
+-            f"{base_addr}/webhooks/sentry",
+-            data=webhook_details.to_json(),
+-            headers={
+-                "content-type": "application/json;charset=utf-8",
+-                "x-sentry-overwatch-signature": self._get_request_signature(body),
+-            },
+-        )
+-
+-    def _get_request_signature(self, body: str) -> str:
+-
+-        if not (webhook_secret := settings.OVERWATCH_WEBHOOK_SECRET):
+-            raise ValueError("OVERWATCH_WEBHOOK_SECRET is not set")
+-
+-        return hmac.new(
+-            key=webhook_secret.encode("utf-8"),
+-            msg=body.encode("utf-8"),
+-            digestmod=hashlib.sha256,
+-        ).hexdigest()
+-
+-    def _get_request_address(self) -> str:
+-        addr = settings.OVERWATCH_REGION_URLS.get(self._region.name)
+-        if not addr:
+-            raise ValueError(f"Missing overwatch request address for region {self._region.name}")
+-        return addr
+diff --git a/src/sentry/seer/code_review/billing.py b/src/sentry/seer/code_review/billing.py
+index bba319322e8..e8c309625ea 100644
+--- a/src/sentry/seer/code_review/billing.py
++++ b/src/sentry/seer/code_review/billing.py
+@@ -27,7 +27,7 @@ def passes_code_review_billing_check(
+         )
+     except OrganizationContributors.DoesNotExist:
+         metrics.incr(
+-            "overwatch.code_review.contributor_not_found",
++            "seer.code_review.error.contributor_not_found",
+             tags={"organization_id": organization_id},
+         )
+         return False
+diff --git a/src/sentry/seer/code_review/utils.py b/src/sentry/seer/code_review/utils.py
+index d05bdbf56f7..a68ca3f5c38 100644
+--- a/src/sentry/seer/code_review/utils.py
++++ b/src/sentry/seer/code_review/utils.py
+@@ -8,7 +8,6 @@ import orjson
+ from django.conf import settings
+ from urllib3.exceptions import HTTPError
+ 
+-from sentry import options
+ from sentry.integrations.github.webhook_types import GithubWebhookType
+ from sentry.integrations.services.integration.model import RpcIntegration
+ from sentry.models.organization import Organization
+@@ -68,21 +67,6 @@ def get_seer_endpoint_for_event(github_event: GithubWebhookType) -> SeerEndpoint
+     return SeerEndpoint.OVERWATCH_REQUEST
+ 
+ 
+-def _get_webhook_option_key(webhook_type: GithubWebhookType) -> str | None:
+-    """
+-    Get the option key for a given GitHub webhook type.
+-
+-    Args:
+-        webhook_type: The GitHub webhook event type
+-
+-    Returns:
+-        The option key string if the webhook type has an associated option, None otherwise
+-    """
+-    from .webhooks.config import WEBHOOK_TYPE_TO_OPTION_KEY
+-
+-    return WEBHOOK_TYPE_TO_OPTION_KEY.get(webhook_type)
+-
+-
+ def make_seer_request(path: str, payload: Mapping[str, Any]) -> bytes:
+     """
+     Make a request to the Seer API and return the response data.
+@@ -310,60 +294,3 @@ def get_pr_author_id(event: Mapping[str, Any]) -> str | None:
+         return str(user_id)
+ 
+     return None
+-
+-
+-def should_forward_to_seer(
+-    github_event: GithubWebhookType, event_payload: Mapping[str, Any]
+-) -> bool:
+-    """
+-    Determine if we should proceed with the code review flow to Seer.
+-
+-    We will proceed if the GitHub org is in the direct-to-seer whitelist.
+-    For CHECK_RUN events (no option key), we always proceed.
+-    """
+-    if not should_forward_to_overwatch(github_event):
+-        return True
+-
+-    return is_github_org_direct_to_seer(event_payload)
+-
+-
+-def is_github_org_direct_to_seer(event_payload: Mapping[str, Any]) -> bool:
+-    """
+-    Determine if the GitHub org is in the direct-to-seer whitelist.
+-    """
+-    repository = event_payload.get("repository", {})
+-    if not isinstance(repository, dict):
+-        return False
+-    owner = repository.get("owner", {})
+-    if not isinstance(owner, dict):
+-        return False
+-    github_org = owner.get("login")
+-    return github_org is not None and github_org in _direct_to_seer_gh_orgs()
+-
+-
+-def should_forward_to_overwatch(github_event: GithubWebhookType) -> bool:
+-    """
+-    Determine if a GitHub webhook event should be forwarded to Overwatch.
+-
+-    - If there is no option key (i.e., _get_webhook_option_key returns None),
+-      the event should NOT be forwarded to Overwatch (returns False).
+-      This ensures events like CHECK_RUN are excluded from forwarding.
+-    - If there is an option key, forwarding is controlled by the option value.
+-
+-    Args:
+-        github_event: The GitHub webhook event type.
+-
+-    Returns:
+-        bool: True if the event should be forwarded to Overwatch, False otherwise.
+-    """
+-    option_key = _get_webhook_option_key(github_event)
+-    if option_key is None:
+-        return False
+-    return options.get(option_key)
+-
+-
+-def _direct_to_seer_gh_orgs() -> list[str]:
+-    """
+-    Returns the list of GitHub org names that should always send directly to Seer.
+-    """
+-    return options.get("seer.code-review.direct-to-seer-enabled-gh-orgs") or []
+diff --git a/src/sentry/seer/code_review/webhooks/config.py b/src/sentry/seer/code_review/webhooks/config.py
+deleted file mode 100644
+index bb62fb8a779..00000000000
+--- a/src/sentry/seer/code_review/webhooks/config.py
++++ /dev/null
+@@ -1,7 +0,0 @@
+-from sentry.integrations.github.webhook_types import GithubWebhookType
+-
+-# Mapping of webhook types to their corresponding option keys
+-WEBHOOK_TYPE_TO_OPTION_KEY = {
+-    GithubWebhookType.ISSUE_COMMENT: "github.webhook.issue-comment",
+-    GithubWebhookType.PULL_REQUEST: "github.webhook.pr",
+-}
+diff --git a/src/sentry/seer/code_review/webhooks/issue_comment.py b/src/sentry/seer/code_review/webhooks/issue_comment.py
+index f975ed643df..cf8f7b56cdb 100644
+--- a/src/sentry/seer/code_review/webhooks/issue_comment.py
++++ b/src/sentry/seer/code_review/webhooks/issue_comment.py
+@@ -22,7 +22,7 @@ from ..metrics import (
+     record_webhook_handler_error,
+     record_webhook_received,
+ )
+-from ..utils import _get_target_commit_sha, should_forward_to_seer
++from ..utils import _get_target_commit_sha
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -127,26 +127,25 @@ def handle_issue_comment_event(
+         logger.info(Log.NOT_REVIEW_COMMAND.value, extra=extra)
+         return
+ 
+-    if should_forward_to_seer(github_event, event):
+-        if comment_id:
+-            _add_eyes_reaction_to_comment(
+-                github_event,
+-                GitHubIssueCommentAction(github_event_action),
+-                integration,
+-                organization,
+-                repo,
+-                str(comment_id),
+-            )
+-
+-        target_commit_sha = _get_target_commit_sha(github_event, event, repo, integration)
+-
+-        from .task import schedule_task
+-
+-        schedule_task(
+-            github_event=github_event,
+-            github_event_action=github_event_action,
+-            event=event,
+-            organization=organization,
+-            repo=repo,
+-            target_commit_sha=target_commit_sha,
++    if comment_id:
++        _add_eyes_reaction_to_comment(
++            github_event,
++            GitHubIssueCommentAction(github_event_action),
++            integration,
++            organization,
++            repo,
++            str(comment_id),
+         )
++
++    target_commit_sha = _get_target_commit_sha(github_event, event, repo, integration)
++
++    from .task import schedule_task
++
++    schedule_task(
++        github_event=github_event,
++        github_event_action=github_event_action,
++        event=event,
++        organization=organization,
++        repo=repo,
++        target_commit_sha=target_commit_sha,
++    )
+diff --git a/src/sentry/seer/code_review/webhooks/pull_request.py b/src/sentry/seer/code_review/webhooks/pull_request.py
+index 7dfa5f4581c..c59a2407064 100644
+--- a/src/sentry/seer/code_review/webhooks/pull_request.py
++++ b/src/sentry/seer/code_review/webhooks/pull_request.py
+@@ -22,7 +22,7 @@ from ..metrics import (
+     record_webhook_handler_error,
+     record_webhook_received,
+ )
+-from ..utils import _get_target_commit_sha, should_forward_to_seer
++from ..utils import _get_target_commit_sha
+ 
+ logger = logging.getLogger(__name__)
+ 
+@@ -124,14 +124,13 @@ def handle_pull_request_event(
+     if pull_request.get("draft") is True:
+         return
+ 
+-    if should_forward_to_seer(github_event, event):
+-        from .task import schedule_task
++    from .task import schedule_task
+ 
+-        schedule_task(
+-            github_event=github_event,
+-            github_event_action=action_value,
+-            event=event,
+-            organization=organization,
+-            repo=repo,
+-            target_commit_sha=_get_target_commit_sha(github_event, event, repo, integration),
+-        )
++    schedule_task(
++        github_event=github_event,
++        github_event_action=action_value,
++        event=event,
++        organization=organization,
++        repo=repo,
++        target_commit_sha=_get_target_commit_sha(github_event, event, repo, integration),
++    )
+diff --git a/static/app/utils/api/knownSentryApiUrls.generated.ts b/static/app/utils/api/knownSentryApiUrls.generated.ts
+index cc790669a07..9af7e4a866a 100644
+--- a/static/app/utils/api/knownSentryApiUrls.generated.ts
++++ b/static/app/utils/api/knownSentryApiUrls.generated.ts
+@@ -101,7 +101,6 @@ export type KnownSentryApiUrls =
+   | '/internal/$organizationIdOrSlug/$projectIdOrSlug/files/preprodartifacts/$headArtifactId/size/$identifier/'
+   | '/internal/$organizationIdOrSlug/$projectIdOrSlug/files/preprodartifacts/$headArtifactId/update/'
+   | '/internal/beacon/'
+-  | '/internal/code-review/repo-settings/'
+   | '/internal/demo/email-capture/'
+   | '/internal/environment/'
+   | '/internal/feature-flags/'
+@@ -117,9 +116,6 @@ export type KnownSentryApiUrls =
+   | '/internal/preprod-artifact/$headArtifactId/info/'
+   | '/internal/preprod-artifact/batch-delete/'
+   | '/internal/preprod-artifact/rerun-analysis/'
+-  | '/internal/prevent/pr-review/configs/resolved/'
+-  | '/internal/prevent/pr-review/eligibility/'
+-  | '/internal/prevent/pr-review/github/sentry-org/'
+   | '/internal/project-config/'
+   | '/internal/rpc/$serviceName/$methodName/'
+   | '/internal/seer-rpc/$methodName/'
+diff --git a/tests/sentry/deletions/tasks/test_overwatch.py b/tests/sentry/deletions/tasks/test_overwatch.py
+deleted file mode 100644
+index f83c758e39f..00000000000
+--- a/tests/sentry/deletions/tasks/test_overwatch.py
++++ /dev/null
+@@ -1,293 +0,0 @@
+-import hashlib
+-import hmac
+-from typing import Any
+-from unittest.mock import MagicMock, patch
+-
+-import responses
+-from django.test import override_settings
+-
+-from sentry.deletions.tasks.overwatch import notify_overwatch_organization_deleted
+-from sentry.testutils.cases import TestCase
+-from sentry.utils import json
+-
+-
+-class NotifyOverwatchOrganizationDeletedTest(TestCase):
+-    def setUp(self) -> None:
+-        super().setUp()
+-        self.organization_id = 12345
+-        self.organization_slug = "test-org"
+-
+-        # Mock region
+-        self.mock_region = MagicMock()
+-        self.mock_region.name = "us"
+-
+-    @override_settings(
+-        OVERWATCH_WEBHOOK_SECRET="test-secret",
+-        OVERWATCH_REGION_URL="https://overwatch-us.example.com",
+-    )
+-    @patch("sentry.deletions.tasks.overwatch.get_local_region")
+-    @patch("sentry.deletions.tasks.overwatch.logger")
+-    @patch("sentry.deletions.tasks.overwatch.metrics")
+-    def test_region_not_enabled(
+-        self, mock_metrics: Any, mock_logger: Any, mock_get_local_region: Any
+-    ) -> None:
+-        mock_get_local_region.return_value = self.mock_region
+-
+-        with self.options({"overwatch.enabled-regions": []}):
+-            notify_overwatch_organization_deleted(self.organization_id, self.organization_slug)
+-
+-        mock_logger.debug.assert_called_once_with(
+-            "overwatch.organization_deleted.region_not_enabled",
+-            extra={
+-                "organization_id": self.organization_id,
+-                "organization_slug": self.organization_slug,
+-                "region_name": "us",
+-            },
+-        )
+-        mock_metrics.incr.assert_not_called()
+-
+-    @override_settings(OVERWATCH_WEBHOOK_SECRET=None)
+-    @patch("sentry.deletions.tasks.overwatch.get_local_region")
+-    @patch("sentry.deletions.tasks.overwatch.logger")
+-    @patch("sentry.deletions.tasks.overwatch.metrics")
+-    def test_no_webhook_secret(
+-        self, mock_metrics: Any, mock_logger: Any, mock_get_local_region: Any
+-    ) -> None:
+-        mock_get_local_region.return_value = self.mock_region
+-
+-        with self.options({"overwatch.enabled-regions": ["us"]}):
+-            notify_overwatch_organization_deleted(self.organization_id, self.organization_slug)
+-
+-        mock_logger.warning.assert_called_once_with(
+-            "overwatch.organization_deleted.no_secret",
+-            extra={
+-                "organization_id": self.organization_id,
+-                "organization_slug": self.organization_slug,
+-            },
+-        )
+-        mock_metrics.incr.assert_not_called()
+-
+-    @override_settings(
+-        OVERWATCH_WEBHOOK_SECRET="test-secret",
+-        OVERWATCH_REGION_URL="https://overwatch-us.example.com",
+-    )
+-    @responses.activate
+-    @patch("sentry.deletions.tasks.overwatch.get_local_region")
+-    @patch("sentry.deletions.tasks.overwatch.logger")
+-    @patch("sentry.deletions.tasks.overwatch.metrics")
+-    def test_successful_notification(
+-        self, mock_metrics: Any, mock_logger: Any, mock_get_local_region: Any
+-    ) -> None:
+-        mock_get_local_region.return_value = self.mock_region
+-
+-        responses.add(
+-            responses.POST,
+-            "https://overwatch-us.example.com/webhooks/sentry",
+-            status=200,
+-        )
+-
+-        with self.options({"overwatch.enabled-regions": ["us"]}):
+-            notify_overwatch_organization_deleted(self.organization_id, self.organization_slug)
+-
+-        assert len(responses.calls) == 1
+-        request = responses.calls[0].request
+-
+-        payload = json.loads(request.body)
+-        assert payload == {
+-            "event_type": "organization_delete",
+-            "organization_id": self.organization_id,
+-            "organization_slug": self.organization_slug,
+-            "region": "us",
+-        }
+-
+-        expected_signature = hmac.new(
+-            b"test-secret",
+-            request.body,
+-            hashlib.sha256,
+-        ).hexdigest()
+-        assert request.headers["x-sentry-overwatch-signature"] == expected_signature
+-        assert request.headers["content-type"] == "application/json;charset=utf-8"
+-
+-        mock_logger.info.assert_called_once_with(
+-            "overwatch.organization_deleted.success",
+-            extra={
+-                "organization_id": self.organization_id,
+-                "organization_slug": self.organization_slug,
+-                "region_name": "us",
+-                "status_code": 200,
+-            },
+-        )
+-
+-        mock_metrics.incr.assert_called_once_with(
+-            "overwatch.organization_deleted.sent",
+-            amount=1,
+-            tags={"status": "success", "region": "us"},
+-        )
+-
+-    @override_settings(
+-        OVERWATCH_WEBHOOK_SECRET="test-secret",
+-        OVERWATCH_REGION_URL=None,  # No URL configured
+-    )
+-    @patch("sentry.deletions.tasks.overwatch.get_local_region")
+-    @patch("sentry.deletions.tasks.overwatch.logger")
+-    @patch("sentry.deletions.tasks.overwatch.metrics")
+-    def test_missing_region_url(
+-        self, mock_metrics: Any, mock_logger: Any, mock_get_local_region: Any
+-    ) -> None:
+-        mock_get_local_region.return_value = self.mock_region
+-
+-        with self.options({"overwatch.enabled-regions": ["us"]}):
+-            notify_overwatch_organization_deleted(self.organization_id, self.organization_slug)
+-
+-        mock_logger.warning.assert_called_once_with(
+-            "overwatch.organization_deleted.missing_region_url",
+-            extra={
+-                "organization_id": self.organization_id,
+-                "organization_slug": self.organization_slug,
+-                "region_name": "us",
+-            },
+-        )
+-
+-        mock_metrics.incr.assert_called_once_with(
+-            "overwatch.organization_deleted.sent",
+-            amount=1,
+-            tags={"status": "failure", "region": "us"},
+-        )
+-
+-    @override_settings(
+-        OVERWATCH_WEBHOOK_SECRET="test-secret",
+-        OVERWATCH_REGION_URL="https://overwatch-us.example.com",
+-    )
+-    @responses.activate
+-    @patch("sentry.deletions.tasks.overwatch.get_local_region")
+-    @patch("sentry.deletions.tasks.overwatch.logger")
+-    @patch("sentry.deletions.tasks.overwatch.metrics")
+-    def test_request_failure(
+-        self, mock_metrics: Any, mock_logger: Any, mock_get_local_region: Any
+-    ) -> None:
+-        mock_get_local_region.return_value = self.mock_region
+-
+-        responses.add(
+-            responses.POST,
+-            "https://overwatch-us.example.com/webhooks/sentry",
+-            status=500,
+-        )
+-
+-        with self.options({"overwatch.enabled-regions": ["us"]}):
+-            notify_overwatch_organization_deleted(self.organization_id, self.organization_slug)
+-
+-        mock_logger.exception.assert_called_once()
+-        call_args = mock_logger.exception.call_args
+-        assert call_args[0][0] == "overwatch.organization_deleted.failed"
+-        assert call_args[1]["extra"]["organization_id"] == self.organization_id
+-        assert call_args[1]["extra"]["region_name"] == "us"
+-
+-        mock_metrics.incr.assert_called_once_with(
+-            "overwatch.organization_deleted.sent",
+-            amount=1,
+-            tags={"status": "failure", "region": "us"},
+-        )
+-
+-    @override_settings(
+-        OVERWATCH_WEBHOOK_SECRET="test-secret",
+-        OVERWATCH_REGION_URL="https://overwatch-us.example.com",
+-    )
+-    @responses.activate
+-    @patch("sentry.deletions.tasks.overwatch.get_local_region")
+-    def test_request_timeout(self, mock_get_local_region: Any) -> None:
+-        import requests
+-
+-        mock_get_local_region.return_value = self.mock_region
+-
+-        responses.add(
+-            responses.POST,
+-            "https://overwatch-us.example.com/webhooks/sentry",
+-            body=requests.exceptions.Timeout(),
+-        )
+-
+-        with self.options({"overwatch.enabled-regions": ["us"]}):
+-            notify_overwatch_organization_deleted(self.organization_id, self.organization_slug)
+-
+-        assert len(responses.calls) == 1
+-
+-    @override_settings(
+-        OVERWATCH_WEBHOOK_SECRET="secret-with-special-chars-!@#$%",
+-        OVERWATCH_REGION_URL="https://overwatch-us.example.com",
+-    )
+-    @responses.activate
+-    @patch("sentry.deletions.tasks.overwatch.get_local_region")
+-    def test_signature_with_special_characters(self, mock_get_local_region: Any) -> None:
+-        mock_get_local_region.return_value = self.mock_region
+-
+-        responses.add(
+-            responses.POST,
+-            "https://overwatch-us.example.com/webhooks/sentry",
+-            status=200,
+-        )
+-
+-        with self.options({"overwatch.enabled-regions": ["us"]}):
+-            notify_overwatch_organization_deleted(self.organization_id, self.organization_slug)
+-
+-        request = responses.calls[0].request
+-        payload = request.body
+-
+-        expected_signature = hmac.new(
+-            b"secret-with-special-chars-!@#$%",
+-            payload,
+-            hashlib.sha256,
+-        ).hexdigest()
+-        assert request.headers["x-sentry-overwatch-signature"] == expected_signature
+-
+-    @override_settings(
+-        OVERWATCH_WEBHOOK_SECRET="test-secret",
+-        OVERWATCH_REGION_URL="https://overwatch-us.example.com",
+-    )
+-    @patch("sentry.deletions.tasks.overwatch.get_local_region")
+-    @patch("sentry.deletions.tasks.overwatch.logger")
+-    @patch("sentry.deletions.tasks.overwatch.metrics")
+-    def test_get_local_region_error(
+-        self, mock_metrics: Any, mock_logger: Any, mock_get_local_region: Any
+-    ) -> None:
+-        mock_get_local_region.side_effect = Exception("Region not configured")
+-
+-        with self.options({"overwatch.enabled-regions": ["us"]}):
+-            notify_overwatch_organization_deleted(self.organization_id, self.organization_slug)
+-
+-        mock_logger.exception.assert_called_once()
+-        call_args = mock_logger.exception.call_args
+-        assert call_args[0][0] == "overwatch.organization_deleted.region_error"
+-        assert call_args[1]["extra"]["organization_id"] == self.organization_id
+-        assert call_args[1]["extra"]["error"] == "Region not configured"
+-
+-        mock_metrics.incr.assert_not_called()
+-
+-    @override_settings(
+-        OVERWATCH_WEBHOOK_SECRET="test-secret",
+-        OVERWATCH_REGION_URL="https://overwatch-us.example.com",
+-    )
+-    @responses.activate
+-    @patch("sentry.deletions.tasks.overwatch.get_local_region")
+-    @patch("sentry.deletions.tasks.overwatch.logger")
+-    @patch("sentry.deletions.tasks.overwatch.metrics")
+-    def test_different_region_name(
+-        self, mock_metrics: Any, mock_logger: Any, mock_get_local_region: Any
+-    ) -> None:
+-        """Test that the correct region name from get_local_region is used"""
+-        eu_region = MagicMock()
+-        eu_region.name = "eu"
+-        mock_get_local_region.return_value = eu_region
+-
+-        # us is enabled but we're in eu region (not enabled)
+-        with self.options({"overwatch.enabled-regions": ["us"]}):
+-            notify_overwatch_organization_deleted(self.organization_id, self.organization_slug)
+-
+-        # Should log that eu region is not enabled
+-        mock_logger.debug.assert_called_once_with(
+-            "overwatch.organization_deleted.region_not_enabled",
+-            extra={
+-                "organization_id": self.organization_id,
+-                "organization_slug": self.organization_slug,
+-                "region_name": "eu",
+-            },
+-        )
+-        mock_metrics.incr.assert_not_called()
+diff --git a/tests/sentry/deletions/test_organization.py b/tests/sentry/deletions/test_organization.py
+index 74e92ae135b..05f200f2320 100644
+--- a/tests/sentry/deletions/test_organization.py
++++ b/tests/sentry/deletions/test_organization.py
+@@ -1,9 +1,5 @@
+-from typing import Any
+-from unittest.mock import patch
+ from uuid import uuid4
+ 
+-from sentry.deletions.defaults.organization import OrganizationDeletionTask
+-from sentry.deletions.manager import DeletionTaskManager
+ from sentry.deletions.tasks.scheduled import run_scheduled_deletions
+ from sentry.discover.models import DiscoverSavedQuery, DiscoverSavedQueryProject
+ from sentry.incidents.grouptype import MetricIssue
+@@ -398,33 +394,3 @@ class DeleteOrganizationTest(TransactionTestCase, HybridCloudTestMixin, BaseWork
+         assert not DataConditionGroup.objects.filter(id=dcg.id).exists()
+         assert not DataCondition.objects.filter(id=dc.id).exists()
+         assert not Workflow.objects.filter(id=workflow.id).exists()
+-
+-    def test_overwatch_notification_on_deletion(self) -> None:
+-        """Test that Overwatch notification is scheduled when organization is deleted"""
+-
+-        org = self.create_organization(name="test")
+-        org_id = org.id
+-        org_slug = org.slug
+-
+-        manager = DeletionTaskManager()
+-        deletion_task = OrganizationDeletionTask(
+-            manager=manager, model=Organization, query={"id": org_id}
+-        )
+-
+-        with patch(
+-            "sentry.deletions.defaults.organization.notify_overwatch_organization_deleted"
+-        ) as mock_task:
+-            with patch(
+-                "sentry.deletions.defaults.organization.transaction.on_commit"
+-            ) as mock_on_commit:
+-
+-                def execute_callback(callback: Any, using: Any = None) -> None:
+-                    callback()
+-
+-                mock_on_commit.side_effect = execute_callback
+-
+-                # Call delete_instance directly
+-                deletion_task.delete_instance(org)
+-
+-                # Verify the task was scheduled via on_commit
+-                mock_task.delay.assert_called_once_with(org_id, org_slug)
+diff --git a/tests/sentry/middleware/integrations/parsers/test_github.py b/tests/sentry/middleware/integrations/parsers/test_github.py
+index a307bcf81fc..bc53f496ca1 100644
+--- a/tests/sentry/middleware/integrations/parsers/test_github.py
++++ b/tests/sentry/middleware/integrations/parsers/test_github.py
+@@ -1,4 +1,3 @@
+-import orjson
+ import pytest
+ import responses
+ from django.db import router, transaction
+@@ -18,7 +17,7 @@ from sentry.testutils.cases import TestCase
+ from sentry.testutils.helpers.options import override_options
+ from sentry.testutils.outbox import assert_no_webhook_payloads, assert_webhook_payloads_for_mailbox
+ from sentry.testutils.region import override_regions
+-from sentry.testutils.silo import control_silo_test, create_test_regions
++from sentry.testutils.silo import control_silo_test
+ from sentry.types.region import Region, RegionCategory
+ 
+ region = Region("us", 1, "https://us.testserver", RegionCategory.MULTI_TENANT)
+@@ -305,115 +304,3 @@ class GithubRequestParserTypeRoutingTest(GithubRequestParserTest):
+     def setup(self):
+         with override_options({"github.webhook-type-routing.enabled": True}):
+             yield
+-
+-
+-@control_silo_test(regions=create_test_regions("us"))
+-class GithubRequestParserOverwatchForwarderTest(TestCase):
+-    factory = RequestFactory()
+-    path = reverse("sentry-integration-github-webhook")
+-
+-    @pytest.fixture(autouse=True)
+-    def setup(self):
+-        with override_options({"github.webhook-type-routing.enabled": True}):
+-            yield
+-
+-    def setUp(self) -> None:
+-        super().setUp()
+-        self.organization = self.create_organization(
+-            name="Test Org",
+-            slug="test-org",
+-            region="us",
+-            owner=self.create_user(email="test@example.com"),
+-        )
+-        self.integration = self.create_integration(
+-            provider="github",
+-            external_id="1",
+-            name="Test Integration",
+-            organization=self.organization,
+-        )
+-
+-    @responses.activate
+-    def test_overwatch_forwarder(self) -> None:
+-        with (
+-            override_options({"overwatch.enabled-regions": ["us"]}),
+-            override_settings(
+-                OVERWATCH_REGION_URLS={"us": "https://us.example.com/api"},
+-                OVERWATCH_WEBHOOK_SECRET="test-secret",
+-            ),
+-        ):
+-            responses.add(
+-                responses.POST,
+-                "https://us.example.com/api/webhooks/sentry",
+-                status=200,
+-            )
+-
+-            request = self.factory.post(
+-                self.path,
+-                data={"installation": {"id": "1"}, "action": "created"},
+-                content_type="application/json",
+-                headers={
+-                    "x-github-event": GithubWebhookType.PULL_REQUEST.value,
+-                    "x-github-hook-installation-target-id": "123",
+-                },
+-            )
+-            parser = GithubRequestParser(
+-                request=request,
+-                response_handler=lambda _: HttpResponse(status=200, content="passthrough"),
+-            )
+-
+-            response = parser.get_response()
+-            assert isinstance(response, HttpResponse)
+-            assert response.status_code == status.HTTP_202_ACCEPTED
+-            assert response.content == b""
+-
+-            assert len(responses.calls) == 1
+-            assert responses.calls[0].request.url == "https://us.example.com/api/webhooks/sentry"
+-            assert responses.calls[0].request.method == "POST"
+-            json_body = orjson.loads(responses.calls[0].request.body)
+-
+-            assert json_body["organizations"] == [
+-                {
+-                    "name": "Test Org",
+-                    "slug": "test-org",
+-                    "id": self.organization.id,
+-                    "region": "us",
+-                    "github_integration_id": self.integration.id,
+-                    "organization_integration_id": self.organization_integration.id,
+-                }
+-            ]
+-            assert json_body["webhook_body"] == {"installation": {"id": "1"}, "action": "created"}
+-            assert json_body["app_id"] == 123
+-            assert json_body["webhook_headers"]["X-Github-Event"] == "pull_request"
+-            assert json_body["integration_provider"] == "github"
+-            assert json_body["region"] == "us"
+-            assert json_body["event_type"] == "github"
+-
+-    @responses.activate
+-    def test_overwatch_forwarder_missing_region_config(self) -> None:
+-        with (
+-            override_options({"overwatch.enabled-regions": ["us"]}),
+-            override_settings(
+-                OVERWATCH_REGION_URLS={"de": "https://de.example.com/api"},
+-                OVERWATCH_WEBHOOK_SECRET="test-secret",
+-            ),
+-        ):
+-            request = self.factory.post(
+-                self.path,
+-                data={"installation": {"id": "1"}, "action": "created"},
+-                content_type="application/json",
+-                headers={
+-                    "x-github-event": GithubWebhookType.PULL_REQUEST.value,
+-                    "x-github-hook-installation-target-id": "1",
+-                },
+-            )
+-            parser = GithubRequestParser(
+-                request=request,
+-                response_handler=lambda _: HttpResponse(status=200, content="passthrough"),
+-            )
+-
+-            response = parser.get_response()
+-            assert isinstance(response, HttpResponse)
+-            assert response.status_code == status.HTTP_202_ACCEPTED
+-            assert response.content == b""
+-
+-            assert len(responses.calls) == 0
+diff --git a/tests/sentry/overwatch/__init__.py b/tests/sentry/overwatch/__init__.py
+deleted file mode 100644
+index e69de29bb2d..00000000000
+diff --git a/tests/sentry/overwatch/endpoints/__init__.py b/tests/sentry/overwatch/endpoints/__init__.py
+deleted file mode 100644
+index e69de29bb2d..00000000000
+diff --git a/tests/sentry/overwatch/endpoints/test_overwatch_rpc.py b/tests/sentry/overwatch/endpoints/test_overwatch_rpc.py
+deleted file mode 100644
+index 51619bf6802..00000000000
+--- a/tests/sentry/overwatch/endpoints/test_overwatch_rpc.py
++++ /dev/null
+@@ -1,1109 +0,0 @@
+-import hashlib
+-import hmac
+-from copy import deepcopy
+-from unittest.mock import patch
+-
+-from django.urls import reverse
+-
+-from sentry.constants import DEFAULT_CODE_REVIEW_TRIGGERS, DataCategory, ObjectStatus
+-from sentry.models.organizationcontributors import OrganizationContributors
+-from sentry.models.repositorysettings import RepositorySettings
+-from sentry.prevent.models import PreventAIConfiguration
+-from sentry.prevent.types.config import PREVENT_AI_CONFIG_DEFAULT, PREVENT_AI_CONFIG_DEFAULT_V1
+-from sentry.silo.base import SiloMode
+-from sentry.testutils.cases import APITestCase
+-from sentry.testutils.silo import assume_test_silo_mode
+-
+-VALID_ORG_CONFIG = {
+-    "schema_version": "v1",
+-    "org_defaults": {
+-        "bug_prediction": {
+-            "enabled": True,
+-            "sensitivity": "medium",
+-            "triggers": {"on_command_phrase": True, "on_ready_for_review": True},
+-        },
+-        "test_generation": {
+-            "enabled": False,
+-            "triggers": {"on_command_phrase": True, "on_ready_for_review": False},
+-        },
+-        "vanilla": {
+-            "enabled": False,
+-            "sensitivity": "medium",
+-            "triggers": {"on_command_phrase": True, "on_ready_for_review": False},
+-        },
+-    },
+-    "repo_overrides": {},
+-}
+-
+-
+-class TestPreventPrReviewResolvedConfigsEndpoint(APITestCase):
+-    def _auth_header_for_get(self, url: str, params: dict[str, str], secret: str) -> str:
+-        # For GET we sign an empty JSON array body per Rpcsignature rpc0
+-        message = b"[]"
+-        signature = hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
+-        return f"Rpcsignature rpc0:{signature}"
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_requires_auth(self):
+-        url = reverse("sentry-api-0-prevent-pr-review-configs-resolved")
+-        # Missing auth
+-        resp = self.client.get(url, {"sentryOrgId": "123"})
+-        assert resp.status_code == 403
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_missing_sentry_org_id_returns_400(self):
+-        url = reverse("sentry-api-0-prevent-pr-review-configs-resolved")
+-        auth = self._auth_header_for_get(url, {}, "test-secret")
+-        resp = self.client.get(url, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 400
+-        assert "sentryOrgId" in resp.data["detail"]
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_invalid_sentry_org_id_returns_400(self):
+-        url = reverse("sentry-api-0-prevent-pr-review-configs-resolved")
+-        params = {"sentryOrgId": "not-a-number", "gitOrgName": "test-org", "provider": "github"}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 400
+-        assert "must be a valid integer" in resp.data["detail"]
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_negative_sentry_org_id_returns_400(self):
+-        url = reverse("sentry-api-0-prevent-pr-review-configs-resolved")
+-        params = {"sentryOrgId": "-123", "gitOrgName": "test-org", "provider": "github"}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 400
+-        assert "must be a positive integer" in resp.data["detail"]
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_missing_git_org_name_returns_400(self):
+-        url = reverse("sentry-api-0-prevent-pr-review-configs-resolved")
+-        params = {"sentryOrgId": "123"}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 400
+-        assert "gitOrgName" in resp.data["detail"]
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_missing_provider_returns_400(self):
+-        url = reverse("sentry-api-0-prevent-pr-review-configs-resolved")
+-        params = {"sentryOrgId": "123", "gitOrgName": "test-org"}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 400
+-        assert "provider" in resp.data["detail"]
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_returns_default_when_no_config(self):
+-        org = self.create_organization()
+-        git_org_name = "test-github-org"
+-
+-        with assume_test_silo_mode(SiloMode.CONTROL):
+-            self.create_integration(
+-                organization=org,
+-                provider="github",
+-                name=git_org_name,
+-                external_id=f"github:{git_org_name}",
+-                status=ObjectStatus.ACTIVE,
+-            )
+-
+-        url = reverse("sentry-api-0-prevent-pr-review-configs-resolved")
+-        params = {
+-            "sentryOrgId": str(org.id),
+-            "gitOrgName": git_org_name,
+-            "provider": "github",
+-        }
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 200
+-        assert resp.data == PREVENT_AI_CONFIG_DEFAULT
+-        assert resp.data["organization"] == {}
+-        # Default config has on_new_commit disabled for bug_prediction
+-        assert (
+-            resp.data["default_org_config"]["org_defaults"]["bug_prediction"]["triggers"][
+-                "on_new_commit"
+-            ]
+-            is False
+-        )
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_returns_v1_default_when_feature_flag_enabled(self):
+-        org = self.create_organization()
+-        git_org_name = "test-github-org"
+-
+-        with assume_test_silo_mode(SiloMode.CONTROL):
+-            self.create_integration(
+-                organization=org,
+-                provider="github",
+-                name=git_org_name,
+-                external_id=f"github:{git_org_name}",
+-                status=ObjectStatus.ACTIVE,
+-            )
+-
+-        url = reverse("sentry-api-0-prevent-pr-review-configs-resolved")
+-        params = {
+-            "sentryOrgId": str(org.id),
+-            "gitOrgName": git_org_name,
+-            "provider": "github",
+-        }
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-
+-        with self.feature({"organizations:code-review-run-per-commit": org}):
+-            resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-            assert resp.status_code == 200
+-            assert resp.data == PREVENT_AI_CONFIG_DEFAULT_V1
+-            # V1 config has on_new_commit enabled for bug_prediction
+-            assert (
+-                resp.data["default_org_config"]["org_defaults"]["bug_prediction"]["triggers"][
+-                    "on_new_commit"
+-                ]
+-                is True
+-            )
+-            assert resp.data["organization"] == {}
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_returns_config_when_exists(self):
+-        org = self.create_organization()
+-        git_org_name = "test-github-org"
+-
+-        with assume_test_silo_mode(SiloMode.CONTROL):
+-            integration = self.create_integration(
+-                organization=org,
+-                provider="github",
+-                name=git_org_name,
+-                external_id=f"github:{git_org_name}",
+-                status=ObjectStatus.ACTIVE,
+-            )
+-
+-        PreventAIConfiguration.objects.create(
+-            organization_id=org.id,
+-            integration_id=integration.id,
+-            data=VALID_ORG_CONFIG,
+-        )
+-
+-        url = reverse("sentry-api-0-prevent-pr-review-configs-resolved")
+-        params = {
+-            "sentryOrgId": str(org.id),
+-            "gitOrgName": git_org_name,
+-            "provider": "github",
+-        }
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 200
+-        assert resp.data["organization"] == VALID_ORG_CONFIG
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_returns_404_when_integration_not_found(self):
+-        org = self.create_organization()
+-
+-        url = reverse("sentry-api-0-prevent-pr-review-configs-resolved")
+-        params = {
+-            "sentryOrgId": str(org.id),
+-            "gitOrgName": "nonexistent-org",
+-            "provider": "github",
+-        }
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 404
+-        assert resp.data["detail"] == "GitHub integration not found"
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_config_with_repo_overrides(self):
+-        org = self.create_organization()
+-        git_org_name = "test-github-org"
+-
+-        with assume_test_silo_mode(SiloMode.CONTROL):
+-            integration = self.create_integration(
+-                organization=org,
+-                provider="github",
+-                name=git_org_name,
+-                external_id=f"github:{git_org_name}",
+-                status=ObjectStatus.ACTIVE,
+-            )
+-
+-        config_with_overrides = deepcopy(VALID_ORG_CONFIG)
+-        config_with_overrides["repo_overrides"] = {
+-            "my-repo": {
+-                "bug_prediction": {
+-                    "enabled": True,
+-                    "sensitivity": "high",
+-                    "triggers": {"on_command_phrase": True, "on_ready_for_review": False},
+-                },
+-                "test_generation": {
+-                    "enabled": True,
+-                    "triggers": {"on_command_phrase": True, "on_ready_for_review": True},
+-                },
+-                "vanilla": {
+-                    "enabled": False,
+-                    "sensitivity": "low",
+-                    "triggers": {"on_command_phrase": False, "on_ready_for_review": False},
+-                },
+-            }
+-        }
+-
+-        PreventAIConfiguration.objects.create(
+-            organization_id=org.id,
+-            integration_id=integration.id,
+-            data=config_with_overrides,
+-        )
+-
+-        url = reverse("sentry-api-0-prevent-pr-review-configs-resolved")
+-        params = {
+-            "sentryOrgId": str(org.id),
+-            "gitOrgName": git_org_name,
+-            "provider": "github",
+-        }
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 200
+-        assert (
+-            resp.data["organization"]["repo_overrides"]["my-repo"]["bug_prediction"]["sensitivity"]
+-            == "high"
+-        )
+-
+-
+-class TestPreventPrReviewSentryOrgEndpoint(APITestCase):
+-    def _auth_header_for_get(self, url: str, params: dict[str, str], secret: str) -> str:
+-        message = b"[]"
+-        signature = hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
+-        return f"Rpcsignature rpc0:{signature}"
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_requires_auth(self):
+-        url = reverse("sentry-api-0-prevent-pr-review-github-sentry-org")
+-        resp = self.client.get(url, {"repoId": "456"})
+-        assert resp.status_code == 403
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_missing_required_params_returns_400(self):
+-        url = reverse("sentry-api-0-prevent-pr-review-github-sentry-org")
+-        auth = self._auth_header_for_get(url, {}, "test-secret")
+-
+-        resp = self.client.get(url, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 400
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_returns_empty_list_when_no_repos_found(self):
+-        url = reverse("sentry-api-0-prevent-pr-review-github-sentry-org")
+-        params = {"repoId": "456"}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 200
+-        assert resp.data == {"organizations": []}
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_returns_org_ids_with_consent(self):
+-
+-        org_with_consent = self.create_organization()
+-        org_with_consent.update_option("sentry:hide_ai_features", False)
+-        org_with_consent.update_option("sentry:enable_pr_review_test_generation", True)
+-
+-        org_without_consent = self.create_organization()
+-        org_without_consent.update_option("sentry:hide_ai_features", True)
+-
+-        repo_id = "12345"
+-        project_with_consent = self.create_project(organization=org_with_consent)
+-        project_without_consent = self.create_project(organization=org_without_consent)
+-
+-        self.create_repo(
+-            project=project_with_consent,
+-            external_id=repo_id,
+-            name="org/repo",
+-            provider="integrations:github",
+-        )
+-        self.create_repo(
+-            project=project_without_consent,
+-            external_id=repo_id,
+-            name="org/repo",
+-            provider="integrations:github",
+-        )
+-
+-        url = reverse("sentry-api-0-prevent-pr-review-github-sentry-org")
+-        params = {"repoId": repo_id}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-
+-        with self.feature("organizations:gen-ai-features"):
+-            resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-            assert resp.status_code == 200
+-            # Should return both orgs with their consent status
+-            expected_orgs = [
+-                {
+-                    "org_id": org_with_consent.id,
+-                    "org_slug": org_with_consent.slug,
+-                    "org_name": org_with_consent.name,
+-                    "has_consent": True,
+-                },
+-                {
+-                    "org_id": org_without_consent.id,
+-                    "org_slug": org_without_consent.slug,
+-                    "org_name": org_without_consent.name,
+-                    "has_consent": False,
+-                },
+-            ]
+-            # Sort both lists by org_id to ensure consistent comparison
+-            expected_orgs = sorted(expected_orgs, key=lambda x: x["org_id"])
+-            actual_data = {
+-                "organizations": sorted(resp.data["organizations"], key=lambda x: x["org_id"])
+-            }
+-            assert actual_data == {"organizations": expected_orgs}
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_filters_inactive_repositories(self):
+-        org = self.create_organization()
+-        org.update_option("sentry:hide_ai_features", False)
+-        org.update_option("sentry:enable_pr_review_test_generation", True)
+-
+-        repo_id = "12345"
+-        project = self.create_project(organization=org)
+-
+-        # Note: create_repo doesn't support status parameter, so we need to update it after creation
+-        repo = self.create_repo(
+-            project=project,
+-            external_id=repo_id,
+-            name="org/repo",
+-            provider="integrations:github",
+-        )
+-        repo.status = ObjectStatus.DISABLED
+-        repo.save()
+-
+-        url = reverse("sentry-api-0-prevent-pr-review-github-sentry-org")
+-        params = {"repoId": repo_id}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-
+-        with self.feature("organizations:gen-ai-features"):
+-            resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-            assert resp.status_code == 200
+-            # Should return empty list as the repository is inactive
+-            assert resp.data == {"organizations": []}
+-
+-
+-class TestCodeReviewRepoSettingsEndpoint(APITestCase):
+-    def _auth_header_for_get(self, url: str, params: dict[str, str], secret: str) -> str:
+-        message = b"[]"
+-        signature = hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
+-        return f"Rpcsignature rpc0:{signature}"
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_requires_auth(self):
+-        url = reverse("sentry-api-0-code-review-repo-settings")
+-        resp = self.client.get(
+-            url, {"sentryOrgId": "123", "externalRepoId": "456", "provider": "integrations:github"}
+-        )
+-        assert resp.status_code == 403
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_missing_sentry_org_id_returns_400(self):
+-        url = reverse("sentry-api-0-code-review-repo-settings")
+-        params = {"externalRepoId": "456", "provider": "integrations:github"}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 400
+-        assert "sentryOrgId" in resp.data["detail"]
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_invalid_sentry_org_id_returns_400(self):
+-        url = reverse("sentry-api-0-code-review-repo-settings")
+-        params = {
+-            "sentryOrgId": "not-a-number",
+-            "externalRepoId": "456",
+-            "provider": "integrations:github",
+-        }
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 400
+-        assert "must be a valid integer" in resp.data["detail"]
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_zero_sentry_org_id_returns_400(self):
+-        url = reverse("sentry-api-0-code-review-repo-settings")
+-        params = {"sentryOrgId": "0", "externalRepoId": "456", "provider": "integrations:github"}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 400
+-        assert "must be a positive integer" in resp.data["detail"]
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_missing_external_repo_id_returns_400(self):
+-        url = reverse("sentry-api-0-code-review-repo-settings")
+-        params = {"sentryOrgId": "123", "provider": "integrations:github"}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 400
+-        assert "externalRepoId" in resp.data["detail"]
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_missing_provider_returns_400(self):
+-        url = reverse("sentry-api-0-code-review-repo-settings")
+-        params = {"sentryOrgId": "123", "externalRepoId": "456"}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 400
+-        assert "provider" in resp.data["detail"]
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_returns_defaults_when_no_repo_settings_exist(self):
+-        org = self.create_organization()
+-        project = self.create_project(organization=org)
+-        external_repo_id = "12345"
+-
+-        self.create_repo(
+-            project=project,
+-            external_id=external_repo_id,
+-            name="org/repo",
+-            provider="integrations:github",
+-        )
+-
+-        url = reverse("sentry-api-0-code-review-repo-settings")
+-        params = {
+-            "sentryOrgId": str(org.id),
+-            "externalRepoId": external_repo_id,
+-            "provider": "integrations:github",
+-        }
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 200
+-        assert resp.data == {"enabledCodeReview": False, "codeReviewTriggers": []}
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_returns_defaults_when_repo_not_found(self):
+-        org = self.create_organization()
+-
+-        url = reverse("sentry-api-0-code-review-repo-settings")
+-        params = {
+-            "sentryOrgId": str(org.id),
+-            "externalRepoId": "nonexistent-repo-id",
+-            "provider": "integrations:github",
+-        }
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 200
+-        assert resp.data == {"enabledCodeReview": False, "codeReviewTriggers": []}
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_returns_enabled_with_default_triggers_when_code_review_beta_flag(self):
+-        org = self.create_organization()
+-
+-        url = reverse("sentry-api-0-code-review-repo-settings")
+-        params = {
+-            "sentryOrgId": str(org.id),
+-            "externalRepoId": "nonexistent-repo-id",
+-            "provider": "integrations:github",
+-        }
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-
+-        with self.feature({"organizations:code-review-beta": org}):
+-            resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-
+-        assert resp.status_code == 200
+-        assert resp.data == {
+-            "enabledCodeReview": True,
+-            "codeReviewTriggers": DEFAULT_CODE_REVIEW_TRIGGERS,
+-        }
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_returns_enabled_with_default_triggers_when_pr_review_test_generation_enabled(self):
+-        org = self.create_organization()
+-        org.update_option("sentry:enable_pr_review_test_generation", True)
+-
+-        url = reverse("sentry-api-0-code-review-repo-settings")
+-        params = {
+-            "sentryOrgId": str(org.id),
+-            "externalRepoId": "nonexistent-repo-id",
+-            "provider": "integrations:github",
+-        }
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-
+-        assert resp.status_code == 200
+-        assert resp.data == {
+-            "enabledCodeReview": True,
+-            "codeReviewTriggers": DEFAULT_CODE_REVIEW_TRIGGERS,
+-        }
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_returns_repo_settings_when_exist(self):
+-        org = self.create_organization()
+-        project = self.create_project(organization=org)
+-        external_repo_id = "12345"
+-
+-        repo = self.create_repo(
+-            project=project,
+-            external_id=external_repo_id,
+-            name="org/repo",
+-            provider="integrations:github",
+-        )
+-
+-        RepositorySettings.objects.create(
+-            repository=repo,
+-            enabled_code_review=True,
+-            code_review_triggers=["on_new_commit", "on_ready_for_review"],
+-        )
+-
+-        url = reverse("sentry-api-0-code-review-repo-settings")
+-        params = {
+-            "sentryOrgId": str(org.id),
+-            "externalRepoId": external_repo_id,
+-            "provider": "integrations:github",
+-        }
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 200
+-        assert resp.data == {
+-            "enabledCodeReview": True,
+-            "codeReviewTriggers": ["on_new_commit", "on_ready_for_review"],
+-        }
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_filters_inactive_repositories(self):
+-        org = self.create_organization()
+-        project = self.create_project(organization=org)
+-        external_repo_id = "12345"
+-
+-        repo = self.create_repo(
+-            project=project,
+-            external_id=external_repo_id,
+-            name="org/repo",
+-            provider="integrations:github",
+-        )
+-        repo.status = ObjectStatus.DISABLED
+-        repo.save()
+-
+-        RepositorySettings.objects.create(
+-            repository=repo,
+-            enabled_code_review=True,
+-            code_review_triggers=["on_new_commit"],
+-        )
+-
+-        url = reverse("sentry-api-0-code-review-repo-settings")
+-        params = {
+-            "sentryOrgId": str(org.id),
+-            "externalRepoId": external_repo_id,
+-            "provider": "integrations:github",
+-        }
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 200
+-        # Should return defaults since repository is inactive
+-        assert resp.data == {"enabledCodeReview": False, "codeReviewTriggers": []}
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_scopes_by_organization(self):
+-        org1 = self.create_organization()
+-        org2 = self.create_organization()
+-        project1 = self.create_project(organization=org1)
+-        project2 = self.create_project(organization=org2)
+-        external_repo_id = "12345"
+-
+-        repo1 = self.create_repo(
+-            project=project1,
+-            external_id=external_repo_id,
+-            name="org/repo",
+-            provider="integrations:github",
+-        )
+-        self.create_repo(
+-            project=project2,
+-            external_id=external_repo_id,
+-            name="org/repo",
+-            provider="integrations:github",
+-        )
+-
+-        # Only create settings for org1's repo
+-        RepositorySettings.objects.create(
+-            repository=repo1,
+-            enabled_code_review=True,
+-            code_review_triggers=["on_new_commit"],
+-        )
+-
+-        url = reverse("sentry-api-0-code-review-repo-settings")
+-
+-        # Request for org1 should return the settings
+-        params1 = {
+-            "sentryOrgId": str(org1.id),
+-            "externalRepoId": external_repo_id,
+-            "provider": "integrations:github",
+-        }
+-        auth = self._auth_header_for_get(url, params1, "test-secret")
+-        resp1 = self.client.get(url, params1, HTTP_AUTHORIZATION=auth)
+-        assert resp1.status_code == 200
+-        assert resp1.data == {
+-            "enabledCodeReview": True,
+-            "codeReviewTriggers": ["on_new_commit"],
+-        }
+-
+-        # Request for org2 should return defaults (no settings created)
+-        params2 = {
+-            "sentryOrgId": str(org2.id),
+-            "externalRepoId": external_repo_id,
+-            "provider": "integrations:github",
+-        }
+-        auth = self._auth_header_for_get(url, params2, "test-secret")
+-        resp2 = self.client.get(url, params2, HTTP_AUTHORIZATION=auth)
+-        assert resp2.status_code == 200
+-        assert resp2.data == {"enabledCodeReview": False, "codeReviewTriggers": []}
+-
+-
+-class TestPreventPrReviewEligibilityEndpoint(APITestCase):
+-    def _auth_header_for_get(self, url: str, params: dict[str, str], secret: str) -> str:
+-        message = b"[]"
+-        signature = hmac.new(secret.encode(), message, hashlib.sha256).hexdigest()
+-        return f"Rpcsignature rpc0:{signature}"
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_requires_auth(self):
+-        url = reverse("sentry-api-0-prevent-pr-review-eligibility")
+-        resp = self.client.get(url, {"repoId": "456", "prAuthorId": "789"})
+-        assert resp.status_code == 403
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_missing_repo_id_returns_400(self):
+-        url = reverse("sentry-api-0-prevent-pr-review-eligibility")
+-        params = {"prAuthorId": "789"}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 400
+-        assert "repoId" in resp.data["detail"]
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_missing_pr_author_id_returns_400(self):
+-        url = reverse("sentry-api-0-prevent-pr-review-eligibility")
+-        params = {"repoId": "456"}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 400
+-        assert "prAuthorId" in resp.data["detail"]
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_returns_true_for_code_review_beta_org(self):
+-        org = self.create_organization(owner=self.user)
+-        org.update_option("sentry:enable_pr_review_test_generation", True)
+-        project = self.create_project(organization=org)
+-        external_repo_id = "12345"
+-
+-        with assume_test_silo_mode(SiloMode.CONTROL):
+-            integration = self.create_integration(
+-                organization=org,
+-                provider="github",
+-                external_id="github:123",
+-            )
+-
+-        self.create_repo(
+-            project=project,
+-            external_id=external_repo_id,
+-            name="org/repo",
+-            provider="integrations:github",
+-            integration_id=integration.id,
+-        )
+-
+-        url = reverse("sentry-api-0-prevent-pr-review-eligibility")
+-        params = {"repoId": external_repo_id, "prAuthorId": "789"}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-
+-        with self.feature({"organizations:code-review-beta": org}):
+-            resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-
+-        assert resp.status_code == 200
+-        assert resp.data == {"is_eligible": True}
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_returns_true_for_seer_added_org(self):
+-        org = self.create_organization(owner=self.user)
+-        org.update_option("sentry:enable_pr_review_test_generation", True)
+-        project = self.create_project(organization=org)
+-        external_repo_id = "12345"
+-
+-        with assume_test_silo_mode(SiloMode.CONTROL):
+-            integration = self.create_integration(
+-                organization=org,
+-                provider="github",
+-                external_id="github:123",
+-            )
+-
+-        self.create_repo(
+-            project=project,
+-            external_id=external_repo_id,
+-            name="org/repo",
+-            provider="integrations:github",
+-            integration_id=integration.id,
+-        )
+-
+-        url = reverse("sentry-api-0-prevent-pr-review-eligibility")
+-        params = {"repoId": external_repo_id, "prAuthorId": "789"}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-
+-        with self.feature({"organizations:seer-added": org}):
+-            resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-
+-        assert resp.status_code == 200
+-        assert resp.data == {"is_eligible": True}
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_returns_false_for_beta_org_without_test_generation_enabled(self):
+-        org = self.create_organization(owner=self.user)
+-        # Note: NOT setting sentry:enable_pr_review_test_generation (defaults to False)
+-        project = self.create_project(organization=org)
+-        external_repo_id = "12345"
+-
+-        with assume_test_silo_mode(SiloMode.CONTROL):
+-            integration = self.create_integration(
+-                organization=org,
+-                provider="github",
+-                external_id="github:123",
+-            )
+-
+-        self.create_repo(
+-            project=project,
+-            external_id=external_repo_id,
+-            name="org/repo",
+-            provider="integrations:github",
+-            integration_id=integration.id,
+-        )
+-
+-        url = reverse("sentry-api-0-prevent-pr-review-eligibility")
+-        params = {"repoId": external_repo_id, "prAuthorId": "789"}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-
+-        with self.feature({"organizations:code-review-beta": org}):
+-            resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-
+-        assert resp.status_code == 200
+-        assert resp.data == {"is_eligible": False}
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_returns_false_when_code_review_not_enabled(self):
+-        org = self.create_organization(owner=self.user)
+-        project = self.create_project(organization=org)
+-        external_repo_id = "12345"
+-
+-        with assume_test_silo_mode(SiloMode.CONTROL):
+-            integration = self.create_integration(
+-                organization=org,
+-                provider="github",
+-                external_id="github:123",
+-            )
+-
+-        self.create_repo(
+-            project=project,
+-            external_id=external_repo_id,
+-            name="org/repo",
+-            provider="integrations:github",
+-            integration_id=integration.id,
+-        )
+-
+-        url = reverse("sentry-api-0-prevent-pr-review-eligibility")
+-        params = {"repoId": external_repo_id, "prAuthorId": "789"}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 200
+-        assert resp.data == {"is_eligible": False}
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    def test_returns_false_when_code_review_enabled_but_no_contributor_exists(self):
+-        org = self.create_organization(owner=self.user)
+-        project = self.create_project(organization=org)
+-        external_repo_id = "12345"
+-        pr_author_id = "789"
+-
+-        with assume_test_silo_mode(SiloMode.CONTROL):
+-            integration = self.create_integration(
+-                organization=org,
+-                provider="github",
+-                external_id="github:123",
+-            )
+-
+-        repo = self.create_repo(
+-            project=project,
+-            external_id=external_repo_id,
+-            name="org/repo",
+-            provider="integrations:github",
+-            integration_id=integration.id,
+-        )
+-
+-        RepositorySettings.objects.create(
+-            repository=repo,
+-            enabled_code_review=True,
+-            code_review_triggers=["on_new_commit"],
+-        )
+-
+-        url = reverse("sentry-api-0-prevent-pr-review-eligibility")
+-        params = {"repoId": external_repo_id, "prAuthorId": pr_author_id}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 200
+-        assert resp.data == {"is_eligible": False}
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    @patch("sentry.seer.code_review.billing.quotas.backend.check_seer_quota")
+-    def test_returns_false_when_quota_check_fails(self, mock_check_quota):
+-        mock_check_quota.return_value = False
+-
+-        org = self.create_organization(owner=self.user)
+-        project = self.create_project(organization=org)
+-        external_repo_id = "12345"
+-        pr_author_id = "789"
+-
+-        with assume_test_silo_mode(SiloMode.CONTROL):
+-            integration = self.create_integration(
+-                organization=org,
+-                provider="github",
+-                external_id="github:123",
+-            )
+-
+-        repo = self.create_repo(
+-            project=project,
+-            external_id=external_repo_id,
+-            name="org/repo",
+-            provider="integrations:github",
+-            integration_id=integration.id,
+-        )
+-
+-        RepositorySettings.objects.create(
+-            repository=repo,
+-            enabled_code_review=True,
+-            code_review_triggers=["on_new_commit"],
+-        )
+-
+-        OrganizationContributors.objects.create(
+-            organization=org,
+-            integration_id=integration.id,
+-            external_identifier=pr_author_id,
+-            alias="testuser",
+-        )
+-
+-        url = reverse("sentry-api-0-prevent-pr-review-eligibility")
+-        params = {"repoId": external_repo_id, "prAuthorId": pr_author_id}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 200
+-        assert resp.data == {"is_eligible": False}
+-        mock_check_quota.assert_called_once()
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    @patch("sentry.seer.code_review.billing.quotas.backend.check_seer_quota")
+-    def test_returns_true_when_code_review_enabled_and_quota_available(self, mock_check_quota):
+-        mock_check_quota.return_value = True
+-
+-        org = self.create_organization(owner=self.user)
+-        project = self.create_project(organization=org)
+-        external_repo_id = "12345"
+-        pr_author_id = "789"
+-
+-        with assume_test_silo_mode(SiloMode.CONTROL):
+-            integration = self.create_integration(
+-                organization=org,
+-                provider="github",
+-                external_id="github:123",
+-            )
+-
+-        repo = self.create_repo(
+-            project=project,
+-            external_id=external_repo_id,
+-            name="org/repo",
+-            provider="integrations:github",
+-            integration_id=integration.id,
+-        )
+-
+-        RepositorySettings.objects.create(
+-            repository=repo,
+-            enabled_code_review=True,
+-            code_review_triggers=["on_new_commit"],
+-        )
+-
+-        contributor = OrganizationContributors.objects.create(
+-            organization=org,
+-            integration_id=integration.id,
+-            external_identifier=pr_author_id,
+-            alias="testuser",
+-        )
+-
+-        url = reverse("sentry-api-0-prevent-pr-review-eligibility")
+-        params = {"repoId": external_repo_id, "prAuthorId": pr_author_id}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 200
+-        assert resp.data == {"is_eligible": True}
+-        mock_check_quota.assert_called_once_with(
+-            org_id=org.id,
+-            data_category=DataCategory.SEER_USER,
+-            seat_object=contributor,
+-        )
+-
+-    @patch(
+-        "sentry.overwatch.endpoints.overwatch_rpc.settings.OVERWATCH_RPC_SHARED_SECRET",
+-        ["test-secret"],
+-    )
+-    @patch("sentry.seer.code_review.billing.quotas.backend.check_seer_quota")
+-    def test_returns_true_when_any_org_is_eligible(self, mock_check_quota):
+-        mock_check_quota.return_value = True
+-
+-        org1 = self.create_organization(owner=self.user)
+-        org2 = self.create_organization(owner=self.user)
+-        project1 = self.create_project(organization=org1)
+-        project2 = self.create_project(organization=org2)
+-        external_repo_id = "12345"
+-        pr_author_id = "789"
+-
+-        with assume_test_silo_mode(SiloMode.CONTROL):
+-            integration1 = self.create_integration(
+-                organization=org1,
+-                provider="github",
+-                external_id="github:123",
+-            )
+-            integration2 = self.create_integration(
+-                organization=org2,
+-                provider="github",
+-                external_id="github:456",
+-            )
+-
+-        self.create_repo(
+-            project=project1,
+-            external_id=external_repo_id,
+-            name="org/repo",
+-            provider="integrations:github",
+-            integration_id=integration1.id,
+-        )
+-        repo2 = self.create_repo(
+-            project=project2,
+-            external_id=external_repo_id,
+-            name="org/repo",
+-            provider="integrations:github",
+-            integration_id=integration2.id,
+-        )
+-
+-        RepositorySettings.objects.create(
+-            repository=repo2,
+-            enabled_code_review=True,
+-            code_review_triggers=["on_new_commit"],
+-        )
+-        OrganizationContributors.objects.create(
+-            organization=org2,
+-            integration_id=integration2.id,
+-            external_identifier=pr_author_id,
+-            alias="testuser",
+-        )
+-
+-        url = reverse("sentry-api-0-prevent-pr-review-eligibility")
+-        params = {"repoId": external_repo_id, "prAuthorId": pr_author_id}
+-        auth = self._auth_header_for_get(url, params, "test-secret")
+-        resp = self.client.get(url, params, HTTP_AUTHORIZATION=auth)
+-        assert resp.status_code == 200
+-        assert resp.data == {"is_eligible": True}
+diff --git a/tests/sentry/overwatch_webhooks/__init__.py b/tests/sentry/overwatch_webhooks/__init__.py
+deleted file mode 100644
+index e69de29bb2d..00000000000
+diff --git a/tests/sentry/overwatch_webhooks/overwatch_consent/test_service.py b/tests/sentry/overwatch_webhooks/overwatch_consent/test_service.py
+deleted file mode 100644
+index 17a5eac2b5c..00000000000
+--- a/tests/sentry/overwatch_webhooks/overwatch_consent/test_service.py
++++ /dev/null
+@@ -1,85 +0,0 @@
+-from sentry.models.options import OrganizationOption
+-from sentry.models.organization import Organization
+-from sentry.overwatch_webhooks.overwatch_consent.model import RpcOrganizationConsentStatus
+-from sentry.overwatch_webhooks.overwatch_consent.service import overwatch_consent_service
+-from sentry.testutils.cases import TestCase
+-from sentry.testutils.silo import all_silo_test, assume_test_silo_mode_of, create_test_regions
+-
+-
+-@all_silo_test(regions=create_test_regions("us"))
+-class OverwatchConsentServiceTest(TestCase):
+-    def _add_organization_options(self, org: Organization, options: dict[str, bool]):
+-        with assume_test_silo_mode_of(OrganizationOption):
+-            for key, value in options.items():
+-                OrganizationOption.objects.set_value(org, key, value)
+-
+-    def test_get_organization_consent_status_delegation(self):
+-        org = self.create_organization()
+-
+-        result = overwatch_consent_service.get_organization_consent_status(
+-            organization_ids=[org.id], region_name="us"
+-        )
+-
+-        assert isinstance(result, dict)
+-        assert org.id in result
+-        assert isinstance(result[org.id], RpcOrganizationConsentStatus)
+-        assert result[org.id].organization_id == org.id
+-        assert isinstance(result[org.id].has_consent, bool)
+-
+-    def test_get_organization_consent_status_multiple_orgs(self):
+-        org1 = self.create_organization()
+-        org2 = self.create_organization()
+-
+-        self._add_organization_options(
+-            org1,
+-            {"sentry:hide_ai_features": False, "sentry:enable_pr_review_test_generation": True},
+-        )
+-        self._add_organization_options(
+-            org2, {"sentry:hide_ai_features": True, "sentry:enable_pr_review_test_generation": True}
+-        )
+-
+-        result = overwatch_consent_service.get_organization_consent_status(
+-            organization_ids=[org1.id, org2.id], region_name="us"
+-        )
+-
+-        assert len(result) == 2
+-        assert org1.id in result
+-        assert org2.id in result
+-        assert result[org1.id].organization_id == org1.id
+-        assert result[org1.id].has_consent is True
+-        assert result[org2.id].organization_id == org2.id
+-        assert result[org2.id].has_consent is False
+-
+-    def test_get_organization_consent_status_empty_list(self):
+-        result = overwatch_consent_service.get_organization_consent_status(
+-            organization_ids=[], region_name="us"
+-        )
+-
+-        assert result == {}
+-
+-    def test_get_organization_consent_status_nonexistent_org(self):
+-        nonexistent_id = 999999
+-
+-        result = overwatch_consent_service.get_organization_consent_status(
+-            organization_ids=[nonexistent_id], region_name="us"
+-        )
+-
+-        assert result == {}
+-
+-    def test_get_organization_consent_status_mixed_existing_nonexistent(self):
+-        org = self.create_organization()
+-        self._add_organization_options(
+-            org, {"sentry:hide_ai_features": False, "sentry:enable_pr_review_test_generation": True}
+-        )
+-
+-        nonexistent_id = 999999
+-
+-        result = overwatch_consent_service.get_organization_consent_status(
+-            organization_ids=[org.id, nonexistent_id], region_name="us"
+-        )
+-
+-        assert len(result) == 1
+-        assert org.id in result
+-        assert nonexistent_id not in result
+-        assert result[org.id].organization_id == org.id
+-        assert result[org.id].has_consent is True
+diff --git a/tests/sentry/overwatch_webhooks/test_webhook_forwarder.py b/tests/sentry/overwatch_webhooks/test_webhook_forwarder.py
+deleted file mode 100644
+index b95f1087c46..00000000000
+--- a/tests/sentry/overwatch_webhooks/test_webhook_forwarder.py
++++ /dev/null
+@@ -1,524 +0,0 @@
+-from unittest.mock import patch
+-
+-import orjson
+-import responses
+-from django.db import router, transaction
+-from django.test.utils import override_settings
+-
+-from sentry.hybridcloud.models.outbox import outbox_context
+-from sentry.integrations.github.webhook_types import (
+-    GITHUB_INSTALLATION_TARGET_ID_HEADER,
+-    GITHUB_WEBHOOK_TYPE_HEADER_KEY,
+-    GithubWebhookType,
+-)
+-from sentry.integrations.models.organization_integration import OrganizationIntegration
+-from sentry.overwatch_webhooks.types import (
+-    DEFAULT_REQUEST_TYPE,
+-    OrganizationSummary,
+-    WebhookDetails,
+-)
+-from sentry.overwatch_webhooks.webhook_forwarder import OverwatchGithubWebhookForwarder
+-from sentry.overwatch_webhooks.webhook_publisher import OverwatchWebhookPublisher
+-from sentry.testutils.cases import TestCase
+-from sentry.testutils.helpers.options import override_options
+-from sentry.testutils.silo import assume_test_silo_mode_of, control_silo_test, create_test_regions
+-
+-
+-@control_silo_test(regions=create_test_regions("us", "de"))
+-class OverwatchGithubWebhookForwarderTest(TestCase):
+-    def setUp(self):
+-        self.integration = self.create_integration(
+-            provider="github",
+-            external_id="12345",
+-            name="Test Integration",
+-            organization=self.organization,
+-        )
+-
+-        with assume_test_silo_mode_of(OrganizationIntegration):
+-            with outbox_context(
+-                transaction.atomic(using=router.db_for_write(OrganizationIntegration))
+-            ):
+-                # Delete the default org integration, it'll mess with our counts
+-                OrganizationIntegration.objects.filter(integration=self.integration).delete()
+-
+-        self.forwarder = OverwatchGithubWebhookForwarder(self.integration)
+-
+-    def test_init_creates_publisher_with_correct_provider(self):
+-        assert self.forwarder.integration == self.integration
+-
+-    def test_should_forward_to_overwatch_with_valid_events(self):
+-        # Test installation events (always forwarded)
+-        for event_type in [
+-            GithubWebhookType.INSTALLATION,
+-            GithubWebhookType.INSTALLATION_REPOSITORIES,
+-        ]:
+-            headers = {GITHUB_WEBHOOK_TYPE_HEADER_KEY: event_type}
+-            assert self.forwarder.should_forward_to_overwatch(headers) is True
+-
+-        # Test events controlled by options
+-        for event_type in [GithubWebhookType.PULL_REQUEST, GithubWebhookType.ISSUE_COMMENT]:
+-            headers = {GITHUB_WEBHOOK_TYPE_HEADER_KEY: event_type}
+-            assert self.forwarder.should_forward_to_overwatch(headers) is True
+-
+-    def test_should_forward_to_overwatch_with_invalid_events(self):
+-        invalid_events = [
+-            {GITHUB_WEBHOOK_TYPE_HEADER_KEY: "invalid_action"},
+-            {GITHUB_WEBHOOK_TYPE_HEADER_KEY: "create"},
+-            {GITHUB_WEBHOOK_TYPE_HEADER_KEY: "delete"},
+-            {GITHUB_WEBHOOK_TYPE_HEADER_KEY: "some_other_action"},
+-            {},
+-        ]
+-
+-        for event in invalid_events:
+-            assert self.forwarder.should_forward_to_overwatch(event) is False
+-
+-    def test_get_organizations_no_org_integrations(self):
+-        orgs = self.forwarder._get_org_summaries_by_region_for_integration(self.integration)
+-        assert orgs == {}
+-
+-    def test_get_organizations_single_region(self):
+-        organization = self.create_organization(name="Test Org", slug="test-org")
+-        org_integration = self.create_organization_integration(
+-            integration=self.integration,
+-            organization_id=organization.id,
+-        )
+-
+-        orgs = self.forwarder._get_org_summaries_by_region_for_integration(self.integration)
+-
+-        assert orgs == {
+-            "us": [
+-                OrganizationSummary(
+-                    name="Test Org",
+-                    slug="test-org",
+-                    id=organization.id,
+-                    region="us",
+-                    github_integration_id=self.integration.id,
+-                    organization_integration_id=org_integration.id,
+-                )
+-            ]
+-        }
+-
+-    def test_get_organizations_multiple_orgs_mixed_regions(self):
+-        org1 = self.create_organization(name="Org 1", slug="org-1", region="us")
+-        org_integration1 = self.create_organization_integration(
+-            integration=self.integration,
+-            organization_id=org1.id,
+-        )
+-
+-        org2 = self.create_organization(name="Org 2", slug="org-2", region="de")
+-        org_integration2 = self.create_organization_integration(
+-            integration=self.integration,
+-            organization_id=org2.id,
+-        )
+-
+-        orgs = self.forwarder._get_org_summaries_by_region_for_integration(self.integration)
+-        assert orgs == {
+-            "us": [
+-                OrganizationSummary(
+-                    name="Org 1",
+-                    slug="org-1",
+-                    id=org1.id,
+-                    region="us",
+-                    github_integration_id=self.integration.id,
+-                    organization_integration_id=org_integration1.id,
+-                ),
+-            ],
+-            "de": [
+-                OrganizationSummary(
+-                    name="Org 2",
+-                    slug="org-2",
+-                    id=org2.id,
+-                    region="de",
+-                    github_integration_id=self.integration.id,
+-                    organization_integration_id=org_integration2.id,
+-                ),
+-            ],
+-        }
+-
+-    def test_forward_if_applicable_no_organizations(self):
+-        event = {"action": "push", "data": "test"}
+-
+-        with patch.object(OverwatchWebhookPublisher, "enqueue_webhook") as mock_enqueue:
+-            self.forwarder.forward_if_applicable(
+-                event, headers={GITHUB_WEBHOOK_TYPE_HEADER_KEY: "push"}
+-            )
+-            mock_enqueue.assert_not_called()
+-
+-    @override_options({"overwatch.enabled-regions": ["us"]})
+-    def test_forward_if_applicable_event_not_eligible_for_forwarding(self):
+-        organization = self.create_organization(name="Test Org", slug="test-org")
+-        self.create_organization_integration(
+-            integration=self.integration,
+-            organization_id=organization.id,
+-        )
+-
+-        event = {"action": "create", "data": "test"}
+-
+-        with patch.object(OverwatchWebhookPublisher, "enqueue_webhook") as mock_enqueue:
+-            self.forwarder.forward_if_applicable(
+-                event, headers={GITHUB_WEBHOOK_TYPE_HEADER_KEY: "invalid_action"}
+-            )
+-            mock_enqueue.assert_not_called()
+-
+-    @override_options(
+-        {
+-            "overwatch.enabled-regions": ["us"],
+-            "seer.code-review.direct-to-seer-enabled-gh-orgs": ["sentry-ecosystem"],
+-        }
+-    )
+-    def test_forward_if_applicable_skips_seer_only_orgs(self):
+-        organization = self.create_organization(name="Test Org", slug="test-org", region="us")
+-        self.create_organization_integration(
+-            integration=self.integration,
+-            organization_id=organization.id,
+-        )
+-
+-        event = {
+-            "action": "pull_request",
+-            "repository": {"owner": {"login": "sentry-ecosystem"}},
+-            "commits": [],
+-        }
+-
+-        with patch.object(OverwatchWebhookPublisher, "enqueue_webhook") as mock_enqueue:
+-            self.forwarder.forward_if_applicable(
+-                event,
+-                headers={
+-                    GITHUB_WEBHOOK_TYPE_HEADER_KEY: "pull_request",
+-                    GITHUB_INSTALLATION_TARGET_ID_HEADER: "987654",
+-                },
+-            )
+-            mock_enqueue.assert_not_called()
+-
+-    @override_options({"overwatch.enabled-regions": ["us"]})
+-    def test_forward_if_applicable_successful_forwarding(self):
+-        organization = self.create_organization(name="Test Org", slug="test-org", region="us")
+-        self.create_organization_integration(
+-            integration=self.integration,
+-            organization_id=organization.id,
+-        )
+-
+-        event = {"action": "pull_request", "repository": "test-repo", "commits": []}
+-
+-        with patch.object(OverwatchWebhookPublisher, "enqueue_webhook") as mock_enqueue:
+-            self.forwarder.forward_if_applicable(
+-                event,
+-                headers={
+-                    GITHUB_WEBHOOK_TYPE_HEADER_KEY: "pull_request",
+-                    GITHUB_INSTALLATION_TARGET_ID_HEADER: "987654",
+-                },
+-            )
+-
+-            mock_enqueue.assert_called_once()
+-            call_args = mock_enqueue.call_args[0][0]
+-
+-            assert isinstance(call_args, WebhookDetails)
+-            assert len(call_args.organizations) == 1
+-            assert call_args.organizations[0].name == "Test Org"
+-            assert call_args.webhook_body == event
+-            assert call_args.app_id == 987654
+-
+-    @override_options({"overwatch.enabled-regions": ["us"]})
+-    def test_forward_if_applicable_multiple_organizations(self):
+-        for i in range(3):
+-            org = self.create_organization(name=f"Org {i+1}", slug=f"org-{i+1}", region="us")
+-            self.create_organization_integration(
+-                integration=self.integration,
+-                organization_id=org.id,
+-            )
+-
+-        event = {"action": "pull_request", "number": 123}
+-
+-        with patch.object(OverwatchWebhookPublisher, "enqueue_webhook") as mock_enqueue:
+-            self.forwarder.forward_if_applicable(
+-                event, headers={GITHUB_WEBHOOK_TYPE_HEADER_KEY: "pull_request"}
+-            )
+-
+-            mock_enqueue.assert_called_once()
+-            call_args = mock_enqueue.call_args[0][0]
+-
+-            assert isinstance(call_args, WebhookDetails)
+-            assert len(call_args.organizations) == 3
+-            org_names = {org.slug for org in call_args.organizations}
+-            assert org_names == {"org-1", "org-2", "org-3"}
+-            assert call_args.webhook_body == event
+-
+-    @override_options({"overwatch.enabled-regions": ["us"]})
+-    def test_forward_if_applicable_all_valid_event_actions(self):
+-        organization = self.create_organization(name="Test Org", slug="test-org", region="us")
+-        self.create_organization_integration(
+-            integration=self.integration,
+-            organization_id=organization.id,
+-        )
+-
+-        # Test installation events (always forwarded) and events controlled by options
+-        event_types = [
+-            GithubWebhookType.INSTALLATION,
+-            GithubWebhookType.INSTALLATION_REPOSITORIES,
+-            GithubWebhookType.PULL_REQUEST,
+-        ]
+-
+-        for event_type in event_types:
+-            event = {"action": "create", "test_data": f"data_for_{event_type}"}
+-
+-            with patch.object(OverwatchWebhookPublisher, "enqueue_webhook") as mock_enqueue:
+-                self.forwarder.forward_if_applicable(
+-                    event, headers={GITHUB_WEBHOOK_TYPE_HEADER_KEY: event_type}
+-                )
+-                mock_enqueue.assert_called_once()
+-
+-                call_args = mock_enqueue.call_args[0][0]
+-                assert isinstance(call_args, WebhookDetails)
+-                assert call_args.webhook_body == event
+-
+-    @override_options({"overwatch.enabled-regions": ["us"]})
+-    def test_forward_if_applicable_preserves_webhook_body_data(self):
+-        organization = self.create_organization(name="Test Org", slug="test-org", region="us")
+-        self.create_organization_integration(
+-            integration=self.integration,
+-            organization_id=organization.id,
+-        )
+-
+-        complex_event = {
+-            "action": "pull_request",
+-            "repository": {"id": 123, "name": "test-repo", "full_name": "user/test-repo"},
+-            "commits": [
+-                {
+-                    "id": "abc123",
+-                    "message": "Test commit",
+-                    "author": {"name": "Test User", "email": "test@example.com"},
+-                }
+-            ],
+-            "head_commit": {"id": "abc123", "tree_id": "def456", "distinct": True},
+-            "pusher": {"name": "Test User", "email": "test@example.com"},
+-            "sender": {"login": "testuser", "id": 456},
+-        }
+-
+-        with patch.object(OverwatchWebhookPublisher, "enqueue_webhook") as mock_enqueue:
+-            self.forwarder.forward_if_applicable(
+-                complex_event, headers={GITHUB_WEBHOOK_TYPE_HEADER_KEY: "pull_request"}
+-            )
+-
+-            mock_enqueue.assert_called_once()
+-            call_args = mock_enqueue.call_args[0][0]
+-
+-            assert isinstance(call_args, WebhookDetails)
+-            assert call_args.webhook_body == complex_event
+-            assert call_args.webhook_body["repository"]["name"] == "test-repo"
+-            assert len(call_args.webhook_body["commits"]) == 1
+-            assert call_args.webhook_body["commits"][0]["id"] == "abc123"
+-
+-    @responses.activate
+-    @override_options({"overwatch.enabled-regions": ["us", "de"]})
+-    @override_settings(
+-        OVERWATCH_REGION_URLS={
+-            "us": "https://us.example.com/api",
+-            "de": "https://de.example.com/api",
+-        },
+-        OVERWATCH_WEBHOOK_SECRET="test-secret",
+-    )
+-    def test_forwards_to_correct_regions(self):
+-        responses.add(
+-            responses.POST,
+-            "https://us.example.com/api/webhooks/sentry",
+-            status=200,
+-        )
+-        responses.add(
+-            responses.POST,
+-            "https://de.example.com/api/webhooks/sentry",
+-            status=200,
+-        )
+-
+-        organization = self.create_organization(name="Test Org", slug="test-org", region="us")
+-        org_integration1 = self.create_organization_integration(
+-            integration=self.integration,
+-            organization_id=organization.id,
+-        )
+-        organization2 = self.create_organization(name="Test Org 2", slug="test-org-2", region="de")
+-        org_integration2 = self.create_organization_integration(
+-            integration=self.integration,
+-            organization_id=organization2.id,
+-        )
+-        event = {"action": "create", "repository": "test-repo", "commits": []}
+-
+-        self.forwarder.forward_if_applicable(
+-            event,
+-            headers={
+-                GITHUB_WEBHOOK_TYPE_HEADER_KEY: "pull_request",
+-                GITHUB_INSTALLATION_TARGET_ID_HEADER: "987654",
+-            },
+-        )
+-
+-        assert len(responses.calls) == 2
+-        assert responses.calls[0].request.url == "https://us.example.com/api/webhooks/sentry"
+-        assert responses.calls[1].request.url == "https://de.example.com/api/webhooks/sentry"
+-        assert responses.calls[0].request.method == "POST"
+-        assert responses.calls[1].request.method == "POST"
+-        json_body = orjson.loads(responses.calls[0].request.body)
+-
+-        assert json_body == {
+-            "organizations": [
+-                {
+-                    "name": "Test Org",
+-                    "slug": "test-org",
+-                    "id": organization.id,
+-                    "region": "us",
+-                    "github_integration_id": self.integration.id,
+-                    "organization_integration_id": org_integration1.id,
+-                }
+-            ],
+-            "webhook_body": event,
+-            "webhook_headers": {
+-                GITHUB_WEBHOOK_TYPE_HEADER_KEY: "pull_request",
+-                GITHUB_INSTALLATION_TARGET_ID_HEADER: "987654",
+-            },
+-            "integration_provider": "github",
+-            "region": "us",
+-            "event_type": "github",
+-            "app_id": 987654,
+-            "request_type": DEFAULT_REQUEST_TYPE,
+-        }
+-        json_body = orjson.loads(responses.calls[1].request.body)
+-        assert json_body == {
+-            "organizations": [
+-                {
+-                    "name": "Test Org 2",
+-                    "slug": "test-org-2",
+-                    "id": organization2.id,
+-                    "region": "de",
+-                    "github_integration_id": self.integration.id,
+-                    "organization_integration_id": org_integration2.id,
+-                }
+-            ],
+-            "webhook_body": event,
+-            "webhook_headers": {
+-                GITHUB_WEBHOOK_TYPE_HEADER_KEY: "pull_request",
+-                GITHUB_INSTALLATION_TARGET_ID_HEADER: "987654",
+-            },
+-            "integration_provider": "github",
+-            "region": "de",
+-            "event_type": "github",
+-            "app_id": 987654,
+-            "request_type": DEFAULT_REQUEST_TYPE,
+-        }
+-
+-    @responses.activate
+-    @override_options({"overwatch.enabled-regions": ["us"]})
+-    @override_settings(
+-        OVERWATCH_REGION_URLS={"us": "https://us.example.com/api"},
+-        OVERWATCH_WEBHOOK_SECRET="test-secret",
+-    )
+-    def test_forwards_conditionally_to_some_regions(self):
+-        responses.add(
+-            responses.POST,
+-            "https://us.example.com/api/webhooks/sentry",
+-            status=200,
+-        )
+-
+-        responses.add(
+-            responses.POST,
+-            "https://de.example.com/api/webhooks/sentry",
+-            status=200,
+-        )
+-        organization = self.create_organization(name="Test Org", slug="test-org", region="us")
+-        org_integration1 = self.create_organization_integration(
+-            integration=self.integration,
+-            organization_id=organization.id,
+-        )
+-        organization2 = self.create_organization(name="Test Org 2", slug="test-org-2", region="de")
+-        self.create_organization_integration(
+-            integration=self.integration,
+-            organization_id=organization2.id,
+-        )
+-        event = {"action": "pull_request", "repository": "test-repo", "commits": []}
+-
+-        self.forwarder.forward_if_applicable(
+-            event,
+-            headers={
+-                GITHUB_WEBHOOK_TYPE_HEADER_KEY: "pull_request",
+-                GITHUB_INSTALLATION_TARGET_ID_HEADER: "987654",
+-            },
+-        )
+-
+-        assert len(responses.calls) == 1
+-        assert responses.calls[0].request.url == "https://us.example.com/api/webhooks/sentry"
+-        assert responses.calls[0].request.method == "POST"
+-        json_body = orjson.loads(responses.calls[0].request.body)
+-        assert json_body == {
+-            "organizations": [
+-                {
+-                    "name": "Test Org",
+-                    "slug": "test-org",
+-                    "id": organization.id,
+-                    "region": "us",
+-                    "github_integration_id": self.integration.id,
+-                    "organization_integration_id": org_integration1.id,
+-                }
+-            ],
+-            "webhook_body": event,
+-            "webhook_headers": {
+-                GITHUB_WEBHOOK_TYPE_HEADER_KEY: "pull_request",
+-                GITHUB_INSTALLATION_TARGET_ID_HEADER: "987654",
+-            },
+-            "integration_provider": "github",
+-            "region": "us",
+-            "event_type": "github",
+-            "app_id": 987654,
+-            "request_type": DEFAULT_REQUEST_TYPE,
+-        }
+-
+-    def test_default_events_included(self):
+-        """Test that default events should always be forwarded."""
+-        # Installation events are always forwarded
+-        assert self.forwarder.should_forward_to_overwatch(
+-            {GITHUB_WEBHOOK_TYPE_HEADER_KEY: GithubWebhookType.INSTALLATION}
+-        )
+-        assert self.forwarder.should_forward_to_overwatch(
+-            {GITHUB_WEBHOOK_TYPE_HEADER_KEY: GithubWebhookType.INSTALLATION_REPOSITORIES}
+-        )
+-        # Events controlled by options should be forwarded when enabled
+-        assert self.forwarder.should_forward_to_overwatch(
+-            {GITHUB_WEBHOOK_TYPE_HEADER_KEY: GithubWebhookType.PULL_REQUEST}
+-        )
+-        assert self.forwarder.should_forward_to_overwatch(
+-            {GITHUB_WEBHOOK_TYPE_HEADER_KEY: GithubWebhookType.ISSUE_COMMENT}
+-        )
+-
+-    @override_options({"github.webhook.issue-comment": False, "github.webhook.pr": False})
+-    def test_disabling_options_excludes_events(self):
+-        """Test that disabling options excludes events from forwarding."""
+-        # Events controlled by options should NOT be forwarded when disabled
+-        assert not self.forwarder.should_forward_to_overwatch(
+-            {GITHUB_WEBHOOK_TYPE_HEADER_KEY: GithubWebhookType.ISSUE_COMMENT}
+-        )
+-        assert not self.forwarder.should_forward_to_overwatch(
+-            {GITHUB_WEBHOOK_TYPE_HEADER_KEY: GithubWebhookType.PULL_REQUEST}
+-        )
+-        # Installation events are always forwarded regardless of options
+-        assert self.forwarder.should_forward_to_overwatch(
+-            {GITHUB_WEBHOOK_TYPE_HEADER_KEY: GithubWebhookType.INSTALLATION}
+-        )
+-        assert self.forwarder.should_forward_to_overwatch(
+-            {GITHUB_WEBHOOK_TYPE_HEADER_KEY: GithubWebhookType.INSTALLATION_REPOSITORIES}
+-        )
+-
+-    @override_options(
+-        {
+-            "overwatch.enabled-regions": ["us"],
+-            "github.webhook.issue-comment": False,
+-        }
+-    )
+-    def test_forward_if_applicable_with_disabled_webhook_type(self):
+-        """Test that disabled webhook types are not forwarded even when region is enabled."""
+-        organization = self.create_organization(name="Test Org", slug="test-org", region="us")
+-        self.create_organization_integration(
+-            integration=self.integration,
+-            organization_id=organization.id,
+-        )
+-
+-        event = {"action": "created", "comment": {"body": "test comment"}}
+-
+-        with patch.object(OverwatchWebhookPublisher, "enqueue_webhook") as mock_enqueue:
+-            self.forwarder.forward_if_applicable(
+-                event, headers={GITHUB_WEBHOOK_TYPE_HEADER_KEY: "issue_comment"}
+-            )
+-            mock_enqueue.assert_not_called()
+diff --git a/tests/sentry/seer/code_review/test_billing.py b/tests/sentry/seer/code_review/test_billing.py
+index 27e75bbb448..50b0e017e94 100644
+--- a/tests/sentry/seer/code_review/test_billing.py
++++ b/tests/sentry/seer/code_review/test_billing.py
+@@ -30,7 +30,7 @@ class TestPassesCodeReviewBillingCheck(TestCase):
+ 
+         assert result is False
+         mock_incr.assert_called_once_with(
+-            "overwatch.code_review.contributor_not_found",
++            "seer.code_review.error.contributor_not_found",
+             tags={"organization_id": self.organization.id},
+         )
+ 
+diff --git a/tests/sentry/seer/code_review/webhooks/test_issue_comment.py b/tests/sentry/seer/code_review/webhooks/test_issue_comment.py
+index 4b5f1095b95..38e02ec8540 100644
+--- a/tests/sentry/seer/code_review/webhooks/test_issue_comment.py
++++ b/tests/sentry/seer/code_review/webhooks/test_issue_comment.py
+@@ -14,10 +14,7 @@ from sentry.testutils.helpers.github import GitHubWebhookCodeReviewTestCase
+ class IssueCommentEventWebhookTest(GitHubWebhookCodeReviewTestCase):
+     """Integration tests for GitHub issue_comment webhook events."""
+ 
+-    OPTIONS_TO_SET = {
+-        "github.webhook.issue-comment": False,
+-        "seer.code-review.direct-to-seer-enabled-gh-orgs": ["sentry-ecosystem"],
+-    }
++    OPTIONS_TO_SET: dict[str, object] = {}
+ 
+     @pytest.fixture(autouse=True)
+     def mock_github_api_calls(self) -> Generator[None]:
+@@ -122,25 +119,6 @@ class IssueCommentEventWebhookTest(GitHubWebhookCodeReviewTestCase):
+ 
+         self.mock_seer.assert_called_once()
+ 
+-    def test_adds_reaction_and_forwards_when_valid(self) -> None:
+-        """Test successful PR review command processing with reaction and Seer request."""
+-        with self.code_review_setup(), self.tasks():
+-            event = self._build_issue_comment_event(f"Please {SENTRY_REVIEW_COMMAND} this PR")
+-
+-            response = self._send_issue_comment_event(event)
+-            assert response.status_code == 204
+-
+-            self.mock_reaction.assert_called_once_with(
+-                "sentry-ecosystem/repo", "123456789", GitHubReaction.EYES
+-            )
+-            self.mock_seer.assert_called_once()
+-
+-            call_args = self.mock_seer.call_args
+-            assert call_args[1]["path"] == "/v1/automation/overwatch-request"
+-            payload = call_args[1]["payload"]
+-            assert payload["request_type"] == "pr-review"
+-            assert payload["data"]["repo"]["base_commit_sha"] == "abc123"
+-
+     @patch("sentry.seer.code_review.webhooks.issue_comment._add_eyes_reaction_to_comment")
+     def test_skips_reaction_when_no_comment_id(self, mock_reaction: MagicMock) -> None:
+         """Test that reaction is skipped when comment has no ID, but processing continues."""
+@@ -153,7 +131,7 @@ class IssueCommentEventWebhookTest(GitHubWebhookCodeReviewTestCase):
+             mock_reaction.assert_not_called()
+             self.mock_seer.assert_called_once()
+ 
+-    def test_validates_seer_request_contains_trigger_metadata(self) -> None:
++    def test_success_case(self) -> None:
+         """Test that Seer request includes trigger metadata from the comment."""
+         with self.code_review_setup(), self.tasks():
+             event_dict = orjson.loads(
+@@ -164,34 +142,16 @@ class IssueCommentEventWebhookTest(GitHubWebhookCodeReviewTestCase):
+ 
+             response = self._send_issue_comment_event(event)
+             assert response.status_code == 204
+-
++            self.mock_reaction.assert_called_once_with(
++                "sentry-ecosystem/repo", "123456789", GitHubReaction.EYES
++            )
+             self.mock_seer.assert_called_once()
+-            payload = self.mock_seer.call_args[1]["payload"]
++
++            call_args = self.mock_seer.call_args
++            assert call_args[1]["path"] == "/v1/automation/overwatch-request"
++            payload = call_args[1]["payload"]
++            assert payload["request_type"] == "pr-review"
++            assert payload["data"]["repo"]["base_commit_sha"] == "abc123"
+             assert payload["data"]["config"]["trigger_user"] == "test-user"
+             assert payload["data"]["config"]["trigger_comment_id"] == 123456789
+             assert payload["data"]["config"]["trigger_comment_type"] == "issue_comment"
+-
+-    def test_processes_whitelisted_github_org(self) -> None:
+-        """Test that whitelisted GitHub organizations are processed."""
+-        with self.code_review_setup(), self.tasks():
+-            event = self._build_issue_comment_event(f"Please {SENTRY_REVIEW_COMMAND} this PR")
+-
+-            response = self._send_issue_comment_event(event)
+-            assert response.status_code == 204
+-
+-            self.mock_reaction.assert_called_once()
+-            self.mock_seer.assert_called_once()
+-
+-    def test_skips_non_whitelisted_github_org(self) -> None:
+-        """Test that non-whitelisted GitHub organizations are skipped."""
+-        # The option says to forward to Overwatch AND the org is not whitelisted, so we should skip Seer.
+-        with self.code_review_setup({"github.webhook.issue-comment": True}), self.tasks():
+-            event = self._build_issue_comment_event(
+-                f"Please {SENTRY_REVIEW_COMMAND} this PR", github_org="random-org"
+-            )
+-
+-            response = self._send_issue_comment_event(event)
+-            assert response.status_code == 204
+-
+-            self.mock_reaction.assert_not_called()
+-            self.mock_seer.assert_not_called()
+diff --git a/tests/sentry/seer/code_review/webhooks/test_pull_request.py b/tests/sentry/seer/code_review/webhooks/test_pull_request.py
+index 3c112a21d10..b7698b31fd9 100644
+--- a/tests/sentry/seer/code_review/webhooks/test_pull_request.py
++++ b/tests/sentry/seer/code_review/webhooks/test_pull_request.py
+@@ -13,10 +13,7 @@ from sentry.testutils.helpers.github import GitHubWebhookCodeReviewTestCase
+ class PullRequestEventWebhookTest(GitHubWebhookCodeReviewTestCase):
+     """Integration tests for GitHub pull_request webhook events."""
+ 
+-    OPTIONS_TO_SET = {
+-        "github.webhook.pr": False,
+-        "seer.code-review.direct-to-seer-enabled-gh-orgs": ["sentry-ecosystem"],
+-    }
++    OPTIONS_TO_SET: dict[str, object] = {}
+ 
+     @pytest.fixture(autouse=True)
+     def mock_github_api_calls(self) -> Generator[None]:
+@@ -49,7 +46,6 @@ class PullRequestEventWebhookTest(GitHubWebhookCodeReviewTestCase):
+         with self.code_review_setup(), self.tasks():
+             event = orjson.loads(PULL_REQUEST_OPENED_EVENT_EXAMPLE)
+             assert event["action"] == "opened"
+-            event["repository"]["owner"]["login"] = "sentry-ecosystem"
+ 
+             self._send_webhook_event(
+                 GithubWebhookType.PULL_REQUEST,
+@@ -89,16 +85,6 @@ class PullRequestEventWebhookTest(GitHubWebhookCodeReviewTestCase):
+ 
+             self.mock_seer.assert_not_called()
+ 
+-    def test_pull_request_skips_when_option_enabled(self) -> None:
+-        """Test that PR events are skipped when github.webhook.pr option is True (kill switch)."""
+-        with self.code_review_setup(options={"github.webhook.pr": True}), self.tasks():
+-            self._send_webhook_event(
+-                GithubWebhookType.PULL_REQUEST,
+-                PULL_REQUEST_OPENED_EVENT_EXAMPLE,
+-            )
+-
+-            self.mock_seer.assert_not_called()
+-
+     def test_pull_request_missing_action_field(self) -> None:
+         """Test that events without action field are skipped."""
+         with self.code_review_setup(), self.tasks():
+@@ -142,7 +128,6 @@ class PullRequestEventWebhookTest(GitHubWebhookCodeReviewTestCase):
+         with self.code_review_setup(), self.tasks():
+             event = orjson.loads(PULL_REQUEST_OPENED_EVENT_EXAMPLE)
+             event["action"] = "ready_for_review"
+-            event["repository"]["owner"]["login"] = "sentry-ecosystem"
+ 
+             self._send_webhook_event(
+                 GithubWebhookType.PULL_REQUEST,
+@@ -152,7 +137,7 @@ class PullRequestEventWebhookTest(GitHubWebhookCodeReviewTestCase):
+             self.mock_seer.assert_called_once()
+ 
+     def test_pull_request_reopened_action(self) -> None:
+-        """Test that reopened action is skipped (not in whitelist)."""
++        """Test that reopened action is skipped (not in whitelisted actions)."""
+         with self.code_review_setup(), self.tasks():
+             event = orjson.loads(PULL_REQUEST_OPENED_EVENT_EXAMPLE)
+             event["action"] = "reopened"
+@@ -169,7 +154,6 @@ class PullRequestEventWebhookTest(GitHubWebhookCodeReviewTestCase):
+         with self.code_review_setup(), self.tasks():
+             event = orjson.loads(PULL_REQUEST_OPENED_EVENT_EXAMPLE)
+             event["action"] = "synchronize"
+-            event["repository"]["owner"]["login"] = "sentry-ecosystem"
+ 
+             self._send_webhook_event(
+                 GithubWebhookType.PULL_REQUEST,
+@@ -221,40 +205,11 @@ class PullRequestEventWebhookTest(GitHubWebhookCodeReviewTestCase):
+             assert response.status_code == 204
+             self.mock_seer.assert_not_called()
+ 
+-    def test_pull_request_processes_whitelisted_github_org(self) -> None:
+-        """Test that whitelisted GitHub organizations are processed."""
+-        with self.code_review_setup(), self.tasks():
+-            event = orjson.loads(PULL_REQUEST_OPENED_EVENT_EXAMPLE)
+-            event["repository"]["owner"]["login"] = "sentry-ecosystem"
+-
+-            self._send_webhook_event(
+-                GithubWebhookType.PULL_REQUEST,
+-                orjson.dumps(event),
+-            )
+-
+-            self.mock_seer.assert_called_once()
+-
+-    def test_pull_request_skips_non_whitelisted_github_org(self) -> None:
+-        """Test that non-whitelisted GitHub organizations are skipped."""
+-        # The option says to forward to Overwatch AND the org is not whitelisted, so we should skip Seer.
+-        with self.code_review_setup({"github.webhook.pr": True}), self.tasks():
+-            event = orjson.loads(PULL_REQUEST_OPENED_EVENT_EXAMPLE)
+-            # "baxterthehacker" is the default in the fixture and is not whitelisted
+-            assert event["repository"]["owner"]["login"] == "baxterthehacker"
+-
+-            self._send_webhook_event(
+-                GithubWebhookType.PULL_REQUEST,
+-                orjson.dumps(event),
+-            )
+-
+-            self.mock_seer.assert_not_called()
+-
+     def test_pull_request_closed_action(self) -> None:
+         """Test that closed action triggers Seer request with pr-closed request type."""
+         with self.code_review_setup(), self.tasks():
+             event = orjson.loads(PULL_REQUEST_OPENED_EVENT_EXAMPLE)
+             event["action"] = "closed"
+-            event["repository"]["owner"]["login"] = "sentry-ecosystem"
+ 
+             self._send_webhook_event(
+                 GithubWebhookType.PULL_REQUEST,

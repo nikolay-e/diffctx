@@ -1,0 +1,1244 @@
+From cf926a1329a8cd6921e9799877883ac1fbc26fbb Mon Sep 17 00:00:00 2001
+From: Samuel Susla <samuelsusla@meta.com>
+Date: Wed, 24 Apr 2024 14:54:08 -0700
+Subject: [PATCH] decouple commit from mount on Android (#44236)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/44236
+
+## Changelog:
+
+[Android] [Fixed] - fix a case when view preallocation or props forwarding on Android lead to dropped props update
+
+# What does this fix
+
+This fixes a bug where prop change is not delivered to Android mounting layer if the prop change was initiated from state update inside of `useLayoutEffect`, `componentDidMount` or `componentDidUpdate`.
+This affects android only and when batched rendering is enabled.
+
+There are two root causes of this problem:
+1. View preallocation on Android: https://fburl.com/code/r62p3vot
+2. Prop forwarding on Android: https://fburl.com/code/644f1ppk
+
+Minimal repro :
+```
+import React, {useLayoutEffect, useState} from 'react';
+import {Button, SafeAreaView, View} from 'react-native';
+function Foo() {
+  const [bgColor, setBgColor] = React.useState('red');
+  useLayoutEffect(() => {
+    console.log('useLayoutEffect');
+    setBgColor('blue');
+  }, []);
+  return (
+    <View
+      style={{
+        backgroundColor: bgColor,
+        width: '100%',
+        height: '100%',
+      }}
+    />
+  );
+}
+function RNTesterApp() {
+  const [show, setShow] = useState(false);
+  return (
+    <SafeAreaView>
+      <Button title="Toggle" onPress={() => setShow(!show)} />
+      {show && <Foo />}
+    </SafeAreaView>
+  );
+}
+export default RNTesterApp;
+```
+
+# The underlaying problem
+The problem is combination of view preallocation and batched rendering updates.
+
+Here is a step by step what happens in the repro above:
+1. React issues asks Fabric to create new shadow node A with background colour **red**.
+2. Fabric asks Android to allocate a view for shadow node A with background colour **red**.
+3. React commits tree **T1** and calls layout effects. Meanwhile Fabric waits, without trying to mount the tree **T1**, to prevent painting state that is about to be updated and prevent flickering.
+4. React clones node A, changing the background colour to **blue** and commits the new tree **T2**.
+5. Fabric, will now go ahead and mount the latest tree **T2**. While creating mount instructions, it will drop prop updates because it believes prop updates where delivered already as part of step 2.
+
+# The fix
+
+The fix is to change two things:
+1. Ignore view preallocation for shadow nodes which were cloned with new props.
+2. Set hasBeenMounted flag on ShadowNode later in the Fabric pipeline to fix it.
+
+Both of these are hidden behind a single feature flag: `fixMountedFlagAndFixPreallocationClone`
+
+## Performance implication:
+I estimate that this will impact around 3% of views.
+
+Reviewed By: rubennorte
+
+Differential Revision: D56353589
+
+fbshipit-source-id: 651d3cd2d0f78bfbbe9c05aa1ae1b1690c15e4ea
+---
+ .../react-native/React/Fabric/RCTScheduler.mm |  6 ++
+ .../featureflags/ReactNativeFeatureFlags.kt   |  8 ++-
+ .../ReactNativeFeatureFlagsCxxAccessor.kt     | 12 +++-
+ .../ReactNativeFeatureFlagsCxxInterop.kt      |  4 +-
+ .../ReactNativeFeatureFlagsDefaults.kt        |  4 +-
+ .../ReactNativeFeatureFlagsLocalAccessor.kt   | 13 +++-
+ .../ReactNativeFeatureFlagsProvider.kt        |  4 +-
+ .../src/main/jni/react/fabric/Binding.cpp     | 11 +++
+ .../src/main/jni/react/fabric/Binding.h       |  3 +
+ .../react/fabric/FabricMountingManager.cpp    | 24 +++++++
+ .../jni/react/fabric/FabricMountingManager.h  |  1 +
+ .../JReactNativeFeatureFlagsCxxInterop.cpp    | 16 ++++-
+ .../JReactNativeFeatureFlagsCxxInterop.h      |  5 +-
+ .../featureflags/ReactNativeFeatureFlags.cpp  |  6 +-
+ .../featureflags/ReactNativeFeatureFlags.h    |  7 +-
+ .../ReactNativeFeatureFlagsAccessor.cpp       | 34 ++++++---
+ .../ReactNativeFeatureFlagsAccessor.h         |  6 +-
+ .../ReactNativeFeatureFlagsDefaults.h         |  6 +-
+ .../ReactNativeFeatureFlagsProvider.h         |  3 +-
+ .../NativeReactNativeFeatureFlags.cpp         |  7 +-
+ .../NativeReactNativeFeatureFlags.h           |  4 +-
+ .../react/renderer/core/ShadowNode.cpp        | 27 +++++++-
+ .../react/renderer/core/ShadowNode.h          | 21 +++++-
+ .../renderer/mounting/MountingCoordinator.cpp | 10 +++
+ .../react/renderer/mounting/ShadowTree.cpp    | 68 ++----------------
+ .../renderer/mounting/updateMountedFlag.cpp   | 69 +++++++++++++++++++
+ .../renderer/mounting/updateMountedFlag.h     | 19 +++++
+ .../react/renderer/scheduler/Scheduler.cpp    |  9 +++
+ .../react/renderer/scheduler/Scheduler.h      |  2 +
+ .../renderer/scheduler/SchedulerDelegate.h    |  6 ++
+ .../react/renderer/uimanager/UIManager.cpp    |  4 ++
+ .../renderer/uimanager/UIManagerDelegate.h    |  9 +++
+ .../ReactNativeFeatureFlags.config.js         |  4 ++
+ .../featureflags/ReactNativeFeatureFlags.js   |  7 +-
+ .../specs/NativeReactNativeFeatureFlags.js    |  3 +-
+ 35 files changed, 348 insertions(+), 94 deletions(-)
+ create mode 100644 packages/react-native/ReactCommon/react/renderer/mounting/updateMountedFlag.cpp
+ create mode 100644 packages/react-native/ReactCommon/react/renderer/mounting/updateMountedFlag.h
+
+diff --git a/packages/react-native/React/Fabric/RCTScheduler.mm b/packages/react-native/React/Fabric/RCTScheduler.mm
+index ee2b2514ead..e64db067e50 100644
+--- a/packages/react-native/React/Fabric/RCTScheduler.mm
++++ b/packages/react-native/React/Fabric/RCTScheduler.mm
+@@ -43,6 +43,12 @@ class SchedulerDelegateProxy : public SchedulerDelegate {
+     // This delegate method is not currently used on iOS.
+   }
+ 
++  void schedulerDidRequestUpdateToPreallocatedView(const ShadowNode &shadowNode) override
++  {
++    // Does nothing.
++    // This delegate method is not currently used on iOS.
++  }
++
+   void schedulerDidDispatchCommand(
+       const ShadowView &shadowView,
+       const std::string &commandName,
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+index 286e532af9d..b1b5529c8f5 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<f3d26e8e345068bc7ef4e156be460e09>>
++ * @generated SignedSource<<4adf12f2d6a102944b0fa922aa1c3e84>>
+  */
+ 
+ /**
+@@ -94,6 +94,12 @@ public object ReactNativeFeatureFlags {
+   @JvmStatic
+   public fun enableUIConsistency(): Boolean = accessor.enableUIConsistency()
+ 
++  /**
++   * Splits hasBeenMounted and promoted.
++   */
++  @JvmStatic
++  public fun fixMountedFlagAndFixPreallocationClone(): Boolean = accessor.fixMountedFlagAndFixPreallocationClone()
++
+   /**
+    * Forces the mounting layer on Android to always batch mount items instead of dispatching them immediately. This might fix some crashes related to synchronous state updates, where some views dispatch state updates during mount.
+    */
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+index b377bf83efc..374f1bb9308 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<40668dcd951123da7c0b4ddde23f94c9>>
++ * @generated SignedSource<<24c24962f08ba7c52c296a5ac9abdbbc>>
+  */
+ 
+ /**
+@@ -31,6 +31,7 @@ public class ReactNativeFeatureFlagsCxxAccessor : ReactNativeFeatureFlagsAccesso
+   private var enableSpannableBuildingUnificationCache: Boolean? = null
+   private var enableSynchronousStateUpdatesCache: Boolean? = null
+   private var enableUIConsistencyCache: Boolean? = null
++  private var fixMountedFlagAndFixPreallocationCloneCache: Boolean? = null
+   private var forceBatchingMountItemsOnAndroidCache: Boolean? = null
+   private var inspectorEnableCxxInspectorPackagerConnectionCache: Boolean? = null
+   private var inspectorEnableModernCDPRegistryCache: Boolean? = null
+@@ -138,6 +139,15 @@ public class ReactNativeFeatureFlagsCxxAccessor : ReactNativeFeatureFlagsAccesso
+     return cached
+   }
+ 
++  override fun fixMountedFlagAndFixPreallocationClone(): Boolean {
++    var cached = fixMountedFlagAndFixPreallocationCloneCache
++    if (cached == null) {
++      cached = ReactNativeFeatureFlagsCxxInterop.fixMountedFlagAndFixPreallocationClone()
++      fixMountedFlagAndFixPreallocationCloneCache = cached
++    }
++    return cached
++  }
++
+   override fun forceBatchingMountItemsOnAndroid(): Boolean {
+     var cached = forceBatchingMountItemsOnAndroidCache
+     if (cached == null) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+index b3e3efab498..216d5841d55 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<c3f02dff409c10aa7922141cef3a6990>>
++ * @generated SignedSource<<0ceccc453595057ca96d9ae49c7f4637>>
+  */
+ 
+ /**
+@@ -50,6 +50,8 @@ public object ReactNativeFeatureFlagsCxxInterop {
+ 
+   @DoNotStrip @JvmStatic public external fun enableUIConsistency(): Boolean
+ 
++  @DoNotStrip @JvmStatic public external fun fixMountedFlagAndFixPreallocationClone(): Boolean
++
+   @DoNotStrip @JvmStatic public external fun forceBatchingMountItemsOnAndroid(): Boolean
+ 
+   @DoNotStrip @JvmStatic public external fun inspectorEnableCxxInspectorPackagerConnection(): Boolean
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+index 5efbdaaf3cd..1958abeff11 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<d12888990ebca7c6199f4b51802ee59b>>
++ * @generated SignedSource<<29720cb2aa02ebdbe8e5efbe9e3a4b01>>
+  */
+ 
+ /**
+@@ -45,6 +45,8 @@ public open class ReactNativeFeatureFlagsDefaults : ReactNativeFeatureFlagsProvi
+ 
+   override fun enableUIConsistency(): Boolean = false
+ 
++  override fun fixMountedFlagAndFixPreallocationClone(): Boolean = false
++
+   override fun forceBatchingMountItemsOnAndroid(): Boolean = false
+ 
+   override fun inspectorEnableCxxInspectorPackagerConnection(): Boolean = false
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+index 109b2b048c2..950627b0733 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<c06b3b34cea24459f6ade0ec5665dae7>>
++ * @generated SignedSource<<977c8d88557a37c750ec59e67c94878c>>
+  */
+ 
+ /**
+@@ -35,6 +35,7 @@ public class ReactNativeFeatureFlagsLocalAccessor : ReactNativeFeatureFlagsAcces
+   private var enableSpannableBuildingUnificationCache: Boolean? = null
+   private var enableSynchronousStateUpdatesCache: Boolean? = null
+   private var enableUIConsistencyCache: Boolean? = null
++  private var fixMountedFlagAndFixPreallocationCloneCache: Boolean? = null
+   private var forceBatchingMountItemsOnAndroidCache: Boolean? = null
+   private var inspectorEnableCxxInspectorPackagerConnectionCache: Boolean? = null
+   private var inspectorEnableModernCDPRegistryCache: Boolean? = null
+@@ -153,6 +154,16 @@ public class ReactNativeFeatureFlagsLocalAccessor : ReactNativeFeatureFlagsAcces
+     return cached
+   }
+ 
++  override fun fixMountedFlagAndFixPreallocationClone(): Boolean {
++    var cached = fixMountedFlagAndFixPreallocationCloneCache
++    if (cached == null) {
++      cached = currentProvider.fixMountedFlagAndFixPreallocationClone()
++      accessedFeatureFlags.add("fixMountedFlagAndFixPreallocationClone")
++      fixMountedFlagAndFixPreallocationCloneCache = cached
++    }
++    return cached
++  }
++
+   override fun forceBatchingMountItemsOnAndroid(): Boolean {
+     var cached = forceBatchingMountItemsOnAndroidCache
+     if (cached == null) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+index 814f183ea41..7cc431f5ba1 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<dceb20e62a9ddbb98c872a24fab9765c>>
++ * @generated SignedSource<<a76816db2d7d7d3f0463103387e2a049>>
+  */
+ 
+ /**
+@@ -45,6 +45,8 @@ public interface ReactNativeFeatureFlagsProvider {
+ 
+   @DoNotStrip public fun enableUIConsistency(): Boolean
+ 
++  @DoNotStrip public fun fixMountedFlagAndFixPreallocationClone(): Boolean
++
+   @DoNotStrip public fun forceBatchingMountItemsOnAndroid(): Boolean
+ 
+   @DoNotStrip public fun inspectorEnableCxxInspectorPackagerConnection(): Boolean
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/Binding.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/Binding.cpp
+index d667402bb82..1c15652a37b 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/Binding.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/Binding.cpp
+@@ -523,6 +523,17 @@ void Binding::schedulerDidRequestPreliminaryViewAllocation(
+   mountingManager->preallocateShadowView(surfaceId, ShadowView(shadowNode));
+ }
+ 
++void Binding::schedulerDidRequestUpdateToPreallocatedView(
++    const ShadowNode& shadowNode) {
++  auto mountingManager =
++      getMountingManager("schedulerDidRequestUpdateToPreallocatedView");
++  if (!mountingManager) {
++    return;
++  }
++
++  mountingManager->updatePreallocatedShadowNode(shadowNode);
++}
++
+ void Binding::schedulerDidDispatchCommand(
+     const ShadowView& shadowView,
+     const std::string& commandName,
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/Binding.h b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/Binding.h
+index dec5855b096..7e42f4ca756 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/Binding.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/Binding.h
+@@ -109,6 +109,9 @@ class Binding : public jni::HybridClass<Binding, JBinding>,
+       const SurfaceId surfaceId,
+       const ShadowNode& shadowNode) override;
+ 
++  void schedulerDidRequestUpdateToPreallocatedView(
++      const ShadowNode& shadowNode) override;
++
+   void schedulerDidDispatchCommand(
+       const ShadowView& shadowView,
+       const std::string& commandName,
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.cpp
+index 2a459f77167..373030f51e5 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.cpp
+@@ -11,6 +11,7 @@
+ #include "MountItem.h"
+ #include "StateWrapperImpl.h"
+ 
++#include <react/featureflags/ReactNativeFeatureFlags.h>
+ #include <react/jni/ReadableNativeMap.h>
+ #include <react/renderer/components/scrollview/ScrollViewProps.h>
+ #include <react/renderer/core/conversions.h>
+@@ -826,6 +827,29 @@ void FabricMountingManager::preallocateShadowView(
+       isLayoutableShadowNode);
+ }
+ 
++void FabricMountingManager::updatePreallocatedShadowNode(
++    const ShadowNode& shadowNode) {
++  if (ReactNativeFeatureFlags::fixMountedFlagAndFixPreallocationClone()) {
++    // When batched rendering is enabled, React may do
++    // multiple commits in a row but only the last one is mounted.
++    // View preallocation does not account for this scenario and
++    // a prop update may be dropped because view is marked as preallocated.
++    // To work around this, we can detect when a view was cloned with different
++    // props, and remove the view from `allocatedViewRegistry_`.
++    std::lock_guard lock(allocatedViewsMutex_);
++    auto allocatedViewsIterator =
++        allocatedViewRegistry_.find(shadowNode.getSurfaceId());
++    if (allocatedViewsIterator == allocatedViewRegistry_.end()) {
++      // The surface does not exist, nothing to do.
++      return;
++    }
++    auto& allocatedViews = allocatedViewsIterator->second;
++    if (allocatedViews.find(shadowNode.getTag()) != allocatedViews.end()) {
++      allocatedViews.erase(shadowNode.getTag());
++    }
++  }
++}
++
+ void FabricMountingManager::dispatchCommand(
+     const ShadowView& shadowView,
+     const std::string& commandName,
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.h b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.h
+index 0dff4e3daff..ea0eeb774d8 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricMountingManager.h
+@@ -33,6 +33,7 @@ class FabricMountingManager final {
+   void onSurfaceStop(SurfaceId surfaceId);
+ 
+   void preallocateShadowView(SurfaceId surfaceId, const ShadowView& shadowView);
++  void updatePreallocatedShadowNode(const ShadowNode& shadowNode);
+ 
+   void executeMount(const MountingTransaction& transaction);
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+index 363348b3ac6..91150b1b101 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<ec76fca802fcc6f2c2357de21f482cb3>>
++ * @generated SignedSource<<42365eadf2648e4033ec6be2c387c019>>
+  */
+ 
+ /**
+@@ -105,6 +105,12 @@ class ReactNativeFeatureFlagsProviderHolder
+     return method(javaProvider_);
+   }
+ 
++  bool fixMountedFlagAndFixPreallocationClone() override {
++    static const auto method =
++        getReactNativeFeatureFlagsProviderJavaClass()->getMethod<jboolean()>("fixMountedFlagAndFixPreallocationClone");
++    return method(javaProvider_);
++  }
++
+   bool forceBatchingMountItemsOnAndroid() override {
+     static const auto method =
+         getReactNativeFeatureFlagsProviderJavaClass()->getMethod<jboolean()>("forceBatchingMountItemsOnAndroid");
+@@ -206,6 +212,11 @@ bool JReactNativeFeatureFlagsCxxInterop::enableUIConsistency(
+   return ReactNativeFeatureFlags::enableUIConsistency();
+ }
+ 
++bool JReactNativeFeatureFlagsCxxInterop::fixMountedFlagAndFixPreallocationClone(
++    facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop> /*unused*/) {
++  return ReactNativeFeatureFlags::fixMountedFlagAndFixPreallocationClone();
++}
++
+ bool JReactNativeFeatureFlagsCxxInterop::forceBatchingMountItemsOnAndroid(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop> /*unused*/) {
+   return ReactNativeFeatureFlags::forceBatchingMountItemsOnAndroid();
+@@ -291,6 +302,9 @@ void JReactNativeFeatureFlagsCxxInterop::registerNatives() {
+       makeNativeMethod(
+         "enableUIConsistency",
+         JReactNativeFeatureFlagsCxxInterop::enableUIConsistency),
++      makeNativeMethod(
++        "fixMountedFlagAndFixPreallocationClone",
++        JReactNativeFeatureFlagsCxxInterop::fixMountedFlagAndFixPreallocationClone),
+       makeNativeMethod(
+         "forceBatchingMountItemsOnAndroid",
+         JReactNativeFeatureFlagsCxxInterop::forceBatchingMountItemsOnAndroid),
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+index 703e581011d..f55c43e880e 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<3a6ff4e2f6d4056d903542cc620e07a9>>
++ * @generated SignedSource<<dfdbec53de07274b4a95d51d74868686>>
+  */
+ 
+ /**
+@@ -63,6 +63,9 @@ class JReactNativeFeatureFlagsCxxInterop
+   static bool enableUIConsistency(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
+ 
++  static bool fixMountedFlagAndFixPreallocationClone(
++    facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
++
+   static bool forceBatchingMountItemsOnAndroid(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
+ 
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+index cfcd8665a45..80156359a7d 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<6305ea7c2cb59caeaf2ea9cea69b8203>>
++ * @generated SignedSource<<43c8603042b627380cb5f6150e670753>>
+  */
+ 
+ /**
+@@ -65,6 +65,10 @@ bool ReactNativeFeatureFlags::enableUIConsistency() {
+   return getAccessor().enableUIConsistency();
+ }
+ 
++bool ReactNativeFeatureFlags::fixMountedFlagAndFixPreallocationClone() {
++  return getAccessor().fixMountedFlagAndFixPreallocationClone();
++}
++
+ bool ReactNativeFeatureFlags::forceBatchingMountItemsOnAndroid() {
+   return getAccessor().forceBatchingMountItemsOnAndroid();
+ }
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+index cc31eb14b0c..4c6a13bb74f 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<5a5c6772253f49b0b768cd7ef090af14>>
++ * @generated SignedSource<<a5407b903ea2f1d695a948738ecce536>>
+  */
+ 
+ /**
+@@ -92,6 +92,11 @@ class ReactNativeFeatureFlags {
+    */
+   RN_EXPORT static bool enableUIConsistency();
+ 
++  /**
++   * Splits hasBeenMounted and promoted.
++   */
++  RN_EXPORT static bool fixMountedFlagAndFixPreallocationClone();
++
+   /**
+    * Forces the mounting layer on Android to always batch mount items instead of dispatching them immediately. This might fix some crashes related to synchronous state updates, where some views dispatch state updates during mount.
+    */
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+index 3ccd45e860a..2223ac464df 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<b402923520c287a015cd57bd75af47cf>>
++ * @generated SignedSource<<0f4b93e6084d0e386563d685cc2bc419>>
+  */
+ 
+ /**
+@@ -227,6 +227,24 @@ bool ReactNativeFeatureFlagsAccessor::enableUIConsistency() {
+   return flagValue.value();
+ }
+ 
++bool ReactNativeFeatureFlagsAccessor::fixMountedFlagAndFixPreallocationClone() {
++  auto flagValue = fixMountedFlagAndFixPreallocationClone_.load();
++
++  if (!flagValue.has_value()) {
++    // This block is not exclusive but it is not necessary.
++    // If multiple threads try to initialize the feature flag, we would only
++    // be accessing the provider multiple times but the end state of this
++    // instance and the returned flag value would be the same.
++
++    markFlagAsAccessed(11, "fixMountedFlagAndFixPreallocationClone");
++
++    flagValue = currentProvider_->fixMountedFlagAndFixPreallocationClone();
++    fixMountedFlagAndFixPreallocationClone_ = flagValue;
++  }
++
++  return flagValue.value();
++}
++
+ bool ReactNativeFeatureFlagsAccessor::forceBatchingMountItemsOnAndroid() {
+   auto flagValue = forceBatchingMountItemsOnAndroid_.load();
+ 
+@@ -236,7 +254,7 @@ bool ReactNativeFeatureFlagsAccessor::forceBatchingMountItemsOnAndroid() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(11, "forceBatchingMountItemsOnAndroid");
++    markFlagAsAccessed(12, "forceBatchingMountItemsOnAndroid");
+ 
+     flagValue = currentProvider_->forceBatchingMountItemsOnAndroid();
+     forceBatchingMountItemsOnAndroid_ = flagValue;
+@@ -254,7 +272,7 @@ bool ReactNativeFeatureFlagsAccessor::inspectorEnableCxxInspectorPackagerConnect
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(12, "inspectorEnableCxxInspectorPackagerConnection");
++    markFlagAsAccessed(13, "inspectorEnableCxxInspectorPackagerConnection");
+ 
+     flagValue = currentProvider_->inspectorEnableCxxInspectorPackagerConnection();
+     inspectorEnableCxxInspectorPackagerConnection_ = flagValue;
+@@ -272,7 +290,7 @@ bool ReactNativeFeatureFlagsAccessor::inspectorEnableModernCDPRegistry() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(13, "inspectorEnableModernCDPRegistry");
++    markFlagAsAccessed(14, "inspectorEnableModernCDPRegistry");
+ 
+     flagValue = currentProvider_->inspectorEnableModernCDPRegistry();
+     inspectorEnableModernCDPRegistry_ = flagValue;
+@@ -290,7 +308,7 @@ bool ReactNativeFeatureFlagsAccessor::preventDoubleTextMeasure() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(14, "preventDoubleTextMeasure");
++    markFlagAsAccessed(15, "preventDoubleTextMeasure");
+ 
+     flagValue = currentProvider_->preventDoubleTextMeasure();
+     preventDoubleTextMeasure_ = flagValue;
+@@ -308,7 +326,7 @@ bool ReactNativeFeatureFlagsAccessor::useModernRuntimeScheduler() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(15, "useModernRuntimeScheduler");
++    markFlagAsAccessed(16, "useModernRuntimeScheduler");
+ 
+     flagValue = currentProvider_->useModernRuntimeScheduler();
+     useModernRuntimeScheduler_ = flagValue;
+@@ -326,7 +344,7 @@ bool ReactNativeFeatureFlagsAccessor::useNativeViewConfigsInBridgelessMode() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(16, "useNativeViewConfigsInBridgelessMode");
++    markFlagAsAccessed(17, "useNativeViewConfigsInBridgelessMode");
+ 
+     flagValue = currentProvider_->useNativeViewConfigsInBridgelessMode();
+     useNativeViewConfigsInBridgelessMode_ = flagValue;
+@@ -344,7 +362,7 @@ bool ReactNativeFeatureFlagsAccessor::useStateAlignmentMechanism() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(17, "useStateAlignmentMechanism");
++    markFlagAsAccessed(18, "useStateAlignmentMechanism");
+ 
+     flagValue = currentProvider_->useStateAlignmentMechanism();
+     useStateAlignmentMechanism_ = flagValue;
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+index 9c3d725da39..df908d1da0a 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<9be1a64b5efca2421dfb093dbcc1f793>>
++ * @generated SignedSource<<b7f8935c2b0e5449088a7613423982a7>>
+  */
+ 
+ /**
+@@ -42,6 +42,7 @@ class ReactNativeFeatureFlagsAccessor {
+   bool enableSpannableBuildingUnification();
+   bool enableSynchronousStateUpdates();
+   bool enableUIConsistency();
++  bool fixMountedFlagAndFixPreallocationClone();
+   bool forceBatchingMountItemsOnAndroid();
+   bool inspectorEnableCxxInspectorPackagerConnection();
+   bool inspectorEnableModernCDPRegistry();
+@@ -59,7 +60,7 @@ class ReactNativeFeatureFlagsAccessor {
+   std::unique_ptr<ReactNativeFeatureFlagsProvider> currentProvider_;
+   bool wasOverridden_;
+ 
+-  std::array<std::atomic<const char*>, 18> accessedFeatureFlags_;
++  std::array<std::atomic<const char*>, 19> accessedFeatureFlags_;
+ 
+   std::atomic<std::optional<bool>> commonTestFlag_;
+   std::atomic<std::optional<bool>> androidEnablePendingFabricTransactions_;
+@@ -72,6 +73,7 @@ class ReactNativeFeatureFlagsAccessor {
+   std::atomic<std::optional<bool>> enableSpannableBuildingUnification_;
+   std::atomic<std::optional<bool>> enableSynchronousStateUpdates_;
+   std::atomic<std::optional<bool>> enableUIConsistency_;
++  std::atomic<std::optional<bool>> fixMountedFlagAndFixPreallocationClone_;
+   std::atomic<std::optional<bool>> forceBatchingMountItemsOnAndroid_;
+   std::atomic<std::optional<bool>> inspectorEnableCxxInspectorPackagerConnection_;
+   std::atomic<std::optional<bool>> inspectorEnableModernCDPRegistry_;
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+index 27b40b3154d..39c05e2955e 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<a1530f969f47f31b8588109e48f527a1>>
++ * @generated SignedSource<<1c1413a29d3a3baf9876d4dfbd18e54f>>
+  */
+ 
+ /**
+@@ -71,6 +71,10 @@ class ReactNativeFeatureFlagsDefaults : public ReactNativeFeatureFlagsProvider {
+     return false;
+   }
+ 
++  bool fixMountedFlagAndFixPreallocationClone() override {
++    return false;
++  }
++
+   bool forceBatchingMountItemsOnAndroid() override {
+     return false;
+   }
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+index ca866d344a9..5dfea969a7e 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<3f99a52c114d6f96edb2b2b2f549b6a6>>
++ * @generated SignedSource<<9e58a6e297303c4637a984628a7ded1c>>
+  */
+ 
+ /**
+@@ -36,6 +36,7 @@ class ReactNativeFeatureFlagsProvider {
+   virtual bool enableSpannableBuildingUnification() = 0;
+   virtual bool enableSynchronousStateUpdates() = 0;
+   virtual bool enableUIConsistency() = 0;
++  virtual bool fixMountedFlagAndFixPreallocationClone() = 0;
+   virtual bool forceBatchingMountItemsOnAndroid() = 0;
+   virtual bool inspectorEnableCxxInspectorPackagerConnection() = 0;
+   virtual bool inspectorEnableModernCDPRegistry() = 0;
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+index 1035ae5beb5..1c81b7ee275 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<5285ee6c09bf4614cb5098952aac8c87>>
++ * @generated SignedSource<<425a83dc7418db4dcd44deae3b2dd4ce>>
+  */
+ 
+ /**
+@@ -92,6 +92,11 @@ bool NativeReactNativeFeatureFlags::enableUIConsistency(
+   return ReactNativeFeatureFlags::enableUIConsistency();
+ }
+ 
++bool NativeReactNativeFeatureFlags::fixMountedFlagAndFixPreallocationClone(
++    jsi::Runtime& /*runtime*/) {
++  return ReactNativeFeatureFlags::fixMountedFlagAndFixPreallocationClone();
++}
++
+ bool NativeReactNativeFeatureFlags::forceBatchingMountItemsOnAndroid(
+     jsi::Runtime& /*runtime*/) {
+   return ReactNativeFeatureFlags::forceBatchingMountItemsOnAndroid();
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+index bcd596d406b..4bbca95ca26 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<86afdf79a8a49da18eddf53bc9d41051>>
++ * @generated SignedSource<<e2c21b57d4a3d8b8b55d37f45cf37df4>>
+  */
+ 
+ /**
+@@ -57,6 +57,8 @@ class NativeReactNativeFeatureFlags
+ 
+   bool enableUIConsistency(jsi::Runtime& runtime);
+ 
++  bool fixMountedFlagAndFixPreallocationClone(jsi::Runtime& runtime);
++
+   bool forceBatchingMountItemsOnAndroid(jsi::Runtime& runtime);
+ 
+   bool inspectorEnableCxxInspectorPackagerConnection(jsi::Runtime& runtime);
+diff --git a/packages/react-native/ReactCommon/react/renderer/core/ShadowNode.cpp b/packages/react-native/ReactCommon/react/renderer/core/ShadowNode.cpp
+index b3bad185c0f..77c1f779f1a 100644
+--- a/packages/react-native/ReactCommon/react/renderer/core/ShadowNode.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/core/ShadowNode.cpp
+@@ -10,6 +10,7 @@
+ #include "ShadowNodeFragment.h"
+ 
+ #include <react/debug/react_native_assert.h>
++#include <react/featureflags/ReactNativeFeatureFlags.h>
+ #include <react/renderer/core/ComponentDescriptor.h>
+ #include <react/renderer/core/ShadowNodeFragment.h>
+ #include <react/renderer/debug/DebugStringConvertible.h>
+@@ -211,6 +212,18 @@ int ShadowNode::getOrderIndex() const {
+   return orderIndex_;
+ }
+ 
++void ShadowNode::markPromotedRecursively() const {
++  if (hasBeenPromoted_) {
++    return;
++  }
++
++  hasBeenPromoted_ = true;
++
++  for (const auto& child : *children_) {
++    child->markPromotedRecursively();
++  }
++}
++
+ void ShadowNode::sealRecursive() const {
+   if (getSealed()) {
+     return;
+@@ -287,12 +300,20 @@ void ShadowNode::setMounted(bool mounted) const {
+   family_->eventEmitter_->setEnabled(mounted);
+ }
+ 
+-bool ShadowNode::getHasBeenMounted() const {
+-  return hasBeenMounted_;
++bool ShadowNode::getHasBeenPromoted() const {
++  auto hasBeenPromoted =
++      ReactNativeFeatureFlags::fixMountedFlagAndFixPreallocationClone()
++      ? hasBeenPromoted_
++      : hasBeenMounted_.load();
++  return hasBeenPromoted;
+ }
+ 
+ bool ShadowNode::progressStateIfNecessary() {
+-  if (!hasBeenMounted_ && state_) {
++  auto hasBeenPromoted =
++      ReactNativeFeatureFlags::fixMountedFlagAndFixPreallocationClone()
++      ? hasBeenPromoted_
++      : hasBeenMounted_.load();
++  if (!hasBeenPromoted && state_) {
+     ensureUnsealed();
+     auto mostRecentState = family_->getMostRecentStateIfObsolete(*state_);
+     if (mostRecentState) {
+diff --git a/packages/react-native/ReactCommon/react/renderer/core/ShadowNode.h b/packages/react-native/ReactCommon/react/renderer/core/ShadowNode.h
+index fdbdab0a918..be96559c2d1 100644
+--- a/packages/react-native/ReactCommon/react/renderer/core/ShadowNode.h
++++ b/packages/react-native/ReactCommon/react/renderer/core/ShadowNode.h
+@@ -154,6 +154,12 @@ class ShadowNode : public Sealable,
+ 
+   void sealRecursive() const;
+ 
++  /*
++   * Marks this shadow node and all of its children as promoted. Promoted shadow
++   * node is scheduled to be mounted.
++   */
++  void markPromotedRecursively() const;
++
+   const ShadowNodeFamily& getFamily() const;
+ 
+ #pragma mark - Mutating Methods
+@@ -172,10 +178,10 @@ class ShadowNode : public Sealable,
+   void setMounted(bool mounted) const;
+ 
+   /*
+-   * Returns true if the shadow node has been marked as mounted before by
+-   * calling `setMounted`.
++   * Returns true if the shadow node has been promoted to be the next mounted
++   * tree.
+    */
+-  bool getHasBeenMounted() const;
++  bool getHasBeenPromoted() const;
+ 
+   /*
+    * Applies the most recent state to the ShadowNode if following conditions are
+@@ -224,8 +230,17 @@ class ShadowNode : public Sealable,
+    */
+   ShadowNodeFamily::Shared family_;
+ 
++  /*
++   * True if shadow node will be mounted shortly in the future but for all
++   * intents and purposes it should be treated as mounted.
++   */
+   mutable std::atomic<bool> hasBeenMounted_{false};
+ 
++  /*
++   * True if shadow node has been promoted to be the next mounted tree.
++   */
++  mutable bool hasBeenPromoted_{false};
++
+   static Props::Shared propsForClonedShadowNode(
+       const ShadowNode& sourceShadowNode,
+       const Props::Shared& props);
+diff --git a/packages/react-native/ReactCommon/react/renderer/mounting/MountingCoordinator.cpp b/packages/react-native/ReactCommon/react/renderer/mounting/MountingCoordinator.cpp
+index 001df23907f..5cb618979dd 100644
+--- a/packages/react-native/ReactCommon/react/renderer/mounting/MountingCoordinator.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/mounting/MountingCoordinator.cpp
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include "MountingCoordinator.h"
++#include "updateMountedFlag.h"
+ 
+ #ifdef RN_SHADOW_TREE_INTROSPECTION
+ #include <glog/logging.h>
+@@ -15,6 +16,7 @@
+ #include <condition_variable>
+ 
+ #include <react/debug/react_native_assert.h>
++#include <react/featureflags/ReactNativeFeatureFlags.h>
+ #include <react/renderer/debug/SystraceSection.h>
+ #include <react/renderer/mounting/ShadowViewMutation.h>
+ 
+@@ -89,6 +91,14 @@ std::optional<MountingTransaction> MountingCoordinator::pullTransaction()
+   if (lastRevision_.has_value()) {
+     number_++;
+ 
++    if (ReactNativeFeatureFlags::fixMountedFlagAndFixPreallocationClone()) {
++      std::scoped_lock dispatchLock(EventEmitter::DispatchMutex());
++
++      updateMountedFlag(
++          baseRevision_.rootShadowNode->getChildren(),
++          lastRevision_->rootShadowNode->getChildren());
++    }
++
+     auto telemetry = lastRevision_->telemetry;
+ 
+     telemetry.willDiff();
+diff --git a/packages/react-native/ReactCommon/react/renderer/mounting/ShadowTree.cpp b/packages/react-native/ReactCommon/react/renderer/mounting/ShadowTree.cpp
+index f97bd43e5de..d4196c5853e 100644
+--- a/packages/react-native/ReactCommon/react/renderer/mounting/ShadowTree.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/mounting/ShadowTree.cpp
+@@ -18,6 +18,7 @@
+ #include <react/renderer/mounting/ShadowViewMutation.h>
+ #include <react/renderer/telemetry/TransactionTelemetry.h>
+ #include <react/utils/CoreFeatures.h>
++#include "updateMountedFlag.h"
+ 
+ #include "ShadowTreeDelegate.h"
+ 
+@@ -52,7 +53,7 @@ static void progressStateIfNecessary(
+     // State was progressed without the need to clone.
+     // We are done with this node, but need to keep traversing.
+     progressStateIfNecessary(shadowNode, baseChildNode);
+-  } else if (newChildNode.getHasBeenMounted()) {
++  } else if (newChildNode.getHasBeenPromoted()) {
+     // `newShadowNode` was cloned from react and cloned from a native state
+     // update. This child node was cloned only from a native state update.
+     // This is branching and it is safe to promote the new branch from
+@@ -270,65 +271,6 @@ static ShadowNode::Unshared progressState(
+   });
+ }
+ 
+-static void updateMountedFlag(
+-    const ShadowNode::ListOfShared& oldChildren,
+-    const ShadowNode::ListOfShared& newChildren) {
+-  // This is a simplified version of Diffing algorithm that only updates
+-  // `mounted` flag on `ShadowNode`s. The algorithm sets "mounted" flag before
+-  // "unmounted" to allow `ShadowNode` detect a situation where the node was
+-  // remounted.
+-
+-  if (&oldChildren == &newChildren) {
+-    // Lists are identical, nothing to do.
+-    return;
+-  }
+-
+-  if (oldChildren.empty() && newChildren.empty()) {
+-    // Both lists are empty, nothing to do.
+-    return;
+-  }
+-
+-  size_t index;
+-
+-  // Stage 1: Mount and unmount "updated" children.
+-  for (index = 0; index < oldChildren.size() && index < newChildren.size();
+-       index++) {
+-    const auto& oldChild = oldChildren[index];
+-    const auto& newChild = newChildren[index];
+-
+-    if (oldChild == newChild) {
+-      // Nodes are identical, skipping the subtree.
+-      continue;
+-    }
+-
+-    if (!ShadowNode::sameFamily(*oldChild, *newChild)) {
+-      // Totally different nodes, updating is impossible.
+-      break;
+-    }
+-
+-    newChild->setMounted(true);
+-    oldChild->setMounted(false);
+-
+-    updateMountedFlag(oldChild->getChildren(), newChild->getChildren());
+-  }
+-
+-  size_t lastIndexAfterFirstStage = index;
+-
+-  // State 2: Mount new children.
+-  for (index = lastIndexAfterFirstStage; index < newChildren.size(); index++) {
+-    const auto& newChild = newChildren[index];
+-    newChild->setMounted(true);
+-    updateMountedFlag({}, newChild->getChildren());
+-  }
+-
+-  // State 3: Unmount old children.
+-  for (index = lastIndexAfterFirstStage; index < oldChildren.size(); index++) {
+-    const auto& oldChild = oldChildren[index];
+-    oldChild->setMounted(false);
+-    updateMountedFlag(oldChild->getChildren(), {});
+-  }
+-}
+-
+ ShadowTree::ShadowTree(
+     SurfaceId surfaceId,
+     const LayoutConstraints& layoutConstraints,
+@@ -509,9 +451,10 @@ CommitStatus ShadowTree::tryCommit(
+ 
+     auto newRevisionNumber = currentRevision_.number + 1;
+ 
+-    {
++    if (ReactNativeFeatureFlags::fixMountedFlagAndFixPreallocationClone()) {
++      newRootShadowNode->markPromotedRecursively();
++    } else {
+       std::scoped_lock dispatchLock(EventEmitter::DispatchMutex());
+-
+       updateMountedFlag(
+           currentRevision_.rootShadowNode->getChildren(),
+           newRootShadowNode->getChildren());
+@@ -521,6 +464,7 @@ CommitStatus ShadowTree::tryCommit(
+     telemetry.setRevisionNumber(static_cast<int>(newRevisionNumber));
+ 
+     // Seal the shadow node so it can no longer be mutated
++    // Does nothing in release.
+     newRootShadowNode->sealRecursive();
+ 
+     newRevision = ShadowTreeRevision{
+diff --git a/packages/react-native/ReactCommon/react/renderer/mounting/updateMountedFlag.cpp b/packages/react-native/ReactCommon/react/renderer/mounting/updateMountedFlag.cpp
+new file mode 100644
+index 00000000000..4b501294144
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/renderer/mounting/updateMountedFlag.cpp
+@@ -0,0 +1,69 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#include "updateMountedFlag.h"
++
++namespace facebook::react {
++void updateMountedFlag(
++    const ShadowNode::ListOfShared& oldChildren,
++    const ShadowNode::ListOfShared& newChildren) {
++  // This is a simplified version of Diffing algorithm that only updates
++  // `mounted` flag on `ShadowNode`s. The algorithm sets "mounted" flag before
++  // "unmounted" to allow `ShadowNode` detect a situation where the node was
++  // remounted.
++
++  if (&oldChildren == &newChildren) {
++    // Lists are identical, nothing to do.
++    return;
++  }
++
++  if (oldChildren.empty() && newChildren.empty()) {
++    // Both lists are empty, nothing to do.
++    return;
++  }
++
++  size_t index = 0;
++
++  // Stage 1: Mount and unmount "updated" children.
++  for (index = 0; index < oldChildren.size() && index < newChildren.size();
++       index++) {
++    const auto& oldChild = oldChildren[index];
++    const auto& newChild = newChildren[index];
++
++    if (oldChild == newChild) {
++      // Nodes are identical, skipping the subtree.
++      continue;
++    }
++
++    if (!ShadowNode::sameFamily(*oldChild, *newChild)) {
++      // Totally different nodes, updating is impossible.
++      break;
++    }
++
++    newChild->setMounted(true);
++    oldChild->setMounted(false);
++
++    updateMountedFlag(oldChild->getChildren(), newChild->getChildren());
++  }
++
++  size_t lastIndexAfterFirstStage = index;
++
++  // State 2: Mount new children.
++  for (index = lastIndexAfterFirstStage; index < newChildren.size(); index++) {
++    const auto& newChild = newChildren[index];
++    newChild->setMounted(true);
++    updateMountedFlag({}, newChild->getChildren());
++  }
++
++  // State 3: Unmount old children.
++  for (index = lastIndexAfterFirstStage; index < oldChildren.size(); index++) {
++    const auto& oldChild = oldChildren[index];
++    oldChild->setMounted(false);
++    updateMountedFlag(oldChild->getChildren(), {});
++  }
++}
++} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/mounting/updateMountedFlag.h b/packages/react-native/ReactCommon/react/renderer/mounting/updateMountedFlag.h
+new file mode 100644
+index 00000000000..73e30109325
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/renderer/mounting/updateMountedFlag.h
+@@ -0,0 +1,19 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++#pragma once
++
++#include <react/renderer/core/ShadowNode.h>
++
++namespace facebook::react {
++/*
++ * Traverses the shadow tree and updates the `mounted` flag on all nodes.
++ */
++void updateMountedFlag(
++    const ShadowNode::ListOfShared& oldChildren,
++    const ShadowNode::ListOfShared& newChildren);
++} // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp b/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp
+index b9a37f7f413..8986bc240e8 100644
+--- a/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp
+@@ -322,6 +322,15 @@ void Scheduler::uiManagerDidCreateShadowNode(const ShadowNode& shadowNode) {
+   }
+ }
+ 
++void Scheduler::uiManagerDidCloneShadowNodeWithNewProps(
++    const ShadowNode& shadowNode) {
++  SystraceSection s("Scheduler::uiManagerDidCreateShadowNode");
++
++  if (delegate_ != nullptr) {
++    delegate_->schedulerDidRequestUpdateToPreallocatedView(shadowNode);
++  }
++}
++
+ void Scheduler::uiManagerDidDispatchCommand(
+     const ShadowNode::Shared& shadowNode,
+     const std::string& commandName,
+diff --git a/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.h b/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.h
+index 265aebc9a65..0bc6f4a823d 100644
+--- a/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.h
++++ b/packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.h
+@@ -88,6 +88,8 @@ class Scheduler final : public UIManagerDelegate {
+       MountingCoordinator::Shared mountingCoordinator,
+       bool mountSynchronously) override;
+   void uiManagerDidCreateShadowNode(const ShadowNode& shadowNode) override;
++  void uiManagerDidCloneShadowNodeWithNewProps(
++      const ShadowNode& shadowNode) override;
+   void uiManagerDidDispatchCommand(
+       const ShadowNode::Shared& shadowNode,
+       const std::string& commandName,
+diff --git a/packages/react-native/ReactCommon/react/renderer/scheduler/SchedulerDelegate.h b/packages/react-native/ReactCommon/react/renderer/scheduler/SchedulerDelegate.h
+index 338d637da94..40c7050b82b 100644
+--- a/packages/react-native/ReactCommon/react/renderer/scheduler/SchedulerDelegate.h
++++ b/packages/react-native/ReactCommon/react/renderer/scheduler/SchedulerDelegate.h
+@@ -46,6 +46,12 @@ class SchedulerDelegate {
+       SurfaceId surfaceId,
+       const ShadowNode& shadowView) = 0;
+ 
++  /*
++   * Called after shadow node is cloned with new props.
++   */
++  virtual void schedulerDidRequestUpdateToPreallocatedView(
++      const ShadowNode& shadowView) = 0;
++
+   virtual void schedulerDidDispatchCommand(
+       const ShadowView& shadowView,
+       const std::string& commandName,
+diff --git a/packages/react-native/ReactCommon/react/renderer/uimanager/UIManager.cpp b/packages/react-native/ReactCommon/react/renderer/uimanager/UIManager.cpp
+index 54673f0902d..9c94c259c57 100644
+--- a/packages/react-native/ReactCommon/react/renderer/uimanager/UIManager.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/uimanager/UIManager.cpp
+@@ -156,6 +156,10 @@ std::shared_ptr<ShadowNode> UIManager::cloneNode(
+           /* .children = */ children,
+       });
+ 
++  if (!rawProps.isEmpty() && delegate_ != nullptr) {
++    delegate_->uiManagerDidCloneShadowNodeWithNewProps(*clonedShadowNode);
++  }
++
+   return clonedShadowNode;
+ }
+ 
+diff --git a/packages/react-native/ReactCommon/react/renderer/uimanager/UIManagerDelegate.h b/packages/react-native/ReactCommon/react/renderer/uimanager/UIManagerDelegate.h
+index 4b196f4101c..a4271eec13e 100644
+--- a/packages/react-native/ReactCommon/react/renderer/uimanager/UIManagerDelegate.h
++++ b/packages/react-native/ReactCommon/react/renderer/uimanager/UIManagerDelegate.h
+@@ -33,6 +33,15 @@ class UIManagerDelegate {
+    */
+   virtual void uiManagerDidCreateShadowNode(const ShadowNode& shadowNode) = 0;
+ 
++  /*
++   * Called after shadow node is cloned with new props.
++   * Receiver should use this to adjust props passed to mounting layer
++   * during view pre-allocation that was triggered from
++   * `uiManagerDidCreateShadowNode`.
++   */
++  virtual void uiManagerDidCloneShadowNodeWithNewProps(
++      const ShadowNode& shadowNode) = 0;
++
+   /*
+    * Called when UIManager wants to dispatch a command to the mounting layer.
+    */
+diff --git a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+index 7b88c7dcd39..e3cfb54291a 100644
+--- a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
++++ b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+@@ -81,6 +81,10 @@ const definitions: FeatureFlagDefinitions = {
+       description:
+         'Ensures that JavaScript always has a consistent view of the state of the UI (e.g.: commits done in other threads are not immediately propagated to JS during its execution).',
+     },
++    fixMountedFlagAndFixPreallocationClone: {
++      defaultValue: false,
++      description: 'Splits hasBeenMounted and promoted.',
++    },
+     forceBatchingMountItemsOnAndroid: {
+       defaultValue: false,
+       description:
+diff --git a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+index 61224f3e668..8f2a885fdfa 100644
+--- a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<6b90f52915db22d4077011a55a519b20>>
++ * @generated SignedSource<<2069622ac0b7f7a7aa1523d891d2969b>>
+  * @flow strict-local
+  */
+ 
+@@ -51,6 +51,7 @@ export type ReactNativeFeatureFlags = {
+   enableSpannableBuildingUnification: Getter<boolean>,
+   enableSynchronousStateUpdates: Getter<boolean>,
+   enableUIConsistency: Getter<boolean>,
++  fixMountedFlagAndFixPreallocationClone: Getter<boolean>,
+   forceBatchingMountItemsOnAndroid: Getter<boolean>,
+   inspectorEnableCxxInspectorPackagerConnection: Getter<boolean>,
+   inspectorEnableModernCDPRegistry: Getter<boolean>,
+@@ -144,6 +145,10 @@ export const enableSynchronousStateUpdates: Getter<boolean> = createNativeFlagGe
+  * Ensures that JavaScript always has a consistent view of the state of the UI (e.g.: commits done in other threads are not immediately propagated to JS during its execution).
+  */
+ export const enableUIConsistency: Getter<boolean> = createNativeFlagGetter('enableUIConsistency', false);
++/**
++ * Splits hasBeenMounted and promoted.
++ */
++export const fixMountedFlagAndFixPreallocationClone: Getter<boolean> = createNativeFlagGetter('fixMountedFlagAndFixPreallocationClone', false);
+ /**
+  * Forces the mounting layer on Android to always batch mount items instead of dispatching them immediately. This might fix some crashes related to synchronous state updates, where some views dispatch state updates during mount.
+  */
+diff --git a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+index 96fdeb21f67..1beaf4ab08b 100644
+--- a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<b7f42eb3b24f3feed4274df8398c3c94>>
++ * @generated SignedSource<<4dc41ba7453a167d762168aca78ad8c4>>
+  * @flow strict-local
+  */
+ 
+@@ -34,6 +34,7 @@ export interface Spec extends TurboModule {
+   +enableSpannableBuildingUnification?: () => boolean;
+   +enableSynchronousStateUpdates?: () => boolean;
+   +enableUIConsistency?: () => boolean;
++  +fixMountedFlagAndFixPreallocationClone?: () => boolean;
+   +forceBatchingMountItemsOnAndroid?: () => boolean;
+   +inspectorEnableCxxInspectorPackagerConnection?: () => boolean;
+   +inspectorEnableModernCDPRegistry?: () => boolean;

@@ -1,0 +1,47 @@
+repo: gitpod
+base_commit: 6764cd045f028ba09fee5cad13f531d4141d5ce0
+commit: 99cc66b7cf24d20f8fa4d8aba6faacb68822810f
+patch_stored: true
+gold:
+- path: components/ws-daemon-api/workspace_daemon.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-daemon/pkg/controller/workspace_controller.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-daemon/pkg/controller/workspace_operations.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager-api/go/crd/v1/workspace_types.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager-mk2/controllers/status.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager-mk2/controllers/workspace_controller.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: dev/rejector/main.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: components/ws-daemon-api/go/workspace_daemon.pb.go
+- path: components/ws-daemon-api/go/workspace_daemon_grpc.pb.go
+- path: components/ws-daemon-api/typescript/src/workspace_daemon_grpc_pb.js
+- path: components/ws-daemon-api/typescript/src/workspace_daemon_pb.js
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: '39-file diff adding a WipingTeardown RPC (proto + generated Go/TS bindings, most of the line count)
+  plus the actual semantic core: ws-daemon controller/operations logic, ws-manager-mk2 workspace_controller.go/status.go
+  changes, a new 197-line workspace_controller_test.go, and a brand-new dev/rejector CLI tool (147-line
+  main.go). This is a good stress test for generated-vs-handwritten discrimination, but the tool hung
+  before making any selection at all — 0 changed fragments against a genuinely large, non-trivial diff.'

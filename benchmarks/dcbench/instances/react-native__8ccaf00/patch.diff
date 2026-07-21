@@ -1,0 +1,3445 @@
+From 8ccaf007eed227c2a0d89b6259ced1db71375654 Mon Sep 17 00:00:00 2001
+From: Luna Wei <luwe@meta.com>
+Date: Thu, 13 Nov 2025 09:42:19 -0800
+Subject: [PATCH] Gate with feature flag for canary (#54454)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/54454
+
+Changelog: [Internal] - Add feature flag around IntersectionObserver for canary
+
+Reviewed By: rubennorte, cipolleschi
+
+Differential Revision: D86547485
+
+fbshipit-source-id: 0c6d84e276d1f6337a8da0bea141cc371010cd75
+---
+ packages/react-native/Package.swift           |  13 +-
+ .../featureflags/ReactNativeFeatureFlags.kt   |   8 +-
+ .../ReactNativeFeatureFlagsCxxAccessor.kt     |  12 +-
+ .../ReactNativeFeatureFlagsCxxInterop.kt      |   4 +-
+ .../ReactNativeFeatureFlagsDefaults.kt        |   4 +-
+ .../ReactNativeFeatureFlagsLocalAccessor.kt   |  13 +-
+ ...tureFlagsOverrides_RNOSS_Canary_Android.kt |   4 +-
+ .../ReactNativeFeatureFlagsProvider.kt        |   4 +-
+ .../ReactAndroid/src/main/jni/CMakeLists.txt  |   5 +
+ .../JReactNativeFeatureFlagsCxxInterop.cpp    |  16 +-
+ .../JReactNativeFeatureFlagsCxxInterop.h      |   5 +-
+ .../ReactCommon/React-Fabric.podspec          |  10 +-
+ .../featureflags/ReactNativeFeatureFlags.cpp  |   6 +-
+ .../featureflags/ReactNativeFeatureFlags.h    |   7 +-
+ .../ReactNativeFeatureFlagsAccessor.cpp       | 124 +++---
+ .../ReactNativeFeatureFlagsAccessor.h         |   6 +-
+ .../ReactNativeFeatureFlagsDefaults.h         |   6 +-
+ .../ReactNativeFeatureFlagsDynamicProvider.h  |  11 +-
+ ...eactNativeFeatureFlagsOverridesOSSCanary.h |   6 +-
+ .../ReactNativeFeatureFlagsProvider.h         |   3 +-
+ .../nativemodule/defaults/CMakeLists.txt      |   1 +
+ .../defaults/DefaultTurboModules.cpp          |   7 +
+ .../React-defaultsnativemodule.podspec        |   6 +-
+ .../NativeReactNativeFeatureFlags.cpp         |   7 +-
+ .../NativeReactNativeFeatureFlags.h           |   4 +-
+ .../NativeIntersectionObserver.h              |   4 +
+ ...t-intersectionobservernativemodule.podspec |  66 +++
+ .../ReactNativeFeatureFlags.config.js         |  10 +
+ .../react-native/scripts/react_native_pods.rb |   1 +
+ .../featureflags/ReactNativeFeatureFlags.js   |   7 +-
+ .../specs/NativeReactNativeFeatureFlags.js    |   3 +-
+ .../setUpDefaultReactNativeEnvironment.js     |   6 +
+ .../IntersectionObserverBenchmark.js          | 129 ++++++
+ .../IntersectionObserverClippingParent.js     | 404 ++++++++++++++++++
+ .../IntersectionObserverClippingRoot.js       | 400 +++++++++++++++++
+ .../IntersectionObserverExplicitRoot.js       | 278 ++++++++++++
+ .../IntersectionObserverExplicitRootScroll.js | 245 +++++++++++
+ .../IntersectionObserverIndex.js              |  37 ++
+ .../IntersectionObserverMDNExample.js         | 181 ++++++++
+ .../IntersectionObserverRootThreshold.js      | 224 ++++++++++
+ .../js/utils/RNTesterList.android.js          |  11 +
+ .../rn-tester/js/utils/RNTesterList.ios.js    |  11 +
+ 42 files changed, 2230 insertions(+), 79 deletions(-)
+ create mode 100644 packages/react-native/ReactCommon/react/nativemodule/intersectionobserver/React-intersectionobservernativemodule.podspec
+ create mode 100644 packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverBenchmark.js
+ create mode 100644 packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverClippingParent.js
+ create mode 100644 packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverClippingRoot.js
+ create mode 100644 packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverExplicitRoot.js
+ create mode 100644 packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverExplicitRootScroll.js
+ create mode 100644 packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverIndex.js
+ create mode 100644 packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverMDNExample.js
+ create mode 100644 packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverRootThreshold.js
+
+diff --git a/packages/react-native/Package.swift b/packages/react-native/Package.swift
+index 9e23bf7a25f..d95d1c6a1d3 100644
+--- a/packages/react-native/Package.swift
++++ b/packages/react-native/Package.swift
+@@ -314,7 +314,7 @@ let reactTurboModuleCore = RNTarget(
+ let reactTurboModuleCoreDefaults = RNTarget(
+   name: .reactTurboModuleCoreDefaults,
+   path: "ReactCommon/react/nativemodule/defaults",
+-  dependencies: [.reactNativeDependencies, .jsi, .reactJsiExecutor, .reactTurboModuleCore]
++  dependencies: [.reactNativeDependencies, .jsi, .reactJsiExecutor, .reactTurboModuleCore, .reactFabric]
+ )
+ 
+ /// React-microtasknativemodule.podspec
+@@ -338,6 +338,13 @@ let reactWebPerformanceNativeModule = RNTarget(
+   dependencies: [.reactNativeDependencies, .reactCxxReact, .reactTurboModuleCore, .reactPerformanceTimeline]
+ )
+ 
++/// React-intersectionobservernativemodule.podspec
++let reactIntersectionObserverNativeModule = RNTarget(
++  name: .reactIntersectionObserverNativeModule,
++  path: "ReactCommon/react/nativemodule/intersectionobserver",
++  dependencies: [.reactNativeDependencies, .reactCxxReact, .reactFabric, .reactTurboModuleBridging, .reactTurboModuleCore, .reactGraphics, .reactGraphicsApple, .reactRuntimeScheduler, .yoga]
++)
++
+ /// React-featureflagnativemodule.podspec
+ let reactFeatureflagsNativemodule = RNTarget(
+   name: .reactFeatureflagsNativemodule,
+@@ -451,7 +458,7 @@ let reactFabric = RNTarget(
+     "components/root/tests",
+   ],
+   dependencies: [.reactNativeDependencies, .reactJsiExecutor, .rctTypesafety, .reactTurboModuleCore, .jsi, .logger, .reactDebug, .reactFeatureFlags, .reactUtils, .reactRuntimeScheduler, .reactCxxReact, .reactRendererDebug, .reactGraphics, .yoga],
+-  sources: ["animations", "attributedstring", "core", "componentregistry", "componentregistry/native", "components/root", "components/view", "components/view/platform/cxx", "components/scrollview", "components/scrollview/platform/cxx", "components/legacyviewmanagerinterop", "dom", "scheduler", "mounting", "observers/events", "telemetry", "consistency", "leakchecker", "uimanager", "uimanager/consistency"]
++  sources: ["animations", "attributedstring", "core", "componentregistry", "componentregistry/native", "components/root", "components/view", "components/view/platform/cxx", "components/scrollview", "components/scrollview/platform/cxx", "components/legacyviewmanagerinterop", "dom", "scheduler", "mounting", "observers/events", "observers/intersection", "telemetry", "consistency", "leakchecker", "uimanager", "uimanager/consistency"]
+ )
+ 
+ let reactFabricInputAccessory = RNTarget(
+@@ -682,6 +689,7 @@ let targets = [
+   reactTurboModuleCoreMicrotasks,
+   reactIdleCallbacksNativeModule,
+   reactWebPerformanceNativeModule,
++  reactIntersectionObserverNativeModule,
+   reactFeatureflagsNativemodule,
+   reactNativeModuleDom,
+   reactAppDelegate,
+@@ -869,6 +877,7 @@ extension String {
+   static let reactTurboModuleCoreMicrotasks = "ReactCommon/turbomodule/core/microtasks"
+   static let reactIdleCallbacksNativeModule = "React-idlecallbacksnativemodule"
+   static let reactWebPerformanceNativeModule = "React-webperformancenativemodule"
++  static let reactIntersectionObserverNativeModule = "React-intersectionobservernativemodule"
+   static let reactFeatureflagsNativemodule = "React-featureflagsnativemodule"
+   static let reactNativeModuleDom = "React-domnativemodule"
+   static let reactAppDelegate = "React-RCTAppDelegate"
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+index f147ae73918..7ea9952904b 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<9cb554e599417e707c0953baa6adb0c2>>
++ * @generated SignedSource<<10999fe360a25451c316eed2d27b6d92>>
+  */
+ 
+ /**
+@@ -240,6 +240,12 @@ public object ReactNativeFeatureFlags {
+   @JvmStatic
+   public fun enableInteropViewManagerClassLookUpOptimizationIOS(): Boolean = accessor.enableInteropViewManagerClassLookUpOptimizationIOS()
+ 
++  /**
++   * Enables the IntersectionObserver Web API in React Native.
++   */
++  @JvmStatic
++  public fun enableIntersectionObserverByDefault(): Boolean = accessor.enableIntersectionObserverByDefault()
++
+   /**
+    * Enables key up/down/press events to be sent to JS from components
+    */
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+index 8f857f7e1d4..ffe00e589b0 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<24a3e681a86bce628917f5e20ce1b1eb>>
++ * @generated SignedSource<<b935cd2546fdba877e317aea30fceaf9>>
+  */
+ 
+ /**
+@@ -55,6 +55,7 @@ internal class ReactNativeFeatureFlagsCxxAccessor : ReactNativeFeatureFlagsAcces
+   private var enableImmediateUpdateModeForContentOffsetChangesCache: Boolean? = null
+   private var enableImperativeFocusCache: Boolean? = null
+   private var enableInteropViewManagerClassLookUpOptimizationIOSCache: Boolean? = null
++  private var enableIntersectionObserverByDefaultCache: Boolean? = null
+   private var enableKeyEventsCache: Boolean? = null
+   private var enableLayoutAnimationsOnAndroidCache: Boolean? = null
+   private var enableLayoutAnimationsOnIOSCache: Boolean? = null
+@@ -423,6 +424,15 @@ internal class ReactNativeFeatureFlagsCxxAccessor : ReactNativeFeatureFlagsAcces
+     return cached
+   }
+ 
++  override fun enableIntersectionObserverByDefault(): Boolean {
++    var cached = enableIntersectionObserverByDefaultCache
++    if (cached == null) {
++      cached = ReactNativeFeatureFlagsCxxInterop.enableIntersectionObserverByDefault()
++      enableIntersectionObserverByDefaultCache = cached
++    }
++    return cached
++  }
++
+   override fun enableKeyEvents(): Boolean {
+     var cached = enableKeyEventsCache
+     if (cached == null) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+index 70b752a85f3..92b05a433c7 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<f57b2ecf22eabb7f207b86c472059084>>
++ * @generated SignedSource<<b7a9d14c50bae9afa15b3ead8308fc9b>>
+  */
+ 
+ /**
+@@ -98,6 +98,8 @@ public object ReactNativeFeatureFlagsCxxInterop {
+ 
+   @DoNotStrip @JvmStatic public external fun enableInteropViewManagerClassLookUpOptimizationIOS(): Boolean
+ 
++  @DoNotStrip @JvmStatic public external fun enableIntersectionObserverByDefault(): Boolean
++
+   @DoNotStrip @JvmStatic public external fun enableKeyEvents(): Boolean
+ 
+   @DoNotStrip @JvmStatic public external fun enableLayoutAnimationsOnAndroid(): Boolean
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+index 79fcafcd6e0..aba878efacf 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<47b33d1a21af24f369e52d3b8f226d73>>
++ * @generated SignedSource<<a388c8e701ece8b9ea1dc23915a09399>>
+  */
+ 
+ /**
+@@ -93,6 +93,8 @@ public open class ReactNativeFeatureFlagsDefaults : ReactNativeFeatureFlagsProvi
+ 
+   override fun enableInteropViewManagerClassLookUpOptimizationIOS(): Boolean = false
+ 
++  override fun enableIntersectionObserverByDefault(): Boolean = false
++
+   override fun enableKeyEvents(): Boolean = false
+ 
+   override fun enableLayoutAnimationsOnAndroid(): Boolean = false
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+index 24af611b193..2f15ce930e5 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<a9c53954bffc14f69cf1e7c4707cb37a>>
++ * @generated SignedSource<<bd86cec4dcf659b9586aeee1c141963c>>
+  */
+ 
+ /**
+@@ -59,6 +59,7 @@ internal class ReactNativeFeatureFlagsLocalAccessor : ReactNativeFeatureFlagsAcc
+   private var enableImmediateUpdateModeForContentOffsetChangesCache: Boolean? = null
+   private var enableImperativeFocusCache: Boolean? = null
+   private var enableInteropViewManagerClassLookUpOptimizationIOSCache: Boolean? = null
++  private var enableIntersectionObserverByDefaultCache: Boolean? = null
+   private var enableKeyEventsCache: Boolean? = null
+   private var enableLayoutAnimationsOnAndroidCache: Boolean? = null
+   private var enableLayoutAnimationsOnIOSCache: Boolean? = null
+@@ -462,6 +463,16 @@ internal class ReactNativeFeatureFlagsLocalAccessor : ReactNativeFeatureFlagsAcc
+     return cached
+   }
+ 
++  override fun enableIntersectionObserverByDefault(): Boolean {
++    var cached = enableIntersectionObserverByDefaultCache
++    if (cached == null) {
++      cached = currentProvider.enableIntersectionObserverByDefault()
++      accessedFeatureFlags.add("enableIntersectionObserverByDefault")
++      enableIntersectionObserverByDefaultCache = cached
++    }
++    return cached
++  }
++
+   override fun enableKeyEvents(): Boolean {
+     var cached = enableKeyEventsCache
+     if (cached == null) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsOverrides_RNOSS_Canary_Android.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsOverrides_RNOSS_Canary_Android.kt
+index 5959f89d9dc..f96043635a6 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsOverrides_RNOSS_Canary_Android.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsOverrides_RNOSS_Canary_Android.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<f82b5905d822f8009c054a9443f86e39>>
++ * @generated SignedSource<<2912fe4c90e3b493770bf14e70264656>>
+  */
+ 
+ /**
+@@ -27,6 +27,8 @@ public open class ReactNativeFeatureFlagsOverrides_RNOSS_Canary_Android : ReactN
+ 
+   override fun enableFabricRenderer(): Boolean = true
+ 
++  override fun enableIntersectionObserverByDefault(): Boolean = true
++
+   override fun useNativeViewConfigsInBridgelessMode(): Boolean = true
+ 
+   override fun useTurboModuleInterop(): Boolean = true
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+index 59b969434b6..4a1df79aa74 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<da5879ddbaea7cd51f828e284bc0e913>>
++ * @generated SignedSource<<90fd5f8d9c5b6833c6fdd10167577bb9>>
+  */
+ 
+ /**
+@@ -93,6 +93,8 @@ public interface ReactNativeFeatureFlagsProvider {
+ 
+   @DoNotStrip public fun enableInteropViewManagerClassLookUpOptimizationIOS(): Boolean
+ 
++  @DoNotStrip public fun enableIntersectionObserverByDefault(): Boolean
++
+   @DoNotStrip public fun enableKeyEvents(): Boolean
+ 
+   @DoNotStrip public fun enableLayoutAnimationsOnAndroid(): Boolean
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt b/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+index 9cb758c0ea5..9f4ba924202 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
++++ b/packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+@@ -114,6 +114,7 @@ add_react_common_subdir(react/renderer/components/scrollview)
+ add_react_common_subdir(react/renderer/components/safeareaview)
+ add_react_common_subdir(react/renderer/leakchecker)
+ add_react_common_subdir(react/renderer/observers/events)
++add_react_common_subdir(react/renderer/observers/intersection)
+ add_react_common_subdir(react/renderer/textlayoutmanager)
+ add_react_common_subdir(react/utils)
+ add_react_common_subdir(react/bridging)
+@@ -124,6 +125,7 @@ add_react_common_subdir(react/nativemodule/dom)
+ add_react_common_subdir(react/nativemodule/featureflags)
+ add_react_common_subdir(react/nativemodule/microtasks)
+ add_react_common_subdir(react/nativemodule/idlecallbacks)
++add_react_common_subdir(react/nativemodule/intersectionobserver)
+ add_react_common_subdir(react/nativemodule/webperformance)
+ add_react_common_subdir(react/networking)
+ add_react_common_subdir(jserrorhandler)
+@@ -192,6 +194,7 @@ add_library(reactnative
+           $<TARGET_OBJECTS:react_nativemodule_dom>
+           $<TARGET_OBJECTS:react_nativemodule_featureflags>
+           $<TARGET_OBJECTS:react_nativemodule_idlecallbacks>
++          $<TARGET_OBJECTS:react_nativemodule_intersectionobserver>
+           $<TARGET_OBJECTS:react_nativemodule_microtasks>
+           $<TARGET_OBJECTS:react_nativemodule_webperformance>
+           $<TARGET_OBJECTS:react_networking>
+@@ -213,6 +216,7 @@ add_library(reactnative
+           $<TARGET_OBJECTS:react_renderer_mapbuffer>
+           $<TARGET_OBJECTS:react_renderer_mounting>
+           $<TARGET_OBJECTS:react_renderer_observers_events>
++          $<TARGET_OBJECTS:react_renderer_observers_intersection>
+           $<TARGET_OBJECTS:react_renderer_runtimescheduler>
+           $<TARGET_OBJECTS:react_renderer_scheduler>
+           $<TARGET_OBJECTS:react_renderer_telemetry>
+@@ -284,6 +288,7 @@ target_include_directories(reactnative
+         $<TARGET_PROPERTY:react_nativemodule_dom,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_nativemodule_featureflags,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_nativemodule_idlecallbacks,INTERFACE_INCLUDE_DIRECTORIES>
++        $<TARGET_PROPERTY:react_nativemodule_intersectionobserver,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_nativemodule_microtasks,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_nativemodule_webperformance,INTERFACE_INCLUDE_DIRECTORIES>
+         $<TARGET_PROPERTY:react_networking,INTERFACE_INCLUDE_DIRECTORIES>
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+index c0f8e942b18..667b0131f9e 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<1a3267843d7400974e8686c83d359c7b>>
++ * @generated SignedSource<<a0ef5d4a761067631023f6b5ec797cc6>>
+  */
+ 
+ /**
+@@ -249,6 +249,12 @@ class ReactNativeFeatureFlagsJavaProvider
+     return method(javaProvider_);
+   }
+ 
++  bool enableIntersectionObserverByDefault() override {
++    static const auto method =
++        getReactNativeFeatureFlagsProviderJavaClass()->getMethod<jboolean()>("enableIntersectionObserverByDefault");
++    return method(javaProvider_);
++  }
++
+   bool enableKeyEvents() override {
+     static const auto method =
+         getReactNativeFeatureFlagsProviderJavaClass()->getMethod<jboolean()>("enableKeyEvents");
+@@ -740,6 +746,11 @@ bool JReactNativeFeatureFlagsCxxInterop::enableInteropViewManagerClassLookUpOpti
+   return ReactNativeFeatureFlags::enableInteropViewManagerClassLookUpOptimizationIOS();
+ }
+ 
++bool JReactNativeFeatureFlagsCxxInterop::enableIntersectionObserverByDefault(
++    facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop> /*unused*/) {
++  return ReactNativeFeatureFlags::enableIntersectionObserverByDefault();
++}
++
+ bool JReactNativeFeatureFlagsCxxInterop::enableKeyEvents(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop> /*unused*/) {
+   return ReactNativeFeatureFlags::enableKeyEvents();
+@@ -1136,6 +1147,9 @@ void JReactNativeFeatureFlagsCxxInterop::registerNatives() {
+       makeNativeMethod(
+         "enableInteropViewManagerClassLookUpOptimizationIOS",
+         JReactNativeFeatureFlagsCxxInterop::enableInteropViewManagerClassLookUpOptimizationIOS),
++      makeNativeMethod(
++        "enableIntersectionObserverByDefault",
++        JReactNativeFeatureFlagsCxxInterop::enableIntersectionObserverByDefault),
+       makeNativeMethod(
+         "enableKeyEvents",
+         JReactNativeFeatureFlagsCxxInterop::enableKeyEvents),
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+index b5cb0fb1229..4ad4b27dd37 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<9769e993b3481e991ef79406734b6e28>>
++ * @generated SignedSource<<066e98c5620ccf67d9e4ceb9d66b08f0>>
+  */
+ 
+ /**
+@@ -135,6 +135,9 @@ class JReactNativeFeatureFlagsCxxInterop
+   static bool enableInteropViewManagerClassLookUpOptimizationIOS(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
+ 
++  static bool enableIntersectionObserverByDefault(
++    facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
++
+   static bool enableKeyEvents(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
+ 
+diff --git a/packages/react-native/ReactCommon/React-Fabric.podspec b/packages/react-native/ReactCommon/React-Fabric.podspec
+index e19c74b1138..17d987fa6bd 100644
+--- a/packages/react-native/ReactCommon/React-Fabric.podspec
++++ b/packages/react-native/ReactCommon/React-Fabric.podspec
+@@ -54,7 +54,7 @@ Pod::Spec.new do |s|
+   depend_on_js_engine(s)
+   add_rn_third_party_dependencies(s)
+   add_rncore_dependency(s)
+-  
++
+   s.subspec "animated" do |ss|
+     ss.source_files         = podspec_sources("react/renderer/animated/**/*.{m,mm,cpp,h}", "react/renderer/animated/**/*.{h}")
+     ss.exclude_files        = "react/renderer/animated/tests"
+@@ -66,7 +66,7 @@ Pod::Spec.new do |s|
+     ss.exclude_files        = "react/renderer/animations/tests"
+     ss.header_dir           = "react/renderer/animations"
+   end
+-  
++
+   s.subspec "animationbackend" do |ss|
+     ss.source_files         = podspec_sources("react/renderer/animationbackend/**/*.{m,mm,cpp,h}", "react/renderer/animationbackend/**/*.{h}")
+     ss.header_dir           = "react/renderer/animationbackend"
+@@ -179,6 +179,12 @@ Pod::Spec.new do |s|
+       sss.exclude_files        = "react/renderer/observers/events/tests"
+       sss.header_dir           = "react/renderer/observers/events"
+     end
++
++    ss.subspec "intersection" do |sss|
++      sss.source_files         = podspec_sources("react/renderer/observers/intersection/**/*.{m,mm,cpp,h}", "react/renderer/observers/intersection/**/*.h")
++      sss.exclude_files        = "react/renderer/observers/intersection/tests"
++      sss.header_dir           = "react/renderer/observers/intersection"
++    end
+   end
+ 
+   s.subspec "templateprocessor" do |ss|
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+index 4b7227e0188..68c9c1b3b1b 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<316d877ef7aac59c840cb2b6e659891d>>
++ * @generated SignedSource<<82169671bfbd5f83639cc50fcb710670>>
+  */
+ 
+ /**
+@@ -166,6 +166,10 @@ bool ReactNativeFeatureFlags::enableInteropViewManagerClassLookUpOptimizationIOS
+   return getAccessor().enableInteropViewManagerClassLookUpOptimizationIOS();
+ }
+ 
++bool ReactNativeFeatureFlags::enableIntersectionObserverByDefault() {
++  return getAccessor().enableIntersectionObserverByDefault();
++}
++
+ bool ReactNativeFeatureFlags::enableKeyEvents() {
+   return getAccessor().enableKeyEvents();
+ }
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+index bd0f59dcd9c..551a3e0f7cd 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<2ff839b736c1c74b3dccefadb6e278b9>>
++ * @generated SignedSource<<fe259158b787cb506db6a4bdd6b9ddd8>>
+  */
+ 
+ /**
+@@ -214,6 +214,11 @@ class ReactNativeFeatureFlags {
+    */
+   RN_EXPORT static bool enableInteropViewManagerClassLookUpOptimizationIOS();
+ 
++  /**
++   * Enables the IntersectionObserver Web API in React Native.
++   */
++  RN_EXPORT static bool enableIntersectionObserverByDefault();
++
+   /**
+    * Enables key up/down/press events to be sent to JS from components
+    */
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+index a2e5c3e437d..4616c4d7eb2 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<679d7449cb41f739645df00b48b9e4a6>>
++ * @generated SignedSource<<d03dd3ed92be3e140ac5172791ddadb2>>
+  */
+ 
+ /**
+@@ -659,6 +659,24 @@ bool ReactNativeFeatureFlagsAccessor::enableInteropViewManagerClassLookUpOptimiz
+   return flagValue.value();
+ }
+ 
++bool ReactNativeFeatureFlagsAccessor::enableIntersectionObserverByDefault() {
++  auto flagValue = enableIntersectionObserverByDefault_.load();
++
++  if (!flagValue.has_value()) {
++    // This block is not exclusive but it is not necessary.
++    // If multiple threads try to initialize the feature flag, we would only
++    // be accessing the provider multiple times but the end state of this
++    // instance and the returned flag value would be the same.
++
++    markFlagAsAccessed(35, "enableIntersectionObserverByDefault");
++
++    flagValue = currentProvider_->enableIntersectionObserverByDefault();
++    enableIntersectionObserverByDefault_ = flagValue;
++  }
++
++  return flagValue.value();
++}
++
+ bool ReactNativeFeatureFlagsAccessor::enableKeyEvents() {
+   auto flagValue = enableKeyEvents_.load();
+ 
+@@ -668,7 +686,7 @@ bool ReactNativeFeatureFlagsAccessor::enableKeyEvents() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(35, "enableKeyEvents");
++    markFlagAsAccessed(36, "enableKeyEvents");
+ 
+     flagValue = currentProvider_->enableKeyEvents();
+     enableKeyEvents_ = flagValue;
+@@ -686,7 +704,7 @@ bool ReactNativeFeatureFlagsAccessor::enableLayoutAnimationsOnAndroid() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(36, "enableLayoutAnimationsOnAndroid");
++    markFlagAsAccessed(37, "enableLayoutAnimationsOnAndroid");
+ 
+     flagValue = currentProvider_->enableLayoutAnimationsOnAndroid();
+     enableLayoutAnimationsOnAndroid_ = flagValue;
+@@ -704,7 +722,7 @@ bool ReactNativeFeatureFlagsAccessor::enableLayoutAnimationsOnIOS() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(37, "enableLayoutAnimationsOnIOS");
++    markFlagAsAccessed(38, "enableLayoutAnimationsOnIOS");
+ 
+     flagValue = currentProvider_->enableLayoutAnimationsOnIOS();
+     enableLayoutAnimationsOnIOS_ = flagValue;
+@@ -722,7 +740,7 @@ bool ReactNativeFeatureFlagsAccessor::enableMainQueueCoordinatorOnIOS() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(38, "enableMainQueueCoordinatorOnIOS");
++    markFlagAsAccessed(39, "enableMainQueueCoordinatorOnIOS");
+ 
+     flagValue = currentProvider_->enableMainQueueCoordinatorOnIOS();
+     enableMainQueueCoordinatorOnIOS_ = flagValue;
+@@ -740,7 +758,7 @@ bool ReactNativeFeatureFlagsAccessor::enableModuleArgumentNSNullConversionIOS()
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(39, "enableModuleArgumentNSNullConversionIOS");
++    markFlagAsAccessed(40, "enableModuleArgumentNSNullConversionIOS");
+ 
+     flagValue = currentProvider_->enableModuleArgumentNSNullConversionIOS();
+     enableModuleArgumentNSNullConversionIOS_ = flagValue;
+@@ -758,7 +776,7 @@ bool ReactNativeFeatureFlagsAccessor::enableNativeCSSParsing() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(40, "enableNativeCSSParsing");
++    markFlagAsAccessed(41, "enableNativeCSSParsing");
+ 
+     flagValue = currentProvider_->enableNativeCSSParsing();
+     enableNativeCSSParsing_ = flagValue;
+@@ -776,7 +794,7 @@ bool ReactNativeFeatureFlagsAccessor::enableNetworkEventReporting() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(41, "enableNetworkEventReporting");
++    markFlagAsAccessed(42, "enableNetworkEventReporting");
+ 
+     flagValue = currentProvider_->enableNetworkEventReporting();
+     enableNetworkEventReporting_ = flagValue;
+@@ -794,7 +812,7 @@ bool ReactNativeFeatureFlagsAccessor::enablePreparedTextLayout() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(42, "enablePreparedTextLayout");
++    markFlagAsAccessed(43, "enablePreparedTextLayout");
+ 
+     flagValue = currentProvider_->enablePreparedTextLayout();
+     enablePreparedTextLayout_ = flagValue;
+@@ -812,7 +830,7 @@ bool ReactNativeFeatureFlagsAccessor::enablePropsUpdateReconciliationAndroid() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(43, "enablePropsUpdateReconciliationAndroid");
++    markFlagAsAccessed(44, "enablePropsUpdateReconciliationAndroid");
+ 
+     flagValue = currentProvider_->enablePropsUpdateReconciliationAndroid();
+     enablePropsUpdateReconciliationAndroid_ = flagValue;
+@@ -830,7 +848,7 @@ bool ReactNativeFeatureFlagsAccessor::enableSwiftUIBasedFilters() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(44, "enableSwiftUIBasedFilters");
++    markFlagAsAccessed(45, "enableSwiftUIBasedFilters");
+ 
+     flagValue = currentProvider_->enableSwiftUIBasedFilters();
+     enableSwiftUIBasedFilters_ = flagValue;
+@@ -848,7 +866,7 @@ bool ReactNativeFeatureFlagsAccessor::enableViewCulling() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(45, "enableViewCulling");
++    markFlagAsAccessed(46, "enableViewCulling");
+ 
+     flagValue = currentProvider_->enableViewCulling();
+     enableViewCulling_ = flagValue;
+@@ -866,7 +884,7 @@ bool ReactNativeFeatureFlagsAccessor::enableViewRecycling() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(46, "enableViewRecycling");
++    markFlagAsAccessed(47, "enableViewRecycling");
+ 
+     flagValue = currentProvider_->enableViewRecycling();
+     enableViewRecycling_ = flagValue;
+@@ -884,7 +902,7 @@ bool ReactNativeFeatureFlagsAccessor::enableViewRecyclingForImage() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(47, "enableViewRecyclingForImage");
++    markFlagAsAccessed(48, "enableViewRecyclingForImage");
+ 
+     flagValue = currentProvider_->enableViewRecyclingForImage();
+     enableViewRecyclingForImage_ = flagValue;
+@@ -902,7 +920,7 @@ bool ReactNativeFeatureFlagsAccessor::enableViewRecyclingForScrollView() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(48, "enableViewRecyclingForScrollView");
++    markFlagAsAccessed(49, "enableViewRecyclingForScrollView");
+ 
+     flagValue = currentProvider_->enableViewRecyclingForScrollView();
+     enableViewRecyclingForScrollView_ = flagValue;
+@@ -920,7 +938,7 @@ bool ReactNativeFeatureFlagsAccessor::enableViewRecyclingForText() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(49, "enableViewRecyclingForText");
++    markFlagAsAccessed(50, "enableViewRecyclingForText");
+ 
+     flagValue = currentProvider_->enableViewRecyclingForText();
+     enableViewRecyclingForText_ = flagValue;
+@@ -938,7 +956,7 @@ bool ReactNativeFeatureFlagsAccessor::enableViewRecyclingForView() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(50, "enableViewRecyclingForView");
++    markFlagAsAccessed(51, "enableViewRecyclingForView");
+ 
+     flagValue = currentProvider_->enableViewRecyclingForView();
+     enableViewRecyclingForView_ = flagValue;
+@@ -956,7 +974,7 @@ bool ReactNativeFeatureFlagsAccessor::enableVirtualViewClippingWithoutScrollView
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(51, "enableVirtualViewClippingWithoutScrollViewClipping");
++    markFlagAsAccessed(52, "enableVirtualViewClippingWithoutScrollViewClipping");
+ 
+     flagValue = currentProvider_->enableVirtualViewClippingWithoutScrollViewClipping();
+     enableVirtualViewClippingWithoutScrollViewClipping_ = flagValue;
+@@ -974,7 +992,7 @@ bool ReactNativeFeatureFlagsAccessor::enableVirtualViewContainerStateExperimenta
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(52, "enableVirtualViewContainerStateExperimental");
++    markFlagAsAccessed(53, "enableVirtualViewContainerStateExperimental");
+ 
+     flagValue = currentProvider_->enableVirtualViewContainerStateExperimental();
+     enableVirtualViewContainerStateExperimental_ = flagValue;
+@@ -992,7 +1010,7 @@ bool ReactNativeFeatureFlagsAccessor::enableVirtualViewDebugFeatures() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(53, "enableVirtualViewDebugFeatures");
++    markFlagAsAccessed(54, "enableVirtualViewDebugFeatures");
+ 
+     flagValue = currentProvider_->enableVirtualViewDebugFeatures();
+     enableVirtualViewDebugFeatures_ = flagValue;
+@@ -1010,7 +1028,7 @@ bool ReactNativeFeatureFlagsAccessor::enableVirtualViewRenderState() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(54, "enableVirtualViewRenderState");
++    markFlagAsAccessed(55, "enableVirtualViewRenderState");
+ 
+     flagValue = currentProvider_->enableVirtualViewRenderState();
+     enableVirtualViewRenderState_ = flagValue;
+@@ -1028,7 +1046,7 @@ bool ReactNativeFeatureFlagsAccessor::enableVirtualViewWindowFocusDetection() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(55, "enableVirtualViewWindowFocusDetection");
++    markFlagAsAccessed(56, "enableVirtualViewWindowFocusDetection");
+ 
+     flagValue = currentProvider_->enableVirtualViewWindowFocusDetection();
+     enableVirtualViewWindowFocusDetection_ = flagValue;
+@@ -1046,7 +1064,7 @@ bool ReactNativeFeatureFlagsAccessor::enableWebPerformanceAPIsByDefault() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(56, "enableWebPerformanceAPIsByDefault");
++    markFlagAsAccessed(57, "enableWebPerformanceAPIsByDefault");
+ 
+     flagValue = currentProvider_->enableWebPerformanceAPIsByDefault();
+     enableWebPerformanceAPIsByDefault_ = flagValue;
+@@ -1064,7 +1082,7 @@ bool ReactNativeFeatureFlagsAccessor::fixMappingOfEventPrioritiesBetweenFabricAn
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(57, "fixMappingOfEventPrioritiesBetweenFabricAndReact");
++    markFlagAsAccessed(58, "fixMappingOfEventPrioritiesBetweenFabricAndReact");
+ 
+     flagValue = currentProvider_->fixMappingOfEventPrioritiesBetweenFabricAndReact();
+     fixMappingOfEventPrioritiesBetweenFabricAndReact_ = flagValue;
+@@ -1082,7 +1100,7 @@ bool ReactNativeFeatureFlagsAccessor::fuseboxAssertSingleHostState() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(58, "fuseboxAssertSingleHostState");
++    markFlagAsAccessed(59, "fuseboxAssertSingleHostState");
+ 
+     flagValue = currentProvider_->fuseboxAssertSingleHostState();
+     fuseboxAssertSingleHostState_ = flagValue;
+@@ -1100,7 +1118,7 @@ bool ReactNativeFeatureFlagsAccessor::fuseboxEnabledRelease() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(59, "fuseboxEnabledRelease");
++    markFlagAsAccessed(60, "fuseboxEnabledRelease");
+ 
+     flagValue = currentProvider_->fuseboxEnabledRelease();
+     fuseboxEnabledRelease_ = flagValue;
+@@ -1118,7 +1136,7 @@ bool ReactNativeFeatureFlagsAccessor::fuseboxNetworkInspectionEnabled() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(60, "fuseboxNetworkInspectionEnabled");
++    markFlagAsAccessed(61, "fuseboxNetworkInspectionEnabled");
+ 
+     flagValue = currentProvider_->fuseboxNetworkInspectionEnabled();
+     fuseboxNetworkInspectionEnabled_ = flagValue;
+@@ -1136,7 +1154,7 @@ bool ReactNativeFeatureFlagsAccessor::hideOffscreenVirtualViewsOnIOS() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(61, "hideOffscreenVirtualViewsOnIOS");
++    markFlagAsAccessed(62, "hideOffscreenVirtualViewsOnIOS");
+ 
+     flagValue = currentProvider_->hideOffscreenVirtualViewsOnIOS();
+     hideOffscreenVirtualViewsOnIOS_ = flagValue;
+@@ -1154,7 +1172,7 @@ bool ReactNativeFeatureFlagsAccessor::overrideBySynchronousMountPropsAtMountingA
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(62, "overrideBySynchronousMountPropsAtMountingAndroid");
++    markFlagAsAccessed(63, "overrideBySynchronousMountPropsAtMountingAndroid");
+ 
+     flagValue = currentProvider_->overrideBySynchronousMountPropsAtMountingAndroid();
+     overrideBySynchronousMountPropsAtMountingAndroid_ = flagValue;
+@@ -1172,7 +1190,7 @@ bool ReactNativeFeatureFlagsAccessor::perfIssuesEnabled() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(63, "perfIssuesEnabled");
++    markFlagAsAccessed(64, "perfIssuesEnabled");
+ 
+     flagValue = currentProvider_->perfIssuesEnabled();
+     perfIssuesEnabled_ = flagValue;
+@@ -1190,7 +1208,7 @@ bool ReactNativeFeatureFlagsAccessor::perfMonitorV2Enabled() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(64, "perfMonitorV2Enabled");
++    markFlagAsAccessed(65, "perfMonitorV2Enabled");
+ 
+     flagValue = currentProvider_->perfMonitorV2Enabled();
+     perfMonitorV2Enabled_ = flagValue;
+@@ -1208,7 +1226,7 @@ double ReactNativeFeatureFlagsAccessor::preparedTextCacheSize() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(65, "preparedTextCacheSize");
++    markFlagAsAccessed(66, "preparedTextCacheSize");
+ 
+     flagValue = currentProvider_->preparedTextCacheSize();
+     preparedTextCacheSize_ = flagValue;
+@@ -1226,7 +1244,7 @@ bool ReactNativeFeatureFlagsAccessor::preventShadowTreeCommitExhaustion() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(66, "preventShadowTreeCommitExhaustion");
++    markFlagAsAccessed(67, "preventShadowTreeCommitExhaustion");
+ 
+     flagValue = currentProvider_->preventShadowTreeCommitExhaustion();
+     preventShadowTreeCommitExhaustion_ = flagValue;
+@@ -1244,7 +1262,7 @@ bool ReactNativeFeatureFlagsAccessor::shouldPressibilityUseW3CPointerEventsForHo
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(67, "shouldPressibilityUseW3CPointerEventsForHover");
++    markFlagAsAccessed(68, "shouldPressibilityUseW3CPointerEventsForHover");
+ 
+     flagValue = currentProvider_->shouldPressibilityUseW3CPointerEventsForHover();
+     shouldPressibilityUseW3CPointerEventsForHover_ = flagValue;
+@@ -1262,7 +1280,7 @@ bool ReactNativeFeatureFlagsAccessor::shouldSetEnabledBasedOnAccessibilityState(
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(68, "shouldSetEnabledBasedOnAccessibilityState");
++    markFlagAsAccessed(69, "shouldSetEnabledBasedOnAccessibilityState");
+ 
+     flagValue = currentProvider_->shouldSetEnabledBasedOnAccessibilityState();
+     shouldSetEnabledBasedOnAccessibilityState_ = flagValue;
+@@ -1280,7 +1298,7 @@ bool ReactNativeFeatureFlagsAccessor::shouldTriggerResponderTransferOnScrollAndr
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(69, "shouldTriggerResponderTransferOnScrollAndroid");
++    markFlagAsAccessed(70, "shouldTriggerResponderTransferOnScrollAndroid");
+ 
+     flagValue = currentProvider_->shouldTriggerResponderTransferOnScrollAndroid();
+     shouldTriggerResponderTransferOnScrollAndroid_ = flagValue;
+@@ -1298,7 +1316,7 @@ bool ReactNativeFeatureFlagsAccessor::skipActivityIdentityAssertionOnHostPause()
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(70, "skipActivityIdentityAssertionOnHostPause");
++    markFlagAsAccessed(71, "skipActivityIdentityAssertionOnHostPause");
+ 
+     flagValue = currentProvider_->skipActivityIdentityAssertionOnHostPause();
+     skipActivityIdentityAssertionOnHostPause_ = flagValue;
+@@ -1316,7 +1334,7 @@ bool ReactNativeFeatureFlagsAccessor::traceTurboModulePromiseRejectionsOnAndroid
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(71, "traceTurboModulePromiseRejectionsOnAndroid");
++    markFlagAsAccessed(72, "traceTurboModulePromiseRejectionsOnAndroid");
+ 
+     flagValue = currentProvider_->traceTurboModulePromiseRejectionsOnAndroid();
+     traceTurboModulePromiseRejectionsOnAndroid_ = flagValue;
+@@ -1334,7 +1352,7 @@ bool ReactNativeFeatureFlagsAccessor::updateRuntimeShadowNodeReferencesOnCommit(
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(72, "updateRuntimeShadowNodeReferencesOnCommit");
++    markFlagAsAccessed(73, "updateRuntimeShadowNodeReferencesOnCommit");
+ 
+     flagValue = currentProvider_->updateRuntimeShadowNodeReferencesOnCommit();
+     updateRuntimeShadowNodeReferencesOnCommit_ = flagValue;
+@@ -1352,7 +1370,7 @@ bool ReactNativeFeatureFlagsAccessor::useAlwaysAvailableJSErrorHandling() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(73, "useAlwaysAvailableJSErrorHandling");
++    markFlagAsAccessed(74, "useAlwaysAvailableJSErrorHandling");
+ 
+     flagValue = currentProvider_->useAlwaysAvailableJSErrorHandling();
+     useAlwaysAvailableJSErrorHandling_ = flagValue;
+@@ -1370,7 +1388,7 @@ bool ReactNativeFeatureFlagsAccessor::useFabricInterop() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(74, "useFabricInterop");
++    markFlagAsAccessed(75, "useFabricInterop");
+ 
+     flagValue = currentProvider_->useFabricInterop();
+     useFabricInterop_ = flagValue;
+@@ -1388,7 +1406,7 @@ bool ReactNativeFeatureFlagsAccessor::useNativeEqualsInNativeReadableArrayAndroi
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(75, "useNativeEqualsInNativeReadableArrayAndroid");
++    markFlagAsAccessed(76, "useNativeEqualsInNativeReadableArrayAndroid");
+ 
+     flagValue = currentProvider_->useNativeEqualsInNativeReadableArrayAndroid();
+     useNativeEqualsInNativeReadableArrayAndroid_ = flagValue;
+@@ -1406,7 +1424,7 @@ bool ReactNativeFeatureFlagsAccessor::useNativeTransformHelperAndroid() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(76, "useNativeTransformHelperAndroid");
++    markFlagAsAccessed(77, "useNativeTransformHelperAndroid");
+ 
+     flagValue = currentProvider_->useNativeTransformHelperAndroid();
+     useNativeTransformHelperAndroid_ = flagValue;
+@@ -1424,7 +1442,7 @@ bool ReactNativeFeatureFlagsAccessor::useNativeViewConfigsInBridgelessMode() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(77, "useNativeViewConfigsInBridgelessMode");
++    markFlagAsAccessed(78, "useNativeViewConfigsInBridgelessMode");
+ 
+     flagValue = currentProvider_->useNativeViewConfigsInBridgelessMode();
+     useNativeViewConfigsInBridgelessMode_ = flagValue;
+@@ -1442,7 +1460,7 @@ bool ReactNativeFeatureFlagsAccessor::useRawPropsJsiValue() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(78, "useRawPropsJsiValue");
++    markFlagAsAccessed(79, "useRawPropsJsiValue");
+ 
+     flagValue = currentProvider_->useRawPropsJsiValue();
+     useRawPropsJsiValue_ = flagValue;
+@@ -1460,7 +1478,7 @@ bool ReactNativeFeatureFlagsAccessor::useShadowNodeStateOnClone() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(79, "useShadowNodeStateOnClone");
++    markFlagAsAccessed(80, "useShadowNodeStateOnClone");
+ 
+     flagValue = currentProvider_->useShadowNodeStateOnClone();
+     useShadowNodeStateOnClone_ = flagValue;
+@@ -1478,7 +1496,7 @@ bool ReactNativeFeatureFlagsAccessor::useSharedAnimatedBackend() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(80, "useSharedAnimatedBackend");
++    markFlagAsAccessed(81, "useSharedAnimatedBackend");
+ 
+     flagValue = currentProvider_->useSharedAnimatedBackend();
+     useSharedAnimatedBackend_ = flagValue;
+@@ -1496,7 +1514,7 @@ bool ReactNativeFeatureFlagsAccessor::useTraitHiddenOnAndroid() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(81, "useTraitHiddenOnAndroid");
++    markFlagAsAccessed(82, "useTraitHiddenOnAndroid");
+ 
+     flagValue = currentProvider_->useTraitHiddenOnAndroid();
+     useTraitHiddenOnAndroid_ = flagValue;
+@@ -1514,7 +1532,7 @@ bool ReactNativeFeatureFlagsAccessor::useTurboModuleInterop() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(82, "useTurboModuleInterop");
++    markFlagAsAccessed(83, "useTurboModuleInterop");
+ 
+     flagValue = currentProvider_->useTurboModuleInterop();
+     useTurboModuleInterop_ = flagValue;
+@@ -1532,7 +1550,7 @@ bool ReactNativeFeatureFlagsAccessor::useTurboModules() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(83, "useTurboModules");
++    markFlagAsAccessed(84, "useTurboModules");
+ 
+     flagValue = currentProvider_->useTurboModules();
+     useTurboModules_ = flagValue;
+@@ -1550,7 +1568,7 @@ double ReactNativeFeatureFlagsAccessor::viewCullingOutsetRatio() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(84, "viewCullingOutsetRatio");
++    markFlagAsAccessed(85, "viewCullingOutsetRatio");
+ 
+     flagValue = currentProvider_->viewCullingOutsetRatio();
+     viewCullingOutsetRatio_ = flagValue;
+@@ -1568,7 +1586,7 @@ double ReactNativeFeatureFlagsAccessor::virtualViewHysteresisRatio() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(85, "virtualViewHysteresisRatio");
++    markFlagAsAccessed(86, "virtualViewHysteresisRatio");
+ 
+     flagValue = currentProvider_->virtualViewHysteresisRatio();
+     virtualViewHysteresisRatio_ = flagValue;
+@@ -1586,7 +1604,7 @@ double ReactNativeFeatureFlagsAccessor::virtualViewPrerenderRatio() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(86, "virtualViewPrerenderRatio");
++    markFlagAsAccessed(87, "virtualViewPrerenderRatio");
+ 
+     flagValue = currentProvider_->virtualViewPrerenderRatio();
+     virtualViewPrerenderRatio_ = flagValue;
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+index bdef35d05c1..232a911e332 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<5b6fe2be27173e01396fb45f219cf8b8>>
++ * @generated SignedSource<<acef1e4ac15cf78463831e3aeb35b641>>
+  */
+ 
+ /**
+@@ -67,6 +67,7 @@ class ReactNativeFeatureFlagsAccessor {
+   bool enableImmediateUpdateModeForContentOffsetChanges();
+   bool enableImperativeFocus();
+   bool enableInteropViewManagerClassLookUpOptimizationIOS();
++  bool enableIntersectionObserverByDefault();
+   bool enableKeyEvents();
+   bool enableLayoutAnimationsOnAndroid();
+   bool enableLayoutAnimationsOnIOS();
+@@ -130,7 +131,7 @@ class ReactNativeFeatureFlagsAccessor {
+   std::unique_ptr<ReactNativeFeatureFlagsProvider> currentProvider_;
+   bool wasOverridden_;
+ 
+-  std::array<std::atomic<const char*>, 87> accessedFeatureFlags_;
++  std::array<std::atomic<const char*>, 88> accessedFeatureFlags_;
+ 
+   std::atomic<std::optional<bool>> commonTestFlag_;
+   std::atomic<std::optional<bool>> cdpInteractionMetricsEnabled_;
+@@ -167,6 +168,7 @@ class ReactNativeFeatureFlagsAccessor {
+   std::atomic<std::optional<bool>> enableImmediateUpdateModeForContentOffsetChanges_;
+   std::atomic<std::optional<bool>> enableImperativeFocus_;
+   std::atomic<std::optional<bool>> enableInteropViewManagerClassLookUpOptimizationIOS_;
++  std::atomic<std::optional<bool>> enableIntersectionObserverByDefault_;
+   std::atomic<std::optional<bool>> enableKeyEvents_;
+   std::atomic<std::optional<bool>> enableLayoutAnimationsOnAndroid_;
+   std::atomic<std::optional<bool>> enableLayoutAnimationsOnIOS_;
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+index 9f3591dd8a1..bd276178b4c 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<bce5d52ac8a180d1750bb64dd21c1bd3>>
++ * @generated SignedSource<<cee8df221e101e8261e65dacd9231145>>
+  */
+ 
+ /**
+@@ -167,6 +167,10 @@ class ReactNativeFeatureFlagsDefaults : public ReactNativeFeatureFlagsProvider {
+     return false;
+   }
+ 
++  bool enableIntersectionObserverByDefault() override {
++    return false;
++  }
++
+   bool enableKeyEvents() override {
+     return false;
+   }
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDynamicProvider.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDynamicProvider.h
+index 6fed7f3566b..44d556c1705 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDynamicProvider.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDynamicProvider.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<b89ea8b8456bc8d19b35220e492d41fb>>
++ * @generated SignedSource<<152ea11685f3770782035b08831ef04d>>
+  */
+ 
+ /**
+@@ -360,6 +360,15 @@ class ReactNativeFeatureFlagsDynamicProvider : public ReactNativeFeatureFlagsDef
+     return ReactNativeFeatureFlagsDefaults::enableInteropViewManagerClassLookUpOptimizationIOS();
+   }
+ 
++  bool enableIntersectionObserverByDefault() override {
++    auto value = values_["enableIntersectionObserverByDefault"];
++    if (!value.isNull()) {
++      return value.getBool();
++    }
++
++    return ReactNativeFeatureFlagsDefaults::enableIntersectionObserverByDefault();
++  }
++
+   bool enableKeyEvents() override {
+     auto value = values_["enableKeyEvents"];
+     if (!value.isNull()) {
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsOverridesOSSCanary.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsOverridesOSSCanary.h
+index 72a9eb06367..8b4606a4810 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsOverridesOSSCanary.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsOverridesOSSCanary.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<db8626cf78a3ed226bbbe6bf20cc03a2>>
++ * @generated SignedSource<<1b2061068e0d6c9ca362ceddd97862da>>
+  */
+ 
+ /**
+@@ -35,6 +35,10 @@ class ReactNativeFeatureFlagsOverridesOSSCanary : public ReactNativeFeatureFlags
+     return true;
+   }
+ 
++  bool enableIntersectionObserverByDefault() override {
++    return true;
++  }
++
+   bool useNativeViewConfigsInBridgelessMode() override {
+     return true;
+   }
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+index f3eab858329..92f1046cfcf 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<1d083d5e542fcc38160fd4b177df4931>>
++ * @generated SignedSource<<2fe890d6419dc1aaa9aa2d69a6e96bed>>
+  */
+ 
+ /**
+@@ -60,6 +60,7 @@ class ReactNativeFeatureFlagsProvider {
+   virtual bool enableImmediateUpdateModeForContentOffsetChanges() = 0;
+   virtual bool enableImperativeFocus() = 0;
+   virtual bool enableInteropViewManagerClassLookUpOptimizationIOS() = 0;
++  virtual bool enableIntersectionObserverByDefault() = 0;
+   virtual bool enableKeyEvents() = 0;
+   virtual bool enableLayoutAnimationsOnAndroid() = 0;
+   virtual bool enableLayoutAnimationsOnIOS() = 0;
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/defaults/CMakeLists.txt b/packages/react-native/ReactCommon/react/nativemodule/defaults/CMakeLists.txt
+index fb026a09ca2..42bcbe2724f 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/defaults/CMakeLists.txt
++++ b/packages/react-native/ReactCommon/react/nativemodule/defaults/CMakeLists.txt
+@@ -21,6 +21,7 @@ target_link_libraries(react_nativemodule_defaults
+         react_nativemodule_featureflags
+         react_nativemodule_microtasks
+         react_nativemodule_idlecallbacks
++        react_nativemodule_intersectionobserver
+         react_nativemodule_webperformance
+ )
+ target_compile_reactnative_options(react_nativemodule_defaults PRIVATE)
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/defaults/DefaultTurboModules.cpp b/packages/react-native/ReactCommon/react/nativemodule/defaults/DefaultTurboModules.cpp
+index 9eb531acabe..99b37a1398d 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/defaults/DefaultTurboModules.cpp
++++ b/packages/react-native/ReactCommon/react/nativemodule/defaults/DefaultTurboModules.cpp
+@@ -10,6 +10,7 @@
+ #include <react/nativemodule/dom/NativeDOM.h>
+ #include <react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h>
+ #include <react/nativemodule/idlecallbacks/NativeIdleCallbacks.h>
++#include <react/nativemodule/intersectionobserver/NativeIntersectionObserver.h>
+ #include <react/nativemodule/microtasks/NativeMicrotasks.h>
+ #include <react/nativemodule/webperformance/NativePerformance.h>
+ 
+@@ -44,6 +45,12 @@ namespace facebook::react {
+     }
+   }
+ 
++  if (ReactNativeFeatureFlags::enableIntersectionObserverByDefault()) {
++    if (name == NativeIntersectionObserver::kModuleName) {
++      return std::make_shared<NativeIntersectionObserver>(jsInvoker);
++    }
++  }
++
+ #ifdef REACT_NATIVE_DEBUGGER_ENABLED_DEVONLY
+   if (name == DevToolsRuntimeSettingsModule::kModuleName) {
+     return std::make_shared<DevToolsRuntimeSettingsModule>(jsInvoker);
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/defaults/React-defaultsnativemodule.podspec b/packages/react-native/ReactCommon/react/nativemodule/defaults/React-defaultsnativemodule.podspec
+index dd44c33def2..cacd372e6ff 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/defaults/React-defaultsnativemodule.podspec
++++ b/packages/react-native/ReactCommon/react/nativemodule/defaults/React-defaultsnativemodule.podspec
+@@ -16,7 +16,9 @@ else
+   source[:tag] = "v#{version}"
+ end
+ 
+-header_search_paths = []
++header_search_paths = [
++  "\"$(PODS_ROOT)/Headers/Private/Yoga\"",
++]
+ 
+ if ENV['USE_FRAMEWORKS']
+   header_search_paths << "\"$(PODS_TARGET_SRCROOT)/../../..\"" # this is needed to allow the defaultsnativemodule to access its own files
+@@ -40,6 +42,7 @@ Pod::Spec.new do |s|
+ 
+   resolve_use_frameworks(s, header_mappings_dir: "../..", module_name: "React_defaultsnativemodule")
+ 
++  s.dependency "Yoga"
+   s.dependency "React-jsi"
+   s.dependency "React-jsiexecutor"
+   depend_on_js_engine(s)
+@@ -49,6 +52,7 @@ Pod::Spec.new do |s|
+   s.dependency "React-domnativemodule"
+   s.dependency "React-microtasksnativemodule"
+   s.dependency "React-idlecallbacksnativemodule"
++  s.dependency "React-intersectionobservernativemodule"
+   s.dependency "React-webperformancenativemodule"
+   add_dependency(s, "React-RCTFBReactNativeSpec")
+   add_dependency(s, "React-featureflags")
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+index 6b6af89c4cb..217325d8b11 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<131ac718d90f03a63bbfcfdcc9d85ed7>>
++ * @generated SignedSource<<3235f8d2413da4e9f10c7d8ff78bfeb8>>
+  */
+ 
+ /**
+@@ -219,6 +219,11 @@ bool NativeReactNativeFeatureFlags::enableInteropViewManagerClassLookUpOptimizat
+   return ReactNativeFeatureFlags::enableInteropViewManagerClassLookUpOptimizationIOS();
+ }
+ 
++bool NativeReactNativeFeatureFlags::enableIntersectionObserverByDefault(
++    jsi::Runtime& /*runtime*/) {
++  return ReactNativeFeatureFlags::enableIntersectionObserverByDefault();
++}
++
+ bool NativeReactNativeFeatureFlags::enableKeyEvents(
+     jsi::Runtime& /*runtime*/) {
+   return ReactNativeFeatureFlags::enableKeyEvents();
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+index 0ad42b2a2f0..93f43150f00 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<38054c031fa946345d83e7a7220edd33>>
++ * @generated SignedSource<<9a7d4159c54f9ccc3e0d3cc461b66b7e>>
+  */
+ 
+ /**
+@@ -106,6 +106,8 @@ class NativeReactNativeFeatureFlags
+ 
+   bool enableInteropViewManagerClassLookUpOptimizationIOS(jsi::Runtime& runtime);
+ 
++  bool enableIntersectionObserverByDefault(jsi::Runtime& runtime);
++
+   bool enableKeyEvents(jsi::Runtime& runtime);
+ 
+   bool enableLayoutAnimationsOnAndroid(jsi::Runtime& runtime);
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/intersectionobserver/NativeIntersectionObserver.h b/packages/react-native/ReactCommon/react/nativemodule/intersectionobserver/NativeIntersectionObserver.h
+index dc399a5201e..7399355346b 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/intersectionobserver/NativeIntersectionObserver.h
++++ b/packages/react-native/ReactCommon/react/nativemodule/intersectionobserver/NativeIntersectionObserver.h
+@@ -7,7 +7,11 @@
+ 
+ #pragma once
+ 
++#if __has_include("FBReactNativeSpecJSI.h") // CocoaPod headers on Apple
++#include "FBReactNativeSpecJSI.h"
++#else
+ #include <FBReactNativeSpec/FBReactNativeSpecJSI.h>
++#endif
+ #include <react/renderer/bridging/bridging.h>
+ #include <react/renderer/observers/intersection/IntersectionObserverManager.h>
+ #include <optional>
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/intersectionobserver/React-intersectionobservernativemodule.podspec b/packages/react-native/ReactCommon/react/nativemodule/intersectionobserver/React-intersectionobservernativemodule.podspec
+new file mode 100644
+index 00000000000..089512b1cf9
+--- /dev/null
++++ b/packages/react-native/ReactCommon/react/nativemodule/intersectionobserver/React-intersectionobservernativemodule.podspec
+@@ -0,0 +1,66 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++#
++# This source code is licensed under the MIT license found in the
++# LICENSE file in the root directory of this source tree.
++
++require "json"
++
++package = JSON.parse(File.read(File.join(__dir__, "..", "..", "..", "..", "package.json")))
++version = package['version']
++
++source = { :git => 'https://github.com/facebook/react-native.git' }
++if version == '1000.0.0'
++  # This is an unpublished version, use the latest commit hash of the react-native repo, which we're presumably in.
++  source[:commit] = `git rev-parse HEAD`.strip if system("git rev-parse --git-dir > /dev/null 2>&1")
++else
++  source[:tag] = "v#{version}"
++end
++
++header_search_paths = [
++  "\"$(PODS_ROOT)/Headers/Private/Yoga\"",
++]
++
++if ENV['USE_FRAMEWORKS']
++  header_search_paths << "\"$(PODS_TARGET_SRCROOT)/../../..\"" # this is needed to allow the module access its own files
++end
++
++Pod::Spec.new do |s|
++  s.name                   = "React-intersectionobservernativemodule"
++  s.version                = version
++  s.summary                = "React Native intersection observer native module"
++  s.homepage               = "https://reactnative.dev/"
++  s.license                = package["license"]
++  s.author                 = "Meta Platforms, Inc. and its affiliates"
++  s.platforms              = min_supported_versions
++  s.source                 = source
++  s.source_files           = podspec_sources("*.{cpp,h}", "*.h")
++  s.header_dir             = "react/nativemodule/intersectionobserver"
++  s.pod_target_xcconfig    = { "CLANG_CXX_LANGUAGE_STANDARD" => rct_cxx_language_standard(),
++                               "HEADER_SEARCH_PATHS" => header_search_paths.join(' '),
++                               "OTHER_CFLAGS" => "$(inherited)",
++                               "DEFINES_MODULE" => "YES" }
++
++  if ENV['USE_FRAMEWORKS']
++    s.module_name            = "intersectionobservernativemodule"
++    s.header_mappings_dir  = "../.."
++  end
++
++  s.dependency "Yoga"
++  s.dependency "React-jsi"
++  s.dependency "React-jsiexecutor"
++  s.dependency "React-cxxreact"
++
++  depend_on_js_engine(s)
++  add_rn_third_party_dependencies(s)
++  add_rncore_dependency(s)
++
++  s.dependency "ReactCommon/turbomodule/core"
++
++  s.dependency "React-Fabric"
++  s.dependency "React-Fabric/bridging"
++  s.dependency "React-runtimescheduler"
++  add_dependency(s, "React-RCTFBReactNativeSpec")
++  add_dependency(s, "React-runtimeexecutor", :additional_framework_paths => ["platform/ios"])
++  add_dependency(s, "React-graphics", :additional_framework_paths => ["react/renderer/graphics/platform/ios"])
++
++end
+diff --git a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+index 50220131406..6e02ce15f30 100644
+--- a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
++++ b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+@@ -423,6 +423,16 @@ const definitions: FeatureFlagDefinitions = {
+       },
+       ossReleaseStage: 'none',
+     },
++    enableIntersectionObserverByDefault: {
++      defaultValue: false,
++      metadata: {
++        description:
++          'Enables the IntersectionObserver Web API in React Native.',
++        expectedReleaseValue: true,
++        purpose: 'release',
++      },
++      ossReleaseStage: 'canary',
++    },
+     enableKeyEvents: {
+       defaultValue: false,
+       metadata: {
+diff --git a/packages/react-native/scripts/react_native_pods.rb b/packages/react-native/scripts/react_native_pods.rb
+index 72c267389c3..75b21b48613 100644
+--- a/packages/react-native/scripts/react_native_pods.rb
++++ b/packages/react-native/scripts/react_native_pods.rb
+@@ -143,6 +143,7 @@ def use_react_native! (
+   pod 'React-featureflagsnativemodule', :path => "#{prefix}/ReactCommon/react/nativemodule/featureflags"
+   pod 'React-microtasksnativemodule', :path => "#{prefix}/ReactCommon/react/nativemodule/microtasks"
+   pod 'React-idlecallbacksnativemodule', :path => "#{prefix}/ReactCommon/react/nativemodule/idlecallbacks"
++  pod 'React-intersectionobservernativemodule', :path => "#{prefix}/ReactCommon/react/nativemodule/intersectionobserver"
+   pod 'React-webperformancenativemodule', :path => "#{prefix}/ReactCommon/react/nativemodule/webperformance"
+   pod 'React-domnativemodule', :path => "#{prefix}/ReactCommon/react/nativemodule/dom"
+   pod 'React-defaultsnativemodule', :path => "#{prefix}/ReactCommon/react/nativemodule/defaults"
+diff --git a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+index 7613df0e96b..0a299efb7a2 100644
+--- a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<11de61ca7deceb1931bf078b9125e97a>>
++ * @generated SignedSource<<6aa0feb805c07564631370eb30b4bc9e>>
+  * @flow strict
+  * @noformat
+  */
+@@ -86,6 +86,7 @@ export type ReactNativeFeatureFlags = $ReadOnly<{
+   enableImmediateUpdateModeForContentOffsetChanges: Getter<boolean>,
+   enableImperativeFocus: Getter<boolean>,
+   enableInteropViewManagerClassLookUpOptimizationIOS: Getter<boolean>,
++  enableIntersectionObserverByDefault: Getter<boolean>,
+   enableKeyEvents: Getter<boolean>,
+   enableLayoutAnimationsOnAndroid: Getter<boolean>,
+   enableLayoutAnimationsOnIOS: Getter<boolean>,
+@@ -364,6 +365,10 @@ export const enableImperativeFocus: Getter<boolean> = createNativeFlagGetter('en
+  * This is to fix the issue with interop view manager where component descriptor lookup is causing ViewManager to preload.
+  */
+ export const enableInteropViewManagerClassLookUpOptimizationIOS: Getter<boolean> = createNativeFlagGetter('enableInteropViewManagerClassLookUpOptimizationIOS', false);
++/**
++ * Enables the IntersectionObserver Web API in React Native.
++ */
++export const enableIntersectionObserverByDefault: Getter<boolean> = createNativeFlagGetter('enableIntersectionObserverByDefault', false);
+ /**
+  * Enables key up/down/press events to be sent to JS from components
+  */
+diff --git a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+index 06975ef0059..3c3bb117ed3 100644
+--- a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<bddc4ce972a5fd24b18de9e47708209e>>
++ * @generated SignedSource<<d5e09e0d1f62767dcc810d3295e1b724>>
+  * @flow strict
+  * @noformat
+  */
+@@ -60,6 +60,7 @@ export interface Spec extends TurboModule {
+   +enableImmediateUpdateModeForContentOffsetChanges?: () => boolean;
+   +enableImperativeFocus?: () => boolean;
+   +enableInteropViewManagerClassLookUpOptimizationIOS?: () => boolean;
++  +enableIntersectionObserverByDefault?: () => boolean;
+   +enableKeyEvents?: () => boolean;
+   +enableLayoutAnimationsOnAndroid?: () => boolean;
+   +enableLayoutAnimationsOnIOS?: () => boolean;
+diff --git a/packages/react-native/src/private/setup/setUpDefaultReactNativeEnvironment.js b/packages/react-native/src/private/setup/setUpDefaultReactNativeEnvironment.js
+index d35bf805766..9df7e8b8fc6 100644
+--- a/packages/react-native/src/private/setup/setUpDefaultReactNativeEnvironment.js
++++ b/packages/react-native/src/private/setup/setUpDefaultReactNativeEnvironment.js
+@@ -41,4 +41,10 @@ export default function setUpDefaltReactNativeEnvironment(
+   }
+ 
+   require('../../../Libraries/ReactNative/AppRegistry');
++
++  if (
++    require('../../../src/private/featureflags/ReactNativeFeatureFlags').enableIntersectionObserverByDefault()
++  ) {
++    require('./setUpIntersectionObserver').default();
++  }
+ }
+diff --git a/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverBenchmark.js b/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverBenchmark.js
+new file mode 100644
+index 00000000000..660d0f096f3
+--- /dev/null
++++ b/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverBenchmark.js
+@@ -0,0 +1,129 @@
++/**
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ *
++ * @flow strict-local
++ * @format
++ */
++
++import type IntersectionObserverType from 'react-native/src/private/webapis/intersectionobserver/IntersectionObserver';
++
++import {RNTesterThemeContext} from '../../components/RNTesterTheme';
++import * as React from 'react';
++import {
++  type ElementRef,
++  useContext,
++  useLayoutEffect,
++  useRef,
++  useState,
++} from 'react';
++import {Button, ScrollView, StyleSheet, Text, View} from 'react-native';
++
++declare var IntersectionObserver: Class<IntersectionObserverType>;
++
++export const name = 'IntersectionObserver Benchmark';
++export const title = name;
++export const description =
++  'Example of using IntersectionObserver to observe a large amount of UI elements';
++
++export function render(): React.Node {
++  return <IntersectionObserverBenchark />;
++}
++
++const ROWS = 100;
++const COLUMNS = 5;
++
++function IntersectionObserverBenchark(): React.Node {
++  const [isObserving, setObserving] = useState(false);
++
++  return (
++    <>
++      <View style={styles.buttonContainer}>
++        <Button
++          title={isObserving ? 'Stop observing' : 'Start observing'}
++          onPress={() => setObserving(observing => !observing)}
++        />
++      </View>
++      <ScrollView>
++        {Array(ROWS)
++          .fill(null)
++          .map((_, row) => (
++            <View style={styles.row} key={row}>
++              {Array(COLUMNS)
++                .fill(null)
++                .map((_2, column) => (
++                  <Item
++                    index={COLUMNS * row + column}
++                    observe={isObserving}
++                    key={column}
++                  />
++                ))}
++            </View>
++          ))}
++      </ScrollView>
++    </>
++  );
++}
++
++function Item({index, observe}: {index: number, observe: boolean}): React.Node {
++  const theme = useContext(RNTesterThemeContext);
++  const ref = useRef<?ElementRef<typeof View>>();
++
++  useLayoutEffect(() => {
++    const element = ref.current;
++
++    if (!observe || !element) {
++      return;
++    }
++
++    const observer = new IntersectionObserver(
++      entries => {
++        // You can inspect the actual entries here.
++        // We don't log them by default to avoid the logs themselves to degrade
++        // performance.
++      },
++      {
++        threshold: [0, 1],
++      },
++    );
++
++    observer.observe(element);
++
++    return () => {
++      observer.disconnect();
++    };
++  }, [observe]);
++
++  return (
++    <View
++      ref={ref}
++      style={[
++        styles.item,
++        {backgroundColor: theme.SecondarySystemBackgroundColor},
++      ]}>
++      <Text style={[styles.itemText, {color: theme.LabelColor}]}>
++        {index + 1}
++      </Text>
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  buttonContainer: {
++    padding: 10,
++  },
++  row: {
++    flexDirection: 'row',
++  },
++  item: {
++    flex: 1,
++    padding: 12,
++    margin: 5,
++  },
++  itemText: {
++    fontSize: 22,
++    textAlign: 'center',
++  },
++});
+diff --git a/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverClippingParent.js b/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverClippingParent.js
+new file mode 100644
+index 00000000000..085024cb114
+--- /dev/null
++++ b/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverClippingParent.js
+@@ -0,0 +1,404 @@
++/**
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ *
++ * @format
++ * @flow strict-local
++ */
++
++import type {HostInstance} from 'react-native';
++import type IntersectionObserverType from 'react-native/src/private/webapis/intersectionobserver/IntersectionObserver';
++import type IntersectionObserverEntry from 'react-native/src/private/webapis/intersectionobserver/IntersectionObserverEntry';
++
++import * as React from 'react';
++import {useCallback, useLayoutEffect, useRef, useState} from 'react';
++import {Button, StyleSheet, Text, TextInput, View} from 'react-native';
++
++export const name = 'IntersectionObserver Parent Clipping Example';
++export const title = name;
++export const description = 'A clipping parent clips both the root and target';
++
++declare var IntersectionObserver: Class<IntersectionObserverType>;
++
++export function render(): React.Node {
++  return <IntersectionObserverCustomClippingRootExample />;
++}
++
++/**
++ * Showcase threshold of two overlapping elements
++ */
++function roundRect(rect: mixed): ?{
++  x: number,
++  y: number,
++  width: number,
++  height: number,
++} {
++  if (rect == null || typeof rect !== 'object') {
++    return null;
++  }
++  // $FlowFixMe[prop-missing]
++  const x = rect.x;
++  // $FlowFixMe[prop-missing]
++  const y = rect.y;
++  // $FlowFixMe[prop-missing]
++  const width = rect.width;
++  // $FlowFixMe[prop-missing]
++  const height = rect.height;
++
++  if (
++    typeof x !== 'number' ||
++    typeof y !== 'number' ||
++    typeof width !== 'number' ||
++    typeof height !== 'number'
++  ) {
++    return null;
++  }
++  return {
++    x: Math.round(x),
++    y: Math.round(y),
++    width: Math.round(width),
++    height: Math.round(height),
++  };
++}
++
++function IntersectionObserverCustomClippingRootExample(): React.Node {
++  const rootRef = useRef<?HostInstance>(null);
++  const targetRef = useRef<?HostInstance>(null);
++  const [intersectionEntry, setIntersectionEntry] =
++    useState<?IntersectionObserverEntry>(null);
++  const [rootMarginInput, setRootMarginInput] = useState<string>('0');
++  const [rootMarginValue, setRootMarginValue] = useState<string>('0px');
++
++  const onObserve = useCallback(
++    (entries: $ReadOnlyArray<IntersectionObserverEntry>) => {
++      entries.forEach(entry => {
++        setIntersectionEntry(entry);
++      });
++    },
++    [],
++  );
++
++  const handleSubmit = useCallback(() => {
++    const marginValue = `${rootMarginInput}px`;
++    setRootMarginValue(marginValue);
++  }, [rootMarginInput]);
++
++  const observer = useRef<?IntersectionObserver>(null);
++  useLayoutEffect(() => {
++    const rootNode = rootRef.current;
++    const targetNode = targetRef.current;
++
++    if (rootNode == null || targetNode == null) {
++      return;
++    }
++
++    observer.current = new IntersectionObserver(onObserve, {
++      // $FlowFixMe[incompatible-type]
++      root: rootNode,
++      rootMargin: rootMarginValue,
++    });
++    // $FlowFixMe[incompatible-type]
++    observer.current.observe(targetNode);
++    return () => {
++      if (rootNode == null || targetNode == null) {
++        observer.current?.disconnect();
++      }
++
++      // $FlowFixMe[incompatible-type]
++      observer.current?.unobserve(targetNode);
++    };
++  }, [onObserve, rootMarginValue]);
++
++  const ROOT_SIZE = 300;
++  const rootMarginNumeric = parseFloat(rootMarginInput) || 0;
++
++  // Calculate rootMargin bounds
++  // For positive margins: expands beyond root
++  // For negative margins: contracts inside root
++  const rootMarginSize = ROOT_SIZE + 2 * rootMarginNumeric;
++  const rootMarginOffset = -rootMarginNumeric;
++
++  return (
++    <>
++      <View style={styles.inputContainer}>
++        <Text style={styles.label}>Root Margin (px):</Text>
++        <TextInput
++          style={styles.input}
++          value={rootMarginInput}
++          onChangeText={setRootMarginInput}
++          keyboardType="numeric"
++          placeholder="0"
++        />
++        <Button title="Submit" onPress={handleSubmit} />
++      </View>
++      <Text style={styles.currentMargin}>
++        Current Root Margin: {rootMarginValue}
++      </Text>
++      <Text style={styles.description}>
++        This example highlights a clipping parent to both the explicit root
++        (blue) and target (yellow). The dashed borders show the full extent of
++        the root and target, while the solid colors show what's actually visible
++        after clipping. The purple dashed border shows the root bounds after
++        applying rootMargin.
++      </Text>
++      <View style={styles.legend}>
++        <View style={styles.legendItem}>
++          <View style={[styles.legendBox, styles.legendClipping]} />
++          <Text style={styles.legendText}>Clipping Area (100x100)</Text>
++        </View>
++        <View style={styles.legendItem}>
++          <View style={[styles.legendBox, styles.legendRoot]} />
++          <Text style={styles.legendText}>Root (visible)</Text>
++        </View>
++        <View style={styles.legendItem}>
++          <View style={[styles.legendBox, styles.legendTarget]} />
++          <Text style={styles.legendText}>Target (visible)</Text>
++        </View>
++        <View style={styles.legendItem}>
++          <View style={[styles.legendBox, styles.legendIndicator]} />
++          <Text style={styles.legendText}>Full extent (dashed)</Text>
++        </View>
++        <View style={styles.legendItem}>
++          <View style={[styles.legendBox, styles.legendRootMargin]} />
++          <Text style={styles.legendText}>Root + Margin (purple)</Text>
++        </View>
++      </View>
++      <View style={styles.visualizationContainer}>
++        <View style={styles.clippingParent}>
++          <View ref={rootRef} style={styles.root}>
++            <View ref={targetRef} style={styles.target} />
++          </View>
++        </View>
++        {/* Visual indicators showing full extent of root and target */}
++        <View style={styles.indicatorContainer} pointerEvents="none">
++          <View style={styles.rootIndicator}>
++            <Text style={[styles.indicatorLabel, styles.rootLabel]}>
++              Root (300x300)
++            </Text>
++          </View>
++          <View style={styles.targetIndicator}>
++            <Text style={[styles.indicatorLabel, styles.targetLabel]}>
++              Target (100x100)
++            </Text>
++          </View>
++          {/* Root margin indicator */}
++          <View
++            style={[
++              styles.rootMarginIndicator,
++              {
++                top: rootMarginOffset,
++                left: rootMarginOffset,
++                width: rootMarginSize,
++                height: rootMarginSize,
++              },
++            ]}>
++            <Text style={[styles.indicatorLabel, styles.rootMarginLabel]}>
++              Root + Margin ({rootMarginSize}x{rootMarginSize})
++            </Text>
++          </View>
++        </View>
++      </View>
++
++      {intersectionEntry != null && (
++        <View style={styles.metricsContainer}>
++          <Text style={styles.metricsTitle}>
++            Intersection Observer Metrics:
++          </Text>
++          <Text style={styles.metric}>
++            Intersecting: {intersectionEntry.isIntersecting.toString()}
++          </Text>
++          <Text style={styles.metric}>
++            Intersection Ratio:{' '}
++            {(intersectionEntry.intersectionRatio * 100).toFixed(1)}%
++          </Text>
++          <Text style={styles.metric}>
++            Intersection Rect:{' '}
++            {JSON.stringify(roundRect(intersectionEntry.intersectionRect))}
++          </Text>
++          <Text style={styles.metric}>
++            Bounding Client Rect:{' '}
++            {JSON.stringify(roundRect(intersectionEntry.boundingClientRect))}
++          </Text>
++          <Text style={styles.metric}>
++            Root Bounds:{' '}
++            {JSON.stringify(roundRect(intersectionEntry.rootBounds))}
++          </Text>
++        </View>
++      )}
++    </>
++  );
++}
++
++const styles = StyleSheet.create({
++  inputContainer: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    marginBottom: 10,
++    gap: 10,
++    paddingHorizontal: 10,
++  },
++  label: {
++    fontSize: 14,
++    fontWeight: 'bold',
++  },
++  input: {
++    borderWidth: 1,
++    borderColor: '#ccc',
++    padding: 5,
++    width: 80,
++    fontSize: 14,
++  },
++  currentMargin: {
++    fontSize: 14,
++    marginBottom: 5,
++    paddingHorizontal: 10,
++    fontStyle: 'italic',
++  },
++  description: {
++    fontSize: 13,
++    marginBottom: 15,
++    paddingHorizontal: 10,
++    color: '#555',
++  },
++  visualizationContainer: {
++    position: 'relative',
++    alignSelf: 'center',
++    marginBottom: 20,
++  },
++  clippingParent: {
++    height: 100,
++    width: 100,
++    overflow: 'hidden',
++    backgroundColor: '#e0e0e0',
++    borderWidth: 2,
++    borderColor: '#999',
++  },
++  root: {
++    backgroundColor: 'rgba(0, 0, 255, 0.2)',
++    height: 300,
++    width: 300,
++  },
++  target: {
++    backgroundColor: 'rgba(255, 255, 0, 0.2)',
++    marginLeft: -50,
++    height: 100,
++    width: 100,
++  },
++  indicatorContainer: {
++    position: 'absolute',
++    top: 0,
++    left: 0,
++    width: 300,
++    height: 300,
++  },
++  rootIndicator: {
++    position: 'absolute',
++    top: 0,
++    left: 0,
++    width: 300,
++    height: 300,
++    borderWidth: 2,
++    borderColor: 'blue',
++    borderStyle: 'dashed',
++  },
++  targetIndicator: {
++    position: 'absolute',
++    top: 0,
++    left: -51,
++    width: 100,
++    height: 100,
++    borderWidth: 2,
++    borderColor: 'orange',
++    borderStyle: 'dashed',
++  },
++  rootMarginIndicator: {
++    position: 'absolute',
++    borderWidth: 3,
++    borderColor: 'rgba(128, 0, 128, 0.6)',
++    borderStyle: 'dashed',
++  },
++  indicatorLabel: {
++    fontSize: 10,
++    color: '#333',
++    fontWeight: 'bold',
++    backgroundColor: 'rgba(255, 255, 255, 0.8)',
++    padding: 2,
++    position: 'absolute',
++  },
++  rootLabel: {
++    top: 5,
++    left: 5,
++  },
++  targetLabel: {
++    top: 40,
++    left: 5,
++  },
++  rootMarginLabel: {
++    bottom: 5,
++    right: 5,
++  },
++  legend: {
++    backgroundColor: 'white',
++    flexDirection: 'row',
++    flexWrap: 'wrap',
++    paddingHorizontal: 10,
++    marginBottom: 15,
++    gap: 15,
++  },
++  legendItem: {
++    flexDirection: 'row',
++    justifyContent: 'flex-start',
++    alignItems: 'center',
++    gap: 5,
++  },
++  legendBox: {
++    width: 20,
++    height: 20,
++    borderWidth: 1,
++  },
++  legendClipping: {
++    backgroundColor: '#e0e0e0',
++    borderColor: '#999',
++  },
++  legendRoot: {
++    backgroundColor: 'rgba(0, 0, 255, 0.3)',
++    borderColor: 'blue',
++  },
++  legendTarget: {
++    backgroundColor: 'rgba(255, 255, 0, 0.5)',
++    borderColor: 'orange',
++  },
++  legendIndicator: {
++    backgroundColor: 'transparent',
++    borderStyle: 'dashed',
++    borderColor: '#333',
++  },
++  legendRootMargin: {
++    backgroundColor: 'transparent',
++    borderStyle: 'dashed',
++    borderColor: 'rgba(128, 0, 128, 0.6)',
++    borderWidth: 2,
++  },
++  legendText: {
++    fontSize: 12,
++  },
++  metricsContainer: {
++    paddingHorizontal: 10,
++    backgroundColor: '#f5f5f5',
++    padding: 10,
++    borderRadius: 5,
++    marginHorizontal: 10,
++  },
++  metricsTitle: {
++    fontSize: 14,
++    fontWeight: 'bold',
++    marginBottom: 5,
++  },
++  metric: {
++    fontSize: 12,
++    marginBottom: 3,
++    fontFamily: 'monospace',
++  },
++});
+diff --git a/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverClippingRoot.js b/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverClippingRoot.js
+new file mode 100644
+index 00000000000..e08a2bf4f91
+--- /dev/null
++++ b/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverClippingRoot.js
+@@ -0,0 +1,400 @@
++/**
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ *
++ * @format
++ * @flow strict-local
++ */
++
++import type {HostInstance} from 'react-native';
++import type IntersectionObserverType from 'react-native/src/private/webapis/intersectionobserver/IntersectionObserver';
++import type IntersectionObserverEntry from 'react-native/src/private/webapis/intersectionobserver/IntersectionObserverEntry';
++
++import * as React from 'react';
++import {useCallback, useLayoutEffect, useRef, useState} from 'react';
++import {Button, StyleSheet, Text, TextInput, View} from 'react-native';
++
++export const name = 'IntersectionObserver Root Clipping Example';
++export const title = name;
++export const description = 'A root that clips its target';
++
++declare var IntersectionObserver: Class<IntersectionObserverType>;
++
++export function render(): React.Node {
++  return <IntersectionObserverClippingRootExample />;
++}
++
++function roundRect(rect: mixed): ?{
++  x: number,
++  y: number,
++  width: number,
++  height: number,
++} {
++  if (rect == null || typeof rect !== 'object') {
++    return null;
++  }
++  // $FlowFixMe[prop-missing]
++  const x = rect.x;
++  // $FlowFixMe[prop-missing]
++  const y = rect.y;
++  // $FlowFixMe[prop-missing]
++  const width = rect.width;
++  // $FlowFixMe[prop-missing]
++  const height = rect.height;
++
++  if (
++    typeof x !== 'number' ||
++    typeof y !== 'number' ||
++    typeof width !== 'number' ||
++    typeof height !== 'number'
++  ) {
++    return null;
++  }
++  return {
++    x: Math.round(x),
++    y: Math.round(y),
++    width: Math.round(width),
++    height: Math.round(height),
++  };
++}
++
++/**
++ * Showcase clipping when the root has overflow: hidden
++ */
++function IntersectionObserverClippingRootExample(): React.Node {
++  const rootRef = useRef<?HostInstance>(null);
++  const targetRef = useRef<?HostInstance>(null);
++  const [intersectionEntry, setIntersectionEntry] =
++    useState<?IntersectionObserverEntry>(null);
++  const [rootMarginInput, setRootMarginInput] = useState<string>('0');
++  const [rootMarginValue, setRootMarginValue] = useState<string>('0px');
++
++  const handleSubmit = useCallback(() => {
++    const marginValue = `${rootMarginInput}px`;
++    setRootMarginValue(marginValue);
++  }, [rootMarginInput]);
++
++  const onObserve = useCallback(
++    (entries: $ReadOnlyArray<IntersectionObserverEntry>) => {
++      entries.forEach(entry => {
++        setIntersectionEntry(entry);
++      });
++    },
++    [],
++  );
++
++  const observer = useRef<?IntersectionObserver>(null);
++  useLayoutEffect(() => {
++    const rootNode = rootRef.current;
++    const targetNode = targetRef.current;
++
++    if (rootNode == null || targetNode == null) {
++      return;
++    }
++
++    observer.current = new IntersectionObserver(onObserve, {
++      // $FlowFixMe[incompatible-type]
++      root: rootNode,
++      // $FlowExpectedError[prop-missing] rootMargin is not even defined in Flow.
++      rootMargin: rootMarginValue,
++    });
++    // $FlowFixMe[incompatible-type]
++    observer.current.observe(targetNode);
++    return () => {
++      if (rootNode == null || targetNode == null) {
++        observer.current?.disconnect();
++      }
++
++      // $FlowFixMe[incompatible-type]
++      observer.current?.unobserve(targetNode);
++    };
++  }, [onObserve, rootMarginValue]);
++
++  const CONCEPTUAL_ROOT_SIZE = 200;
++  const TARGET_SIZE = 100;
++  const rootMarginNumeric = parseFloat(rootMarginInput) || 0;
++
++  // Calculate rootMargin bounds based on conceptual root size
++  const rootMarginSize = CONCEPTUAL_ROOT_SIZE + 2 * rootMarginNumeric;
++  const rootMarginOffset = -rootMarginNumeric;
++
++  return (
++    <>
++      <View style={styles.inputContainer}>
++        <Text style={styles.label}>Root Margin (px):</Text>
++        <TextInput
++          style={styles.input}
++          value={rootMarginInput}
++          onChangeText={setRootMarginInput}
++          keyboardType="numeric"
++          placeholder="0"
++        />
++        <Button title="Submit" onPress={handleSubmit} />
++      </View>
++      <Text style={styles.currentMargin}>
++        Current Root Margin: {rootMarginValue}
++      </Text>
++      <Text style={styles.description}>
++        This example shows an explicit root (yellow) that clips its target
++        (red). The solid background colors show what is visible. The dashed
++        borders show the size of root and target before clipping. The purple
++        dashed border shows the rootMargin applied. We expect the
++        intersectionRect to be unaffected by rootMargin.
++      </Text>
++      <View style={styles.legend}>
++        <View style={styles.legendItem}>
++          <View style={[styles.legendBox, styles.legendClipping]} />
++          <Text style={styles.legendText}>Clipped (100x100)</Text>
++        </View>
++        <View style={styles.legendItem}>
++          <View style={[styles.legendBox, styles.legendRoot]} />
++          <Text style={styles.legendText}>Unclipped Root (200x200)</Text>
++        </View>
++        <View style={styles.legendItem}>
++          <View style={[styles.legendBox, styles.legendTarget]} />
++          <Text style={styles.legendText}>Target (100x100)</Text>
++        </View>
++        <View style={styles.legendItem}>
++          <View style={[styles.legendBox, styles.legendRootMargin]} />
++          <Text style={styles.legendText}>Root + Margin (purple)</Text>
++        </View>
++      </View>
++      <View style={styles.visualizationContainer}>
++        {/* Show conceptual root size (before clipping) */}
++        <View style={styles.conceptualRoot}>
++          <View ref={rootRef} style={styles.clipping}>
++            <View ref={targetRef} style={styles.target} />
++          </View>
++        </View>
++        {/* Visual indicators showing full extent */}
++        <View style={styles.indicatorContainer} pointerEvents="none">
++          <View style={styles.rootIndicator}>
++            <Text style={[styles.indicatorLabel, styles.rootLabel]}>
++              Root ({CONCEPTUAL_ROOT_SIZE}x{CONCEPTUAL_ROOT_SIZE})
++            </Text>
++          </View>
++          <View style={styles.targetIndicator}>
++            <Text style={[styles.indicatorLabel, styles.targetLabel]}>
++              Target ({TARGET_SIZE}x{TARGET_SIZE})
++            </Text>
++          </View>
++          {/* Root margin indicator */}
++          <View
++            style={[
++              styles.rootMarginIndicator,
++              {
++                top: rootMarginOffset,
++                left: rootMarginOffset,
++                width: rootMarginSize,
++                height: rootMarginSize,
++              },
++            ]}>
++            <Text style={[styles.indicatorLabel, styles.rootMarginLabel]}>
++              Root + Margin ({rootMarginSize}x{rootMarginSize})
++            </Text>
++          </View>
++        </View>
++      </View>
++      {intersectionEntry != null && (
++        <View style={styles.metricsContainer}>
++          <Text style={styles.metricsTitle}>
++            Intersection Observer Metrics:
++          </Text>
++          <Text style={styles.metric}>
++            Intersecting: {intersectionEntry.isIntersecting.toString()}
++          </Text>
++          <Text style={styles.metric}>
++            Intersection Ratio:{' '}
++            {(intersectionEntry.intersectionRatio * 100).toFixed(1)}%
++          </Text>
++          <Text style={styles.metric}>
++            Intersection Rect:{' '}
++            {JSON.stringify(roundRect(intersectionEntry.intersectionRect))}
++          </Text>
++          <Text style={styles.metric}>
++            Bounding Client Rect:{' '}
++            {JSON.stringify(roundRect(intersectionEntry.boundingClientRect))}
++          </Text>
++          <Text style={styles.metric}>
++            Root Bounds:{' '}
++            {JSON.stringify(roundRect(intersectionEntry.rootBounds))}
++          </Text>
++        </View>
++      )}
++    </>
++  );
++}
++
++const styles = StyleSheet.create({
++  inputContainer: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    marginBottom: 10,
++    gap: 10,
++    paddingHorizontal: 10,
++  },
++  label: {
++    fontSize: 14,
++    fontWeight: 'bold',
++  },
++  input: {
++    borderWidth: 1,
++    borderColor: '#ccc',
++    padding: 5,
++    width: 80,
++    fontSize: 14,
++  },
++  currentMargin: {
++    fontSize: 14,
++    marginBottom: 5,
++    paddingHorizontal: 10,
++    fontStyle: 'italic',
++  },
++  description: {
++    fontSize: 13,
++    marginBottom: 15,
++    paddingHorizontal: 10,
++    color: '#555',
++  },
++  visualizationContainer: {
++    position: 'relative',
++    alignSelf: 'center',
++    marginBottom: 20,
++  },
++  conceptualRoot: {
++    width: 200,
++    height: 200,
++    backgroundColor: 'transparent',
++  },
++  clipping: {
++    height: 100,
++    width: 100,
++    overflow: 'hidden',
++    backgroundColor: 'orange',
++    borderWidth: 2,
++    borderColor: '#999',
++  },
++  target: {
++    backgroundColor: 'rgba(255, 0, 0, 0.5)',
++    height: 100,
++    width: 100,
++    marginTop: 50,
++  },
++  indicatorContainer: {
++    position: 'absolute',
++    top: 0,
++    left: 0,
++    width: 200,
++    height: 200,
++  },
++  rootIndicator: {
++    position: 'absolute',
++    top: 0,
++    left: 0,
++    width: 200,
++    height: 200,
++    borderWidth: 2,
++    borderColor: 'orange',
++    borderStyle: 'dashed',
++  },
++  targetIndicator: {
++    position: 'absolute',
++    top: 50,
++    left: 0,
++    width: 100,
++    height: 100,
++    borderWidth: 2,
++    borderColor: 'red',
++    borderStyle: 'dashed',
++  },
++  rootMarginIndicator: {
++    position: 'absolute',
++    borderWidth: 3,
++    borderColor: 'rgba(128, 0, 128, 0.6)',
++    borderStyle: 'dashed',
++  },
++  indicatorLabel: {
++    fontSize: 10,
++    color: '#333',
++    fontWeight: 'bold',
++    backgroundColor: 'rgba(255, 255, 255, 0.8)',
++    padding: 2,
++    position: 'absolute',
++  },
++  rootLabel: {
++    top: 5,
++    left: 5,
++  },
++  targetLabel: {
++    top: 40,
++    left: 5,
++  },
++  rootMarginLabel: {
++    bottom: 5,
++    right: 5,
++  },
++  legend: {
++    flexDirection: 'row',
++    flexWrap: 'wrap',
++    paddingHorizontal: 10,
++    marginBottom: 15,
++    gap: 15,
++  },
++  legendItem: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    gap: 5,
++  },
++  legendBox: {
++    width: 20,
++    height: 20,
++    borderWidth: 1,
++  },
++  legendClipping: {
++    backgroundColor: 'orange',
++    borderColor: '#999',
++  },
++  legendRoot: {
++    backgroundColor: 'transparent',
++    borderColor: 'orange',
++    borderStyle: 'dashed',
++    borderWidth: 2,
++  },
++  legendTarget: {
++    backgroundColor: 'rgba(255, 0, 0, 0.5)',
++    borderColor: 'red',
++  },
++  legendIndicator: {
++    backgroundColor: 'transparent',
++    borderStyle: 'dashed',
++    borderColor: '#333',
++  },
++  legendRootMargin: {
++    backgroundColor: 'transparent',
++    borderStyle: 'dashed',
++    borderColor: 'rgba(128, 0, 128, 0.6)',
++    borderWidth: 2,
++  },
++  legendText: {
++    fontSize: 12,
++  },
++  metricsContainer: {
++    paddingHorizontal: 10,
++    backgroundColor: '#f5f5f5',
++    padding: 10,
++    borderRadius: 5,
++    marginHorizontal: 10,
++  },
++  metricsTitle: {
++    fontSize: 14,
++    fontWeight: 'bold',
++    marginBottom: 5,
++  },
++  metric: {
++    fontSize: 12,
++    marginBottom: 3,
++    fontFamily: 'monospace',
++  },
++});
+diff --git a/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverExplicitRoot.js b/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverExplicitRoot.js
+new file mode 100644
+index 00000000000..f569b586523
+--- /dev/null
++++ b/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverExplicitRoot.js
+@@ -0,0 +1,278 @@
++/**
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ *
++ * @format
++ * @flow strict-local
++ */
++
++import type {HostInstance} from 'react-native';
++import type IntersectionObserverType from 'react-native/src/private/webapis/intersectionobserver/IntersectionObserver';
++import type IntersectionObserverEntry from 'react-native/src/private/webapis/intersectionobserver/IntersectionObserverEntry';
++
++import {RNTesterThemeContext} from '../../components/RNTesterTheme';
++import * as React from 'react';
++import {
++  useCallback,
++  useContext,
++  useLayoutEffect,
++  useMemo,
++  useRef,
++  useState,
++} from 'react';
++import {
++  Button,
++  PanResponder,
++  StyleSheet,
++  Text,
++  TextInput,
++  View,
++} from 'react-native';
++
++declare var IntersectionObserver: Class<IntersectionObserverType>;
++
++export const name = 'IntersectionObserver Explicit Root Example';
++export const title = name;
++export const description =
++  'Move target to see intersection ratio with explicit observation root change';
++
++export function render(): React.Node {
++  return <IntersectionObserverExplicitRootExample />;
++}
++
++/**
++ * Showcase threshold of two overlapping elements
++ */
++function IntersectionObserverExplicitRootExample(): React.Node {
++  const theme = useContext(RNTesterThemeContext);
++  const rootRef = useRef<?HostInstance>(null);
++  const targetRef = useRef<?HostInstance>(null);
++  const [position, setPosition] = useState({left: 20, top: 20});
++  const [intersectionRatio, setIntersectionRatio] = useState(0);
++  const [rootMarginInput, setRootMarginInput] = useState<string>('0');
++  const [rootMarginUnit, setRootMarginUnit] = useState<'px' | '%'>('px');
++  const [rootMarginValue, setRootMarginValue] = useState<string>('0px');
++
++  const handleSubmit = useCallback(() => {
++    const marginValue = `${rootMarginInput}${rootMarginUnit}`;
++    setRootMarginValue(marginValue);
++  }, [rootMarginInput, rootMarginUnit]);
++
++  const panResponder = useMemo(
++    () =>
++      PanResponder.create({
++        onStartShouldSetPanResponder: () => true,
++        onMoveShouldSetPanResponder: () => true,
++        onPanResponderMove: (evt, gestureState) => {
++          setPosition({
++            left: position.left + gestureState.dx,
++            top: position.top + gestureState.dy,
++          });
++        },
++      }),
++    [position],
++  );
++  const onObserve = useCallback(
++    (entries: $ReadOnlyArray<IntersectionObserverEntry>) => {
++      entries.forEach(entry => {
++        setIntersectionRatio(entry.intersectionRatio);
++      });
++    },
++    [],
++  );
++
++  const observer = useRef<?IntersectionObserver>(null);
++  useLayoutEffect(() => {
++    const rootNode = rootRef.current;
++    const targetNode = targetRef.current;
++
++    if (rootNode == null || targetNode == null) {
++      return;
++    }
++
++    observer.current = new IntersectionObserver(onObserve, {
++      // $FlowFixMe[incompatible-type]
++      root: rootNode,
++      // $FlowExpectedError[prop-missing] rootMargin is not even defined in Flow.
++      rootMargin: rootMarginValue,
++    });
++    // $FlowFixMe[incompatible-type]
++    observer.current.observe(targetNode);
++    return () => {
++      if (rootNode == null || targetNode == null) {
++        observer.current?.disconnect();
++      }
++      // $FlowFixMe[incompatible-type]
++      observer.current?.unobserve(targetNode);
++    };
++  }, [position, onObserve, rootMarginValue]);
++
++  const textStyle = useMemo(() => {
++    return {color: theme.LabelColor};
++  }, [theme]);
++
++  const ROOT_SIZE = 300;
++  const rootMarginNumeric = parseFloat(rootMarginInput) || 0;
++  const rootMarginInPixels =
++    rootMarginUnit === '%'
++      ? (rootMarginNumeric / 100) * ROOT_SIZE
++      : rootMarginNumeric;
++
++  // Calculate margin indicator dimensions and position
++  // For positive margins: indicator is larger and positioned outside
++  // For negative margins: indicator is smaller and positioned inside
++  const marginIndicatorSize = ROOT_SIZE + 2 * rootMarginInPixels;
++  const marginIndicatorOffset = -rootMarginInPixels;
++
++  return (
++    <View
++      style={[
++        styles.container,
++        {backgroundColor: theme.SystemBackgroundColor},
++      ]}>
++      <Text style={[textStyle, styles.instruction]}>
++        Change rootMargin and then hit 'Apply' to update IntersectionObserver
++      </Text>
++      <View style={styles.controls}>
++        <Text style={[textStyle, styles.controlLabel]}>Root Margin:</Text>
++        <TextInput
++          style={[styles.input, {color: theme.LabelColor}]}
++          value={rootMarginInput}
++          onChangeText={setRootMarginInput}
++          keyboardType="numeric"
++          placeholder="0"
++        />
++        <View style={styles.radioGroup}>
++          <View style={styles.radioOption}>
++            <Button
++              title="px"
++              onPress={() => setRootMarginUnit('px')}
++              color={rootMarginUnit === 'px' ? '#007AFF' : '#999'}
++            />
++          </View>
++          <View style={styles.radioOption}>
++            <Button
++              title="%"
++              onPress={() => setRootMarginUnit('%')}
++              color={rootMarginUnit === '%' ? '#007AFF' : '#999'}
++            />
++          </View>
++        </View>
++        <Button title="Apply" onPress={handleSubmit} />
++      </View>
++      <Text style={[textStyle, styles.currentMargin]}>
++        Current Root Margin: {rootMarginValue}
++      </Text>
++      <View style={[styles.visualizationContainer, styles.center]}>
++        <View style={styles.visualizationWrapper}>
++          <View
++            ref={rootRef}
++            style={[
++              styles.root,
++              styles.center,
++              {backgroundColor: theme.SystemFillColor},
++            ]}>
++            <Text style={textStyle}>Root</Text>
++            <View
++              {...panResponder.panHandlers}
++              ref={targetRef}
++              style={[
++                styles.target,
++                styles.center,
++                {
++                  backgroundColor: theme.SecondarySystemFillColor,
++                  transform: [
++                    {translateX: position.left},
++                    {translateY: position.top},
++                  ],
++                },
++              ]}>
++              <Text style={textStyle}>Target: Drag Me Around</Text>
++              <Text style={textStyle}>
++                Intersection Ratio: {`${Math.floor(intersectionRatio * 100)}%`}
++              </Text>
++            </View>
++          </View>
++          <View
++            style={[
++              styles.marginIndicator,
++              {
++                position: 'absolute',
++                top: marginIndicatorOffset,
++                left: marginIndicatorOffset,
++                width: marginIndicatorSize,
++                height: marginIndicatorSize,
++                borderColor: 'rgba(255, 0, 0, 0.5)',
++                borderWidth: 2,
++                borderStyle: 'dashed',
++                pointerEvents: 'none',
++              },
++            ]}
++          />
++        </View>
++      </View>
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  container: {
++    flex: 1,
++  },
++  center: {
++    justifyContent: 'center',
++    alignItems: 'center',
++  },
++  controls: {
++    flexDirection: 'row',
++    alignItems: 'center',
++    padding: 10,
++    gap: 10,
++  },
++  controlLabel: {
++    fontSize: 14,
++    fontWeight: 'bold',
++  },
++  instruction: {
++    padding: 10,
++  },
++  input: {
++    borderWidth: 1,
++    borderColor: '#ccc',
++    padding: 5,
++    width: 80,
++    fontSize: 14,
++  },
++  radioGroup: {
++    flexDirection: 'row',
++    gap: 5,
++  },
++  radioOption: {
++    marginHorizontal: 5,
++  },
++  currentMargin: {
++    fontSize: 14,
++    paddingHorizontal: 10,
++    marginBottom: 10,
++    fontStyle: 'italic',
++  },
++  visualizationContainer: {
++    flex: 1,
++  },
++  visualizationWrapper: {
++    position: 'relative',
++    width: 300,
++    height: 300,
++  },
++  marginIndicator: {
++    justifyContent: 'center',
++    alignItems: 'center',
++  },
++  root: {
++    width: 300,
++    height: 300,
++  },
++  target: {padding: 10, position: 'absolute'},
++});
+diff --git a/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverExplicitRootScroll.js b/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverExplicitRootScroll.js
+new file mode 100644
+index 00000000000..dd6c381569b
+--- /dev/null
++++ b/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverExplicitRootScroll.js
+@@ -0,0 +1,245 @@
++/**
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ *
++ * @format
++ * @flow strict-local
++ */
++
++import type {HostInstance} from 'react-native';
++import type {PublicScrollViewInstance} from 'react-native/Libraries/Components/ScrollView/ScrollView';
++import type {ViewStyleProp} from 'react-native/Libraries/StyleSheet/StyleSheet';
++import type IntersectionObserverType from 'react-native/src/private/webapis/intersectionobserver/IntersectionObserver';
++
++import {RNTesterThemeContext} from '../../components/RNTesterTheme';
++import * as React from 'react';
++import {
++  useCallback,
++  useContext,
++  useLayoutEffect,
++  useRef,
++  useState,
++} from 'react';
++import {Button, ScrollView, StyleSheet, Text, View} from 'react-native';
++
++declare var IntersectionObserver: Class<IntersectionObserverType>;
++
++export const name = 'IntersectionObserver Explicit Root MDN Example';
++export const title = name;
++export const description = 'MDN example with an explicit root';
++
++export function render(): React.Node {
++  return <IntersectionObserverExplicitRootScrollExample />;
++}
++
++/**
++ * Showcase threshold of two overlapping elements
++ */
++function IntersectionObserverExplicitRootScrollExample(): React.Node {
++  const theme = useContext(RNTesterThemeContext);
++  const [observationRoot, setObservationRoot] = useState<?HostInstance>(null);
++
++  const [showMargin, setShowMargin] = useState(true);
++  const roofRef: React.RefSetter<PublicScrollViewInstance> = useCallback(
++    (rootNode: ?PublicScrollViewInstance) => {
++      if (rootNode != null) {
++        setObservationRoot(rootNode);
++      }
++
++      return () => {
++        setObservationRoot(null);
++      };
++    },
++    [],
++  );
++
++  return (
++    <ScrollView
++      style={{
++        width: '60%',
++        height: '60%',
++        overflow: 'hidden',
++        backgroundColor: theme.BackgroundColor,
++      }}
++      ref={roofRef}>
++      <Button
++        title={`Click to ${showMargin ? 'remove' : 'add'} margin`}
++        onPress={() => {
++          setShowMargin(show => !show);
++        }}
++      />
++      <Text style={[styles.scrollDownText, {color: theme.LabelColor}]}>
++        ↓↓ Scroll down ↓↓
++      </Text>
++      {showMargin ? <View style={styles.margin} /> : null}
++
++      <ListItem
++        position={1}
++        rootNode={observationRoot}
++        threshold={0.5}
++        rootThreshold={0.5}
++        description="Should intersect when item half visible and when item takes up half the viewport"
++      />
++    </ScrollView>
++  );
++}
++
++function ListItem(props: {
++  position: number,
++  rootThreshold?: number,
++  rootNode: ?HostInstance,
++  threshold: number,
++  initialValue?: number,
++  description: string,
++  style?: ?ViewStyleProp,
++}): React.Node {
++  const itemRef = useRef<?HostInstance>(null);
++  const [intersectionRatio, setIntersectionRatio] = useState(
++    props.initialValue ?? 0,
++  );
++  const [intersectionRootRatio, setIntersectionRootRatio] = useState(
++    props.initialValue ?? 0,
++  );
++
++  useLayoutEffect(() => {
++    const itemNode = itemRef.current;
++    if (itemNode == null) {
++      return;
++    }
++
++    if (props.rootNode == null) {
++      return;
++    }
++
++    const intersectionObserver = new IntersectionObserver(
++      entries => {
++        entries.forEach(entry => {
++          setIntersectionRatio(entry.intersectionRatio);
++          // $FlowFixMe[prop-missing] - React Native specific entry property
++          setIntersectionRootRatio(entry.rnRootIntersectionRatio);
++        });
++      },
++      {
++        threshold: props.threshold,
++        rnRootThreshold: props.rootThreshold,
++        // $FlowFixMe[incompatible-type]
++        root: props.rootNode,
++      },
++    );
++
++    // $FlowFixMe[incompatible-type]
++    intersectionObserver.observe(itemNode);
++
++    return () => {
++      intersectionObserver.disconnect();
++    };
++  }, [props.position, props.threshold, props.rootThreshold, props.rootNode]);
++
++  return (
++    <View
++      style={[
++        styles.item,
++        intersectionRatio >= props.threshold ? styles.intersecting : null,
++        intersectionRootRatio >= (props.rootThreshold ?? 1)
++          ? styles.rootIntersecting
++          : null,
++        props.style,
++      ]}
++      ref={itemRef}>
++      <Text style={styles.description}>{props.description}</Text>
++      {props.rootThreshold != null && (
++        <Text>rootThreshold: {props.rootThreshold}</Text>
++      )}
++      <Text>threshold: {props.threshold}</Text>
++
++      <IntersectionRatioIndicator
++        intersectionRatio={intersectionRatio}
++        intersectionRootRatio={intersectionRootRatio}
++        style={{left: 0, top: 0}}
++      />
++      <IntersectionRatioIndicator
++        intersectionRatio={intersectionRatio}
++        intersectionRootRatio={intersectionRootRatio}
++        style={{right: 0, top: 0}}
++      />
++      <IntersectionRatioIndicator
++        intersectionRatio={intersectionRatio}
++        intersectionRootRatio={intersectionRootRatio}
++        style={{left: 0, bottom: 0}}
++      />
++      <IntersectionRatioIndicator
++        intersectionRatio={intersectionRatio}
++        intersectionRootRatio={intersectionRootRatio}
++        style={{right: 0, bottom: 0}}
++      />
++    </View>
++  );
++}
++
++function IntersectionRatioIndicator(props: {
++  intersectionRatio: number,
++  intersectionRootRatio: number,
++  style: {top?: number, bottom?: number, left?: number, right?: number},
++}): React.Node {
++  return (
++    <View style={[styles.intersectionRatioIndicator, props.style]}>
++      <Text>
++        target ratio: {`${Math.floor(props.intersectionRatio * 100)}%`}
++      </Text>
++      <Text>
++        root ratio: {`${Math.floor(props.intersectionRootRatio * 100)}%`}
++      </Text>
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  scrollDownText: {
++    textAlign: 'center',
++    fontSize: 20,
++    marginTop: 20,
++  },
++  intersecting: {
++    backgroundColor: 'rgb(226, 237, 166)',
++  },
++  rootIntersecting: {
++    backgroundColor: 'rgb(237, 90, 45)',
++  },
++  margin: {
++    marginBottom: 700,
++  },
++  item: {
++    backgroundColor: 'rgb(186, 186, 186)',
++    borderColor: 'rgb(201, 126, 17)',
++    borderWidth: 2,
++    height: 500,
++    margin: 6,
++    alignItems: 'center',
++    justifyContent: 'center',
++  },
++  intersectionRatioIndicator: {
++    position: 'absolute',
++    padding: 5,
++    backgroundColor: 'white',
++    opacity: 0.7,
++    borderWidth: 1,
++    borderColor: 'black',
++  },
++  description: {
++    margin: 20,
++    fontSize: 16,
++  },
++
++  container: {},
++  center: {
++    justifyContent: 'center',
++    alignItems: 'center',
++  },
++  root: {
++    width: '60%',
++    height: '50%',
++  },
++  target: {padding: 10, position: 'absolute'},
++});
+diff --git a/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverIndex.js b/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverIndex.js
+new file mode 100644
+index 00000000000..47d2dcf4431
+--- /dev/null
++++ b/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverIndex.js
+@@ -0,0 +1,37 @@
++/**
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ *
++ * @flow strict-local
++ * @format
++ */
++
++import type {RNTesterModuleExample} from '../../types/RNTesterTypes';
++
++import * as IntersectionObserverBenchmark from './IntersectionObserverBenchmark';
++import * as IntersectionObserverClippingParent from './IntersectionObserverClippingParent';
++import * as IntersectionObserverClippingRoot from './IntersectionObserverClippingRoot';
++import * as IntersectionObserverExplicitRoot from './IntersectionObserverExplicitRoot';
++import * as IntersectionObserverExplicitRootScroll from './IntersectionObserverExplicitRootScroll';
++import * as IntersectionObserverMDNExample from './IntersectionObserverMDNExample';
++import * as IntersectionObserverRootThreshold from './IntersectionObserverRootThreshold';
++
++export const framework = 'React';
++export const title = 'IntersectionObserver';
++export const category = 'UI';
++export const documentationURL =
++  'https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API';
++export const description =
++  'API to detect paint times for elements and changes in their intersections with other elements.';
++export const showIndividualExamples = true;
++export const examples: Array<RNTesterModuleExample> = [
++  IntersectionObserverMDNExample,
++  IntersectionObserverBenchmark,
++  IntersectionObserverRootThreshold,
++  IntersectionObserverExplicitRoot,
++  IntersectionObserverExplicitRootScroll,
++  IntersectionObserverClippingParent,
++  IntersectionObserverClippingRoot,
++];
+diff --git a/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverMDNExample.js b/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverMDNExample.js
+new file mode 100644
+index 00000000000..69858a0dfa7
+--- /dev/null
++++ b/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverMDNExample.js
+@@ -0,0 +1,181 @@
++/**
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ *
++ * @flow strict-local
++ * @format
++ */
++
++import type IntersectionObserverType from 'react-native/src/private/webapis/intersectionobserver/IntersectionObserver';
++
++import {RNTesterThemeContext} from '../../components/RNTesterTheme';
++import * as React from 'react';
++import {
++  type ElementRef,
++  useContext,
++  useLayoutEffect,
++  useRef,
++  useState,
++} from 'react';
++import {Button, ScrollView, StyleSheet, Text, View} from 'react-native';
++
++declare var IntersectionObserver: Class<IntersectionObserverType>;
++
++export const name = 'IntersectionObserver MDN Example';
++export const title = name;
++export const description =
++  'Copy of the example in MDN about IntersectionObserver with different thresholds.';
++
++export function render(): React.Node {
++  return <IntersectionObserverMDNExample />;
++}
++
++/**
++ * Similar to the example in MDN: https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API
++ */
++function IntersectionObserverMDNExample(): React.Node {
++  const theme = useContext(RNTesterThemeContext);
++  const [showMargin, setShowMargin] = useState(true);
++
++  return (
++    <ScrollView>
++      <Button
++        title={`Click to ${showMargin ? 'remove' : 'add'} margin`}
++        onPress={() => {
++          setShowMargin(show => !show);
++        }}
++      />
++      <Text style={[styles.scrollDownText, {color: theme.LabelColor}]}>
++        ↓↓ Scroll down ↓↓
++      </Text>
++      {showMargin ? <View style={styles.margin} /> : null}
++      <ListItem position={1} thresholds={buildThresholdList(100)} />
++      <ListItem position={2} thresholds={[0.5]} initialValue={0.49} />
++      <ListItem position={3} thresholds={buildThresholdList(10)} />
++      <ListItem position={4} thresholds={buildThresholdList(4)} />
++    </ScrollView>
++  );
++}
++
++function ListItem(props: {
++  position: number,
++  thresholds: Array<number>,
++  initialValue?: number,
++}): React.Node {
++  const itemRef = useRef<?ElementRef<typeof View>>(null);
++  const intersectionRatioRef = useRef(0);
++  const [intersectionRatio, setIntersectionRatio] = useState(
++    props.initialValue ?? 0,
++  );
++
++  useLayoutEffect(() => {
++    const itemNode = itemRef.current;
++    if (itemNode == null) {
++      return;
++    }
++
++    const intersectionObserver = new IntersectionObserver(
++      entries => {
++        entries.forEach(entry => {
++          if (
++            intersectionRatioRef.current === 0 &&
++            entry.intersectionRatio > 0
++          ) {
++            console.log(
++              `Card #${props.position} switched to intersecting (according to thresholds)`,
++            );
++          } else if (
++            intersectionRatioRef.current !== 0 &&
++            entry.intersectionRatio === 0
++          ) {
++            console.log(
++              `Card #${props.position} switched to NOT intersecting (according to thresholds)`,
++            );
++          }
++          intersectionRatioRef.current = entry.intersectionRatio;
++          setIntersectionRatio(entry.intersectionRatio);
++        });
++      },
++      {threshold: props.thresholds},
++    );
++
++    // $FlowFixMe[incompatible-type]
++    intersectionObserver.observe(itemNode);
++
++    return () => {
++      intersectionObserver.disconnect();
++    };
++  }, [props.position, props.thresholds]);
++
++  return (
++    <View style={styles.item} ref={itemRef}>
++      <IntersectionRatioIndicator
++        value={intersectionRatio}
++        style={{left: 0, top: 0}}
++      />
++      <IntersectionRatioIndicator
++        value={intersectionRatio}
++        style={{right: 0, top: 0}}
++      />
++      <IntersectionRatioIndicator
++        value={intersectionRatio}
++        style={{left: 0, bottom: 0}}
++      />
++      <IntersectionRatioIndicator
++        value={intersectionRatio}
++        style={{right: 0, bottom: 0}}
++      />
++    </View>
++  );
++}
++
++function IntersectionRatioIndicator(props: {
++  value: number,
++  style: {top?: number, bottom?: number, left?: number, right?: number},
++}): React.Node {
++  return (
++    <View style={[styles.intersectionRatioIndicator, props.style]}>
++      <Text>{`${Math.floor(props.value * 100)}%`}</Text>
++    </View>
++  );
++}
++
++function buildThresholdList(numSteps: number): Array<number> {
++  const thresholds = [];
++
++  for (let i = 1.0; i <= numSteps; i++) {
++    const ratio = i / numSteps;
++    thresholds.push(ratio);
++  }
++
++  thresholds.push(0);
++  return thresholds;
++}
++
++const styles = StyleSheet.create({
++  scrollDownText: {
++    textAlign: 'center',
++    fontSize: 20,
++    marginTop: 20,
++  },
++  margin: {
++    marginBottom: 700,
++  },
++  item: {
++    backgroundColor: 'rgb(245, 170, 140)',
++    borderColor: 'rgb(201, 126, 17)',
++    borderWidth: 2,
++    height: 500,
++    margin: 6,
++  },
++  intersectionRatioIndicator: {
++    position: 'absolute',
++    padding: 5,
++    backgroundColor: 'white',
++    opacity: 0.7,
++    borderWidth: 1,
++    borderColor: 'black',
++  },
++});
+diff --git a/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverRootThreshold.js b/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverRootThreshold.js
+new file mode 100644
+index 00000000000..393d05aa443
+--- /dev/null
++++ b/packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverRootThreshold.js
+@@ -0,0 +1,224 @@
++/**
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ *
++ * @flow strict-local
++ * @format
++ */
++
++import type {ViewStyleProp} from 'react-native/Libraries/StyleSheet/StyleSheet';
++import type IntersectionObserverType from 'react-native/src/private/webapis/intersectionobserver/IntersectionObserver';
++
++import {RNTesterThemeContext} from '../../components/RNTesterTheme';
++import * as React from 'react';
++import {
++  type ElementRef,
++  useContext,
++  useLayoutEffect,
++  useRef,
++  useState,
++} from 'react';
++import {Button, ScrollView, StyleSheet, Text, View} from 'react-native';
++
++declare const IntersectionObserver: Class<IntersectionObserverType>;
++
++export const name = 'IntersectionObserver Root Threshold';
++export const title = name;
++export const description =
++  'Examples of setting threshold and rnRootThreshold. Views will change background color if they meet their threshold.';
++
++export function render(): React.Node {
++  return <IntersectionObserverRootThreshold />;
++}
++
++/**
++ * Similar to the example in MDN: https://developer.mozilla.org/en-US/docs/Web/API/Intersection_Observer_API
++ */
++function IntersectionObserverRootThreshold(): React.Node {
++  const theme = useContext(RNTesterThemeContext);
++  const [showMargin, setShowMargin] = useState(true);
++
++  return (
++    <ScrollView>
++      <Button
++        title={`Click to ${showMargin ? 'remove' : 'add'} margin`}
++        onPress={() => {
++          setShowMargin(show => !show);
++        }}
++      />
++      <Text style={[styles.scrollDownText, {color: theme.LabelColor}]}>
++        ↓↓ Scroll down ↓↓
++      </Text>
++      {showMargin ? <View style={styles.margin} /> : null}
++
++      <ListItem
++        position={1}
++        rootThreshold={0.5}
++        threshold={0.5}
++        description="Should intersect when item half visible and when item takes up half the viewport"
++      />
++      <ListItem
++        position={2}
++        rootThreshold={0.5}
++        threshold={1}
++        description="Should intersect when view takes up half of viewport and when item is fully visible"
++      />
++      <ListItem
++        position={3}
++        threshold={1}
++        rootThreshold={0}
++        description="This should intersect when any part is visible, even though `thresholds` is 1"
++      />
++      <ListItem
++        position={4}
++        rootThreshold={1}
++        threshold={1}
++        description="Since this item is smaller than viewport, should only intersect when view is fully visible"
++      />
++      <ListItem
++        position={1}
++        rootThreshold={1}
++        threshold={1}
++        style={{height: 1000}}
++        description="This list item is larger than viewport and should intersect when it takes up all of viewport. However, this is impossible because of clipping of the scrollview. However, if we set `root` to the scrollview, we can."
++      />
++    </ScrollView>
++  );
++}
++
++function ListItem(props: {
++  position: number,
++  rootThreshold: number,
++  threshold: number,
++  initialValue?: number,
++  description: string,
++  style?: ?ViewStyleProp,
++}): React.Node {
++  const itemRef = useRef<?ElementRef<typeof View>>(null);
++  const [intersectionRatio, setIntersectionRatio] = useState(
++    props.initialValue ?? 0,
++  );
++  const [intersectionRootRatio, setIntersectionRootRatio] = useState(
++    props.initialValue ?? 0,
++  );
++
++  useLayoutEffect(() => {
++    const itemNode = itemRef.current;
++    if (itemNode == null) {
++      return;
++    }
++
++    const intersectionObserver = new IntersectionObserver(
++      entries => {
++        entries.forEach(entry => {
++          setIntersectionRatio(entry.intersectionRatio);
++          // $FlowFixMe[prop-missing] - React Native specific entry property
++          setIntersectionRootRatio(entry.rnRootIntersectionRatio);
++        });
++      },
++      {threshold: props.threshold, rnRootThreshold: props.rootThreshold},
++    );
++
++    // $FlowFixMe[incompatible-type]
++    intersectionObserver.observe(itemNode);
++
++    return () => {
++      intersectionObserver.disconnect();
++    };
++  }, [props.position, props.threshold, props.rootThreshold]);
++
++  return (
++    <View
++      style={[
++        styles.item,
++        intersectionRatio >= props.threshold ? styles.intersecting : null,
++        intersectionRootRatio >= props.rootThreshold
++          ? styles.rootIntersecting
++          : null,
++        props.style,
++      ]}
++      ref={itemRef}>
++      <Text style={styles.description}>{props.description}</Text>
++      <Text>rnRootThreshold: {props.rootThreshold}</Text>
++      <Text>threshold: {props.threshold}</Text>
++
++      <IntersectionRatioIndicator
++        intersectionRatio={intersectionRatio}
++        intersectionRootRatio={intersectionRootRatio}
++        style={{left: 0, top: 0}}
++      />
++      <IntersectionRatioIndicator
++        intersectionRatio={intersectionRatio}
++        intersectionRootRatio={intersectionRootRatio}
++        style={{right: 0, top: 0}}
++      />
++      <IntersectionRatioIndicator
++        intersectionRatio={intersectionRatio}
++        intersectionRootRatio={intersectionRootRatio}
++        style={{left: 0, bottom: 0}}
++      />
++      <IntersectionRatioIndicator
++        intersectionRatio={intersectionRatio}
++        intersectionRootRatio={intersectionRootRatio}
++        style={{right: 0, bottom: 0}}
++      />
++    </View>
++  );
++}
++
++function IntersectionRatioIndicator(props: {
++  intersectionRatio: number,
++  intersectionRootRatio: number,
++  style: {top?: number, bottom?: number, left?: number, right?: number},
++}): React.Node {
++  return (
++    <View style={[styles.intersectionRatioIndicator, props.style]}>
++      <Text>
++        target ratio: {`${Math.floor(props.intersectionRatio * 100)}%`}
++      </Text>
++      <Text>
++        root ratio: {`${Math.floor(props.intersectionRootRatio * 100)}%`}
++      </Text>
++    </View>
++  );
++}
++
++const styles = StyleSheet.create({
++  scrollDownText: {
++    textAlign: 'center',
++    fontSize: 20,
++    marginTop: 20,
++  },
++  intersecting: {
++    backgroundColor: 'rgb(226, 237, 166)',
++  },
++  rootIntersecting: {
++    backgroundColor: 'rgb(237, 90, 45)',
++  },
++  margin: {
++    marginBottom: 700,
++  },
++  item: {
++    backgroundColor: 'rgb(186, 186, 186)',
++    borderColor: 'rgb(201, 126, 17)',
++    borderWidth: 2,
++    height: 500,
++    margin: 6,
++    alignItems: 'center',
++    justifyContent: 'center',
++  },
++  intersectionRatioIndicator: {
++    position: 'absolute',
++    padding: 5,
++    backgroundColor: 'white',
++    opacity: 0.7,
++    borderWidth: 1,
++    borderColor: 'black',
++  },
++  description: {
++    margin: 20,
++    fontSize: 16,
++  },
++});
+diff --git a/packages/rn-tester/js/utils/RNTesterList.android.js b/packages/rn-tester/js/utils/RNTesterList.android.js
+index b3555cd6667..0b89ec8703a 100644
+--- a/packages/rn-tester/js/utils/RNTesterList.android.js
++++ b/packages/rn-tester/js/utils/RNTesterList.android.js
+@@ -368,6 +368,17 @@ const APIs: Array<RNTesterModuleInfo> = ([
+     category: 'Basic',
+     module: require('../examples/TurboModule/TurboCxxModuleExample'),
+   },
++  // Basic check to detect the availability of the IntersectionObserver API.
++  // $FlowExpectedError[cannot-resolve-name]
++  ...(typeof IntersectionObserver === 'function'
++    ? [
++        {
++          key: 'IntersectionObserver',
++          category: 'UI',
++          module: require('../examples/IntersectionObserver/IntersectionObserverIndex'),
++        },
++      ]
++    : []),
+   // Basic check to detect the availability of the modern Performance API.
+   ...(typeof performance.getEntries === 'function'
+     ? [
+diff --git a/packages/rn-tester/js/utils/RNTesterList.ios.js b/packages/rn-tester/js/utils/RNTesterList.ios.js
+index 759881e2cc9..3d569a50a1d 100644
+--- a/packages/rn-tester/js/utils/RNTesterList.ios.js
++++ b/packages/rn-tester/js/utils/RNTesterList.ios.js
+@@ -342,6 +342,17 @@ const APIs: Array<RNTesterModuleInfo> = ([
+     key: 'XHRExample',
+     module: require('../examples/XHR/XHRExample'),
+   },
++  // Basic check to detect the availability of the IntersectionObserver API.
++  // $FlowExpectedError[cannot-resolve-name]
++  ...(typeof IntersectionObserver === 'function'
++    ? [
++        {
++          key: 'IntersectionObserver',
++          category: 'UI',
++          module: require('../examples/IntersectionObserver/IntersectionObserverIndex'),
++        },
++      ]
++    : []),
+   // Basic check to detect the availability of the modern Performance API.
+   ...(typeof performance.getEntries === 'function'
+     ? [

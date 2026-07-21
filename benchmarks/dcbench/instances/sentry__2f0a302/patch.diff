@@ -1,0 +1,1016 @@
+From 2f0a302caa36dac708536d99dcd595d101eb419d Mon Sep 17 00:00:00 2001
+From: David Cramer <dcramer@users.noreply.github.com>
+Date: Fri, 20 Feb 2026 12:15:06 -0800
+Subject: [PATCH] feat: Add dotagents skill management and expand warden
+ (#108695)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Introduces [dotagents](https://github.com/getsentry/dotagents) for
+managing shared agent skills across the repo. This moves skills from
+`.claude/skills/` to `.agents/skills/` (with a symlink for backwards
+compatibility) and declares remote skill dependencies in `agents.toml`
+with integrity verification via `agents.lock`.
+
+Remote skills are sourced from `getsentry/skills` and
+`getsentry/warden-sentry`. Running `devenv sync` will automatically
+install them via `npx @sentry/dotagents install --frozen`.
+
+Key changes:
+- `agents.toml` / `agents.lock` — skill declarations and integrity
+lockfile
+- `.agents/skills/` — new canonical location for skills
+(`.claude/skills` is now a symlink)
+- `.agents/skills/warden/` — new local warden skill with CLI reference
+docs
+- `.envrc` — check for missing skills and prompt `devenv sync`
+- `devenv/sync.py` — add `dotagents install` to the sync pipeline
+- Adds new synthesized bug finder skills for warden
+
+Collaborators need to run `devenv sync` (or `npx @sentry/dotagents
+install`) to populate gitignored managed skills.
+
+---------
+
+Co-authored-by: Claude <noreply@anthropic.com>
+---
+ .agents/.gitignore                            |  23 +++
+ .../skills/design-system/SKILL.md             |   0
+ .../skills/generate-frontend-forms/SKILL.md   |   0
+ .../skills/generate-migration/SKILL.md        |   0
+ .../skills/hybrid-cloud-rpc/SKILL.md          |   0
+ .../references/deprecation.md                 |   0
+ .../hybrid-cloud-rpc/references/resolvers.md  |   0
+ .../hybrid-cloud-rpc/references/rpc-models.md |   0
+ .../references/service-template.md            |   0
+ .../skills/migrate-frontend-forms/SKILL.md    |   0
+ .../skills/sentry-security/README.md          |   0
+ .../skills/sentry-security/SKILL.md           |   0
+ .../references/endpoint-patterns.md           |   0
+ .../references/enforcement-layers.md          |   0
+ .../references/output-sanitization.md         |   0
+ .../references/privilege-escalation.md        |   0
+ .../references/serializer-patterns.md         |   0
+ .../references/token-lifecycle.md             |   0
+ .agents/skills/warden/SKILL.md                |  79 ++++++++++
+ .../skills/warden/references/cli-reference.md | 144 +++++++++++++++++
+ .../skills/warden/references/config-schema.md | 117 ++++++++++++++
+ .../skills/warden/references/configuration.md | 114 ++++++++++++++
+ .../warden/references/creating-skills.md      |  86 ++++++++++
+ .claude/skills                                |   1 +
+ .envrc                                        |   6 +
+ agents.lock                                   | 149 ++++++++++++++++++
+ agents.toml                                   |  19 +++
+ devenv/sync.py                                |  13 ++
+ warden.toml                                   |  18 +++
+ 29 files changed, 769 insertions(+)
+ create mode 100644 .agents/.gitignore
+ rename {.claude => .agents}/skills/design-system/SKILL.md (100%)
+ rename {.claude => .agents}/skills/generate-frontend-forms/SKILL.md (100%)
+ rename {.claude => .agents}/skills/generate-migration/SKILL.md (100%)
+ rename {.claude => .agents}/skills/hybrid-cloud-rpc/SKILL.md (100%)
+ rename {.claude => .agents}/skills/hybrid-cloud-rpc/references/deprecation.md (100%)
+ rename {.claude => .agents}/skills/hybrid-cloud-rpc/references/resolvers.md (100%)
+ rename {.claude => .agents}/skills/hybrid-cloud-rpc/references/rpc-models.md (100%)
+ rename {.claude => .agents}/skills/hybrid-cloud-rpc/references/service-template.md (100%)
+ rename {.claude => .agents}/skills/migrate-frontend-forms/SKILL.md (100%)
+ rename {.claude => .agents}/skills/sentry-security/README.md (100%)
+ rename {.claude => .agents}/skills/sentry-security/SKILL.md (100%)
+ rename {.claude => .agents}/skills/sentry-security/references/endpoint-patterns.md (100%)
+ rename {.claude => .agents}/skills/sentry-security/references/enforcement-layers.md (100%)
+ rename {.claude => .agents}/skills/sentry-security/references/output-sanitization.md (100%)
+ rename {.claude => .agents}/skills/sentry-security/references/privilege-escalation.md (100%)
+ rename {.claude => .agents}/skills/sentry-security/references/serializer-patterns.md (100%)
+ rename {.claude => .agents}/skills/sentry-security/references/token-lifecycle.md (100%)
+ create mode 100644 .agents/skills/warden/SKILL.md
+ create mode 100644 .agents/skills/warden/references/cli-reference.md
+ create mode 100644 .agents/skills/warden/references/config-schema.md
+ create mode 100644 .agents/skills/warden/references/configuration.md
+ create mode 100644 .agents/skills/warden/references/creating-skills.md
+ create mode 120000 .claude/skills
+ create mode 100644 agents.lock
+ create mode 100644 agents.toml
+
+diff --git a/.agents/.gitignore b/.agents/.gitignore
+new file mode 100644
+index 00000000000..d9fe1d778e3
+--- /dev/null
++++ b/.agents/.gitignore
+@@ -0,0 +1,23 @@
++# Auto-generated by dotagents. Do not edit.
++# Managed skills (installed by dotagents)
++/skills/agents-md/
++/skills/brand-guidelines/
++/skills/claude-settings-audit/
++/skills/code-review/
++/skills/code-simplifier/
++/skills/commit/
++/skills/create-pr/
++/skills/django-access-review/
++/skills/django-perf-review/
++/skills/doc-coauthoring/
++/skills/find-bugs/
++/skills/gh-review-requests/
++/skills/iterate-pr/
++/skills/security-review/
++/skills/sentry-backend-bugs/
++/skills/sentry-javascript-bugs/
++/skills/skill-creator/
++/skills/skill-scanner/
++/skills/sred-project-organizer/
++/skills/sred-work-summary/
++/skills/warden-lint-judge/
+diff --git a/.claude/skills/design-system/SKILL.md b/.agents/skills/design-system/SKILL.md
+similarity index 100%
+rename from .claude/skills/design-system/SKILL.md
+rename to .agents/skills/design-system/SKILL.md
+diff --git a/.claude/skills/generate-frontend-forms/SKILL.md b/.agents/skills/generate-frontend-forms/SKILL.md
+similarity index 100%
+rename from .claude/skills/generate-frontend-forms/SKILL.md
+rename to .agents/skills/generate-frontend-forms/SKILL.md
+diff --git a/.claude/skills/generate-migration/SKILL.md b/.agents/skills/generate-migration/SKILL.md
+similarity index 100%
+rename from .claude/skills/generate-migration/SKILL.md
+rename to .agents/skills/generate-migration/SKILL.md
+diff --git a/.claude/skills/hybrid-cloud-rpc/SKILL.md b/.agents/skills/hybrid-cloud-rpc/SKILL.md
+similarity index 100%
+rename from .claude/skills/hybrid-cloud-rpc/SKILL.md
+rename to .agents/skills/hybrid-cloud-rpc/SKILL.md
+diff --git a/.claude/skills/hybrid-cloud-rpc/references/deprecation.md b/.agents/skills/hybrid-cloud-rpc/references/deprecation.md
+similarity index 100%
+rename from .claude/skills/hybrid-cloud-rpc/references/deprecation.md
+rename to .agents/skills/hybrid-cloud-rpc/references/deprecation.md
+diff --git a/.claude/skills/hybrid-cloud-rpc/references/resolvers.md b/.agents/skills/hybrid-cloud-rpc/references/resolvers.md
+similarity index 100%
+rename from .claude/skills/hybrid-cloud-rpc/references/resolvers.md
+rename to .agents/skills/hybrid-cloud-rpc/references/resolvers.md
+diff --git a/.claude/skills/hybrid-cloud-rpc/references/rpc-models.md b/.agents/skills/hybrid-cloud-rpc/references/rpc-models.md
+similarity index 100%
+rename from .claude/skills/hybrid-cloud-rpc/references/rpc-models.md
+rename to .agents/skills/hybrid-cloud-rpc/references/rpc-models.md
+diff --git a/.claude/skills/hybrid-cloud-rpc/references/service-template.md b/.agents/skills/hybrid-cloud-rpc/references/service-template.md
+similarity index 100%
+rename from .claude/skills/hybrid-cloud-rpc/references/service-template.md
+rename to .agents/skills/hybrid-cloud-rpc/references/service-template.md
+diff --git a/.claude/skills/migrate-frontend-forms/SKILL.md b/.agents/skills/migrate-frontend-forms/SKILL.md
+similarity index 100%
+rename from .claude/skills/migrate-frontend-forms/SKILL.md
+rename to .agents/skills/migrate-frontend-forms/SKILL.md
+diff --git a/.claude/skills/sentry-security/README.md b/.agents/skills/sentry-security/README.md
+similarity index 100%
+rename from .claude/skills/sentry-security/README.md
+rename to .agents/skills/sentry-security/README.md
+diff --git a/.claude/skills/sentry-security/SKILL.md b/.agents/skills/sentry-security/SKILL.md
+similarity index 100%
+rename from .claude/skills/sentry-security/SKILL.md
+rename to .agents/skills/sentry-security/SKILL.md
+diff --git a/.claude/skills/sentry-security/references/endpoint-patterns.md b/.agents/skills/sentry-security/references/endpoint-patterns.md
+similarity index 100%
+rename from .claude/skills/sentry-security/references/endpoint-patterns.md
+rename to .agents/skills/sentry-security/references/endpoint-patterns.md
+diff --git a/.claude/skills/sentry-security/references/enforcement-layers.md b/.agents/skills/sentry-security/references/enforcement-layers.md
+similarity index 100%
+rename from .claude/skills/sentry-security/references/enforcement-layers.md
+rename to .agents/skills/sentry-security/references/enforcement-layers.md
+diff --git a/.claude/skills/sentry-security/references/output-sanitization.md b/.agents/skills/sentry-security/references/output-sanitization.md
+similarity index 100%
+rename from .claude/skills/sentry-security/references/output-sanitization.md
+rename to .agents/skills/sentry-security/references/output-sanitization.md
+diff --git a/.claude/skills/sentry-security/references/privilege-escalation.md b/.agents/skills/sentry-security/references/privilege-escalation.md
+similarity index 100%
+rename from .claude/skills/sentry-security/references/privilege-escalation.md
+rename to .agents/skills/sentry-security/references/privilege-escalation.md
+diff --git a/.claude/skills/sentry-security/references/serializer-patterns.md b/.agents/skills/sentry-security/references/serializer-patterns.md
+similarity index 100%
+rename from .claude/skills/sentry-security/references/serializer-patterns.md
+rename to .agents/skills/sentry-security/references/serializer-patterns.md
+diff --git a/.claude/skills/sentry-security/references/token-lifecycle.md b/.agents/skills/sentry-security/references/token-lifecycle.md
+similarity index 100%
+rename from .claude/skills/sentry-security/references/token-lifecycle.md
+rename to .agents/skills/sentry-security/references/token-lifecycle.md
+diff --git a/.agents/skills/warden/SKILL.md b/.agents/skills/warden/SKILL.md
+new file mode 100644
+index 00000000000..46c85b7ba05
+--- /dev/null
++++ b/.agents/skills/warden/SKILL.md
+@@ -0,0 +1,79 @@
++---
++name: warden
++description: Run Warden to analyze code changes before committing. Use when asked to "run warden", "check my changes", "review before commit", "warden config", "warden.toml", "create a warden skill", "add trigger", or any Warden-related local development task.
++---
++
++Run Warden to analyze code changes before committing.
++
++## References
++
++Read the relevant reference when the task requires deeper detail:
++
++| Document                                             | Read When                                                |
++| ---------------------------------------------------- | -------------------------------------------------------- |
++| `${CLAUDE_SKILL_ROOT}/references/cli-reference.md`   | Full option details, per-command flags, examples         |
++| `${CLAUDE_SKILL_ROOT}/references/configuration.md`   | Editing warden.toml, triggers, patterns, troubleshooting |
++| `${CLAUDE_SKILL_ROOT}/references/config-schema.md`   | Exact field names, types, and defaults                   |
++| `${CLAUDE_SKILL_ROOT}/references/creating-skills.md` | Writing custom skills, remote skills, skill discovery    |
++
++## Running Warden
++
++```bash
++# Analyze uncommitted changes (uses warden.toml triggers)
++warden
++
++# Run a specific skill
++warden --skill find-bugs
++
++# Analyze specific files
++warden src/auth.ts src/database.ts
++
++# Analyze changes from a git ref
++warden main..HEAD
++warden HEAD~3
++
++# Auto-apply suggested fixes
++warden --fix
++
++# Fail on high-severity findings
++warden --fail-on high
++```
++
++Set `WARDEN_ANTHROPIC_API_KEY` or log in via `claude login` before running.
++
++## Pre-Commit Workflow
++
++After making code changes and before committing:
++
++1. Run `warden` to analyze uncommitted changes
++2. Review the findings
++3. Fix issues Warden reports (or use `warden --fix` to auto-apply)
++4. Commit the changes
++
++Run Warden once to validate work. Do not loop re-running Warden on the same changes.
++
++## Reading Output
++
++**Severity levels:**
++
++- `critical` - Must fix before merge
++- `high` - Should fix before merge
++- `medium` - Worth reviewing
++- `low` - Minor improvement
++- `info` - Informational only
++
++**Exit codes:** `0` = no findings at or above fail threshold. `1` = findings at or above fail threshold.
++
++**Verbosity:** `-v` shows real-time findings. `-vv` shows debug info (tokens, latency). `-q` shows errors and summary only.
++
++## Commands
++
++| Command                | Description                                |
++| ---------------------- | ------------------------------------------ |
++| `warden`               | Run analysis (default)                     |
++| `warden init`          | Initialize warden.toml and GitHub workflow |
++| `warden add [skill]`   | Add skill trigger to warden.toml           |
++| `warden sync [remote]` | Update cached remote skills                |
++| `warden setup-app`     | Create GitHub App via manifest flow        |
++
++For full options and flags, read `${CLAUDE_SKILL_ROOT}/references/cli-reference.md`.
+diff --git a/.agents/skills/warden/references/cli-reference.md b/.agents/skills/warden/references/cli-reference.md
+new file mode 100644
+index 00000000000..a5889461e40
+--- /dev/null
++++ b/.agents/skills/warden/references/cli-reference.md
+@@ -0,0 +1,144 @@
++# CLI Reference
++
++## Usage
++
++```
++warden [command] [targets...] [options]
++```
++
++Analyze code for security issues and code quality.
++
++## Commands
++
++| Command         | Description                                         |
++| --------------- | --------------------------------------------------- |
++| `(default)`     | Run analysis on targets or using warden.toml skills |
++| `init`          | Initialize warden.toml and GitHub workflow          |
++| `add [skill]`   | Add a skill to warden.toml                          |
++| `sync [remote]` | Update cached remote skills to latest               |
++| `setup-app`     | Create a GitHub App for Warden via manifest flow    |
++
++## Targets
++
++| Target      | Description                                                    |
++| ----------- | -------------------------------------------------------------- |
++| `<files>`   | Analyze specific files (e.g., `src/auth.ts`)                   |
++| `<glob>`    | Analyze files matching pattern (e.g., `"src/**/*.ts"`)         |
++| `<git-ref>` | Analyze changes from git ref (e.g., `HEAD~3`, `main..feature`) |
++| `(none)`    | Analyze uncommitted changes using warden.toml skills           |
++
++Ambiguous targets (no path separator, no extension) are resolved by checking if a file exists at the path. Use `--git` to force git ref interpretation.
++
++## Options
++
++| Option                   | Description                                            |
++| ------------------------ | ------------------------------------------------------ |
++| `--skill <name>`         | Run only this skill (default: run all built-in skills) |
++| `--config <path>`        | Path to warden.toml (default: `./warden.toml`)         |
++| `-m, --model <model>`    | Model to use (fallback when not set in config)         |
++| `--json`                 | Output results as JSON                                 |
++| `-o, --output <path>`    | Write full run output to a JSONL file                  |
++| `--fail-on <severity>`   | Exit with code 1 if findings >= severity               |
++| `--report-on <severity>` | Only show findings >= severity in output               |
++| `--fix`                  | Automatically apply all suggested fixes                |
++| `--parallel <n>`         | Max concurrent skill executions (default: 4)           |
++| `--git`                  | Force ambiguous targets to be treated as git refs      |
++| `--offline`              | Use cached remote skills without network access        |
++| `-q, --quiet`            | Errors and final summary only                          |
++| `-v, --verbose`          | Show real-time findings and hunk details               |
++| `-vv`                    | Show debug info (token counts, latencies)              |
++| `--debug`                | Enable debug output (equivalent to `-vv`)              |
++| `--log`                  | Use log output (no animations, timestamped)            |
++| `--color / --no-color`   | Override color detection                               |
++| `-h, --help`             | Show help message                                      |
++| `-V, --version`          | Show version number                                    |
++
++## Per-Command Options
++
++**Init:**
++| Option | Description |
++|--------|-------------|
++| `-f, --force` | Overwrite existing files |
++
++**Add:**
++| Option | Description |
++|--------|-------------|
++| `--list` | List available skills |
++| `--remote <ref>` | Remote repository (`owner/repo`, URL, or with `@sha`) |
++| `--force` | Bypass skill cache and fetch latest |
++
++**Sync:**
++| Option | Description |
++|--------|-------------|
++| `--remote <ref>` | Specific remote to sync (default: all) |
++
++**Setup-app:**
++| Option | Description |
++|--------|-------------|
++| `--org <name>` | Create under organization (default: personal) |
++| `--port <number>` | Local server port (default: 3000) |
++| `--timeout <sec>` | Callback timeout in seconds (default: 300) |
++| `--name <string>` | Custom app name (default: Warden) |
++| `--no-open` | Print URL instead of opening browser |
++
++## Severity Levels
++
++Used in `--fail-on` and `--report-on`:
++
++| Level      | Meaning                 |
++| ---------- | ----------------------- |
++| `critical` | Must fix before merge   |
++| `high`     | Should fix before merge |
++| `medium`   | Worth reviewing         |
++| `low`      | Minor improvement       |
++| `info`     | Informational only      |
++| `off`      | Disable the threshold   |
++
++## Exit Codes
++
++| Code | Meaning                                       |
++| ---- | --------------------------------------------- |
++| `0`  | No findings at or above `--fail-on` threshold |
++| `1`  | Findings at or above `--fail-on` threshold    |
++
++## Examples
++
++```bash
++# Initialize
++warden init
++
++# Interactive skill selection
++warden add
++warden add security-review
++warden add --list
++
++# Remote skills
++warden add --remote getsentry/skills --skill security-review
++warden add --remote https://github.com/getsentry/skills --skill security-review
++warden add --remote getsentry/skills@abc123 --skill security-review
++
++# Run analysis
++warden                                  # Skills from warden.toml
++warden src/auth.ts                      # Specific file
++warden src/auth.ts --skill security-review
++warden "src/**/*.ts"                    # Glob pattern
++warden HEAD~3                           # Git changes
++warden HEAD~3 --skill security-review
++warden main..HEAD                       # Branch diff
++
++# Output control
++warden --json
++warden --fail-on high
++warden -o results.jsonl
++
++# Fix mode
++warden --fix
++
++# Cached skills only
++warden --offline
++warden sync                             # Update all unpinned remote skills
++
++# GitHub App setup
++warden setup-app
++warden setup-app --org myorg
++```
+diff --git a/.agents/skills/warden/references/config-schema.md b/.agents/skills/warden/references/config-schema.md
+new file mode 100644
+index 00000000000..0aa4fe86070
+--- /dev/null
++++ b/.agents/skills/warden/references/config-schema.md
+@@ -0,0 +1,117 @@
++# warden.toml Configuration Schema
++
++## Top-Level Structure
++
++```toml
++version = 1                    # Required, must be 1
++
++[defaults]                     # Optional, inherited by all skills
++[[skills]]                     # Required, array of skill configs
++```
++
++## Defaults Section
++
++```toml
++[defaults]
++model = "claude-sonnet-4-20250514"    # Default model
++maxTurns = 50                         # Max agentic turns per hunk
++defaultBranch = "main"                # Base branch for comparisons
++failOn = "high"                # Exit 1 if findings >= this severity
++reportOn = "medium"            # Show findings >= this severity
++maxFindings = 50               # Max findings to report (0 = unlimited)
++reportOnSuccess = false        # Post report even with no findings
++paths = ["src/**/*.ts"]        # Include only matching files
++ignorePaths = ["*.test.ts"]    # Exclude matching files
++
++[defaults.chunking]
++enabled = true                 # Enable hunk-based chunking
++
++[defaults.chunking.coalesce]
++enabled = true                 # Merge nearby hunks
++maxGapLines = 30               # Lines between hunks to merge
++maxChunkSize = 8000            # Max chars per chunk
++
++[[defaults.chunking.filePatterns]]
++pattern = "*.config.*"         # Glob pattern
++mode = "whole-file"            # per-hunk | whole-file | skip
++```
++
++## Skills Section
++
++```toml
++[[skills]]
++name = "skill-name"            # Required, unique identifier
++remote = "owner/repo@sha"      # Optional, fetch skill from GitHub repo
++paths = ["src/**"]             # Include only matching files
++ignorePaths = ["**/*.test.ts"] # Exclude matching files
++
++# Optional overrides (inherit from defaults if not set)
++model = "claude-opus-4-20250514"
++maxTurns = 100
++failOn = "critical"
++reportOn = "high"
++maxFindings = 20
++reportOnSuccess = true
++
++[[skills.triggers]]
++type = "pull_request"          # Required: pull_request | local | schedule
++actions = ["opened", "synchronize"]  # Required for pull_request
++
++# Schedule-specific (only for type = "schedule")
++[[skills.triggers]]
++type = "schedule"
++
++[skills.triggers.schedule]
++issueTitle = "Daily Security Review"   # GitHub issue title for tracking
++createFixPR = true                     # Create PR with fixes
++fixBranchPrefix = "security-fix"       # Branch name prefix
++```
++
++**Trigger types:**
++
++- `pull_request` - Triggers on PR events
++- `local` - Local CLI only (will not run in CI)
++- `schedule` - Cron schedule (GitHub Action only)
++
++All skills run locally regardless of trigger type. Skills with no triggers run everywhere (wildcard). Use `type = "local"` for skills that should _only_ run locally.
++
++**Actions (for pull_request):**
++
++- `opened`, `synchronize`, `reopened`, `closed`
++
++## Severity Values
++
++Used in `failOn` and `reportOn`:
++
++- `critical` - Most severe
++- `high`
++- `medium`
++- `low`
++- `info` - Least severe
++- `off` - Disable threshold
++
++## Built-in Skip Patterns
++
++Always skipped (cannot be overridden):
++
++- Package locks: `pnpm-lock.yaml`, `package-lock.json`, `yarn.lock`, `Cargo.lock`, etc.
++- Minified files: `**/*.min.js`, `**/*.min.css`
++- Build artifacts: `dist/`, `build/`, `node_modules/`, `.next/`, `__pycache__/`
++- Generated code: `*.generated.*`, `*.g.ts`, `__generated__/`
++
++## Environment Variables
++
++| Variable                   | Purpose                                                    |
++| -------------------------- | ---------------------------------------------------------- |
++| `WARDEN_ANTHROPIC_API_KEY` | Claude API key (required)                                  |
++| `WARDEN_MODEL`             | Default model (lowest priority)                            |
++| `WARDEN_STATE_DIR`         | Override cache location (default: `~/.local/warden`)       |
++| `WARDEN_SKILL_CACHE_TTL`   | Cache TTL in seconds for unpinned remotes (default: 86400) |
++
++## Model Precedence (highest to lowest)
++
++1. Skill-level `model`
++2. `[defaults]` `model`
++3. CLI `--model` flag
++4. `WARDEN_MODEL` env var
++5. SDK default
+diff --git a/.agents/skills/warden/references/configuration.md b/.agents/skills/warden/references/configuration.md
+new file mode 100644
+index 00000000000..bde17a1696d
+--- /dev/null
++++ b/.agents/skills/warden/references/configuration.md
+@@ -0,0 +1,114 @@
++# Configuration (warden.toml)
++
++See [config-schema.md](config-schema.md) for the complete schema reference.
++
++## Minimal Example
++
++```toml
++version = 1
++
++[defaults]
++model = "claude-sonnet-4-20250514"
++
++[[skills]]
++name = "find-bugs"
++paths = ["src/**/*.ts"]
++
++[[skills.triggers]]
++type = "pull_request"
++actions = ["opened", "synchronize"]
++```
++
++## Skill Configuration
++
++Skills define what to analyze and when. Each skill requires a name. Triggers are optional — skills with no triggers run everywhere (PR, local, schedule). All skills run locally regardless of trigger type.
++
++```toml
++[[skills]]
++name = "security-review"
++paths = ["src/auth/**", "src/payments/**"]
++failOn = "critical"
++reportOn = "high"
++maxFindings = 20
++
++[[skills.triggers]]
++type = "pull_request"
++actions = ["opened", "synchronize"]
++```
++
++**Trigger types:** `pull_request`, `local` (local-only), `schedule` (CI-only)
++
++**Actions (pull_request):** `opened`, `synchronize`, `reopened`, `closed`
++
++## Common Patterns
++
++**Strict security on critical files:**
++
++```toml
++[[skills]]
++name = "security-review"
++model = "claude-opus-4-20250514"
++maxTurns = 100
++paths = ["src/auth/**", "src/payments/**"]
++failOn = "critical"
++
++[[skills.triggers]]
++type = "pull_request"
++actions = ["opened", "synchronize"]
++```
++
++**Skip test files:**
++
++```toml
++[[skills]]
++name = "find-bugs"
++paths = ["src/**/*.ts"]
++ignorePaths = ["**/*.test.ts", "**/*.spec.ts"]
++```
++
++**Whole-file analysis for configs:**
++
++```toml
++[defaults.chunking.filePatterns]
++pattern = "*.config.*"
++mode = "whole-file"
++```
++
++## Model Precedence
++
++From highest to lowest priority:
++
++1. Skill-level `model`
++2. `[defaults]` `model`
++3. CLI `--model` flag
++4. `WARDEN_MODEL` env var
++5. SDK default
++
++## Environment Variables
++
++| Variable                   | Purpose                                                         |
++| -------------------------- | --------------------------------------------------------------- |
++| `WARDEN_ANTHROPIC_API_KEY` | Claude API key (required unless using Claude Code subscription) |
++| `WARDEN_MODEL`             | Default model (lowest priority)                                 |
++| `WARDEN_STATE_DIR`         | Override cache location (default: `~/.local/warden`)            |
++| `WARDEN_SKILL_CACHE_TTL`   | Cache TTL in seconds for unpinned remotes (default: 86400)      |
++
++## Troubleshooting
++
++**No findings reported:**
++
++- Check `--report-on` threshold (default shows all)
++- Verify skill matches file types in `paths`
++- Use `-v` to see which files are being analyzed
++
++**Files being skipped:**
++
++- Built-in skip patterns: lock files, minified, `node_modules/`, `dist/`
++- Check `ignorePaths` in config
++- Use `-vv` to see skip reasons
++
++**Token/cost issues:**
++
++- Reduce `maxTurns` (default: 50)
++- Use chunking settings to control chunk size
++- Filter to relevant files with `paths`
+diff --git a/.agents/skills/warden/references/creating-skills.md b/.agents/skills/warden/references/creating-skills.md
+new file mode 100644
+index 00000000000..47b304e7066
+--- /dev/null
++++ b/.agents/skills/warden/references/creating-skills.md
+@@ -0,0 +1,86 @@
++# Creating Skills
++
++Skills are markdown files that tell Warden what to look for. They follow the [agentskills.io](https://agentskills.io) specification.
++
++## Skill Discovery
++
++Warden searches these directories in order (first match wins):
++
++```
++.agents/skills/{name}/SKILL.md   # Primary (recommended)
++.claude/skills/{name}/SKILL.md   # Backup (Claude Code convention)
++```
++
++## SKILL.md Format
++
++```markdown
++---
++name: my-skill
++description: What this skill analyzes
++allowed-tools: Read Grep Glob
++---
++
++[Analysis instructions for the agent]
++
++## What to Look For
++
++- Specific issue type 1
++- Specific issue type 2
++
++## Output Format
++
++Report findings with severity, location, and suggested fix.
++```
++
++## Available Tools
++
++`Read`, `Glob`, `Grep`, `WebFetch`, `WebSearch`, `Bash`, `Write`, `Edit`
++
++Most review skills only need `Read`, `Grep`, and `Glob` for exploring context.
++
++## Writing Checklist
++
++- One skill, one concern ("security review" not "code quality")
++- Clear criteria for what counts as an issue and at what severity
++- Actionable findings that include how to fix
++- Examples of good and bad code where helpful
++
++## Remote Skills
++
++Skills can be fetched from GitHub repositories:
++
++```bash
++# Add a remote skill
++warden add --remote getsentry/skills --skill security-review
++
++# Add with version pinning (recommended for reproducibility)
++warden add --remote getsentry/skills@abc123 --skill security-review
++
++# List skills in a remote repo
++warden add --remote getsentry/skills --list
++
++# Update all unpinned remote skills
++warden sync
++
++# Update specific repo
++warden sync getsentry/skills
++
++# Run with cached skills only (no network)
++warden --offline
++```
++
++**Remote skill in warden.toml:**
++
++```toml
++[[skills]]
++name = "security-review"
++remote = "getsentry/skills@abc123"
++
++[[skills.triggers]]
++type = "pull_request"
++actions = ["opened", "synchronize"]
++```
++
++**Cache location:** `~/.local/warden/skills/` (override with `WARDEN_STATE_DIR`)
++
++**Cache TTL:** 24 hours for unpinned refs (override with `WARDEN_SKILL_CACHE_TTL` in seconds)
+diff --git a/.claude/skills b/.claude/skills
+new file mode 120000
+index 00000000000..2b7a412b8fa
+--- /dev/null
++++ b/.claude/skills
+@@ -0,0 +1 @@
++../.agents/skills
+\ No newline at end of file
+diff --git a/.envrc b/.envrc
+index 74a14fb3a3f..7aa9100f6e4 100644
+--- a/.envrc
++++ b/.envrc
+@@ -176,6 +176,12 @@ if ! require pre-commit; then
+     commands_to_run+=("devenv sync")
+ fi
+ 
++### dotagents ###
++if [ -f "${SENTRY_ROOT}/agents.toml" ] && [ ! -d "${SENTRY_ROOT}/.agents/skills/commit" ]; then
++    warn "Agent skills not installed."
++    commands_to_run+=("devenv sync")
++fi
++
+ python3 -m tools.docker_memory_check
+ 
+ ### Node ###
+diff --git a/agents.lock b/agents.lock
+new file mode 100644
+index 00000000000..b0bfe67f2fd
+--- /dev/null
++++ b/agents.lock
+@@ -0,0 +1,149 @@
++# Auto-generated by dotagents. Do not edit.
++version = 1
++
++[skills.agents-md]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/agents-md"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-yYv5Hh88sCIYDc4IXIweB7rD8j1yHs+lZK0uib6s7xY="
++
++[skills.brand-guidelines]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/brand-guidelines"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-OI4bxji4am79cV/3TNDVUfsnt6L2HBysG7epE4HFkVI="
++
++[skills.claude-settings-audit]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/claude-settings-audit"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-KoWbFvgMmS7MP0v0fmzC3wBLawfY+9U+mmNEbjVVVPk="
++
++[skills.code-review]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/code-review"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-EQagBxdNIvqA8Ugvd1fdagQTbR+TJLsV2W7D5jIHqzc="
++
++[skills.code-simplifier]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/code-simplifier"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-PplG7pAg8buUE1Zj1xCFf4UwpUialPxWUD7qPtiZdKo="
++
++[skills.commit]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/commit"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-EFbC0wiqzaiVLzfKi6aNSJukKYl36mb4qHW0wYooWxU="
++
++[skills.create-pr]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/create-pr"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-ChCXKfikzmN8vzMKcER/TWVECVjP+cCsGrDheo+WL7k="
++
++[skills.django-access-review]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/django-access-review"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-dvHDPK2C65i0HO4e3QnNXKmK7JJ4YV2EZ7L6+Dzeqmc="
++
++[skills.django-perf-review]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/django-perf-review"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-6iuG0chDiGOKgP5m4zogEI8yJ9645LS+1oDf+ljQ8dg="
++
++[skills.doc-coauthoring]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/doc-coauthoring"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-2Zqo3R+nY2ka3DHjGbWGHNHI2ZCujEpOlIlR/wAnEpU="
++
++[skills.find-bugs]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/find-bugs"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-FWmCLdOj+x+XffiEg7Bx19drylVypeKz8me9OA757js="
++
++[skills.gh-review-requests]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/gh-review-requests"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-5ogdx94jDPrMQhlpjajgpb470mxnWmxYzba8lzZGBzE="
++
++[skills.iterate-pr]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/iterate-pr"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-55fOUUxjX6vntLGA11BPgVyKGtqFvb7lu9Q+hOUUBGo="
++
++[skills.security-review]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/security-review"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-/PngFJkQcji7nYQjh1yerMnxIBaEJNiClJJ8FuCGgAo="
++
++[skills.sentry-backend-bugs]
++source = "getsentry/warden-sentry"
++resolved_url = "https://github.com/getsentry/warden-sentry.git"
++resolved_path = ".agents/skills/sentry-backend-bugs"
++commit = "5725398354adab7ee8c55149801c829e938c4523"
++integrity = "sha256-M50V1m2DOK6EkNe3PN6Oek9XUpYSQ51uLGDQzun/s7U="
++
++[skills.sentry-javascript-bugs]
++source = "getsentry/warden-sentry"
++resolved_url = "https://github.com/getsentry/warden-sentry.git"
++resolved_path = ".agents/skills/sentry-javascript-bugs"
++commit = "5725398354adab7ee8c55149801c829e938c4523"
++integrity = "sha256-GZGOlxDC64BRcqMSd6P0BT+EY2JvkqdvAxZW/XfIBH0="
++
++[skills.skill-creator]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/skill-creator"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-cwime8dg09zRSkfbnBU4ObFPofjGigXCmDNvpNL7NNY="
++
++[skills.skill-scanner]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/skill-scanner"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-IleKDxGpne+9g/048+q4wBv7MkfZPIYFX78TnLjeGyQ="
++
++[skills.sred-project-organizer]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/sred-project-organizer"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-EQ1hkqEjBwH8AwEwSQeiSEgLLIIqzBrJBfsER5YoebE="
++
++[skills.sred-work-summary]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/sred-work-summary"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-pnc14+tLxKiEz1MSbO8Y+uM5+XOYLNF4XaDdtCsXtXQ="
++
++[skills.warden-lint-judge]
++source = "getsentry/skills"
++resolved_url = "https://github.com/getsentry/skills.git"
++resolved_path = ".agents/skills/warden-lint-judge"
++commit = "187c0022b3b676f72227a04f1cfc8921a58a5020"
++integrity = "sha256-rxB3p7zQ9iWwMoOOXOd9DG+9WsAKXV7emaBlHn9ry4o="
+diff --git a/agents.toml b/agents.toml
+new file mode 100644
+index 00000000000..ca60faf3e4b
+--- /dev/null
++++ b/agents.toml
+@@ -0,0 +1,19 @@
++version = 1
++# Managed skills are gitignored; collaborators must run 'dotagents install'.
++gitignore = true
++agents = ["claude", "cursor"]
++
++[trust]
++allow_all = true
++
++[[skills]]
++name = "*"
++source = "getsentry/skills"
++
++[[skills]]
++name = "sentry-backend-bugs"
++source = "getsentry/warden-sentry"
++
++[[skills]]
++name = "sentry-javascript-bugs"
++source = "getsentry/warden-sentry"
+diff --git a/devenv/sync.py b/devenv/sync.py
+index acf59d5b1db..291aad2a800 100644
+--- a/devenv/sync.py
++++ b/devenv/sync.py
+@@ -218,6 +218,19 @@ def main(context: dict[str, str]) -> int:
+     ):
+         return 1
+ 
++    # Agent skills are non-fatal — private skill repos may not be accessible in CI
++    if os.path.exists(f"{reporoot}/agents.toml") and shutil.which(
++        "pnpm", path=f"{reporoot}/.devenv/bin"
++    ):
++        if not run_procs(
++            repo,
++            reporoot,
++            venv_dir,
++            (("agent skills", ("pnpm", "dlx", "@sentry/dotagents", "install", "--frozen"), {}),),
++            verbose,
++        ):
++            print("⚠️  agent skills failed to install (non-fatal)")
++
+     fs.ensure_symlink("../../config/hooks/post-merge", f"{reporoot}/.git/hooks/post-merge")
+ 
+     sentry_conf = os.environ.get("SENTRY_CONF", f"{constants.home}/.sentry")
+diff --git a/warden.toml b/warden.toml
+index 4254355077b..dec2c4c3c3a 100644
+--- a/warden.toml
++++ b/warden.toml
+@@ -24,3 +24,21 @@ ignorePaths = ["**/tests/**", "**/*_test.py", "**/test_*.py"]
+ [[skills.triggers]]
+ type = "pull_request"
+ actions = ["opened", "synchronize", "reopened"]
++
++[[skills]]
++name = "sentry-backend-bugs"
++paths = ["src/sentry/**/*.py"]
++ignorePaths = ["**/tests/**", "**/*_test.py", "**/test_*.py"]
++
++[[skills.triggers]]
++type = "pull_request"
++actions = ["opened", "synchronize", "reopened"]
++
++[[skills]]
++name = "sentry-javascript-bugs"
++paths = ["static/**/*.ts", "static/**/*.tsx", "static/**/*.js", "static/**/*.jsx"]
++ignorePaths = ["**/*.spec.*", "**/*.test.*", "**/tests/**", "**/__mocks__/**"]
++
++[[skills.triggers]]
++type = "pull_request"
++actions = ["opened", "synchronize", "reopened"]

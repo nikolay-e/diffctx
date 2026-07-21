@@ -1,0 +1,62 @@
+repo: sentry
+base_commit: f29e195b4089890beddda8b97dc3c38bbe6e80cf
+commit: fea5b1b3601e44b03ae0871fada276c913a9a714
+patch_stored: true
+gold:
+- path: .envrc
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/actions/setup-sentry/action.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/workflows/backend.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/workflows/bump-version.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/workflows/development-environment.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: Makefile
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: devenv/config.ini
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: devenv/sync.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: pyproject.toml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: tests/sentry/test_uv_sync.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: tools/bump_version.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: uv.lock
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 0-byte ctx.md/md.err, rc_md=142. The single largest file in this diff, uv.lock (2984 of the diff's
+  3379 insertions), is a fully generated dependency lockfile that contributes nothing to understanding
+  'first phase of uv package manager rollout' beyond its existence/size and should be excluded from fragment-level
+  context entirely (listed as changed, not dumped). The real story — replacing pip/pip-tools with uv across
+  CI workflows, devenv sync, and a new pyproject.toml dependency-groups section — lives in ~10 modest
+  files. A tool tuned for comprehension-per-token should have handled this cheaply; instead it hung on
+  a 21-file, otherwise unremarkable commit.

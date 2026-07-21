@@ -1,0 +1,77 @@
+repo: react-native
+base_commit: 1547b81ec18f4d66991831d06ce456472456bed5
+commit: 62e1110af51550b0def3a5eca32b7644f04c7cda
+patch_stored: true
+gold:
+- path: packages/react-native/Libraries/AppDelegate/RCTAppDelegate.mm
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/JHermesInstance.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JBindingsInstaller.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JJSEngineInstance.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JJSTimerExecutor.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactInstance.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactInstance.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JavaTimerRegistry.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/jsc/jni/OnLoad.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/uimanager/UIConstantsProviderManager.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/cocoapods/bridgeless.rb
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/.clang-tidy
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/CMakeLists.txt
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/JHermesInstance.cpp
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/hermes/jni/OnLoad.cpp
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JJSTimerExecutor.cpp
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JJavaTimerManager.cpp
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JJavaTimerManager.h
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactExceptionManager.cpp
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactExceptionManager.h
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JavaTimerRegistry.cpp
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/jsc/jni/CMakeLists.txt
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: The actual diff.stat shows this commit is 71 files changed but only 47 insertions / 47 deletions
+  total — almost the whole commit is pure path renames (git shows 'similarity index 100%', zero content
+  diff) with a handful of files getting one import-path or descriptor-string line edit. diffctx renders
+  ctx_files=85 (14 more than the 71 touched paths) at md_tokens=24955 — roughly 530 tokens per actually-changed
+  line. Full multi-line chunk bodies are dumped for files whose content is byte-identical pre/post rename,
+  which contributes nothing beyond confirming 'this file moved' (already conveyed by the rename list diffctx
+  itself prints). This is a severe token-efficiency failure driven by not special-casing zero-diff renamed
+  files.

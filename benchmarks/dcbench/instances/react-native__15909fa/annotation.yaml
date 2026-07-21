@@ -1,0 +1,32 @@
+repo: react-native
+base_commit: 3429dc1ccf32b6b23f4f0ad3cfdf0d5697af665f
+commit: 15909fab9532f7dc32c320ebc98fa3b67679b79e
+patch_stored: true
+gold:
+- path: ./circleci/configurations/jobs.yml
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: .github/workflows/nightly.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: build.gradle.kts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native-gradle-plugin -> packages/gradle-plugin (directory rename)
+  tier: essential
+  role: unspecified
+  in_diff: false
+forbidden: []
+nontrivial_gold_count: 2
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Confirmed hang: empty ctx.md/md.err despite a 91-file diff. Distinctive feature here: nearly all
+  91 files are pure renames with ''similarity index 100%'' (identical content, just path change from packages/react-native-gradle-plugin/*
+  to packages/gradle-plugin/*), plus a handful of real small edits (CI yml path updates, gradlew.bat license
+  header, package.json path fields). A rename-dominated diff (git detects same-content renames) is a plausible
+  hang trigger if the selection algorithm doesn''t short-circuit on pure renames and instead tries to
+  diff/rank near-identical content across dozens of files.'

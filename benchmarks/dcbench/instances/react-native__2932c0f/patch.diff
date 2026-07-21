@@ -1,0 +1,1595 @@
+From 2932c0f71f1882607d9e579e5c09db28e131a4c9 Mon Sep 17 00:00:00 2001
+From: Jakub Piasecki <jakub.piasecki@swmansion.com>
+Date: Wed, 10 Jul 2024 12:43:42 -0700
+Subject: [PATCH] Implement baseline alignment function on the new architecture
+ (#45102)
+
+Summary:
+On the new architecture, the setup that would allow Yoga to read the baseline of a node was missing. This PR adds it:
+- adds new ShadowNode trait - `BaselineYogaNode` that marks a node as having a custom baseline function
+- adds `yogaNodeBaselineCallbackConnector` that's responsible for allowing Yoga to call baseline function on the node
+- changes signatures of `lastBaseline` and `firstBaseline` to accept `LayoutContext` as the first argument, which is necessary to build an attributed string
+- adds implementation of `lastBaseline` that's invoked by `yogaNodeBaselineCallbackConnector`
+- adds methods for calculating the last baseline in platform-specific `TextLayoutManagers`, using the same approach on both Android and iOS (this differs from the old architecture where calculations were different)
+
+## Changelog:
+
+[GENERAL] [FIXED] - Fixed `alignItems: 'baseline'` not working correctly on the new architecture
+
+Pull Request resolved: https://github.com/facebook/react-native/pull/45102
+
+Test Plan:
+Tested on the relevant part of RNTester:
+
+### Android
+
+|Old arch|New arch before|New arch after|
+|-|-|-|
+|<img width="426" alt="baseline-android-old-arch" src="https://github.com/facebook/react-native/assets/21055725/08550dfc-cf30-4938-8872-9bef916dc53c">|<img width="426" alt="baseline-android-new-arch-before" src="https://github.com/facebook/react-native/assets/21055725/9e3667f7-5c42-4e23-8972-fd2e994694a4">|<img width="409" alt="Screenshot 2024-07-02 at 16 40 38" src="https://github.com/facebook/react-native/assets/21055725/13379b11-b69e-4082-81cc-dec5e6d092f2">|
+
+### iOS
+
+|Old arch|New arch before|New arch after|
+|-|-|-|
+|<img width="519" alt="baseline-ios-old-arch" src="https://github.com/facebook/react-native/assets/21055725/da3956a1-5588-4933-87ce-4b5a9c256957">|<img width="519" alt="baseline-ios-new-arch-before" src="https://github.com/facebook/react-native/assets/21055725/09aef2c1-2eec-4710-b237-0f4a0c3d52d0">|<img width="519" alt="Screenshot 2024-07-02 at 16 40 29" src="https://github.com/facebook/react-native/assets/21055725/0a8a7251-1f6f-40db-81d7-4f37142932db">|
+
+Reviewed By: NickGerleman
+
+Differential Revision: D59323974
+
+Pulled By: cortinico
+
+fbshipit-source-id: e50882d399a0791a39ce8b416ed96d8fd3c48f23
+---
+ .../featureflags/ReactNativeFeatureFlags.kt   |  8 +-
+ .../ReactNativeFeatureFlagsCxxAccessor.kt     | 12 ++-
+ .../ReactNativeFeatureFlagsCxxInterop.kt      |  4 +-
+ .../ReactNativeFeatureFlagsDefaults.kt        |  4 +-
+ .../ReactNativeFeatureFlagsLocalAccessor.kt   | 13 ++-
+ .../ReactNativeFeatureFlagsProvider.kt        |  4 +-
+ .../JReactNativeFeatureFlagsCxxInterop.cpp    | 16 +++-
+ .../JReactNativeFeatureFlagsCxxInterop.h      |  5 +-
+ .../featureflags/ReactNativeFeatureFlags.cpp  |  6 +-
+ .../featureflags/ReactNativeFeatureFlags.h    |  7 +-
+ .../ReactNativeFeatureFlagsAccessor.cpp       | 64 +++++++++-----
+ .../ReactNativeFeatureFlagsAccessor.h         |  6 +-
+ .../ReactNativeFeatureFlagsDefaults.h         |  6 +-
+ .../ReactNativeFeatureFlagsProvider.h         |  3 +-
+ .../NativeReactNativeFeatureFlags.cpp         |  7 +-
+ .../NativeReactNativeFeatureFlags.h           |  4 +-
+ .../components/text/ParagraphShadowNode.cpp   | 26 ++++++
+ .../components/text/ParagraphShadowNode.h     |  3 +
+ .../AndroidTextInputShadowNode.cpp            | 20 +++++
+ .../AndroidTextInputShadowNode.h              |  3 +
+ .../iostextinput/TextInputShadowNode.cpp      | 28 ++++++
+ .../iostextinput/TextInputShadowNode.h        |  3 +
+ .../view/YogaLayoutableShadowNode.cpp         | 21 +++++
+ .../view/YogaLayoutableShadowNode.h           |  4 +
+ .../renderer/core/LayoutableShadowNode.cpp    |  8 +-
+ .../renderer/core/LayoutableShadowNode.h      |  3 +-
+ .../react/renderer/core/ShadowNodeTraits.h    |  3 +
+ .../textlayoutmanager/TextMeasureCache.h      | 44 ++++++++++
+ .../textlayoutmanager/TextLayoutManager.cpp   | 85 ++++++++++++-------
+ .../textlayoutmanager/TextLayoutManager.h     | 12 ++-
+ .../platform/cxx/TextLayoutManager.cpp        |  7 ++
+ .../platform/cxx/TextLayoutManager.h          |  9 ++
+ .../textlayoutmanager/RCTTextLayoutManager.mm | 48 ++++++++---
+ .../textlayoutmanager/TextLayoutManager.h     | 12 ++-
+ .../textlayoutmanager/TextLayoutManager.mm    | 27 +++++-
+ .../ReactNativeFeatureFlags.config.js         |  5 ++
+ .../featureflags/ReactNativeFeatureFlags.js   |  7 +-
+ .../specs/NativeReactNativeFeatureFlags.js    |  3 +-
+ .../js/examples/Text/TextExample.android.js   | 58 ++++++++++++-
+ .../js/examples/Text/TextExample.ios.js       | 20 ++++-
+ 40 files changed, 525 insertions(+), 103 deletions(-)
+
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+index 787e571ef40..7c5c3dd0bfd 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<e7aaf58d91c8e25685f2a3ec5ca171a9>>
++ * @generated SignedSource<<8443301e7625595b6ca21901da0ccb88>>
+  */
+ 
+ /**
+@@ -58,6 +58,12 @@ public object ReactNativeFeatureFlags {
+   @JvmStatic
+   public fun destroyFabricSurfacesInReactInstanceManager(): Boolean = accessor.destroyFabricSurfacesInReactInstanceManager()
+ 
++  /**
++   * Kill-switch to turn off support for aling-items:baseline on Fabric iOS.
++   */
++  @JvmStatic
++  public fun enableAlignItemsBaselineOnFabricIOS(): Boolean = accessor.enableAlignItemsBaselineOnFabricIOS()
++
+   /**
+    * Clean yoga node when <TextInput /> does not change.
+    */
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+index 4eb6acb2f4b..d253c37450e 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<bd5baae4bc2e8a619f99dea15766e803>>
++ * @generated SignedSource<<27c99bbe01b2b8999c6fa44be28f62d3>>
+  */
+ 
+ /**
+@@ -25,6 +25,7 @@ public class ReactNativeFeatureFlagsCxxAccessor : ReactNativeFeatureFlagsAccesso
+   private var allowRecursiveCommitsWithSynchronousMountOnAndroidCache: Boolean? = null
+   private var batchRenderingUpdatesInEventLoopCache: Boolean? = null
+   private var destroyFabricSurfacesInReactInstanceManagerCache: Boolean? = null
++  private var enableAlignItemsBaselineOnFabricIOSCache: Boolean? = null
+   private var enableCleanTextInputYogaNodeCache: Boolean? = null
+   private var enableGranularShadowTreeStateReconciliationCache: Boolean? = null
+   private var enableMicrotasksCache: Boolean? = null
+@@ -93,6 +94,15 @@ public class ReactNativeFeatureFlagsCxxAccessor : ReactNativeFeatureFlagsAccesso
+     return cached
+   }
+ 
++  override fun enableAlignItemsBaselineOnFabricIOS(): Boolean {
++    var cached = enableAlignItemsBaselineOnFabricIOSCache
++    if (cached == null) {
++      cached = ReactNativeFeatureFlagsCxxInterop.enableAlignItemsBaselineOnFabricIOS()
++      enableAlignItemsBaselineOnFabricIOSCache = cached
++    }
++    return cached
++  }
++
+   override fun enableCleanTextInputYogaNode(): Boolean {
+     var cached = enableCleanTextInputYogaNodeCache
+     if (cached == null) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+index f15604a8d09..c58ad6d40e2 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<317e652e32f680ed7cfa4989a8133dad>>
++ * @generated SignedSource<<2602dcd923a97419bfc2086d59ef9e90>>
+  */
+ 
+ /**
+@@ -38,6 +38,8 @@ public object ReactNativeFeatureFlagsCxxInterop {
+ 
+   @DoNotStrip @JvmStatic public external fun destroyFabricSurfacesInReactInstanceManager(): Boolean
+ 
++  @DoNotStrip @JvmStatic public external fun enableAlignItemsBaselineOnFabricIOS(): Boolean
++
+   @DoNotStrip @JvmStatic public external fun enableCleanTextInputYogaNode(): Boolean
+ 
+   @DoNotStrip @JvmStatic public external fun enableGranularShadowTreeStateReconciliation(): Boolean
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+index f2f80718aa9..165f523899d 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<9821cf51f5220e5a6e121044d024e1e6>>
++ * @generated SignedSource<<a05b272a8a6ad7eced30f680e73bd9be>>
+  */
+ 
+ /**
+@@ -33,6 +33,8 @@ public open class ReactNativeFeatureFlagsDefaults : ReactNativeFeatureFlagsProvi
+ 
+   override fun destroyFabricSurfacesInReactInstanceManager(): Boolean = false
+ 
++  override fun enableAlignItemsBaselineOnFabricIOS(): Boolean = true
++
+   override fun enableCleanTextInputYogaNode(): Boolean = false
+ 
+   override fun enableGranularShadowTreeStateReconciliation(): Boolean = false
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+index 05246dc5929..7ad3ad51c92 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<1f61054f14a12ed03d8ee5f32221ec1f>>
++ * @generated SignedSource<<ffcb3d17adea4a1b95421862210665df>>
+  */
+ 
+ /**
+@@ -29,6 +29,7 @@ public class ReactNativeFeatureFlagsLocalAccessor : ReactNativeFeatureFlagsAcces
+   private var allowRecursiveCommitsWithSynchronousMountOnAndroidCache: Boolean? = null
+   private var batchRenderingUpdatesInEventLoopCache: Boolean? = null
+   private var destroyFabricSurfacesInReactInstanceManagerCache: Boolean? = null
++  private var enableAlignItemsBaselineOnFabricIOSCache: Boolean? = null
+   private var enableCleanTextInputYogaNodeCache: Boolean? = null
+   private var enableGranularShadowTreeStateReconciliationCache: Boolean? = null
+   private var enableMicrotasksCache: Boolean? = null
+@@ -102,6 +103,16 @@ public class ReactNativeFeatureFlagsLocalAccessor : ReactNativeFeatureFlagsAcces
+     return cached
+   }
+ 
++  override fun enableAlignItemsBaselineOnFabricIOS(): Boolean {
++    var cached = enableAlignItemsBaselineOnFabricIOSCache
++    if (cached == null) {
++      cached = currentProvider.enableAlignItemsBaselineOnFabricIOS()
++      accessedFeatureFlags.add("enableAlignItemsBaselineOnFabricIOS")
++      enableAlignItemsBaselineOnFabricIOSCache = cached
++    }
++    return cached
++  }
++
+   override fun enableCleanTextInputYogaNode(): Boolean {
+     var cached = enableCleanTextInputYogaNodeCache
+     if (cached == null) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+index 4f1cb514b28..0c411ec74bd 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<a3ee4e4eae374959d5211897be02b983>>
++ * @generated SignedSource<<1b1165f9b93f140f5e01561ec6e16be2>>
+  */
+ 
+ /**
+@@ -33,6 +33,8 @@ public interface ReactNativeFeatureFlagsProvider {
+ 
+   @DoNotStrip public fun destroyFabricSurfacesInReactInstanceManager(): Boolean
+ 
++  @DoNotStrip public fun enableAlignItemsBaselineOnFabricIOS(): Boolean
++
+   @DoNotStrip public fun enableCleanTextInputYogaNode(): Boolean
+ 
+   @DoNotStrip public fun enableGranularShadowTreeStateReconciliation(): Boolean
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+index 7cd244ff4b7..a2642e78502 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<03c48c7281afa746734af581d6a17aa3>>
++ * @generated SignedSource<<3cb2d3e59dadfa27214c024780a664df>>
+  */
+ 
+ /**
+@@ -69,6 +69,12 @@ class ReactNativeFeatureFlagsProviderHolder
+     return method(javaProvider_);
+   }
+ 
++  bool enableAlignItemsBaselineOnFabricIOS() override {
++    static const auto method =
++        getReactNativeFeatureFlagsProviderJavaClass()->getMethod<jboolean()>("enableAlignItemsBaselineOnFabricIOS");
++    return method(javaProvider_);
++  }
++
+   bool enableCleanTextInputYogaNode() override {
+     static const auto method =
+         getReactNativeFeatureFlagsProviderJavaClass()->getMethod<jboolean()>("enableCleanTextInputYogaNode");
+@@ -230,6 +236,11 @@ bool JReactNativeFeatureFlagsCxxInterop::destroyFabricSurfacesInReactInstanceMan
+   return ReactNativeFeatureFlags::destroyFabricSurfacesInReactInstanceManager();
+ }
+ 
++bool JReactNativeFeatureFlagsCxxInterop::enableAlignItemsBaselineOnFabricIOS(
++    facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop> /*unused*/) {
++  return ReactNativeFeatureFlags::enableAlignItemsBaselineOnFabricIOS();
++}
++
+ bool JReactNativeFeatureFlagsCxxInterop::enableCleanTextInputYogaNode(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop> /*unused*/) {
+   return ReactNativeFeatureFlags::enableCleanTextInputYogaNode();
+@@ -372,6 +383,9 @@ void JReactNativeFeatureFlagsCxxInterop::registerNatives() {
+       makeNativeMethod(
+         "destroyFabricSurfacesInReactInstanceManager",
+         JReactNativeFeatureFlagsCxxInterop::destroyFabricSurfacesInReactInstanceManager),
++      makeNativeMethod(
++        "enableAlignItemsBaselineOnFabricIOS",
++        JReactNativeFeatureFlagsCxxInterop::enableAlignItemsBaselineOnFabricIOS),
+       makeNativeMethod(
+         "enableCleanTextInputYogaNode",
+         JReactNativeFeatureFlagsCxxInterop::enableCleanTextInputYogaNode),
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+index f247b44049e..544bb26a61e 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<37f8ec65fb26fc58260a5846ab933098>>
++ * @generated SignedSource<<9e3b9014578cec97635c2bd8d3c7add3>>
+  */
+ 
+ /**
+@@ -45,6 +45,9 @@ class JReactNativeFeatureFlagsCxxInterop
+   static bool destroyFabricSurfacesInReactInstanceManager(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
+ 
++  static bool enableAlignItemsBaselineOnFabricIOS(
++    facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
++
+   static bool enableCleanTextInputYogaNode(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
+ 
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+index 0822e9882ed..ae8f4c3811c 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<8943825039460c1a95d0fdb6113f42e6>>
++ * @generated SignedSource<<08c9a03b2c6960cc548c41a126073300>>
+  */
+ 
+ /**
+@@ -41,6 +41,10 @@ bool ReactNativeFeatureFlags::destroyFabricSurfacesInReactInstanceManager() {
+   return getAccessor().destroyFabricSurfacesInReactInstanceManager();
+ }
+ 
++bool ReactNativeFeatureFlags::enableAlignItemsBaselineOnFabricIOS() {
++  return getAccessor().enableAlignItemsBaselineOnFabricIOS();
++}
++
+ bool ReactNativeFeatureFlags::enableCleanTextInputYogaNode() {
+   return getAccessor().enableCleanTextInputYogaNode();
+ }
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+index f776b5c1619..a0d5a28dab5 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<241d9d028d103ce587a886521af41fa8>>
++ * @generated SignedSource<<8f367ce041b58945348d0f0648adeca3>>
+  */
+ 
+ /**
+@@ -62,6 +62,11 @@ class ReactNativeFeatureFlags {
+    */
+   RN_EXPORT static bool destroyFabricSurfacesInReactInstanceManager();
+ 
++  /**
++   * Kill-switch to turn off support for aling-items:baseline on Fabric iOS.
++   */
++  RN_EXPORT static bool enableAlignItemsBaselineOnFabricIOS();
++
+   /**
+    * Clean yoga node when <TextInput /> does not change.
+    */
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+index b9621d4289a..ec4e58fcdd1 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<aae133e9640a2794af28f95ef357c1b0>>
++ * @generated SignedSource<<4cf3feaf98ef3509008232e50829daca>>
+  */
+ 
+ /**
+@@ -119,6 +119,24 @@ bool ReactNativeFeatureFlagsAccessor::destroyFabricSurfacesInReactInstanceManage
+   return flagValue.value();
+ }
+ 
++bool ReactNativeFeatureFlagsAccessor::enableAlignItemsBaselineOnFabricIOS() {
++  auto flagValue = enableAlignItemsBaselineOnFabricIOS_.load();
++
++  if (!flagValue.has_value()) {
++    // This block is not exclusive but it is not necessary.
++    // If multiple threads try to initialize the feature flag, we would only
++    // be accessing the provider multiple times but the end state of this
++    // instance and the returned flag value would be the same.
++
++    markFlagAsAccessed(5, "enableAlignItemsBaselineOnFabricIOS");
++
++    flagValue = currentProvider_->enableAlignItemsBaselineOnFabricIOS();
++    enableAlignItemsBaselineOnFabricIOS_ = flagValue;
++  }
++
++  return flagValue.value();
++}
++
+ bool ReactNativeFeatureFlagsAccessor::enableCleanTextInputYogaNode() {
+   auto flagValue = enableCleanTextInputYogaNode_.load();
+ 
+@@ -128,7 +146,7 @@ bool ReactNativeFeatureFlagsAccessor::enableCleanTextInputYogaNode() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(5, "enableCleanTextInputYogaNode");
++    markFlagAsAccessed(6, "enableCleanTextInputYogaNode");
+ 
+     flagValue = currentProvider_->enableCleanTextInputYogaNode();
+     enableCleanTextInputYogaNode_ = flagValue;
+@@ -146,7 +164,7 @@ bool ReactNativeFeatureFlagsAccessor::enableGranularShadowTreeStateReconciliatio
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(6, "enableGranularShadowTreeStateReconciliation");
++    markFlagAsAccessed(7, "enableGranularShadowTreeStateReconciliation");
+ 
+     flagValue = currentProvider_->enableGranularShadowTreeStateReconciliation();
+     enableGranularShadowTreeStateReconciliation_ = flagValue;
+@@ -164,7 +182,7 @@ bool ReactNativeFeatureFlagsAccessor::enableMicrotasks() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(7, "enableMicrotasks");
++    markFlagAsAccessed(8, "enableMicrotasks");
+ 
+     flagValue = currentProvider_->enableMicrotasks();
+     enableMicrotasks_ = flagValue;
+@@ -182,7 +200,7 @@ bool ReactNativeFeatureFlagsAccessor::enableSynchronousStateUpdates() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(8, "enableSynchronousStateUpdates");
++    markFlagAsAccessed(9, "enableSynchronousStateUpdates");
+ 
+     flagValue = currentProvider_->enableSynchronousStateUpdates();
+     enableSynchronousStateUpdates_ = flagValue;
+@@ -200,7 +218,7 @@ bool ReactNativeFeatureFlagsAccessor::enableUIConsistency() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(9, "enableUIConsistency");
++    markFlagAsAccessed(10, "enableUIConsistency");
+ 
+     flagValue = currentProvider_->enableUIConsistency();
+     enableUIConsistency_ = flagValue;
+@@ -218,7 +236,7 @@ bool ReactNativeFeatureFlagsAccessor::fetchImagesInViewPreallocation() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(10, "fetchImagesInViewPreallocation");
++    markFlagAsAccessed(11, "fetchImagesInViewPreallocation");
+ 
+     flagValue = currentProvider_->fetchImagesInViewPreallocation();
+     fetchImagesInViewPreallocation_ = flagValue;
+@@ -236,7 +254,7 @@ bool ReactNativeFeatureFlagsAccessor::fixIncorrectScrollViewStateUpdateOnAndroid
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(11, "fixIncorrectScrollViewStateUpdateOnAndroid");
++    markFlagAsAccessed(12, "fixIncorrectScrollViewStateUpdateOnAndroid");
+ 
+     flagValue = currentProvider_->fixIncorrectScrollViewStateUpdateOnAndroid();
+     fixIncorrectScrollViewStateUpdateOnAndroid_ = flagValue;
+@@ -254,7 +272,7 @@ bool ReactNativeFeatureFlagsAccessor::fixMappingOfEventPrioritiesBetweenFabricAn
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(12, "fixMappingOfEventPrioritiesBetweenFabricAndReact");
++    markFlagAsAccessed(13, "fixMappingOfEventPrioritiesBetweenFabricAndReact");
+ 
+     flagValue = currentProvider_->fixMappingOfEventPrioritiesBetweenFabricAndReact();
+     fixMappingOfEventPrioritiesBetweenFabricAndReact_ = flagValue;
+@@ -272,7 +290,7 @@ bool ReactNativeFeatureFlagsAccessor::fixMissedFabricStateUpdatesOnAndroid() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(13, "fixMissedFabricStateUpdatesOnAndroid");
++    markFlagAsAccessed(14, "fixMissedFabricStateUpdatesOnAndroid");
+ 
+     flagValue = currentProvider_->fixMissedFabricStateUpdatesOnAndroid();
+     fixMissedFabricStateUpdatesOnAndroid_ = flagValue;
+@@ -290,7 +308,7 @@ bool ReactNativeFeatureFlagsAccessor::fixStoppedSurfaceRemoveDeleteTreeUIFrameCa
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(14, "fixStoppedSurfaceRemoveDeleteTreeUIFrameCallbackLeak");
++    markFlagAsAccessed(15, "fixStoppedSurfaceRemoveDeleteTreeUIFrameCallbackLeak");
+ 
+     flagValue = currentProvider_->fixStoppedSurfaceRemoveDeleteTreeUIFrameCallbackLeak();
+     fixStoppedSurfaceRemoveDeleteTreeUIFrameCallbackLeak_ = flagValue;
+@@ -308,7 +326,7 @@ bool ReactNativeFeatureFlagsAccessor::forceBatchingMountItemsOnAndroid() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(15, "forceBatchingMountItemsOnAndroid");
++    markFlagAsAccessed(16, "forceBatchingMountItemsOnAndroid");
+ 
+     flagValue = currentProvider_->forceBatchingMountItemsOnAndroid();
+     forceBatchingMountItemsOnAndroid_ = flagValue;
+@@ -326,7 +344,7 @@ bool ReactNativeFeatureFlagsAccessor::fuseboxEnabledDebug() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(16, "fuseboxEnabledDebug");
++    markFlagAsAccessed(17, "fuseboxEnabledDebug");
+ 
+     flagValue = currentProvider_->fuseboxEnabledDebug();
+     fuseboxEnabledDebug_ = flagValue;
+@@ -344,7 +362,7 @@ bool ReactNativeFeatureFlagsAccessor::fuseboxEnabledRelease() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(17, "fuseboxEnabledRelease");
++    markFlagAsAccessed(18, "fuseboxEnabledRelease");
+ 
+     flagValue = currentProvider_->fuseboxEnabledRelease();
+     fuseboxEnabledRelease_ = flagValue;
+@@ -362,7 +380,7 @@ bool ReactNativeFeatureFlagsAccessor::lazyAnimationCallbacks() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(18, "lazyAnimationCallbacks");
++    markFlagAsAccessed(19, "lazyAnimationCallbacks");
+ 
+     flagValue = currentProvider_->lazyAnimationCallbacks();
+     lazyAnimationCallbacks_ = flagValue;
+@@ -380,7 +398,7 @@ bool ReactNativeFeatureFlagsAccessor::preventDoubleTextMeasure() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(19, "preventDoubleTextMeasure");
++    markFlagAsAccessed(20, "preventDoubleTextMeasure");
+ 
+     flagValue = currentProvider_->preventDoubleTextMeasure();
+     preventDoubleTextMeasure_ = flagValue;
+@@ -398,7 +416,7 @@ bool ReactNativeFeatureFlagsAccessor::setAndroidLayoutDirection() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(20, "setAndroidLayoutDirection");
++    markFlagAsAccessed(21, "setAndroidLayoutDirection");
+ 
+     flagValue = currentProvider_->setAndroidLayoutDirection();
+     setAndroidLayoutDirection_ = flagValue;
+@@ -416,7 +434,7 @@ bool ReactNativeFeatureFlagsAccessor::useImmediateExecutorInAndroidBridgeless()
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(21, "useImmediateExecutorInAndroidBridgeless");
++    markFlagAsAccessed(22, "useImmediateExecutorInAndroidBridgeless");
+ 
+     flagValue = currentProvider_->useImmediateExecutorInAndroidBridgeless();
+     useImmediateExecutorInAndroidBridgeless_ = flagValue;
+@@ -434,7 +452,7 @@ bool ReactNativeFeatureFlagsAccessor::useModernRuntimeScheduler() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(22, "useModernRuntimeScheduler");
++    markFlagAsAccessed(23, "useModernRuntimeScheduler");
+ 
+     flagValue = currentProvider_->useModernRuntimeScheduler();
+     useModernRuntimeScheduler_ = flagValue;
+@@ -452,7 +470,7 @@ bool ReactNativeFeatureFlagsAccessor::useNativeViewConfigsInBridgelessMode() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(23, "useNativeViewConfigsInBridgelessMode");
++    markFlagAsAccessed(24, "useNativeViewConfigsInBridgelessMode");
+ 
+     flagValue = currentProvider_->useNativeViewConfigsInBridgelessMode();
+     useNativeViewConfigsInBridgelessMode_ = flagValue;
+@@ -470,7 +488,7 @@ bool ReactNativeFeatureFlagsAccessor::useRuntimeShadowNodeReferenceUpdate() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(24, "useRuntimeShadowNodeReferenceUpdate");
++    markFlagAsAccessed(25, "useRuntimeShadowNodeReferenceUpdate");
+ 
+     flagValue = currentProvider_->useRuntimeShadowNodeReferenceUpdate();
+     useRuntimeShadowNodeReferenceUpdate_ = flagValue;
+@@ -488,7 +506,7 @@ bool ReactNativeFeatureFlagsAccessor::useRuntimeShadowNodeReferenceUpdateOnLayou
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(25, "useRuntimeShadowNodeReferenceUpdateOnLayout");
++    markFlagAsAccessed(26, "useRuntimeShadowNodeReferenceUpdateOnLayout");
+ 
+     flagValue = currentProvider_->useRuntimeShadowNodeReferenceUpdateOnLayout();
+     useRuntimeShadowNodeReferenceUpdateOnLayout_ = flagValue;
+@@ -506,7 +524,7 @@ bool ReactNativeFeatureFlagsAccessor::useStateAlignmentMechanism() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(26, "useStateAlignmentMechanism");
++    markFlagAsAccessed(27, "useStateAlignmentMechanism");
+ 
+     flagValue = currentProvider_->useStateAlignmentMechanism();
+     useStateAlignmentMechanism_ = flagValue;
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+index 527223f503f..6301624610e 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<8457544cbbdc11e26d6b0aeff95a77d7>>
++ * @generated SignedSource<<6e1d8221c96bcf5ac6ac2e2a5ac673f1>>
+  */
+ 
+ /**
+@@ -36,6 +36,7 @@ class ReactNativeFeatureFlagsAccessor {
+   bool allowRecursiveCommitsWithSynchronousMountOnAndroid();
+   bool batchRenderingUpdatesInEventLoop();
+   bool destroyFabricSurfacesInReactInstanceManager();
++  bool enableAlignItemsBaselineOnFabricIOS();
+   bool enableCleanTextInputYogaNode();
+   bool enableGranularShadowTreeStateReconciliation();
+   bool enableMicrotasks();
+@@ -68,13 +69,14 @@ class ReactNativeFeatureFlagsAccessor {
+   std::unique_ptr<ReactNativeFeatureFlagsProvider> currentProvider_;
+   bool wasOverridden_;
+ 
+-  std::array<std::atomic<const char*>, 27> accessedFeatureFlags_;
++  std::array<std::atomic<const char*>, 28> accessedFeatureFlags_;
+ 
+   std::atomic<std::optional<bool>> commonTestFlag_;
+   std::atomic<std::optional<bool>> allowCollapsableChildren_;
+   std::atomic<std::optional<bool>> allowRecursiveCommitsWithSynchronousMountOnAndroid_;
+   std::atomic<std::optional<bool>> batchRenderingUpdatesInEventLoop_;
+   std::atomic<std::optional<bool>> destroyFabricSurfacesInReactInstanceManager_;
++  std::atomic<std::optional<bool>> enableAlignItemsBaselineOnFabricIOS_;
+   std::atomic<std::optional<bool>> enableCleanTextInputYogaNode_;
+   std::atomic<std::optional<bool>> enableGranularShadowTreeStateReconciliation_;
+   std::atomic<std::optional<bool>> enableMicrotasks_;
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+index b708fe79364..cd9b45e4461 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<ff7cf1b21321c180c2a5d8bdb81a85bc>>
++ * @generated SignedSource<<77188afc2fdd7ef693abfd5e02354efc>>
+  */
+ 
+ /**
+@@ -47,6 +47,10 @@ class ReactNativeFeatureFlagsDefaults : public ReactNativeFeatureFlagsProvider {
+     return false;
+   }
+ 
++  bool enableAlignItemsBaselineOnFabricIOS() override {
++    return true;
++  }
++
+   bool enableCleanTextInputYogaNode() override {
+     return false;
+   }
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+index ffdd3b0d1d2..8d89b377c7b 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<e2955fd37121ad6512c0c51e3c8555e6>>
++ * @generated SignedSource<<b6f35d32e1e97931184e10401dd92d4f>>
+  */
+ 
+ /**
+@@ -30,6 +30,7 @@ class ReactNativeFeatureFlagsProvider {
+   virtual bool allowRecursiveCommitsWithSynchronousMountOnAndroid() = 0;
+   virtual bool batchRenderingUpdatesInEventLoop() = 0;
+   virtual bool destroyFabricSurfacesInReactInstanceManager() = 0;
++  virtual bool enableAlignItemsBaselineOnFabricIOS() = 0;
+   virtual bool enableCleanTextInputYogaNode() = 0;
+   virtual bool enableGranularShadowTreeStateReconciliation() = 0;
+   virtual bool enableMicrotasks() = 0;
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+index 2044e373ed1..58497c91e33 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<3d3e82742a1ab405f385ec1d4716b744>>
++ * @generated SignedSource<<369a48d28c8d2650d721954cb50eea29>>
+  */
+ 
+ /**
+@@ -62,6 +62,11 @@ bool NativeReactNativeFeatureFlags::destroyFabricSurfacesInReactInstanceManager(
+   return ReactNativeFeatureFlags::destroyFabricSurfacesInReactInstanceManager();
+ }
+ 
++bool NativeReactNativeFeatureFlags::enableAlignItemsBaselineOnFabricIOS(
++    jsi::Runtime& /*runtime*/) {
++  return ReactNativeFeatureFlags::enableAlignItemsBaselineOnFabricIOS();
++}
++
+ bool NativeReactNativeFeatureFlags::enableCleanTextInputYogaNode(
+     jsi::Runtime& /*runtime*/) {
+   return ReactNativeFeatureFlags::enableCleanTextInputYogaNode();
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+index 5cf7761a23b..4c0e24759f2 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<a483015b2f4c8fe6c5f3e1c10e275a1f>>
++ * @generated SignedSource<<3a67951a9ad72c5bc536b7b044639aa7>>
+  */
+ 
+ /**
+@@ -45,6 +45,8 @@ class NativeReactNativeFeatureFlags
+ 
+   bool destroyFabricSurfacesInReactInstanceManager(jsi::Runtime& runtime);
+ 
++  bool enableAlignItemsBaselineOnFabricIOS(jsi::Runtime& runtime);
++
+   bool enableCleanTextInputYogaNode(jsi::Runtime& runtime);
+ 
+   bool enableGranularShadowTreeStateReconciliation(jsi::Runtime& runtime);
+diff --git a/packages/react-native/ReactCommon/react/renderer/components/text/ParagraphShadowNode.cpp b/packages/react-native/ReactCommon/react/renderer/components/text/ParagraphShadowNode.cpp
+index 8d4a9b07aec..6f5bd60f1a4 100644
+--- a/packages/react-native/ReactCommon/react/renderer/components/text/ParagraphShadowNode.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/components/text/ParagraphShadowNode.cpp
+@@ -163,6 +163,32 @@ Size ParagraphShadowNode::measureContent(
+       .size;
+ }
+ 
++Float ParagraphShadowNode::baseline(
++    const LayoutContext& layoutContext,
++    Size size) const {
++  auto layoutMetrics = getLayoutMetrics();
++  auto layoutConstraints =
++      LayoutConstraints{size, size, layoutMetrics.layoutDirection};
++  auto content =
++      getContentWithMeasuredAttachments(layoutContext, layoutConstraints);
++  auto attributedString = content.attributedString;
++
++  if (attributedString.isEmpty()) {
++    // Note: `zero-width space` is insufficient in some cases (e.g. when we need
++    // to measure the "height" of the font).
++    // TODO T67606511: We will redefine the measurement of empty strings as part
++    // of T67606511
++    auto string = BaseTextShadowNode::getEmptyPlaceholder();
++    auto textAttributes = TextAttributes::defaultTextAttributes();
++    textAttributes.fontSizeMultiplier = layoutContext.fontSizeMultiplier;
++    textAttributes.apply(getConcreteProps().textAttributes);
++    attributedString.appendFragment({string, textAttributes, {}});
++  }
++
++  return textLayoutManager_->baseline(
++      attributedString, getConcreteProps().paragraphAttributes, size);
++}
++
+ void ParagraphShadowNode::layout(LayoutContext layoutContext) {
+   ensureUnsealed();
+ 
+diff --git a/packages/react-native/ReactCommon/react/renderer/components/text/ParagraphShadowNode.h b/packages/react-native/ReactCommon/react/renderer/components/text/ParagraphShadowNode.h
+index 0a1cffb621c..91839534d37 100644
+--- a/packages/react-native/ReactCommon/react/renderer/components/text/ParagraphShadowNode.h
++++ b/packages/react-native/ReactCommon/react/renderer/components/text/ParagraphShadowNode.h
+@@ -43,6 +43,7 @@ class ParagraphShadowNode final : public ConcreteViewShadowNode<
+     auto traits = ConcreteViewShadowNode::BaseTraits();
+     traits.set(ShadowNodeTraits::Trait::LeafYogaNode);
+     traits.set(ShadowNodeTraits::Trait::MeasurableYogaNode);
++    traits.set(ShadowNodeTraits::Trait::BaselineYogaNode);
+ 
+ #ifdef ANDROID
+     // Unsetting `FormsStackingContext` trait is essential on Android where we
+@@ -69,6 +70,8 @@ class ParagraphShadowNode final : public ConcreteViewShadowNode<
+       const LayoutContext& layoutContext,
+       const LayoutConstraints& layoutConstraints) const override;
+ 
++  Float baseline(const LayoutContext& layoutContext, Size size) const override;
++
+   /*
+    * Internal representation of the nested content of the node in a format
+    * suitable for future processing.
+diff --git a/packages/react-native/ReactCommon/react/renderer/components/textinput/platform/android/react/renderer/components/androidtextinput/AndroidTextInputShadowNode.cpp b/packages/react-native/ReactCommon/react/renderer/components/textinput/platform/android/react/renderer/components/androidtextinput/AndroidTextInputShadowNode.cpp
+index 9aaa3487ef7..07ccccee1a7 100644
+--- a/packages/react-native/ReactCommon/react/renderer/components/textinput/platform/android/react/renderer/components/androidtextinput/AndroidTextInputShadowNode.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/components/textinput/platform/android/react/renderer/components/androidtextinput/AndroidTextInputShadowNode.cpp
+@@ -218,6 +218,26 @@ Size AndroidTextInputShadowNode::measureContent(
+       .size;
+ }
+ 
++Float AndroidTextInputShadowNode::baseline(
++    const LayoutContext& layoutContext,
++    Size size) const {
++  AttributedString attributedString = getMostRecentAttributedString();
++
++  if (attributedString.isEmpty()) {
++    attributedString = getPlaceholderAttributedString();
++  }
++
++  // Yoga expects a baseline relative to the Node's border-box edge instead of
++  // the content, so we need to adjust by the padding and border widths, which
++  // have already been set by the time of baseline alignment
++  auto top = YGNodeLayoutGetBorder(&yogaNode_, YGEdgeTop) +
++      YGNodeLayoutGetPadding(&yogaNode_, YGEdgeTop);
++
++  return textLayoutManager_->baseline(
++             attributedString, getConcreteProps().paragraphAttributes, size) +
++      top;
++}
++
+ void AndroidTextInputShadowNode::layout(LayoutContext layoutContext) {
+   updateStateIfNeeded();
+   ConcreteViewShadowNode::layout(layoutContext);
+diff --git a/packages/react-native/ReactCommon/react/renderer/components/textinput/platform/android/react/renderer/components/androidtextinput/AndroidTextInputShadowNode.h b/packages/react-native/ReactCommon/react/renderer/components/textinput/platform/android/react/renderer/components/androidtextinput/AndroidTextInputShadowNode.h
+index 43a4df1e9ed..e3b21f00cce 100644
+--- a/packages/react-native/ReactCommon/react/renderer/components/textinput/platform/android/react/renderer/components/androidtextinput/AndroidTextInputShadowNode.h
++++ b/packages/react-native/ReactCommon/react/renderer/components/textinput/platform/android/react/renderer/components/androidtextinput/AndroidTextInputShadowNode.h
+@@ -34,6 +34,7 @@ class AndroidTextInputShadowNode final
+   static ShadowNodeTraits BaseTraits() {
+     auto traits = ConcreteViewShadowNode::BaseTraits();
+     traits.set(ShadowNodeTraits::Trait::LeafYogaNode);
++    traits.set(ShadowNodeTraits::Trait::BaselineYogaNode);
+     return traits;
+   }
+ 
+@@ -65,6 +66,8 @@ class AndroidTextInputShadowNode final
+       const LayoutConstraints& layoutConstraints) const override;
+   void layout(LayoutContext layoutContext) override;
+ 
++  Float baseline(const LayoutContext& layoutContext, Size size) const override;
++
+  private:
+   ContextContainer* contextContainer_{};
+ 
+diff --git a/packages/react-native/ReactCommon/react/renderer/components/textinput/platform/ios/react/renderer/components/iostextinput/TextInputShadowNode.cpp b/packages/react-native/ReactCommon/react/renderer/components/textinput/platform/ios/react/renderer/components/iostextinput/TextInputShadowNode.cpp
+index b1ceb3eaa87..27369209445 100644
+--- a/packages/react-native/ReactCommon/react/renderer/components/textinput/platform/ios/react/renderer/components/iostextinput/TextInputShadowNode.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/components/textinput/platform/ios/react/renderer/components/iostextinput/TextInputShadowNode.cpp
+@@ -140,6 +140,34 @@ Size TextInputShadowNode::measureContent(
+       .size;
+ }
+ 
++Float TextInputShadowNode::baseline(
++    const LayoutContext& layoutContext,
++    Size size) const {
++  auto attributedString = getAttributedString(layoutContext);
++
++  if (attributedString.isEmpty()) {
++    auto placeholderString = !getConcreteProps().placeholder.empty()
++        ? getConcreteProps().placeholder
++        : BaseTextShadowNode::getEmptyPlaceholder();
++    auto textAttributes = getConcreteProps().getEffectiveTextAttributes(
++        layoutContext.fontSizeMultiplier);
++    attributedString.appendFragment(
++        {std::move(placeholderString), textAttributes, {}});
++  }
++
++  // Yoga expects a baseline relative to the Node's border-box edge instead of
++  // the content, so we need to adjust by the padding and border widths, which
++  // have already been set by the time of baseline alignment
++  auto top = YGNodeLayoutGetBorder(&yogaNode_, YGEdgeTop) +
++      YGNodeLayoutGetPadding(&yogaNode_, YGEdgeTop);
++
++  return textLayoutManager_->baseline(
++             attributedString,
++             getConcreteProps().getEffectiveParagraphAttributes(),
++             size) +
++      top;
++}
++
+ void TextInputShadowNode::layout(LayoutContext layoutContext) {
+   updateStateIfNeeded(layoutContext);
+   ConcreteViewShadowNode::layout(layoutContext);
+diff --git a/packages/react-native/ReactCommon/react/renderer/components/textinput/platform/ios/react/renderer/components/iostextinput/TextInputShadowNode.h b/packages/react-native/ReactCommon/react/renderer/components/textinput/platform/ios/react/renderer/components/iostextinput/TextInputShadowNode.h
+index 59e2db0ed56..f553ea284ea 100644
+--- a/packages/react-native/ReactCommon/react/renderer/components/textinput/platform/ios/react/renderer/components/iostextinput/TextInputShadowNode.h
++++ b/packages/react-native/ReactCommon/react/renderer/components/textinput/platform/ios/react/renderer/components/iostextinput/TextInputShadowNode.h
+@@ -40,6 +40,7 @@ class TextInputShadowNode final : public ConcreteViewShadowNode<
+     auto traits = ConcreteViewShadowNode::BaseTraits();
+     traits.set(ShadowNodeTraits::Trait::LeafYogaNode);
+     traits.set(ShadowNodeTraits::Trait::MeasurableYogaNode);
++    traits.set(ShadowNodeTraits::Trait::BaselineYogaNode);
+     return traits;
+   }
+ 
+@@ -58,6 +59,8 @@ class TextInputShadowNode final : public ConcreteViewShadowNode<
+       const LayoutConstraints& layoutConstraints) const override;
+   void layout(LayoutContext layoutContext) override;
+ 
++  Float baseline(const LayoutContext& layoutContext, Size size) const override;
++
+  private:
+   /*
+    * Creates a `State` object if needed.
+diff --git a/packages/react-native/ReactCommon/react/renderer/components/view/YogaLayoutableShadowNode.cpp b/packages/react-native/ReactCommon/react/renderer/components/view/YogaLayoutableShadowNode.cpp
+index f7ee626491f..f2ea6fbbbf4 100644
+--- a/packages/react-native/ReactCommon/react/renderer/components/view/YogaLayoutableShadowNode.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/components/view/YogaLayoutableShadowNode.cpp
+@@ -81,6 +81,11 @@ YogaLayoutableShadowNode::YogaLayoutableShadowNode(
+         YogaLayoutableShadowNode::yogaNodeMeasureCallbackConnector);
+   }
+ 
++  if (getTraits().check(ShadowNodeTraits::Trait::BaselineYogaNode)) {
++    yogaNode_.setBaselineFunc(
++        YogaLayoutableShadowNode::yogaNodeBaselineCallbackConnector);
++  }
++
+   updateYogaProps();
+   updateYogaChildren();
+ 
+@@ -845,6 +850,22 @@ YGSize YogaLayoutableShadowNode::yogaNodeMeasureCallbackConnector(
+       yogaFloatFromFloat(size.width), yogaFloatFromFloat(size.height)};
+ }
+ 
++float YogaLayoutableShadowNode::yogaNodeBaselineCallbackConnector(
++    YGNodeConstRef yogaNode,
++    float width,
++    float height) {
++  SystraceSection s(
++      "YogaLayoutableShadowNode::yogaNodeBaselineCallbackConnector");
++
++  auto& shadowNode = shadowNodeFromContext(yogaNode);
++  auto baseline = shadowNode.baseline(
++      threadLocalLayoutContext,
++      {.width = floatFromYogaFloat(width),
++       .height = floatFromYogaFloat(height)});
++
++  return yogaFloatFromFloat(baseline);
++}
++
+ YogaLayoutableShadowNode& YogaLayoutableShadowNode::shadowNodeFromContext(
+     YGNodeConstRef yogaNode) {
+   return dynamic_cast<YogaLayoutableShadowNode&>(
+diff --git a/packages/react-native/ReactCommon/react/renderer/components/view/YogaLayoutableShadowNode.h b/packages/react-native/ReactCommon/react/renderer/components/view/YogaLayoutableShadowNode.h
+index 6ae363c987c..4c1c5a02a2b 100644
+--- a/packages/react-native/ReactCommon/react/renderer/components/view/YogaLayoutableShadowNode.h
++++ b/packages/react-native/ReactCommon/react/renderer/components/view/YogaLayoutableShadowNode.h
+@@ -164,6 +164,10 @@ class YogaLayoutableShadowNode : public LayoutableShadowNode {
+       YGMeasureMode widthMode,
+       float height,
+       YGMeasureMode heightMode);
++  static float yogaNodeBaselineCallbackConnector(
++      YGNodeConstRef yogaNode,
++      float width,
++      float height);
+   static YogaLayoutableShadowNode& shadowNodeFromContext(
+       YGNodeConstRef yogaNode);
+ 
+diff --git a/packages/react-native/ReactCommon/react/renderer/core/LayoutableShadowNode.cpp b/packages/react-native/ReactCommon/react/renderer/core/LayoutableShadowNode.cpp
+index cef90f40b69..a5f56b4ea9c 100644
+--- a/packages/react-native/ReactCommon/react/renderer/core/LayoutableShadowNode.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/core/LayoutableShadowNode.cpp
+@@ -240,11 +240,9 @@ Size LayoutableShadowNode::measure(
+   return layoutableShadowNode.getLayoutMetrics().frame.size;
+ }
+ 
+-Float LayoutableShadowNode::firstBaseline(Size /*size*/) const {
+-  return 0;
+-}
+-
+-Float LayoutableShadowNode::lastBaseline(Size /*size*/) const {
++Float LayoutableShadowNode::baseline(
++    const LayoutContext& /*layoutContext*/,
++    Size /*size*/) const {
+   return 0;
+ }
+ 
+diff --git a/packages/react-native/ReactCommon/react/renderer/core/LayoutableShadowNode.h b/packages/react-native/ReactCommon/react/renderer/core/LayoutableShadowNode.h
+index d74a93ee686..9c21a144fa0 100644
+--- a/packages/react-native/ReactCommon/react/renderer/core/LayoutableShadowNode.h
++++ b/packages/react-native/ReactCommon/react/renderer/core/LayoutableShadowNode.h
+@@ -153,8 +153,7 @@ class LayoutableShadowNode : public ShadowNode {
+   /*
+    * Unifed methods to access text layout metrics.
+    */
+-  virtual Float firstBaseline(Size size) const;
+-  virtual Float lastBaseline(Size size) const;
++  virtual Float baseline(const LayoutContext& layoutContext, Size size) const;
+ 
+   virtual bool canBeTouchTarget() const;
+   virtual bool canChildrenBeTouchTarget() const;
+diff --git a/packages/react-native/ReactCommon/react/renderer/core/ShadowNodeTraits.h b/packages/react-native/ReactCommon/react/renderer/core/ShadowNodeTraits.h
+index 25157f64167..729207447c5 100644
+--- a/packages/react-native/ReactCommon/react/renderer/core/ShadowNodeTraits.h
++++ b/packages/react-native/ReactCommon/react/renderer/core/ShadowNodeTraits.h
+@@ -75,6 +75,9 @@ class ShadowNodeTraits {
+ 
+     // Indicates that direct children of the node should not be collapsed
+     ChildrenFormStackingContext = 1 << 10,
++
++    // Inherits `YogaLayoutableShadowNode` and has a custom baseline function.
++    BaselineYogaNode = 1 << 11,
+   };
+ 
+   /*
+diff --git a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/TextMeasureCache.h b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/TextMeasureCache.h
+index 01a981ba0c3..4a0fd56be48 100644
+--- a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/TextMeasureCache.h
++++ b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/TextMeasureCache.h
+@@ -66,6 +66,16 @@ class TextMeasureCacheKey final {
+   LayoutConstraints layoutConstraints{};
+ };
+ 
++// The Key type that is used for Line Measure Cache.
++// The equivalence and hashing operations of this are defined to respect the
++// nature of text measuring.
++class LineMeasureCacheKey final {
++ public:
++  AttributedString attributedString{};
++  ParagraphAttributes paragraphAttributes{};
++  Size size{};
++};
++
+ /*
+  * Maximum size of the Cache.
+  * The number was empirically chosen based on approximation of an average amount
+@@ -82,6 +92,15 @@ using TextMeasureCache = SimpleThreadSafeCache<
+     TextMeasurement,
+     kSimpleThreadSafeCacheSizeCap>;
+ 
++/*
++ * Thread-safe, evicting hash table designed to store line measurement
++ * information.
++ */
++using LineMeasureCache = SimpleThreadSafeCache<
++    LineMeasureCacheKey,
++    LinesMeasurements,
++    kSimpleThreadSafeCacheSizeCap>;
++
+ inline bool areTextAttributesEquivalentLayoutWise(
+     const TextAttributes& lhs,
+     const TextAttributes& rhs) {
+@@ -199,6 +218,21 @@ inline bool operator!=(
+   return !(lhs == rhs);
+ }
+ 
++inline bool operator==(
++    const LineMeasureCacheKey& lhs,
++    const LineMeasureCacheKey& rhs) {
++  return areAttributedStringsEquivalentLayoutWise(
++             lhs.attributedString, rhs.attributedString) &&
++      lhs.paragraphAttributes == rhs.paragraphAttributes &&
++      lhs.size == rhs.size;
++}
++
++inline bool operator!=(
++    const LineMeasureCacheKey& lhs,
++    const LineMeasureCacheKey& rhs) {
++  return !(lhs == rhs);
++}
++
+ } // namespace facebook::react
+ 
+ namespace std {
+@@ -213,4 +247,14 @@ struct hash<facebook::react::TextMeasureCacheKey> {
+   }
+ };
+ 
++template <>
++struct hash<facebook::react::LineMeasureCacheKey> {
++  size_t operator()(const facebook::react::LineMeasureCacheKey& key) const {
++    return facebook::react::hash_combine(
++        attributedStringHashLayoutWise(key.attributedString),
++        key.paragraphAttributes,
++        key.size);
++  }
++};
++
+ } // namespace std
+diff --git a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/android/react/renderer/textlayoutmanager/TextLayoutManager.cpp b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/android/react/renderer/textlayoutmanager/TextLayoutManager.cpp
+index e3f4f08d384..d7f4d49ac52 100644
+--- a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/android/react/renderer/textlayoutmanager/TextLayoutManager.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/android/react/renderer/textlayoutmanager/TextLayoutManager.cpp
+@@ -89,7 +89,8 @@ Size measureAndroidComponent(
+ TextLayoutManager::TextLayoutManager(
+     const ContextContainer::Shared& contextContainer)
+     : contextContainer_(contextContainer),
+-      measureCache_(kSimpleThreadSafeCacheSizeCap) {}
++      textMeasureCache_(kSimpleThreadSafeCacheSizeCap),
++      lineMeasureCache_(kSimpleThreadSafeCacheSizeCap) {}
+ 
+ void* TextLayoutManager::getNativeTextLayoutManager() const {
+   return self_;
+@@ -102,7 +103,7 @@ TextMeasurement TextLayoutManager::measure(
+     LayoutConstraints layoutConstraints) const {
+   auto& attributedString = attributedStringBox.getValue();
+ 
+-  auto measurement = measureCache_.get(
++  auto measurement = textMeasureCache_.get(
+       {attributedString, paragraphAttributes, layoutConstraints},
+       [&](const TextMeasureCacheKey& /*key*/) {
+         auto telemetry = TransactionTelemetry::threadLocalTelemetry();
+@@ -164,41 +165,61 @@ LinesMeasurements TextLayoutManager::measureLines(
+     const AttributedString& attributedString,
+     const ParagraphAttributes& paragraphAttributes,
+     Size size) const {
+-  const jni::global_ref<jobject>& fabricUIManager =
+-      contextContainer_->at<jni::global_ref<jobject>>("FabricUIManager");
+-  static auto measureLines =
+-      jni::findClassStatic("com/facebook/react/fabric/FabricUIManager")
+-          ->getMethod<NativeArray::javaobject(
+-              JReadableMapBuffer::javaobject,
+-              JReadableMapBuffer::javaobject,
+-              jfloat,
+-              jfloat)>("measureLines");
+-
+-  auto attributedStringMB =
+-      JReadableMapBuffer::createWithContents(toMapBuffer(attributedString));
+-  auto paragraphAttributesMB =
+-      JReadableMapBuffer::createWithContents(toMapBuffer(paragraphAttributes));
++  auto lineMeasurements = lineMeasureCache_.get(
++      {attributedString, paragraphAttributes, size},
++      [&](const LineMeasureCacheKey& /*key*/) {
++        const jni::global_ref<jobject>& fabricUIManager =
++            contextContainer_->at<jni::global_ref<jobject>>("FabricUIManager");
++        static auto measureLines =
++            jni::findClassStatic("com/facebook/react/fabric/FabricUIManager")
++                ->getMethod<NativeArray::javaobject(
++                    JReadableMapBuffer::javaobject,
++                    JReadableMapBuffer::javaobject,
++                    jfloat,
++                    jfloat)>("measureLines");
++
++        auto attributedStringMB = JReadableMapBuffer::createWithContents(
++            toMapBuffer(attributedString));
++        auto paragraphAttributesMB = JReadableMapBuffer::createWithContents(
++            toMapBuffer(paragraphAttributes));
++
++        auto array = measureLines(
++            fabricUIManager,
++            attributedStringMB.get(),
++            paragraphAttributesMB.get(),
++            size.width,
++            size.height);
++
++        auto dynamicArray = cthis(array)->consume();
++        LinesMeasurements lineMeasurements;
++        lineMeasurements.reserve(dynamicArray.size());
++
++        for (const auto& data : dynamicArray) {
++          lineMeasurements.push_back(LineMeasurement(data));
++        }
+ 
+-  auto array = measureLines(
+-      fabricUIManager,
+-      attributedStringMB.get(),
+-      paragraphAttributesMB.get(),
+-      size.width,
+-      size.height);
++        // Explicitly release smart pointers to free up space faster in JNI
++        // tables
++        attributedStringMB.reset();
++        paragraphAttributesMB.reset();
+ 
+-  auto dynamicArray = cthis(array)->consume();
+-  LinesMeasurements lineMeasurements;
+-  lineMeasurements.reserve(dynamicArray.size());
++        return lineMeasurements;
++      });
+ 
+-  for (const auto& data : dynamicArray) {
+-    lineMeasurements.push_back(LineMeasurement(data));
+-  }
++  return lineMeasurements;
++}
+ 
+-  // Explicitly release smart pointers to free up space faster in JNI tables
+-  attributedStringMB.reset();
+-  paragraphAttributesMB.reset();
++Float TextLayoutManager::baseline(
++    AttributedString attributedString,
++    ParagraphAttributes paragraphAttributes,
++    Size size) const {
++  auto lines = this->measureLines(attributedString, paragraphAttributes, size);
+ 
+-  return lineMeasurements;
++  if (!lines.empty()) {
++    return lines[0].ascender;
++  } else {
++    return 0;
++  }
+ }
+ 
+ TextMeasurement TextLayoutManager::doMeasure(
+diff --git a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/android/react/renderer/textlayoutmanager/TextLayoutManager.h b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/android/react/renderer/textlayoutmanager/TextLayoutManager.h
+index ac5206985d3..103962aafab 100644
+--- a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/android/react/renderer/textlayoutmanager/TextLayoutManager.h
++++ b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/android/react/renderer/textlayoutmanager/TextLayoutManager.h
+@@ -67,6 +67,15 @@ class TextLayoutManager {
+       const ParagraphAttributes& paragraphAttributes,
+       Size size) const;
+ 
++  /*
++   * Calculates baseline of `attributedString` using native text rendering
++   * infrastructure.
++   */
++  Float baseline(
++      AttributedString attributedString,
++      ParagraphAttributes paragraphAttributes,
++      Size size) const;
++
+   /*
+    * Returns an opaque pointer to platform-specific TextLayoutManager.
+    * Is used on a native views layer to delegate text rendering to the manager.
+@@ -81,7 +90,8 @@ class TextLayoutManager {
+ 
+   void* self_{};
+   ContextContainer::Shared contextContainer_;
+-  TextMeasureCache measureCache_;
++  TextMeasureCache textMeasureCache_;
++  LineMeasureCache lineMeasureCache_;
+ };
+ 
+ } // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/cxx/TextLayoutManager.cpp b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/cxx/TextLayoutManager.cpp
+index 294e886d3c9..285c384e9f4 100644
+--- a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/cxx/TextLayoutManager.cpp
++++ b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/cxx/TextLayoutManager.cpp
+@@ -42,4 +42,11 @@ LinesMeasurements TextLayoutManager::measureLines(
+   return {};
+ };
+ 
++Float TextLayoutManager::baseline(
++    AttributedString attributedString,
++    ParagraphAttributes paragraphAttributes,
++    Size size) const {
++  return 0;
++}
++
+ } // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/cxx/TextLayoutManager.h b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/cxx/TextLayoutManager.h
+index 4b5eb7d1ff4..180605602cc 100644
+--- a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/cxx/TextLayoutManager.h
++++ b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/cxx/TextLayoutManager.h
+@@ -59,6 +59,15 @@ class TextLayoutManager {
+       ParagraphAttributes paragraphAttributes,
+       Size size) const;
+ 
++  /*
++   * Calculates baseline of `attributedString` using native text rendering
++   * infrastructure.
++   */
++  virtual Float baseline(
++      AttributedString attributedString,
++      ParagraphAttributes paragraphAttributes,
++      Size size) const;
++
+   /*
+    * Returns an opaque pointer to platform-specific TextLayoutManager.
+    * Is used on a native views layer to delegate text rendering to the manager.
+diff --git a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/RCTTextLayoutManager.mm b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/RCTTextLayoutManager.mm
+index a50065a56cf..b62dc9b536b 100644
+--- a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/RCTTextLayoutManager.mm
++++ b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/RCTTextLayoutManager.mm
+@@ -11,6 +11,7 @@
+ 
+ #import <React/NSTextStorage+FontScaling.h>
+ #import <React/RCTUtils.h>
++#import <react/featureflags/ReactNativeFeatureFlags.h>
+ #import <react/utils/ManagedObjectWrapper.h>
+ #import <react/utils/SimpleThreadSafeCache.h>
+ 
+@@ -155,14 +156,28 @@ static NSLineBreakMode RCTNSLineBreakModeFromEllipsizeMode(EllipsizeMode ellipsi
+                                             auto rect = facebook::react::Rect{
+                                                 facebook::react::Point{usedRect.origin.x, usedRect.origin.y},
+                                                 facebook::react::Size{usedRect.size.width, usedRect.size.height}};
+-                                            auto line = LineMeasurement{
+-                                                std::string([renderedString UTF8String]),
+-                                                rect,
+-                                                -font.descender,
+-                                                font.capHeight,
+-                                                font.ascender,
+-                                                font.xHeight};
+-                                            blockParagraphLines->push_back(line);
++
++                                            if (ReactNativeFeatureFlags::enableAlignItemsBaselineOnFabricIOS()) {
++                                              CGFloat baseline =
++                                                  [layoutManager locationForGlyphAtIndex:range.location].y;
++                                              auto line = LineMeasurement{
++                                                  std::string([renderedString UTF8String]),
++                                                  rect,
++                                                  overallRect.size.height - baseline,
++                                                  font.capHeight,
++                                                  baseline,
++                                                  font.xHeight};
++                                              blockParagraphLines->push_back(line);
++                                            } else {
++                                              auto line = LineMeasurement{
++                                                  std::string([renderedString UTF8String]),
++                                                  rect,
++                                                  -font.descender,
++                                                  font.capHeight,
++                                                  font.ascender,
++                                                  font.xHeight};
++                                              blockParagraphLines->push_back(line);
++                                            }
+                                           }];
+   return paragraphLines;
+ }
+@@ -304,12 +319,19 @@ static NSLineBreakMode RCTNSLineBreakModeFromEllipsizeMode(EllipsizeMode ellipsi
+                 CGSize attachmentSize = attachment.bounds.size;
+                 CGRect glyphRect = [layoutManager boundingRectForGlyphRange:range inTextContainer:textContainer];
+ 
+-                UIFont *font = [textStorage attribute:NSFontAttributeName atIndex:range.location effectiveRange:nil];
++                CGRect frame;
++                if (ReactNativeFeatureFlags::enableAlignItemsBaselineOnFabricIOS()) {
++                  CGFloat baseline = [layoutManager locationForGlyphAtIndex:range.location].y;
++
++                  frame = {{glyphRect.origin.x, baseline - attachmentSize.height}, attachmentSize};
++                } else {
++                  UIFont *font = [textStorage attribute:NSFontAttributeName atIndex:range.location effectiveRange:nil];
+ 
+-                CGRect frame = {
+-                    {glyphRect.origin.x,
+-                     glyphRect.origin.y + glyphRect.size.height - attachmentSize.height + font.descender},
+-                    attachmentSize};
++                  frame = {
++                      {glyphRect.origin.x,
++                       glyphRect.origin.y + glyphRect.size.height - attachmentSize.height + font.descender},
++                      attachmentSize};
++                }
+ 
+                 auto rect = facebook::react::Rect{
+                     facebook::react::Point{frame.origin.x, frame.origin.y},
+diff --git a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/TextLayoutManager.h b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/TextLayoutManager.h
+index 30fd816eb59..5c380ab41c7 100644
+--- a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/TextLayoutManager.h
++++ b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/TextLayoutManager.h
+@@ -45,6 +45,15 @@ class TextLayoutManager {
+       ParagraphAttributes paragraphAttributes,
+       Size size) const;
+ 
++  /*
++   * Calculates baseline of `attributedString` using native text rendering
++   * infrastructure.
++   */
++  Float baseline(
++      AttributedString attributedString,
++      ParagraphAttributes paragraphAttributes,
++      Size size) const;
++
+   /*
+    * Returns an opaque pointer to platform-specific TextLayoutManager.
+    * Is used on a native views layer to delegate text rendering to the manager.
+@@ -53,7 +62,8 @@ class TextLayoutManager {
+ 
+  private:
+   std::shared_ptr<void> self_;
+-  TextMeasureCache measureCache_{};
++  TextMeasureCache textMeasureCache_{};
++  LineMeasureCache lineMeasureCache_{};
+ };
+ 
+ } // namespace facebook::react
+diff --git a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/TextLayoutManager.mm b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/TextLayoutManager.mm
+index 4d9b0f3f89f..a36f094d460 100644
+--- a/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/TextLayoutManager.mm
++++ b/packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/TextLayoutManager.mm
+@@ -38,7 +38,7 @@ TextMeasurement TextLayoutManager::measure(
+     case AttributedStringBox::Mode::Value: {
+       auto &attributedString = attributedStringBox.getValue();
+ 
+-      measurement = measureCache_.get(
++      measurement = textMeasureCache_.get(
+           {attributedString, paragraphAttributes, layoutConstraints}, [&](const TextMeasureCacheKey &key) {
+             auto telemetry = TransactionTelemetry::threadLocalTelemetry();
+             if (telemetry) {
+@@ -90,9 +90,28 @@ LinesMeasurements TextLayoutManager::measureLines(
+     Size size) const
+ {
+   RCTTextLayoutManager *textLayoutManager = (RCTTextLayoutManager *)unwrapManagedObject(self_);
+-  return [textLayoutManager getLinesForAttributedString:attributedString
+-                                    paragraphAttributes:paragraphAttributes
+-                                                   size:{size.width, size.height}];
++
++  auto measurement =
++      lineMeasureCache_.get({attributedString, paragraphAttributes, size}, [&](const LineMeasureCacheKey &key) {
++        auto measurement = [textLayoutManager getLinesForAttributedString:attributedString
++                                                      paragraphAttributes:paragraphAttributes
++                                                                     size:{size.width, size.height}];
++        return measurement;
++      });
++
++  return measurement;
++}
++
++Float TextLayoutManager::baseline(AttributedString attributedString, ParagraphAttributes paragraphAttributes, Size size)
++    const
++{
++  auto lines = this->measureLines(attributedString, paragraphAttributes, size);
++
++  if (!lines.empty()) {
++    return lines[0].ascender;
++  } else {
++    return 0;
++  }
+ }
+ 
+ } // namespace facebook::react
+diff --git a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+index 56db5953e5b..d67582cbc4e 100644
+--- a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
++++ b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+@@ -59,6 +59,11 @@ const definitions: FeatureFlagDefinitions = {
+       description:
+         'When enabled, ReactInstanceManager will clean up Fabric surfaces on destroy().',
+     },
++    enableAlignItemsBaselineOnFabricIOS: {
++      defaultValue: true,
++      description:
++        'Kill-switch to turn off support for aling-items:baseline on Fabric iOS.',
++    },
+     enableCleanTextInputYogaNode: {
+       defaultValue: false,
+       description: 'Clean yoga node when <TextInput /> does not change.',
+diff --git a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+index 43724e92ec6..bd00a4c86e6 100644
+--- a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<4faca2a942651f80d6ec51640c89c962>>
++ * @generated SignedSource<<6db4a73cfea277087512de2dbf0433d4>>
+  * @flow strict-local
+  */
+ 
+@@ -46,6 +46,7 @@ export type ReactNativeFeatureFlags = {
+   allowRecursiveCommitsWithSynchronousMountOnAndroid: Getter<boolean>,
+   batchRenderingUpdatesInEventLoop: Getter<boolean>,
+   destroyFabricSurfacesInReactInstanceManager: Getter<boolean>,
++  enableAlignItemsBaselineOnFabricIOS: Getter<boolean>,
+   enableCleanTextInputYogaNode: Getter<boolean>,
+   enableGranularShadowTreeStateReconciliation: Getter<boolean>,
+   enableMicrotasks: Getter<boolean>,
+@@ -135,6 +136,10 @@ export const batchRenderingUpdatesInEventLoop: Getter<boolean> = createNativeFla
+  * When enabled, ReactInstanceManager will clean up Fabric surfaces on destroy().
+  */
+ export const destroyFabricSurfacesInReactInstanceManager: Getter<boolean> = createNativeFlagGetter('destroyFabricSurfacesInReactInstanceManager', false);
++/**
++ * Kill-switch to turn off support for aling-items:baseline on Fabric iOS.
++ */
++export const enableAlignItemsBaselineOnFabricIOS: Getter<boolean> = createNativeFlagGetter('enableAlignItemsBaselineOnFabricIOS', true);
+ /**
+  * Clean yoga node when <TextInput /> does not change.
+  */
+diff --git a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+index 373563fab1c..44f62f6e147 100644
+--- a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<701db8462ddd5b19233084bf8ce94bc4>>
++ * @generated SignedSource<<c147cb778a7c01a77023177aac90e644>>
+  * @flow strict-local
+  */
+ 
+@@ -28,6 +28,7 @@ export interface Spec extends TurboModule {
+   +allowRecursiveCommitsWithSynchronousMountOnAndroid?: () => boolean;
+   +batchRenderingUpdatesInEventLoop?: () => boolean;
+   +destroyFabricSurfacesInReactInstanceManager?: () => boolean;
++  +enableAlignItemsBaselineOnFabricIOS?: () => boolean;
+   +enableCleanTextInputYogaNode?: () => boolean;
+   +enableGranularShadowTreeStateReconciliation?: () => boolean;
+   +enableMicrotasks?: () => boolean;
+diff --git a/packages/rn-tester/js/examples/Text/TextExample.android.js b/packages/rn-tester/js/examples/Text/TextExample.android.js
+index c8acafe10e9..308a0c45af5 100644
+--- a/packages/rn-tester/js/examples/Text/TextExample.android.js
++++ b/packages/rn-tester/js/examples/Text/TextExample.android.js
+@@ -18,7 +18,13 @@ import TextInlineViewsExample from './TextInlineViewsExample';
+ 
+ const TextInlineView = require('../../components/TextInlineView');
+ const React = require('react');
+-const {LayoutAnimation, StyleSheet, Text, View} = require('react-native');
++const {
++  LayoutAnimation,
++  StyleSheet,
++  Text,
++  TextInput,
++  View,
++} = require('react-native');
+ 
+ class Entity extends React.Component<{|children: React.Node|}> {
+   render(): React.Node {
+@@ -958,6 +964,56 @@ function TextBaseLineLayoutExample(props: {}): React.Node {
+         </Text>
+         {marker}
+       </View>
++
++      <Text style={subtitleStyle}>
++        {'Multi-line interleaved <View> and <Text>:'}
++      </Text>
++      <View style={{flexDirection: 'row', alignItems: 'baseline'}}>
++        <Text selectable={true}>
++          Lorem ipsum dolor sit amet, consectetur adipiscing elit. Mauris
++          venenatis,{' '}
++          <View
++            style={{
++              backgroundColor: 'yellow',
++            }}>
++            <Text>mauris eu commodo maximus</Text>
++          </View>{' '}
++          , ante arcu vestibulum ligula, et scelerisque diam.
++        </Text>
++      </View>
++
++      <Text style={subtitleStyle}>{'Multi-line <Text> alignment'}</Text>
++      <View style={{flexDirection: 'row', alignItems: 'baseline'}}>
++        <View style={{width: 50, height: 50, backgroundColor: 'gray'}} />
++        <View style={{width: 125, backgroundColor: '#eee'}}>
++          <Text style={{fontSize: 15}}>
++            Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
++            eiusmod tempor incididunt ut labore et dolore magna aliqua.
++          </Text>
++        </View>
++        <View style={{width: 125, backgroundColor: '#eee'}}>
++          <Text style={{fontSize: 10}}>
++            Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
++            eiusmod tempor incididunt ut labore et dolore magna aliqua.
++          </Text>
++        </View>
++      </View>
++
++      <Text style={subtitleStyle}>{'<TextInput/>:'}</Text>
++      <View style={{flexDirection: 'row', alignItems: 'baseline'}}>
++        {marker}
++        <TextInput style={{margin: 0, padding: 0}}>{texts}</TextInput>
++        {marker}
++      </View>
++
++      <Text style={subtitleStyle}>{'<TextInput multiline/>:'}</Text>
++      <View style={{flexDirection: 'row', alignItems: 'baseline'}}>
++        {marker}
++        <TextInput multiline={true} style={{margin: 0, padding: 0}}>
++          {texts}
++        </TextInput>
++        {marker}
++      </View>
+     </View>
+   );
+ }
+diff --git a/packages/rn-tester/js/examples/Text/TextExample.ios.js b/packages/rn-tester/js/examples/Text/TextExample.ios.js
+index 59d13fe8959..f454c2c0255 100644
+--- a/packages/rn-tester/js/examples/Text/TextExample.ios.js
++++ b/packages/rn-tester/js/examples/Text/TextExample.ios.js
+@@ -308,9 +308,6 @@ class TextBaseLineLayoutExample extends React.Component<{}, mixed> {
+           {marker}
+         </View>
+ 
+-        {/* iOS-only because it relies on inline views being able to size to content.
+-         * Android's implementation requires that a width and height be specified
+-         * on the inline view. */}
+         <Text style={subtitleStyle}>{'Interleaving <View> and <Text>:'}</Text>
+         <View style={{flexDirection: 'row', alignItems: 'baseline'}}>
+           {marker}
+@@ -347,6 +344,23 @@ class TextBaseLineLayoutExample extends React.Component<{}, mixed> {
+           </Text>
+         </View>
+ 
++        <Text style={subtitleStyle}>{'Multi-line <Text> alignment'}</Text>
++        <View style={{flexDirection: 'row', alignItems: 'baseline'}}>
++          <View style={{width: 50, height: 50, backgroundColor: 'gray'}} />
++          <View style={{width: 125, backgroundColor: '#eee'}}>
++            <Text style={{fontSize: 15}}>
++              Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
++              eiusmod tempor incididunt ut labore et dolore magna aliqua.
++            </Text>
++          </View>
++          <View style={{width: 125, backgroundColor: '#eee'}}>
++            <Text style={{fontSize: 10}}>
++              Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do
++              eiusmod tempor incididunt ut labore et dolore magna aliqua.
++            </Text>
++          </View>
++        </View>
++
+         <Text style={subtitleStyle}>{'<TextInput/>:'}</Text>
+         <View style={{flexDirection: 'row', alignItems: 'baseline'}}>
+           {marker}

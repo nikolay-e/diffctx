@@ -26,7 +26,9 @@ repos:
     rev: v6.0.0
     hooks:
       - id: trailing-whitespace
+        exclude: ^benchmarks/dcbench/instances/.*/patch\.diff$
       - id: end-of-file-fixer
+        exclude: ^benchmarks/dcbench/instances/.*/patch\.diff$
       - id: check-yaml
       - id: check-added-large-files
         args: ["--maxkb=1000"]
@@ -35,6 +37,7 @@ repos:
       - id: check-json
       - id: mixed-line-ending
         args: ["--fix=lf"]
+        exclude: ^benchmarks/dcbench/instances/.*/patch\.diff$
       - id: check-case-conflict
       - id: check-docstring-first
       - id: check-ast
@@ -133,6 +136,7 @@ repos:
     hooks:
       - id: gitleaks
         name: Scan for secrets (gitleaks)
+        exclude: ^benchmarks/dcbench/instances/
 
   - repo: https://github.com/semgrep/pre-commit
     rev: v1.149.0
@@ -220,7 +224,7 @@ repos:
             {extends: default, rules:
             {line-length: {max: 120}, document-start: disable,
             indentation: disable, comments: disable}}
-        exclude: ^tests/cases/diff/
+        exclude: ^(tests/cases/diff/|benchmarks/dcbench/instances/)
 
   # ============================================================================
   # SHELL LINTING

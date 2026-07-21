@@ -1,0 +1,550 @@
+From fcd63032d029cf9ec31605e9be4bb63d5e44ce1e Mon Sep 17 00:00:00 2001
+From: Emily Brown <emilypb@meta.com>
+Date: Thu, 20 Nov 2025 05:16:40 -0800
+Subject: [PATCH] Add "Dismiss x" button to the "Disconnected from dev server"
+ Fast Refresh notifier message (#54445)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/54445
+
+## Changelog:
+[General] [Added] - DevServer fast refresh banners now have a dismiss button but still tap anywhere to dismiss.
+
+Add a "Dismiss x" button to the fast refresh disconnected banners in the react native DevLoadingView to act as a visual cue for the current click anywhere to dismiss gesture.
+
+Add new parameter to the devLoadingView turbo module to determine whether a message has this dismiss button.
+
+Reviewed By: cortinico
+
+Differential Revision: D86420230
+
+fbshipit-source-id: 2b7cc6601659edb9c38a5ae03b9a3fa4f96e1e95
+---
+ .../Libraries/Utilities/DevLoadingView.js     |  9 +-
+ .../Libraries/Utilities/HMRClient.js          |  1 +
+ .../React/CoreModules/RCTDevLoadingView.mm    | 85 +++++++++++++++----
+ .../DevSupport/RCTDevLoadingViewProtocol.h    |  5 +-
+ .../ReactAndroid/api/ReactAndroid.api         |  4 +-
+ .../DefaultDevLoadingViewImplementation.kt    | 71 +++++++++++++---
+ .../interfaces/DevLoadingViewManager.kt       |  7 +-
+ .../modules/devloading/DevLoadingModule.kt    |  9 +-
+ .../devsupport/layout/dev_loading_view.xml    | 56 ++++++++----
+ .../main/res/devsupport/values/strings.xml    |  1 +
+ .../react/devsupport/DevLoadingViewModule.cpp |  3 +-
+ .../react/devsupport/DevLoadingViewModule.h   |  4 +-
+ .../modules/NativeDevLoadingView.js           |  1 +
+ 13 files changed, 203 insertions(+), 53 deletions(-)
+
+diff --git a/packages/react-native/Libraries/Utilities/DevLoadingView.js b/packages/react-native/Libraries/Utilities/DevLoadingView.js
+index 338a5614df3..d17e25146e1 100644
+--- a/packages/react-native/Libraries/Utilities/DevLoadingView.js
++++ b/packages/react-native/Libraries/Utilities/DevLoadingView.js
+@@ -44,7 +44,11 @@ const COLOR_SCHEME = {
+ };
+ 
+ export default {
+-  showMessage(message: string, type: 'load' | 'refresh' | 'error') {
++  showMessage(
++    message: string,
++    type: 'load' | 'refresh' | 'error',
++    options?: {dismissButton?: boolean},
++  ) {
+     if (NativeDevLoadingView) {
+       const colorScheme =
+         getColorScheme() === 'dark' ? COLOR_SCHEME.dark : COLOR_SCHEME.default;
+@@ -59,10 +63,13 @@ export default {
+         textColor = processColor(colorSet.textColor);
+       }
+ 
++      const hasDismissButton = options?.dismissButton ?? false;
++
+       NativeDevLoadingView.showMessage(
+         message,
+         typeof textColor === 'number' ? textColor : null,
+         typeof backgroundColor === 'number' ? backgroundColor : null,
++        hasDismissButton,
+       );
+     }
+   },
+diff --git a/packages/react-native/Libraries/Utilities/HMRClient.js b/packages/react-native/Libraries/Utilities/HMRClient.js
+index 685e79707c1..40245e5a9fe 100644
+--- a/packages/react-native/Libraries/Utilities/HMRClient.js
++++ b/packages/react-native/Libraries/Utilities/HMRClient.js
+@@ -307,6 +307,7 @@ function setHMRUnavailableReason(reason: string) {
+     DevLoadingView.showMessage(
+       'Fast Refresh disconnected. Reload app to reconnect.',
+       'error',
++      {dismissButton: true},
+     );
+     console.warn(reason);
+     // (Not using the `warning` module to prevent a Buck cycle.)
+diff --git a/packages/react-native/React/CoreModules/RCTDevLoadingView.mm b/packages/react-native/React/CoreModules/RCTDevLoadingView.mm
+index 0dd2a7f100c..e30afb417a5 100644
+--- a/packages/react-native/React/CoreModules/RCTDevLoadingView.mm
++++ b/packages/react-native/React/CoreModules/RCTDevLoadingView.mm
+@@ -32,6 +32,7 @@ using namespace facebook::react;
+   UIWindow *_window;
+   UILabel *_label;
+   UIView *_container;
++  UIButton *_dismissButton;
+   NSDate *_showDate;
+   BOOL _hiding;
+   dispatch_block_t _initialMessageBlock;
+@@ -85,7 +86,10 @@ RCT_EXPORT_MODULE()
+       dispatch_time(DISPATCH_TIME_NOW, 0.2 * NSEC_PER_SEC), dispatch_get_main_queue(), self->_initialMessageBlock);
+ }
+ 
+-- (void)showMessage:(NSString *)message color:(UIColor *)color backgroundColor:(UIColor *)backgroundColor
++- (void)showMessage:(NSString *)message
++              color:(UIColor *)color
++    backgroundColor:(UIColor *)backgroundColor
++      dismissButton:(BOOL)dismissButton
+ {
+   if (!RCTDevLoadingViewGetEnabled() || _hiding) {
+     return;
+@@ -124,45 +128,90 @@ RCT_EXPORT_MODULE()
+     [self->_container addGestureRecognizer:tapGesture];
+     self->_container.userInteractionEnabled = YES;
+ 
++    if (dismissButton) {
++      CGFloat hue = 0.0;
++      CGFloat saturation = 0.0;
++      CGFloat brightness = 0.0;
++      CGFloat alpha = 0.0;
++      [backgroundColor getHue:&hue saturation:&saturation brightness:&brightness alpha:&alpha];
++      UIColor *darkerBackground = [UIColor colorWithHue:hue
++                                             saturation:saturation
++                                             brightness:brightness * 0.7
++                                                  alpha:1.0];
++
++      UIButtonConfiguration *buttonConfig = [UIButtonConfiguration plainButtonConfiguration];
++      buttonConfig.attributedTitle = [[NSAttributedString alloc]
++          initWithString:@"Dismiss ✕"
++              attributes:@{NSFontAttributeName : [UIFont systemFontOfSize:11.0 weight:UIFontWeightRegular]}];
++      buttonConfig.contentInsets = NSDirectionalEdgeInsetsMake(6, 12, 6, 12);
++      buttonConfig.background.backgroundColor = darkerBackground;
++      buttonConfig.background.cornerRadius = 10;
++      buttonConfig.baseForegroundColor = color;
++
++      UIAction *dismissAction = [UIAction actionWithHandler:^(__kindof UIAction *_Nonnull action) {
++        [self hide];
++      }];
++      self->_dismissButton = [UIButton buttonWithConfiguration:buttonConfig primaryAction:dismissAction];
++      self->_dismissButton.translatesAutoresizingMaskIntoConstraints = NO;
++    }
++
+     self->_label = [[UILabel alloc] init];
+     self->_label.translatesAutoresizingMaskIntoConstraints = NO;
+     self->_label.font = [UIFont monospacedDigitSystemFontOfSize:12.0 weight:UIFontWeightRegular];
+     self->_label.textAlignment = NSTextAlignmentCenter;
+     self->_label.textColor = color;
+     self->_label.text = message;
++    self->_label.numberOfLines = 0;
+ 
+     [self->_window.rootViewController.view addSubview:self->_container];
++    if (dismissButton) {
++      [self->_container addSubview:self->_dismissButton];
++    }
+     [self->_container addSubview:self->_label];
+ 
+     CGFloat topSafeAreaHeight = mainWindow.safeAreaInsets.top;
+-    CGFloat height = topSafeAreaHeight + 25;
+-    self->_window.frame = CGRectMake(0, 0, mainWindow.frame.size.width, height);
+-
+     self->_window.hidden = NO;
+ 
+     [self->_window layoutIfNeeded];
+ 
+-    [NSLayoutConstraint activateConstraints:@[
++    NSMutableArray *constraints = [NSMutableArray arrayWithArray:@[
+       // Container constraints
+       [self->_container.topAnchor constraintEqualToAnchor:self->_window.rootViewController.view.topAnchor],
+       [self->_container.leadingAnchor constraintEqualToAnchor:self->_window.rootViewController.view.leadingAnchor],
+       [self->_container.trailingAnchor constraintEqualToAnchor:self->_window.rootViewController.view.trailingAnchor],
+-      [self->_container.heightAnchor constraintEqualToConstant:height],
+ 
+       // Label constraints
+-      [self->_label.centerXAnchor constraintEqualToAnchor:self->_container.centerXAnchor],
+-      [self->_label.bottomAnchor constraintEqualToAnchor:self->_container.bottomAnchor constant:-5],
++      [self->_label.topAnchor constraintEqualToAnchor:self->_container.topAnchor constant:topSafeAreaHeight + 8],
++      [self->_label.leadingAnchor constraintEqualToAnchor:self->_container.leadingAnchor constant:10],
++      [self->_label.bottomAnchor constraintEqualToAnchor:self->_container.bottomAnchor constant:-8],
+     ]];
++
++    // Add button-specific constraints if button exists
++    if (dismissButton) {
++      [constraints addObjectsFromArray:@[
++        [self->_dismissButton.trailingAnchor constraintEqualToAnchor:self->_container.trailingAnchor constant:-10],
++        [self->_dismissButton.centerYAnchor constraintEqualToAnchor:self->_label.centerYAnchor],
++        [self->_dismissButton.heightAnchor constraintEqualToConstant:22],
++        [self->_label.trailingAnchor constraintEqualToAnchor:self->_dismissButton.leadingAnchor constant:-10],
++      ]];
++    } else {
++      [constraints addObject:[self->_label.trailingAnchor constraintEqualToAnchor:self->_container.trailingAnchor
++                                                                         constant:-10]];
++    }
++
++    [NSLayoutConstraint activateConstraints:constraints];
+   });
+ }
+ 
+ RCT_EXPORT_METHOD(
+     showMessage : (NSString *)message withColor : (NSNumber *__nonnull)color withBackgroundColor : (NSNumber *__nonnull)
+-        backgroundColor)
++        backgroundColor withDismissButton : (NSNumber *)dismissButton)
+ {
+-  [self showMessage:message color:[RCTConvert UIColor:color] backgroundColor:[RCTConvert UIColor:backgroundColor]];
++  [self showMessage:message
++                color:[RCTConvert UIColor:color]
++      backgroundColor:[RCTConvert UIColor:backgroundColor]
++        dismissButton:[dismissButton boolValue]];
+ }
+-
+ RCT_EXPORT_METHOD(hide)
+ {
+   if (!RCTDevLoadingViewGetEnabled()) {
+@@ -211,7 +260,7 @@ RCT_EXPORT_METHOD(hide)
+     backgroundColor = [UIColor colorWithHue:0 saturation:0 brightness:0.98 alpha:1];
+   }
+ 
+-  [self showMessage:message color:color backgroundColor:backgroundColor];
++  [self showMessage:message color:color backgroundColor:backgroundColor dismissButton:false];
+ }
+ 
+ - (void)showOfflineMessage
+@@ -225,7 +274,7 @@ RCT_EXPORT_METHOD(hide)
+   }
+ 
+   NSString *message = [NSString stringWithFormat:@"Connect to %@ to develop JavaScript.", RCT_PACKAGER_NAME];
+-  [self showMessage:message color:color backgroundColor:backgroundColor];
++  [self showMessage:message color:color backgroundColor:backgroundColor dismissButton:false];
+ }
+ 
+ - (BOOL)isDarkModeEnabled
+@@ -284,10 +333,16 @@ RCT_EXPORT_METHOD(hide)
+ + (void)setEnabled:(BOOL)enabled
+ {
+ }
+-- (void)showMessage:(NSString *)message color:(UIColor *)color backgroundColor:(UIColor *)backgroundColor
++- (void)showMessage:(NSString *)message
++              color:(UIColor *)color
++    backgroundColor:(UIColor *)backgroundColor
++      dismissButton:(BOOL)dismissButton
+ {
+ }
+-- (void)showMessage:(NSString *)message withColor:(NSNumber *)color withBackgroundColor:(NSNumber *)backgroundColor
++- (void)showMessage:(NSString *)message
++              withColor:(NSNumber *)color
++    withBackgroundColor:(NSNumber *)backgroundColor
++      withDismissButton:(NSNumber *)dismissButton
+ {
+ }
+ - (void)showWithURL:(NSURL *)URL
+diff --git a/packages/react-native/React/DevSupport/RCTDevLoadingViewProtocol.h b/packages/react-native/React/DevSupport/RCTDevLoadingViewProtocol.h
+index ec9ed3a36c8..6cea15d7533 100644
+--- a/packages/react-native/React/DevSupport/RCTDevLoadingViewProtocol.h
++++ b/packages/react-native/React/DevSupport/RCTDevLoadingViewProtocol.h
+@@ -11,7 +11,10 @@
+ 
+ @protocol RCTDevLoadingViewProtocol <NSObject>
+ + (void)setEnabled:(BOOL)enabled;
+-- (void)showMessage:(NSString *)message color:(UIColor *)color backgroundColor:(UIColor *)backgroundColor;
++- (void)showMessage:(NSString *)message
++              color:(UIColor *)color
++    backgroundColor:(UIColor *)backgroundColor
++      dismissButton:(BOOL)dismissButton;
+ - (void)showWithURL:(NSURL *)URL;
+ - (void)updateProgress:(RCTLoadingProgress *)progress;
+ - (void)hide;
+diff --git a/packages/react-native/ReactAndroid/api/ReactAndroid.api b/packages/react-native/ReactAndroid/api/ReactAndroid.api
+index c39a442b5f7..af72c70b059 100644
+--- a/packages/react-native/ReactAndroid/api/ReactAndroid.api
++++ b/packages/react-native/ReactAndroid/api/ReactAndroid.api
+@@ -1868,7 +1868,7 @@ public final class com/facebook/react/devsupport/DefaultDevLoadingViewImplementa
+ 	public fun <init> (Lcom/facebook/react/devsupport/ReactInstanceDevHelper;)V
+ 	public fun hide ()V
+ 	public fun showMessage (Ljava/lang/String;)V
+-	public fun showMessage (Ljava/lang/String;Ljava/lang/Double;Ljava/lang/Double;)V
++	public fun showMessage (Ljava/lang/String;Ljava/lang/Double;Ljava/lang/Double;Ljava/lang/Boolean;)V
+ 	public fun updateProgress (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;)V
+ }
+ 
+@@ -2120,7 +2120,7 @@ public abstract interface class com/facebook/react/devsupport/interfaces/DevBund
+ public abstract interface class com/facebook/react/devsupport/interfaces/DevLoadingViewManager {
+ 	public abstract fun hide ()V
+ 	public abstract fun showMessage (Ljava/lang/String;)V
+-	public abstract fun showMessage (Ljava/lang/String;Ljava/lang/Double;Ljava/lang/Double;)V
++	public abstract fun showMessage (Ljava/lang/String;Ljava/lang/Double;Ljava/lang/Double;Ljava/lang/Boolean;)V
+ 	public abstract fun updateProgress (Ljava/lang/String;Ljava/lang/Integer;Ljava/lang/Integer;)V
+ }
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DefaultDevLoadingViewImplementation.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DefaultDevLoadingViewImplementation.kt
+index ff366e685cf..8271dfc12cc 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DefaultDevLoadingViewImplementation.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/DefaultDevLoadingViewImplementation.kt
+@@ -8,6 +8,7 @@
+ package com.facebook.react.devsupport
+ 
+ import android.content.Context
++import android.graphics.Color
+ import android.graphics.Rect
+ import android.view.Gravity
+ import android.view.LayoutInflater
+@@ -33,14 +34,21 @@ public class DefaultDevLoadingViewImplementation(
+   private var devLoadingPopup: PopupWindow? = null
+ 
+   override fun showMessage(message: String) {
+-    showMessage(message, color = null, backgroundColor = null)
++    showMessage(message, color = null, backgroundColor = null, dismissButton = false)
+   }
+ 
+-  override fun showMessage(message: String, color: Double?, backgroundColor: Double?) {
++  override fun showMessage(
++      message: String,
++      color: Double?,
++      backgroundColor: Double?,
++      dismissButton: Boolean?,
++  ) {
+     if (!isEnabled) {
+       return
+     }
+-    UiThreadUtil.runOnUiThread { showInternal(message, color, backgroundColor) }
++    UiThreadUtil.runOnUiThread {
++      showInternal(message, color, backgroundColor, dismissButton ?: false)
++    }
+   }
+ 
+   override fun updateProgress(status: String?, done: Int?, total: Int?) {
+@@ -63,7 +71,12 @@ public class DefaultDevLoadingViewImplementation(
+     }
+   }
+ 
+-  private fun showInternal(message: String, color: Double?, backgroundColor: Double?) {
++  private fun showInternal(
++      message: String,
++      color: Double?,
++      backgroundColor: Double?,
++      dismissButton: Boolean,
++  ) {
+     if (devLoadingPopup?.isShowing == true) {
+       // already showing
+       return
+@@ -86,24 +99,56 @@ public class DefaultDevLoadingViewImplementation(
+       val topOffset = rectangle.top
+       val inflater =
+           currentActivity.getSystemService(Context.LAYOUT_INFLATER_SERVICE) as LayoutInflater
+-      val view = inflater.inflate(R.layout.dev_loading_view, null) as TextView
+-      view.text = message
+-      if (color != null) {
+-        view.setTextColor(color.toInt())
++      val rootView = inflater.inflate(R.layout.dev_loading_view, null) as ViewGroup
++      val textView = rootView.findViewById<TextView>(R.id.loading_text)
++      textView.text = message
++
++      val dismissButtonView = rootView.findViewById<android.widget.Button>(R.id.dismiss_button)
++
++      if (dismissButton) {
++        dismissButtonView.visibility = android.view.View.VISIBLE
++      } else {
++        dismissButtonView.visibility = android.view.View.GONE
+       }
+-      if (backgroundColor != null) {
+-        view.setBackgroundColor(backgroundColor.toInt())
++
++      // Use provided colors or defaults (matching iOS behavior)
++      val textColor = color?.toInt() ?: Color.WHITE
++      val bgColor = backgroundColor?.toInt() ?: Color.rgb(64, 64, 64) // Default grey
++
++      textView.setTextColor(textColor)
++      rootView.setBackgroundColor(bgColor)
++
++      if (dismissButton) {
++        dismissButtonView.setTextColor(textColor)
++
++        // Darken the background color for the button
++        val red = (Color.red(bgColor) * 0.7).toInt()
++        val green = (Color.green(bgColor) * 0.7).toInt()
++        val blue = (Color.blue(bgColor) * 0.7).toInt()
++        val darkerColor = Color.rgb(red, green, blue)
++
++        // Create rounded drawable for button
++        val drawable = android.graphics.drawable.GradientDrawable()
++        drawable.setColor(darkerColor)
++        drawable.cornerRadius = 15 * rootView.resources.displayMetrics.density
++        dismissButtonView.background = drawable
++
++        dismissButtonView.setOnClickListener { hideInternal() }
+       }
+-      view.setOnClickListener { hideInternal() }
++
++      // Allow tapping anywhere on the banner to dismiss
++      rootView.setOnClickListener { hideInternal() }
++
+       val popup =
+           PopupWindow(
+-              view,
++              rootView,
+               ViewGroup.LayoutParams.MATCH_PARENT,
+               ViewGroup.LayoutParams.WRAP_CONTENT,
+           )
+       popup.showAtLocation(currentActivity.window.decorView, Gravity.NO_GRAVITY, 0, topOffset)
+-      devLoadingView = view
++      devLoadingView = textView // Store the TextView for updateProgress()
+       devLoadingPopup = popup
++
+       // TODO T164786028: Find out the root cause of the BadTokenException exception here
+     } catch (e: WindowManager.BadTokenException) {
+       FLog.e(
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/interfaces/DevLoadingViewManager.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/interfaces/DevLoadingViewManager.kt
+index 9366cfb3b30..600941aabb0 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/interfaces/DevLoadingViewManager.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/devsupport/interfaces/DevLoadingViewManager.kt
+@@ -11,7 +11,12 @@ package com.facebook.react.devsupport.interfaces
+ public interface DevLoadingViewManager {
+   public fun showMessage(message: String)
+ 
+-  public fun showMessage(message: String, color: Double?, backgroundColor: Double?)
++  public fun showMessage(
++      message: String,
++      color: Double?,
++      backgroundColor: Double?,
++      dismissButton: Boolean?,
++  )
+ 
+   public fun updateProgress(status: String?, done: Int?, total: Int?)
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/devloading/DevLoadingModule.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/devloading/DevLoadingModule.kt
+index 78a3a84146d..c840a622d7e 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/devloading/DevLoadingModule.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/modules/devloading/DevLoadingModule.kt
+@@ -30,9 +30,14 @@ internal class DevLoadingModule(reactContext: ReactApplicationContext) :
+     }
+   }
+ 
+-  override fun showMessage(message: String, color: Double?, backgroundColor: Double?) {
++  override fun showMessage(
++      message: String,
++      color: Double?,
++      backgroundColor: Double?,
++      dismissButton: Boolean?,
++  ) {
+     UiThreadUtil.runOnUiThread {
+-      devLoadingViewManager?.showMessage(message, color, backgroundColor)
++      devLoadingViewManager?.showMessage(message, color, backgroundColor, dismissButton)
+     }
+   }
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/res/devsupport/layout/dev_loading_view.xml b/packages/react-native/ReactAndroid/src/main/res/devsupport/layout/dev_loading_view.xml
+index b7e6b8cc0df..02a3940c25e 100644
+--- a/packages/react-native/ReactAndroid/src/main/res/devsupport/layout/dev_loading_view.xml
++++ b/packages/react-native/ReactAndroid/src/main/res/devsupport/layout/dev_loading_view.xml
+@@ -1,17 +1,43 @@
+ <?xml version="1.0" encoding="utf-8"?>
+ 
+-<TextView
+-  xmlns:android="http://schemas.android.com/apk/res/android"
+-  android:layout_width="match_parent"
+-  android:layout_height="wrap_content"
+-  android:background="#404040"
+-  android:ellipsize="end"
+-  android:gravity="center"
+-  android:paddingTop="5dp"
+-  android:paddingBottom="5dp"
+-  android:paddingStart="8dp"
+-  android:paddingEnd="8dp"
+-  android:maxLines="1"
+-  android:textColor="@android:color/white"
+-  android:textSize="12sp"
+-  />
++<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
++    android:layout_width="match_parent"
++    android:layout_height="wrap_content"
++    android:orientation="horizontal"
++    android:background="#404040"
++    >
++
++    <TextView
++        android:id="@+id/loading_text"
++        android:layout_width="0dp"
++        android:layout_height="wrap_content"
++        android:layout_weight="1"
++        android:layout_gravity="center_vertical"
++        android:gravity="center"
++        android:paddingTop="10dp"
++        android:paddingBottom="10dp"
++        android:paddingStart="8dp"
++        android:paddingEnd="8dp"
++        android:textSize="12sp"
++        android:fontFamily="sans-serif"
++        />
++
++    <Button
++        android:id="@+id/dismiss_button"
++        android:layout_width="wrap_content"
++        android:layout_height="wrap_content"
++        android:layout_gravity="center_vertical"
++        android:layout_marginEnd="10dp"
++        android:minWidth="0dp"
++        android:minHeight="0dp"
++        android:text="@string/catalyst_loading_dismiss"
++        android:textAllCaps="false"
++        android:textSize="11sp"
++        android:fontFamily="sans-serif"
++        android:paddingStart="16dp"
++        android:paddingEnd="16dp"
++        android:paddingTop="3dp"
++        android:paddingBottom="3dp"
++        />
++
++</LinearLayout>
+diff --git a/packages/react-native/ReactAndroid/src/main/res/devsupport/values/strings.xml b/packages/react-native/ReactAndroid/src/main/res/devsupport/values/strings.xml
+index 29a8b8d1dea..9621bacc928 100644
+--- a/packages/react-native/ReactAndroid/src/main/res/devsupport/values/strings.xml
++++ b/packages/react-native/ReactAndroid/src/main/res/devsupport/values/strings.xml
+@@ -36,4 +36,5 @@
+   <string name="catalyst_sample_profiler_toggle" project="catalyst" translatable="false">Toggle Sampling Profiler</string>
+   <string name="catalyst_dev_menu_header" project="catalyst" translatable="false">React Native Dev Menu</string>
+   <string name="catalyst_dev_menu_sub_header" project="catalyst" translatable="false">Running %1$s</string>
++  <string name="catalyst_loading_dismiss" project="catalyst" translatable="false">Dismiss ✕</string>
+ </resources>
+diff --git a/packages/react-native/ReactCxxPlatform/react/devsupport/DevLoadingViewModule.cpp b/packages/react-native/ReactCxxPlatform/react/devsupport/DevLoadingViewModule.cpp
+index 637c4d29edc..2569842c1ae 100644
+--- a/packages/react-native/ReactCxxPlatform/react/devsupport/DevLoadingViewModule.cpp
++++ b/packages/react-native/ReactCxxPlatform/react/devsupport/DevLoadingViewModule.cpp
+@@ -28,7 +28,8 @@ void DevLoadingViewModule::showMessage(
+     jsi::Runtime& /*rt*/,
+     const std::string& message,
+     std::optional<int32_t> textColor,
+-    std::optional<int32_t> backgroundColor) {
++    std::optional<int32_t> backgroundColor,
++    std::optional<bool> /*dismissButton*/) {
+   if (auto devUIDelegate = devUIDelegate_.lock()) {
+     devUIDelegate->showLoadingView(
+         message,
+diff --git a/packages/react-native/ReactCxxPlatform/react/devsupport/DevLoadingViewModule.h b/packages/react-native/ReactCxxPlatform/react/devsupport/DevLoadingViewModule.h
+index 947255f603d..0cedcb18373 100644
+--- a/packages/react-native/ReactCxxPlatform/react/devsupport/DevLoadingViewModule.h
++++ b/packages/react-native/ReactCxxPlatform/react/devsupport/DevLoadingViewModule.h
+@@ -25,8 +25,8 @@ class DevLoadingViewModule : public NativeDevLoadingViewCxxSpec<DevLoadingViewMo
+       jsi::Runtime &rt,
+       const std::string &message,
+       std::optional<int32_t> textColor,
+-      std::optional<int32_t> backgroundColor);
+-
++      std::optional<int32_t> backgroundColor,
++      std::optional<bool> dismissButton);
+   void hide(jsi::Runtime &rt);
+ 
+  private:
+diff --git a/packages/react-native/src/private/specs_DEPRECATED/modules/NativeDevLoadingView.js b/packages/react-native/src/private/specs_DEPRECATED/modules/NativeDevLoadingView.js
+index 08bd9589e7c..71ba4d6fdd6 100644
+--- a/packages/react-native/src/private/specs_DEPRECATED/modules/NativeDevLoadingView.js
++++ b/packages/react-native/src/private/specs_DEPRECATED/modules/NativeDevLoadingView.js
+@@ -17,6 +17,7 @@ export interface Spec extends TurboModule {
+     message: string,
+     withColor: ?number,
+     withBackgroundColor: ?number,
++    withDismissButton: ?boolean,
+   ) => void;
+   +hide: () => void;
+ }

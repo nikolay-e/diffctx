@@ -1,0 +1,31 @@
+repo: gitpod
+base_commit: 16e82f1e54c0f926e31423a5378c53664ff72df1
+commit: 756c5b0248a354a817c77e5160501dea6b4947f8
+patch_stored: true
+gold:
+- path: components/BUILD.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ide-service-api/go/config/ideconfig.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ide-service/example-ide-config.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ide-service/pkg/server/server.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Real, non-mechanical logic change: IDEOption gains ImageLayers/LatestImageLayers replacing PluginImage/PluginLatestImage,
+  ResolveWorkspaceConfig is restructured to compute layered desktop images and gates ideSettings/context
+  parsing behind WorkspaceType_REGULAR, and a new jetbrains/launcher build target is wired into BUILD.yaml.
+  This is precisely the kind of control-flow refactor a reader cannot reconstruct from diff.stat alone,
+  yet the tool hung and returned nothing — the worst possible outcome for a semantically dense commit.'

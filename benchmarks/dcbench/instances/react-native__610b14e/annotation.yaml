@@ -1,0 +1,54 @@
+repo: react-native
+base_commit: 03e78010aef3984287c34902df46268bbe9723e9
+commit: 610b14e4f3f606cd4c49518b9a42e3290fd52aeb
+patch_stored: true
+gold:
+- path: packages/react-native/Libraries/AppDelegate/RCTAppDelegate.mm
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/Libraries/Image/RCTImageView.mm
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/Libraries/Text/TextInput/RCTBaseTextInputView.m
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/React/Base/RCTConvert.m
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/React/Fabric/RCTSurfacePointerHandler.mm
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/react_native_pods.rb
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/template/ios/Podfile
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/RNTesterUnitTests/RCTConvert_UIColorTests.m
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: full multi-line class/podspec context repeated near-identically for ~60 of the 80 files whose
+    only change is `s.platforms = { :ios => "12.4" }` -> `min_ios_version_supported` (e.g. React-RCTAnimation.podspec,
+    React-RCTNetwork.podspec, React-RCTSettings.podspec, React-RCTText.podspec, React-RCTVibration.podspec,
+    glog.podspec, DoubleConversion.podspec) — one representative example plus a list of the rest would
+    convey the same understanding at a fraction of the tokens
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Correctly identifies 62/79 fragments as changed and surfaces the handful of files with real logic
+  (RCTAppDelegate.mm removing the @available(iOS 13.0) branch, RCTImageView.mm dropping the #if/@available
+  guard) alongside the podspec version bumps. The 48,930-token cost is high relative to an 884-line diff
+  (330+/554-) because ~60 near-identical podspec files each get a full boilerplate Pod::Spec dump for
+  a single changed line — this is the over-selection pattern (#65) manifesting as repeated near-duplicate
+  context rather than unrelated files. md_tokens < yaml_tokens here, and Markdown''s prose framing reads
+  more efficiently than YAML for this many small text-only fragments.'

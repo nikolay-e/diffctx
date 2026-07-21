@@ -1,0 +1,2548 @@
+From fd69ceba7ae76735db6aa47a882b4043f2440b2e Mon Sep 17 00:00:00 2001
+From: Dominik Dorfmeister <dominik.dorfmeister@sentry.io>
+Date: Fri, 13 Feb 2026 09:06:52 +0100
+Subject: [PATCH] poc: new form system (#107142)
+
+Demonstrating a composable form system based on TanStack Form & zod.
+
+closes https://linear.app/getsentry/issue/DE-758/form-exploration
+---
+ eslint.config.mjs                             |   4 +
+ knip.config.ts                                |   2 +
+ package.json                                  |   6 +-
+ pnpm-lock.yaml                                | 395 ++++++++++++++++--
+ .../components/core/form/autoSaveContext.tsx  |  33 ++
+ .../core/form/field/autoSaveField.tsx         | 153 +++++++
+ .../core/form/field/baseField.spec.tsx        | 228 ++++++++++
+ .../components/core/form/field/baseField.tsx  |  79 ++++
+ .../components/core/form/field/inputField.tsx |  50 +++
+ .../app/components/core/form/field/meta.tsx   |  42 ++
+ .../core/form/field/numberField.tsx           |  22 +
+ .../core/form/field/selectField.spec.tsx      | 354 ++++++++++++++++
+ .../core/form/field/selectField.tsx           |  70 ++++
+ .../app/components/core/form/form.stories.tsx | 319 ++++++++++++++
+ .../app/components/core/form/formContext.ts   |   7 +
+ static/app/components/core/form/icons.tsx     |  54 +++
+ static/app/components/core/form/index.ts      |   3 +
+ .../core/form/layout/fieldGroup.tsx           |  32 ++
+ .../app/components/core/form/layout/index.tsx |  41 ++
+ .../app/components/core/form/scrapsForm.tsx   | 124 ++++++
+ static/app/stories/view/storyExports.tsx      |   2 +-
+ 21 files changed, 1994 insertions(+), 26 deletions(-)
+ create mode 100644 static/app/components/core/form/autoSaveContext.tsx
+ create mode 100644 static/app/components/core/form/field/autoSaveField.tsx
+ create mode 100644 static/app/components/core/form/field/baseField.spec.tsx
+ create mode 100644 static/app/components/core/form/field/baseField.tsx
+ create mode 100644 static/app/components/core/form/field/inputField.tsx
+ create mode 100644 static/app/components/core/form/field/meta.tsx
+ create mode 100644 static/app/components/core/form/field/numberField.tsx
+ create mode 100644 static/app/components/core/form/field/selectField.spec.tsx
+ create mode 100644 static/app/components/core/form/field/selectField.tsx
+ create mode 100644 static/app/components/core/form/form.stories.tsx
+ create mode 100644 static/app/components/core/form/formContext.ts
+ create mode 100644 static/app/components/core/form/icons.tsx
+ create mode 100644 static/app/components/core/form/index.ts
+ create mode 100644 static/app/components/core/form/layout/fieldGroup.tsx
+ create mode 100644 static/app/components/core/form/layout/index.tsx
+ create mode 100644 static/app/components/core/form/scrapsForm.tsx
+
+diff --git a/eslint.config.mjs b/eslint.config.mjs
+index f30394c5d73..402b4fa8617 100644
+--- a/eslint.config.mjs
++++ b/eslint.config.mjs
+@@ -169,6 +169,10 @@ const restrictedImportPaths = [
+     message:
+       'The @figma/code-connect package should only be imported in *.figma.tsx files for Figma Code Connect integration',
+   },
++  {
++    name: '@tanstack/react-form',
++    message: 'Use @sentry/scraps/form instead',
++  },
+ ];
+ 
+ // Used by both: `languageOptions` & `parserOptions`
+diff --git a/knip.config.ts b/knip.config.ts
+index bf0f9ecb326..9525e203269 100644
+--- a/knip.config.ts
++++ b/knip.config.ts
+@@ -66,6 +66,8 @@ const config: KnipConfig = {
+     '!static/app/stories/**/*.{js,mjs,ts,tsx}!',
+     // ignore eslint plugins in production
+     '!static/eslint/**/*.mjs!',
++    // new form system is currently only used in stories
++    '!static/app/components/core/form!',
+   ],
+   compilers: {
+     mdx: async text => String(await compile(text)),
+diff --git a/package.json b/package.json
+index 732601f1410..c4c8ce9b6c7 100644
+--- a/package.json
++++ b/package.json
+@@ -80,6 +80,9 @@
+     "@stripe/stripe-js": "^5.10.0",
+     "@swc/plugin-emotion": "14.3.0",
+     "@tanstack/query-async-storage-persister": "5.83.1",
++    "@tanstack/react-devtools": "^0.9.3",
++    "@tanstack/react-form": "^1.28.0",
++    "@tanstack/react-form-devtools": "^0.2.13",
+     "@tanstack/react-pacer": "^0.17.0",
+     "@tanstack/react-query": "5.85.0",
+     "@tanstack/react-query-devtools": "5.85.0",
+@@ -180,6 +183,7 @@
+     "tslib": "^2.8.1",
+     "type-fest": "^5.2.0",
+     "typescript": "5.9.3",
++    "zod": "^4.3.5",
+     "zrender": "6.0.0",
+     "zxcvbn": "^4.4.2"
+   },
+@@ -250,7 +254,7 @@
+     ]
+   },
+   "optionalDependencies": {
+-    "fsevents": "^2.3.2"
++    "fsevents": "^2.3.3"
+   },
+   "APIMethod": "stub",
+   "proxyURL": "http://localhost:8000",
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 20494c1820a..d847a5e004e 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -231,6 +231,15 @@ importers:
+       '@tanstack/query-async-storage-persister':
+         specifier: 5.83.1
+         version: 5.83.1
++      '@tanstack/react-devtools':
++        specifier: ^0.9.3
++        version: 0.9.3(@types/react-dom@19.2.1(@types/react@19.2.1))(@types/react@19.2.1)(csstype@3.2.3)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(solid-js@1.9.11)
++      '@tanstack/react-form':
++        specifier: ^1.28.0
++        version: 1.28.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
++      '@tanstack/react-form-devtools':
++        specifier: ^0.2.13
++        version: 0.2.13(@types/react@19.2.1)(csstype@3.2.3)(react@19.2.3)(solid-js@1.9.11)
+       '@tanstack/react-pacer':
+         specifier: ^0.17.0
+         version: 0.17.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
+@@ -531,6 +540,9 @@ importers:
+       typescript:
+         specifier: 5.9.3
+         version: 5.9.3
++      zod:
++        specifier: ^4.3.5
++        version: 4.3.5
+       zrender:
+         specifier: 6.0.0
+         version: 6.0.0
+@@ -687,7 +699,7 @@ importers:
+         version: 8.39.0(eslint@9.34.0(jiti@2.6.1))(typescript@5.9.3)
+     optionalDependencies:
+       fsevents:
+-        specifier: ^2.3.2
++        specifier: ^2.3.3
+         version: 2.3.3
+ 
+ packages:
+@@ -3320,6 +3332,36 @@ packages:
+   '@socket.io/component-emitter@3.1.2':
+     resolution: {integrity: sha512-9BCxFwvbGg/RsZK9tjXd8s4UcwR0MWeFQ1XEKIQVVvAGJyINdrqKMcTRyLoK8Rse1GjzLV9cwjWV1olXRWEXVA==}
+ 
++  '@solid-primitives/event-listener@2.4.3':
++    resolution: {integrity: sha512-h4VqkYFv6Gf+L7SQj+Y6puigL/5DIi7x5q07VZET7AWcS+9/G3WfIE9WheniHWJs51OEkRB43w6lDys5YeFceg==}
++    peerDependencies:
++      solid-js: ^1.6.12
++
++  '@solid-primitives/keyboard@1.3.3':
++    resolution: {integrity: sha512-9dQHTTgLBqyAI7aavtO+HnpTVJgWQA1ghBSrmLtMu1SMxLPDuLfuNr+Tk5udb4AL4Ojg7h9JrKOGEEDqsJXWJA==}
++    peerDependencies:
++      solid-js: ^1.6.12
++
++  '@solid-primitives/resize-observer@2.1.3':
++    resolution: {integrity: sha512-zBLje5E06TgOg93S7rGPldmhDnouNGhvfZVKOp+oG2XU8snA+GoCSSCz1M+jpNAg5Ek2EakU5UVQqL152WmdXQ==}
++    peerDependencies:
++      solid-js: ^1.6.12
++
++  '@solid-primitives/rootless@1.5.2':
++    resolution: {integrity: sha512-9HULb0QAzL2r47CCad0M+NKFtQ+LrGGNHZfteX/ThdGvKIg2o2GYhBooZubTCd/RTu2l2+Nw4s+dEfiDGvdrrQ==}
++    peerDependencies:
++      solid-js: ^1.6.12
++
++  '@solid-primitives/static-store@0.1.2':
++    resolution: {integrity: sha512-ReK+5O38lJ7fT+L6mUFvUr6igFwHBESZF+2Ug842s7fvlVeBdIVEdTCErygff6w7uR6+jrr7J8jQo+cYrEq4Iw==}
++    peerDependencies:
++      solid-js: ^1.6.12
++
++  '@solid-primitives/utils@6.3.2':
++    resolution: {integrity: sha512-hZ/M/qr25QOCcwDPOHtGjxTD8w2mNyVAYvcfgwzBHq2RwNqHNdDNsMZYap20+ruRwW4A3Cdkczyoz0TSxLCAPQ==}
++    peerDependencies:
++      solid-js: ^1.6.12
++
+   '@standard-schema/spec@1.0.0':
+     resolution: {integrity: sha512-m2bOd0f2RT9k8QJx1JN85cZYyH1RqFBdlwtkSlf4tBDYLCiiZnv1fIIwacK6cqwXavOydf0NPToMQgpKq+dVlA==}
+ 
+@@ -3346,15 +3388,72 @@ packages:
+   '@swc/plugin-emotion@14.3.0':
+     resolution: {integrity: sha512-BGlMPa73k2u01gXJHULC5Pvt0Mgjt+/34ceOxN5IGVGvZu8h4ryG4K6p/+JUpUojfNTEng/hpIcmCWtOHmg7Pw==}
+ 
++  '@tanstack/devtools-client@0.0.5':
++    resolution: {integrity: sha512-hsNDE3iu4frt9cC2ppn1mNRnLKo2uc1/1hXAyY9z4UYb+o40M2clFAhiFoo4HngjfGJDV3x18KVVIq7W4Un+zA==}
++    engines: {node: '>=18'}
++
++  '@tanstack/devtools-event-bus@0.4.0':
++    resolution: {integrity: sha512-1t+/csFuDzi+miDxAOh6Xv7VDE80gJEItkTcAZLjV5MRulbO/W8ocjHLI2Do/p2r2/FBU0eKCRTpdqvXaYoHpQ==}
++    engines: {node: '>=18'}
++
+   '@tanstack/devtools-event-client@0.3.4':
+     resolution: {integrity: sha512-eq+PpuutUyubXu+ycC1GIiVwBs86NF/8yYJJAKSpPcJLWl6R/761F1H4F/9ziX6zKezltFUH1ah3Cz8Ah+KJrw==}
+     engines: {node: '>=18'}
+ 
++  '@tanstack/devtools-event-client@0.4.0':
++    resolution: {integrity: sha512-RPfGuk2bDZgcu9bAJodvO2lnZeHuz4/71HjZ0bGb/SPg8+lyTA+RLSKQvo7fSmPSi8/vcH3aKQ8EM9ywf1olaw==}
++    engines: {node: '>=18'}
++
++  '@tanstack/devtools-ui@0.4.4':
++    resolution: {integrity: sha512-5xHXFyX3nom0UaNfiOM92o6ziaHjGo3mcSGe2HD5Xs8dWRZNpdZ0Smd0B9ddEhy0oB+gXyMzZgUJb9DmrZV0Mg==}
++    engines: {node: '>=18'}
++    peerDependencies:
++      solid-js: '>=1.9.7'
++
++  '@tanstack/devtools-utils@0.3.0':
++    resolution: {integrity: sha512-JgApXVrgtgSLIPrm/QWHx0u6c9Ji0MNMDWhwujapj8eMzux5aOfi+2Ycwzj0A0qITXA12SEPYV3HC568mDtYmQ==}
++    engines: {node: '>=18'}
++    peerDependencies:
++      '@types/react': '>=17.0.0'
++      preact: '>=10.0.0'
++      react: '>=17.0.0'
++      solid-js: '>=1.9.7'
++      vue: '>=3.2.0'
++    peerDependenciesMeta:
++      '@types/react':
++        optional: true
++      preact:
++        optional: true
++      react:
++        optional: true
++      solid-js:
++        optional: true
++      vue:
++        optional: true
++
++  '@tanstack/devtools@0.10.4':
++    resolution: {integrity: sha512-GR/HMWe+eAZgSm/mOeuWMs/cXy3pEcrdMBU+OH0c6Qv1IXYv/xqru4aCSJPe+2/eJXng5ioqCsoVt9MztyU1mg==}
++    engines: {node: '>=18'}
++    peerDependencies:
++      solid-js: '>=1.9.7'
++
+   '@tanstack/eslint-plugin-query@5.83.1':
+     resolution: {integrity: sha512-tdkpPFfzkTksN9BIlT/qjixSAtKrsW6PUVRwdKWaOcag7DrD1vpki3UzzdfMQGDRGeg1Ue1Dg+rcl5FJGembNg==}
+     peerDependencies:
+       eslint: ^8.57.0 || ^9.0.0
+ 
++  '@tanstack/form-core@1.28.0':
++    resolution: {integrity: sha512-MX3YveB6SKHAJ2yUwp+Ca/PCguub8bVEnLcLUbFLwdkSRMkP0lMGdaZl+F0JuEgZw56c6iFoRyfILhS7OQpydA==}
++
++  '@tanstack/form-devtools@0.2.13':
++    resolution: {integrity: sha512-1ulPyukzs28GFKuY5Qkic3MHCkLm6wG/4ofqgsruHe44VXeCBMqtlwgExaPHrBOdhtfcy26TSJVDvOVJ+igWBA==}
++    peerDependencies:
++      solid-js: '>=1.9.9'
++
++  '@tanstack/pacer-lite@0.1.1':
++    resolution: {integrity: sha512-y/xtNPNt/YeyoVxE/JCx+T7yjEzpezmbb+toK8DDD1P4m7Kzs5YR956+7OKexG3f8aXgC3rLZl7b1V+yNUSy5w==}
++    engines: {node: '>=18'}
++
+   '@tanstack/pacer@0.16.0':
+     resolution: {integrity: sha512-0tvLUQcUW2bqdsjf2IUeBgYgxWMjC+XNDpN2kovcfrOAv5baFBaenUtsMxi0QxhWmnjdrMPyuTAI0ZIzpkcmpw==}
+     engines: {node: '>=18'}
+@@ -3371,6 +3470,29 @@ packages:
+   '@tanstack/query-persist-client-core@5.83.1':
+     resolution: {integrity: sha512-GPWt1tj8kmo3LA1WPpSmJA3JGCdQfaggb1LheFEfr3RuwbTchWd09xD/fZ40m9ai0pJupvyguLiWF8On8sQWPw==}
+ 
++  '@tanstack/react-devtools@0.9.3':
++    resolution: {integrity: sha512-SJTYWXWZkbWznwUwZ11awinPGB5StVIVyJXT0BFM1zUgjuajRwT8xRHl1oXVzVqqjJP5kfj89jkbFrcQPpq7Ng==}
++    engines: {node: '>=18'}
++    peerDependencies:
++      '@types/react': '>=16.8'
++      '@types/react-dom': '>=16.8'
++      react: '>=16.8'
++      react-dom: '>=16.8'
++
++  '@tanstack/react-form-devtools@0.2.13':
++    resolution: {integrity: sha512-ggDXw4Pyp5zkbz2j+wJqjTy462PvbHeY97az+cw2GDbtVM5VedpLH86QKAeZofnSgx5ZKPPPn0op4LSAYipDwQ==}
++    peerDependencies:
++      react: ^17.0.0 || ^18.0.0 || ^19.0.0
++
++  '@tanstack/react-form@1.28.0':
++    resolution: {integrity: sha512-ibLcf5QkTogV0Ly944CuqGxWTpHyreNA4Cy8Wtky7zE9wtE3HVapQt4/hUuXo51zihfTkv5URiXpoTSKF5Xosg==}
++    peerDependencies:
++      '@tanstack/react-start': '*'
++      react: ^17.0.0 || ^18.0.0 || ^19.0.0
++    peerDependenciesMeta:
++      '@tanstack/react-start':
++        optional: true
++
+   '@tanstack/react-pacer@0.17.0':
+     resolution: {integrity: sha512-zJE6BJ61R1xVvVIlv3XFf9bVWXtuF84Mst3kX8IbCKhWyYvju0B3fvKUHsdQBncK88nKM8KuLGdzmOxgUt/PUQ==}
+     engines: {node: '>=18'}
+@@ -3401,6 +3523,12 @@ packages:
+       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+       react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+ 
++  '@tanstack/react-store@0.8.0':
++    resolution: {integrity: sha512-1vG9beLIuB7q69skxK9r5xiLN3ztzIPfSQSs0GfeqWGO2tGIyInZx0x1COhpx97RKaONSoAb8C3dxacWksm1ow==}
++    peerDependencies:
++      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
++      react-dom: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
++
+   '@tanstack/react-virtual@3.13.6':
+     resolution: {integrity: sha512-WT7nWs8ximoQ0CDx/ngoFP7HbQF9Q2wQe4nh2NB+u2486eX3nZRE40P9g6ccCVq7ZfTSH5gFOuCoVH5DLNS/aA==}
+     peerDependencies:
+@@ -3410,6 +3538,9 @@ packages:
+   '@tanstack/store@0.7.7':
+     resolution: {integrity: sha512-xa6pTan1bcaqYDS9BDpSiS63qa6EoDkPN9RsRaxHuDdVDNntzq3xNwR5YKTU/V3SkSyC9T4YVOPh2zRQN0nhIQ==}
+ 
++  '@tanstack/store@0.8.0':
++    resolution: {integrity: sha512-Om+BO0YfMZe//X2z0uLF2j+75nQga6TpTJgLJQBiq85aOyZNIhkCgleNcud2KQg4k4v9Y9l+Uhru3qWMPGTOzQ==}
++
+   '@tanstack/virtual-core@3.13.6':
+     resolution: {integrity: sha512-cnQUeWnhNP8tJ4WsGcYiX24Gjkc9ALstLbHcBj1t3E7EimN6n6kHH+DPV4PpDnuw00NApQp+ViojMj1GRdwYQg==}
+ 
+@@ -3610,6 +3741,9 @@ packages:
+   '@types/node@22.19.2':
+     resolution: {integrity: sha512-LPM2G3Syo1GLzXLGJAKdqoU35XvrWzGJ21/7sgZTUpbkBaOasTj8tjwn6w+hCkqaa1TfJ/w67rJSwYItlJ2mYw==}
+ 
++  '@types/node@22.19.7':
++    resolution: {integrity: sha512-MciR4AKGHWl7xwxkBa6xUGxQJ4VBOmPTF7sL+iGzuahOFaO0jHCsuEfS80pan1ef4gWId1oWOweIhrDEYLuaOw==}
++
+   '@types/normalize-package-data@2.4.4':
+     resolution: {integrity: sha512-37i+OaWTh9qeK4LSHPsyRC7NahnGotNuZvjLSgcPzblpHB3rrCJxAOgI5gCdKm7coonsaX1Of0ILiTcnZjbfxA==}
+ 
+@@ -4728,6 +4862,9 @@ packages:
+   csstype@3.0.8:
+     resolution: {integrity: sha512-jXKhWqXPmlUeoQnF/EhTtTl4C9SnrxSH/jZUih3jmO6lBKr99rP3/+FmrMj4EFpOXzMtXHAZkd3x0E6h6Fgflw==}
+ 
++  csstype@3.2.3:
++    resolution: {integrity: sha512-z1HGKcYy2xA8AGQfwrn0PAy+PB7X/GSj3UVJW9qKyn43xWa+gl5nXmU4qqLMRzWVLFC8KusUX8T/0kCiOYpAIQ==}
++
+   data-urls@5.0.0:
+     resolution: {integrity: sha512-ZYP5VBHshaDAiVZxjbRVcFJpc+4xGgT0bK3vzy1HLN8jTO975HEbuYzZJcHoQEY5K1a0z8YayJkyVETa08eNTg==}
+     engines: {node: '>=18'}
+@@ -4748,6 +4885,9 @@ packages:
+     resolution: {integrity: sha512-ZEhqxUtEZeGgg9eHNSOAJ8O9xqSgiJdrL0lzSSfMF54x6KXWJiOH/xntSJ9YomJPrYH/p08t6gWjGWq1SDJlSA==}
+     engines: {node: '>=0.11'}
+ 
++  dayjs@1.11.19:
++    resolution: {integrity: sha512-t5EcLVS6QPBNqM2z8fakk/NKel+Xzshgt8FFKAn+qwlD1pzZWxh0nVCrvFK7ZDb6XucZeF9z8C7CBWTRIVApAw==}
++
+   debounce@1.2.1:
+     resolution: {integrity: sha512-XRRe6Glud4rd/ZGQfiV1ruXSfbvfJedlV9Y6zOlP+2K04vBYiJEte6stfFkCP03aMnY5tsipamumUjL14fofug==}
+ 
+@@ -5040,8 +5180,8 @@ packages:
+     resolution: {integrity: sha512-ZSW3ma5GkcQBIpwZTSRAI8N71Uuwgs93IezB7mf7R60tC8ZbJideoDNKjHn2O9KIlx6rkGTTEk1xUCK2E1Y2Yg==}
+     engines: {node: '>=10.13.0'}
+ 
+-  enhanced-resolve@5.18.3:
+-    resolution: {integrity: sha512-d4lC8xfavMeBjzGr2vECC3fsGXziXZQyJxD868h2M/mBI3PwAuODxAkLkq5HYuvrPYcUtiLzsTo8U3PgX3Ocww==}
++  enhanced-resolve@5.18.4:
++    resolution: {integrity: sha512-LgQMM4WXU3QI+SYgEc2liRgznaD5ojbmY3sb8LxyguVkIg5FxdpTkvk72te2R38/TGKxH634oLxXRGY6d7AP+Q==}
+     engines: {node: '>=10.13.0'}
+ 
+   entities@2.0.0:
+@@ -5766,6 +5906,11 @@ packages:
+   globjoin@0.1.4:
+     resolution: {integrity: sha512-xYfnw62CKG8nLkZBfWbhWwDw02CHty86jfPcc2cr3ZfeuK9ysoVPPEUxf21bAD/rWAgk52SuBrLJlefNy8mvFg==}
+ 
++  goober@2.1.18:
++    resolution: {integrity: sha512-2vFqsaDVIT9Gz7N6kAL++pLpp41l3PfDuusHcjnGLfR6+huZkl6ziX+zgVC3ZxpqWhzH6pyDdGrCeDhMIvwaxw==}
++    peerDependencies:
++      csstype: ^3.0.10
++
+   gopd@1.2.0:
+     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
+     engines: {node: '>= 0.4'}
+@@ -8042,6 +8187,16 @@ packages:
+   serialize-javascript@6.0.2:
+     resolution: {integrity: sha512-Saa1xPByTTq2gdeFZYLLo+RFE35NHZkAbqZeWNd3BpzppeVisAqpDjcp8dyf6uIvEqJRd46jemmyA4iFIeVk8g==}
+ 
++  seroval-plugins@1.5.0:
++    resolution: {integrity: sha512-EAHqADIQondwRZIdeW2I636zgsODzoBDwb3PT/+7TLDWyw1Dy/Xv7iGUIEXXav7usHDE9HVhOU61irI3EnyyHA==}
++    engines: {node: '>=10'}
++    peerDependencies:
++      seroval: ^1.0
++
++  seroval@1.5.0:
++    resolution: {integrity: sha512-OE4cvmJ1uSPrKorFIH9/w/Qwuvi/IMcGbv5RKgcJ/zjA/IohDLU6SVaxFN9FwajbP7nsX0dQqMDes1whk3y+yw==}
++    engines: {node: '>=10'}
++
+   serve-index@1.9.1:
+     resolution: {integrity: sha512-pXHfKNP4qujrtteMrSBb0rc8HJ9Ms/GrXwcUtUtD5s4ewDJI8bT3Cz2zTVRMKtri49pLx2e0Ya8ziP5Ya2pZZw==}
+     engines: {node: '>= 0.8.0'}
+@@ -8145,6 +8300,9 @@ packages:
+   sockjs@0.3.24:
+     resolution: {integrity: sha512-GJgLTZ7vYb/JtPSSZ10hsOYIvEYsjbNU+zPdIHcUaWVNUEPivzxku31865sSSud0Da0W4lEeOPlmw93zLQchuQ==}
+ 
++  solid-js@1.9.11:
++    resolution: {integrity: sha512-WEJtcc5mkh/BnHA6Yrg4whlF8g6QwpmXXRg4P2ztPmcKeHHlH4+djYecBLhSpecZY2RRECXYUwIc/C2r3yzQ4Q==}
++
+   source-map-generator@2.0.2:
+     resolution: {integrity: sha512-unCl5BQhF/us51DiT7SvlSY3QUPhyfAdHJxd8l7FXdwzqxli0UDMV2dEuei2SeGp3Z4rB/AJ9zKi1mGOp2K2ww==}
+     engines: {node: '>=20'}
+@@ -8397,8 +8555,8 @@ packages:
+     resolution: {integrity: sha512-g9ljZiwki/LfxmQADO3dEY1CbpmXT5Hm2fJ+QaGKwSXUylMybePR7/67YW7jOrrvjEgL1Fmz5kzyAjWVWLlucg==}
+     engines: {node: '>=6'}
+ 
+-  terser-webpack-plugin@5.3.15:
+-    resolution: {integrity: sha512-PGkOdpRFK+rb1TzVz+msVhw4YMRT9txLF4kRqvJhGhCM324xuR3REBSHALN+l+sAhKUmz0aotnjp5D+P83mLhQ==}
++  terser-webpack-plugin@5.3.16:
++    resolution: {integrity: sha512-h9oBFCWrq78NyWWVcSwZarJkZ01c2AyGrzs1crmHZO3QUg9D61Wu4NPjBy69n7JqylFF5y+CsUZYmYEIZ3mR+Q==}
+     engines: {node: '>= 10.13.0'}
+     peerDependencies:
+       '@swc/core': '*'
+@@ -8779,6 +8937,11 @@ packages:
+     peerDependencies:
+       react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
+ 
++  use-sync-external-store@1.6.0:
++    resolution: {integrity: sha512-Pp6GSwGP/NrPIrxVFAIkOQeyw8lFenOHijQWkUTrDvrF4ALqylP2C/KCkeS9dpUM3KvYRQhna5vt7IL95+ZQ9w==}
++    peerDependencies:
++      react: ^16.8.0 || ^17.0.0 || ^18.0.0 || ^19.0.0
++
+   util-deprecate@1.0.2:
+     resolution: {integrity: sha512-EPD5q1uXyFxJpCrLnCc1nHnq3gOa6DZBocAIiI2TaSCA7VCJ1UJDMagCzIkXNsUYfD1daK//LTEQ8xiIbrHtcw==}
+ 
+@@ -8864,8 +9027,8 @@ packages:
+   warning@4.0.3:
+     resolution: {integrity: sha512-rpJyN222KWIvHJ/F53XSZv0Zl/accqHR8et1kpaMTD/fLCRxtV8iX8czMzY7sVZupTI3zcUTg8eycS2kNF9l6w==}
+ 
+-  watchpack@2.4.4:
+-    resolution: {integrity: sha512-c5EGNOiyxxV5qmTtAB7rbiXxi1ooX1pQKMLX/MIabJjRA0SJBQOjKF+KSVfHkr9U1cADPon0mRiVe/riyaiDUA==}
++  watchpack@2.5.1:
++    resolution: {integrity: sha512-Zn5uXdcFNIA1+1Ei5McRd+iRzfhENPCe7LeABkJtNulSxjma+l7ltNx55BWZkRlwRnpOgHqxnjyaDgJnNXnqzg==}
+     engines: {node: '>=10.13.0'}
+ 
+   wbuf@1.7.3:
+@@ -9047,6 +9210,18 @@ packages:
+       utf-8-validate:
+         optional: true
+ 
++  ws@8.19.0:
++    resolution: {integrity: sha512-blAT2mjOEIi0ZzruJfIhb3nps74PRWTCz1IjglWEEpQl5XS/UNama6u2/rjFkDDouqr4L67ry+1aGIALViWjDg==}
++    engines: {node: '>=10.0.0'}
++    peerDependencies:
++      bufferutil: ^4.0.1
++      utf-8-validate: '>=5.0.2'
++    peerDependenciesMeta:
++      bufferutil:
++        optional: true
++      utf-8-validate:
++        optional: true
++
+   wsl-utils@0.1.0:
+     resolution: {integrity: sha512-h3Fbisa2nKGPxCpm89Hk33lBLsnaGBvctQopaBSOW/uIs6FTe1ATyAnKFJrzVs9vpGdsTe73WF3V4lIsk4Gacw==}
+     engines: {node: '>=18'}
+@@ -9103,17 +9278,14 @@ packages:
+     peerDependencies:
+       zod: ^3.18.0
+ 
+-  zod@3.23.8:
+-    resolution: {integrity: sha512-XBx9AXhXktjUqnepgTiE5flcKIYWi/rme0Eaj+5Y0lftuGBq+jyRu/md4WnuxqgP1ubdpNCsYEYPxrzVHD8d6g==}
+-
+   zod@3.25.58:
+     resolution: {integrity: sha512-DVLmMQzSZwNYzQoMaM3MQWnxr2eq+AtM9Hx3w1/Yl0pH8sLTSjN4jGP7w6f7uand6Hw44tsnSu1hz1AOA6qI2Q==}
+ 
+   zod@3.25.76:
+     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+ 
+-  zod@4.1.13:
+-    resolution: {integrity: sha512-AvvthqfqrAhNH9dnfmrfKzX5upOdjUVJYFqNSlkmGf64gRaTzlPwz99IHYnVs28qYAybvAlBV+H7pn0saFY4Ig==}
++  zod@4.3.5:
++    resolution: {integrity: sha512-k7Nwx6vuWx1IJ9Bjuf4Zt1PEllcwe7cls3VNzm4CQ1/hgtFUK2bRNG3rvnpPUhFjmqJKAKtjV576KnUkHocg/g==}
+ 
+   zrender@6.0.0:
+     resolution: {integrity: sha512-41dFXEEXuJpNecuUQq6JlbybmnHaqqpGlbH1yxnA5V9MMP4SbohSVZsJIwz+zdjQXSSlR1Vc34EgH1zxyTDvhg==}
+@@ -10151,7 +10323,7 @@ snapshots:
+       chalk: 4.1.2
+       semver: 7.7.2
+       unplugin: 1.14.1(webpack-sources@3.3.3)
+-      zod: 3.23.8
++      zod: 3.25.76
+     transitivePeerDependencies:
+       - webpack-sources
+ 
+@@ -12559,6 +12731,40 @@ snapshots:
+ 
+   '@socket.io/component-emitter@3.1.2': {}
+ 
++  '@solid-primitives/event-listener@2.4.3(solid-js@1.9.11)':
++    dependencies:
++      '@solid-primitives/utils': 6.3.2(solid-js@1.9.11)
++      solid-js: 1.9.11
++
++  '@solid-primitives/keyboard@1.3.3(solid-js@1.9.11)':
++    dependencies:
++      '@solid-primitives/event-listener': 2.4.3(solid-js@1.9.11)
++      '@solid-primitives/rootless': 1.5.2(solid-js@1.9.11)
++      '@solid-primitives/utils': 6.3.2(solid-js@1.9.11)
++      solid-js: 1.9.11
++
++  '@solid-primitives/resize-observer@2.1.3(solid-js@1.9.11)':
++    dependencies:
++      '@solid-primitives/event-listener': 2.4.3(solid-js@1.9.11)
++      '@solid-primitives/rootless': 1.5.2(solid-js@1.9.11)
++      '@solid-primitives/static-store': 0.1.2(solid-js@1.9.11)
++      '@solid-primitives/utils': 6.3.2(solid-js@1.9.11)
++      solid-js: 1.9.11
++
++  '@solid-primitives/rootless@1.5.2(solid-js@1.9.11)':
++    dependencies:
++      '@solid-primitives/utils': 6.3.2(solid-js@1.9.11)
++      solid-js: 1.9.11
++
++  '@solid-primitives/static-store@0.1.2(solid-js@1.9.11)':
++    dependencies:
++      '@solid-primitives/utils': 6.3.2(solid-js@1.9.11)
++      solid-js: 1.9.11
++
++  '@solid-primitives/utils@6.3.2(solid-js@1.9.11)':
++    dependencies:
++      solid-js: 1.9.11
++
+   '@standard-schema/spec@1.0.0': {}
+ 
+   '@stripe/react-stripe-js@3.9.2(@stripe/stripe-js@5.10.0)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
+@@ -12588,8 +12794,55 @@ snapshots:
+     dependencies:
+       '@swc/counter': 0.1.3
+ 
++  '@tanstack/devtools-client@0.0.5':
++    dependencies:
++      '@tanstack/devtools-event-client': 0.4.0
++
++  '@tanstack/devtools-event-bus@0.4.0':
++    dependencies:
++      ws: 8.19.0
++    transitivePeerDependencies:
++      - bufferutil
++      - utf-8-validate
++
+   '@tanstack/devtools-event-client@0.3.4': {}
+ 
++  '@tanstack/devtools-event-client@0.4.0': {}
++
++  '@tanstack/devtools-ui@0.4.4(csstype@3.2.3)(solid-js@1.9.11)':
++    dependencies:
++      clsx: 2.1.1
++      goober: 2.1.18(csstype@3.2.3)
++      solid-js: 1.9.11
++    transitivePeerDependencies:
++      - csstype
++
++  '@tanstack/devtools-utils@0.3.0(@types/react@19.2.1)(csstype@3.2.3)(react@19.2.3)(solid-js@1.9.11)':
++    dependencies:
++      '@tanstack/devtools-ui': 0.4.4(csstype@3.2.3)(solid-js@1.9.11)
++    optionalDependencies:
++      '@types/react': 19.2.1
++      react: 19.2.3
++      solid-js: 1.9.11
++    transitivePeerDependencies:
++      - csstype
++
++  '@tanstack/devtools@0.10.4(csstype@3.2.3)(solid-js@1.9.11)':
++    dependencies:
++      '@solid-primitives/event-listener': 2.4.3(solid-js@1.9.11)
++      '@solid-primitives/keyboard': 1.3.3(solid-js@1.9.11)
++      '@solid-primitives/resize-observer': 2.1.3(solid-js@1.9.11)
++      '@tanstack/devtools-client': 0.0.5
++      '@tanstack/devtools-event-bus': 0.4.0
++      '@tanstack/devtools-ui': 0.4.4(csstype@3.2.3)(solid-js@1.9.11)
++      clsx: 2.1.1
++      goober: 2.1.18(csstype@3.2.3)
++      solid-js: 1.9.11
++    transitivePeerDependencies:
++      - bufferutil
++      - csstype
++      - utf-8-validate
++
+   '@tanstack/eslint-plugin-query@5.83.1(eslint@9.34.0(jiti@2.6.1))(typescript@5.9.3)':
+     dependencies:
+       '@typescript-eslint/utils': 8.39.0(eslint@9.34.0(jiti@2.6.1))(typescript@5.9.3)
+@@ -12598,6 +12851,30 @@ snapshots:
+       - supports-color
+       - typescript
+ 
++  '@tanstack/form-core@1.28.0':
++    dependencies:
++      '@tanstack/devtools-event-client': 0.4.0
++      '@tanstack/pacer-lite': 0.1.1
++      '@tanstack/store': 0.7.7
++
++  '@tanstack/form-devtools@0.2.13(@types/react@19.2.1)(csstype@3.2.3)(react@19.2.3)(solid-js@1.9.11)':
++    dependencies:
++      '@tanstack/devtools-ui': 0.4.4(csstype@3.2.3)(solid-js@1.9.11)
++      '@tanstack/devtools-utils': 0.3.0(@types/react@19.2.1)(csstype@3.2.3)(react@19.2.3)(solid-js@1.9.11)
++      '@tanstack/form-core': 1.28.0
++      clsx: 2.1.1
++      dayjs: 1.11.19
++      goober: 2.1.18(csstype@3.2.3)
++      solid-js: 1.9.11
++    transitivePeerDependencies:
++      - '@types/react'
++      - csstype
++      - preact
++      - react
++      - vue
++
++  '@tanstack/pacer-lite@0.1.1': {}
++
+   '@tanstack/pacer@0.16.0':
+     dependencies:
+       '@tanstack/devtools-event-client': 0.3.4
+@@ -12615,6 +12892,39 @@ snapshots:
+     dependencies:
+       '@tanstack/query-core': 5.83.1
+ 
++  '@tanstack/react-devtools@0.9.3(@types/react-dom@19.2.1(@types/react@19.2.1))(@types/react@19.2.1)(csstype@3.2.3)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(solid-js@1.9.11)':
++    dependencies:
++      '@tanstack/devtools': 0.10.4(csstype@3.2.3)(solid-js@1.9.11)
++      '@types/react': 19.2.1
++      '@types/react-dom': 19.2.1(@types/react@19.2.1)
++      react: 19.2.3
++      react-dom: 19.2.3(react@19.2.3)
++    transitivePeerDependencies:
++      - bufferutil
++      - csstype
++      - solid-js
++      - utf-8-validate
++
++  '@tanstack/react-form-devtools@0.2.13(@types/react@19.2.1)(csstype@3.2.3)(react@19.2.3)(solid-js@1.9.11)':
++    dependencies:
++      '@tanstack/devtools-utils': 0.3.0(@types/react@19.2.1)(csstype@3.2.3)(react@19.2.3)(solid-js@1.9.11)
++      '@tanstack/form-devtools': 0.2.13(@types/react@19.2.1)(csstype@3.2.3)(react@19.2.3)(solid-js@1.9.11)
++      react: 19.2.3
++    transitivePeerDependencies:
++      - '@types/react'
++      - csstype
++      - preact
++      - solid-js
++      - vue
++
++  '@tanstack/react-form@1.28.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
++    dependencies:
++      '@tanstack/form-core': 1.28.0
++      '@tanstack/react-store': 0.8.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
++      react: 19.2.3
++    transitivePeerDependencies:
++      - react-dom
++
+   '@tanstack/react-pacer@0.17.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
+     dependencies:
+       '@tanstack/pacer': 0.16.0
+@@ -12646,6 +12956,13 @@ snapshots:
+       react-dom: 19.2.3(react@19.2.3)
+       use-sync-external-store: 1.5.0(react@19.2.3)
+ 
++  '@tanstack/react-store@0.8.0(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
++    dependencies:
++      '@tanstack/store': 0.8.0
++      react: 19.2.3
++      react-dom: 19.2.3(react@19.2.3)
++      use-sync-external-store: 1.6.0(react@19.2.3)
++
+   '@tanstack/react-virtual@3.13.6(react-dom@19.2.3(react@19.2.3))(react@19.2.3)':
+     dependencies:
+       '@tanstack/virtual-core': 3.13.6
+@@ -12654,6 +12971,8 @@ snapshots:
+ 
+   '@tanstack/store@0.7.7': {}
+ 
++  '@tanstack/store@0.8.0': {}
++
+   '@tanstack/virtual-core@3.13.6': {}
+ 
+   '@testing-library/dom@10.4.0':
+@@ -12892,6 +13211,10 @@ snapshots:
+     dependencies:
+       undici-types: 6.21.0
+ 
++  '@types/node@22.19.7':
++    dependencies:
++      undici-types: 6.21.0
++
+   '@types/normalize-package-data@2.4.4': {}
+ 
+   '@types/papaparse@5.3.5':
+@@ -14135,6 +14458,8 @@ snapshots:
+ 
+   csstype@3.0.8: {}
+ 
++  csstype@3.2.3: {}
++
+   data-urls@5.0.0:
+     dependencies:
+       whatwg-mimetype: 4.0.0
+@@ -14160,6 +14485,8 @@ snapshots:
+ 
+   date-fns@2.17.0: {}
+ 
++  dayjs@1.11.19: {}
++
+   debounce@1.2.1: {}
+ 
+   debug@2.6.9:
+@@ -14420,7 +14747,7 @@ snapshots:
+       graceful-fs: 4.2.11
+       tapable: 2.2.1
+ 
+-  enhanced-resolve@5.18.3:
++  enhanced-resolve@5.18.4:
+     dependencies:
+       graceful-fs: 4.2.11
+       tapable: 2.3.0
+@@ -15443,6 +15770,10 @@ snapshots:
+ 
+   globjoin@0.1.4: {}
+ 
++  goober@2.1.18(csstype@3.2.3):
++    dependencies:
++      csstype: 3.2.3
++
+   gopd@1.2.0: {}
+ 
+   graceful-fs@4.2.11: {}
+@@ -16453,7 +16784,7 @@ snapshots:
+ 
+   jest-worker@27.5.1:
+     dependencies:
+-      '@types/node': 22.19.2
++      '@types/node': 22.19.7
+       merge-stream: 2.0.0
+       supports-color: 8.1.1
+ 
+@@ -16630,7 +16961,7 @@ snapshots:
+       smol-toml: 1.5.2
+       strip-json-comments: 5.0.3
+       typescript: 5.9.3
+-      zod: 4.1.13
++      zod: 4.3.5
+ 
+   known-css-properties@0.34.0: {}
+ 
+@@ -18435,6 +18766,12 @@ snapshots:
+     dependencies:
+       randombytes: 2.1.0
+ 
++  seroval-plugins@1.5.0(seroval@1.5.0):
++    dependencies:
++      seroval: 1.5.0
++
++  seroval@1.5.0: {}
++
+   serve-index@1.9.1:
+     dependencies:
+       accepts: 1.3.8
+@@ -18591,6 +18928,12 @@ snapshots:
+       uuid: 8.3.2
+       websocket-driver: 0.7.4
+ 
++  solid-js@1.9.11:
++    dependencies:
++      csstype: 3.2.3
++      seroval: 1.5.0
++      seroval-plugins: 1.5.0(seroval@1.5.0)
++
+   source-map-generator@2.0.2: {}
+ 
+   source-map-js@1.2.1: {}
+@@ -18892,7 +19235,7 @@ snapshots:
+ 
+   tapable@2.3.0: {}
+ 
+-  terser-webpack-plugin@5.3.15(esbuild@0.25.10)(webpack@5.99.6(esbuild@0.25.10)):
++  terser-webpack-plugin@5.3.16(esbuild@0.25.10)(webpack@5.99.6(esbuild@0.25.10)):
+     dependencies:
+       '@jridgewell/trace-mapping': 0.3.31
+       jest-worker: 27.5.1
+@@ -19328,6 +19671,10 @@ snapshots:
+     dependencies:
+       react: 19.2.3
+ 
++  use-sync-external-store@1.6.0(react@19.2.3):
++    dependencies:
++      react: 19.2.3
++
+   util-deprecate@1.0.2: {}
+ 
+   utila@0.4.0: {}
+@@ -19423,7 +19770,7 @@ snapshots:
+     dependencies:
+       loose-envify: 1.4.0
+ 
+-  watchpack@2.4.4:
++  watchpack@2.5.1:
+     dependencies:
+       glob-to-regexp: 0.4.1
+       graceful-fs: 4.2.11
+@@ -19523,7 +19870,7 @@ snapshots:
+       acorn: 8.15.0
+       browserslist: 4.27.0
+       chrome-trace-event: 1.0.4
+-      enhanced-resolve: 5.18.3
++      enhanced-resolve: 5.18.4
+       es-module-lexer: 1.7.0
+       eslint-scope: 5.1.1
+       events: 3.3.0
+@@ -19535,8 +19882,8 @@ snapshots:
+       neo-async: 2.6.2
+       schema-utils: 4.3.3
+       tapable: 2.3.0
+-      terser-webpack-plugin: 5.3.15(esbuild@0.25.10)(webpack@5.99.6(esbuild@0.25.10))
+-      watchpack: 2.4.4
++      terser-webpack-plugin: 5.3.16(esbuild@0.25.10)(webpack@5.99.6(esbuild@0.25.10))
++      watchpack: 2.5.1
+       webpack-sources: 3.3.3
+     transitivePeerDependencies:
+       - '@swc/core'
+@@ -19662,6 +20009,8 @@ snapshots:
+ 
+   ws@8.18.0: {}
+ 
++  ws@8.19.0: {}
++
+   wsl-utils@0.1.0:
+     dependencies:
+       is-wsl: 3.1.0
+@@ -19707,13 +20056,11 @@ snapshots:
+     dependencies:
+       zod: 3.25.76
+ 
+-  zod@3.23.8: {}
+-
+   zod@3.25.58: {}
+ 
+   zod@3.25.76: {}
+ 
+-  zod@4.1.13: {}
++  zod@4.3.5: {}
+ 
+   zrender@6.0.0:
+     dependencies:
+diff --git a/static/app/components/core/form/autoSaveContext.tsx b/static/app/components/core/form/autoSaveContext.tsx
+new file mode 100644
+index 00000000000..5f4d115c6ff
+--- /dev/null
++++ b/static/app/components/core/form/autoSaveContext.tsx
+@@ -0,0 +1,33 @@
++import {createContext, useContext} from 'react';
++
++/**
++ * Context for auto-save mutation state
++ * Consumed by field components to automatically apply mutation state
++ */
++interface AutoSaveContextValue {
++  status: 'pending' | 'error' | 'idle' | 'success';
++}
++
++const AutoSaveContext = createContext<AutoSaveContextValue | null>(null);
++
++/**
++ * Hook to access auto-save context
++ * Returns null if not within AutoSaveField
++ */
++export function useAutoSaveContext() {
++  return useContext(AutoSaveContext);
++}
++
++/**
++ * Provider for auto-save context
++ * Wraps fields to provide mutation state
++ */
++export function AutoSaveContextProvider({
++  value,
++  children,
++}: {
++  children: React.ReactNode;
++  value: AutoSaveContextValue;
++}) {
++  return <AutoSaveContext value={value}>{children}</AutoSaveContext>;
++}
+diff --git a/static/app/components/core/form/field/autoSaveField.tsx b/static/app/components/core/form/field/autoSaveField.tsx
+new file mode 100644
+index 00000000000..056657ed862
+--- /dev/null
++++ b/static/app/components/core/form/field/autoSaveField.tsx
+@@ -0,0 +1,153 @@
++import {useId} from 'react';
++// eslint-disable-next-line no-restricted-imports
++import type {DeepKeys, DeepValue, FieldApi} from '@tanstack/react-form';
++import {useMutation, type UseMutationOptions} from '@tanstack/react-query';
++import type {z} from 'zod';
++
++import {AutoSaveContextProvider} from '@sentry/scraps/form/autoSaveContext';
++import {useScrapsForm, type BoundFieldComponents} from '@sentry/scraps/form/scrapsForm';
++
++/** Form data type coming from the schema */
++type SchemaFieldName<TSchema extends z.ZodObject<z.ZodRawShape>> = Extract<
++  DeepKeys<z.infer<TSchema>>,
++  string
++>;
++
++/** FieldApi’s TData must be DeepValue<TParentData, TName> */
++type SchemaFieldValue<
++  TSchema extends z.ZodObject<z.ZodRawShape>,
++  TFieldName extends SchemaFieldName<TSchema>,
++> = DeepValue<z.infer<TSchema>, TFieldName>;
++
++type AutoSaveFieldRenderArg<
++  TSchema extends z.ZodObject<z.ZodRawShape>,
++  TFieldName extends SchemaFieldName<TSchema>,
++> = FieldApi<
++  z.infer<TSchema>,
++  TFieldName,
++  SchemaFieldValue<TSchema, TFieldName>,
++  // Field validators (all can be undefined to satisfy the constraints)
++  undefined, // TOnMount
++  undefined, // TOnChange
++  undefined, // TOnChangeAsync
++  undefined, // TOnBlur
++  undefined, // TOnBlurAsync
++  undefined, // TOnSubmit
++  undefined, // TOnSubmitAsync
++  undefined, // TOnDynamic
++  undefined, // TOnDynamicAsync
++  // Form validators (all can be undefined)
++  undefined, // TFormOnMount
++  undefined, // TFormOnChange
++  undefined, // TFormOnChangeAsync
++  undefined, // TFormOnBlur
++  undefined, // TFormOnBlurAsync
++  undefined, // TFormOnSubmit
++  undefined, // TFormOnSubmitAsync
++  undefined, // TFormOnDynamic
++  undefined, // TFormOnDynamicAsync
++  undefined, // TFormOnServer
++  // Submit meta (use unknown unless you have a concrete type)
++  unknown // TParentSubmitMeta
++> & {
++  // plus injected components like field.Input / field.Select
++  [K in keyof BoundFieldComponents]: BoundFieldComponents[K];
++};
++
++/**
++ * A component that provides field props and mutation state via render prop.
++ *
++ * @example
++ * <AutoSaveField
++ *   name="lastName"
++ *   schema={baseUserSchema}
++ *   initialValue={user.data?.lastName ?? ''}
++ *   mutationOptions={{
++ *     mutationFn: async (data) => api.patch('/user', data),
++ *   }}
++ * >
++ *   {field => (
++ *     <InputField
++ *       label="Last Name:"
++ *       required
++ *       value={field.state.value}
++ *       onChange={field.handleChange}
++ *     />
++ *   )}
++ * </AutoSaveField>
++ */
++
++interface AutoSaveFieldProps<
++  TSchema extends z.ZodObject<z.ZodRawShape>,
++  TFieldName extends Extract<keyof z.infer<TSchema>, string>,
++> {
++  /**
++   * Render prop that receives field props and additional props
++   */
++  children: (field: AutoSaveFieldRenderArg<TSchema, TFieldName>) => React.ReactNode;
++
++  /**
++   * Initial value - must match the schema's type for this field
++   */
++  initialValue: z.infer<TSchema>[TFieldName];
++
++  /**
++   * TanStack Query mutation options - mutationFn receives single-field data
++   */
++  mutationOptions: UseMutationOptions<
++    z.infer<TSchema>,
++    Error,
++    Record<TFieldName, z.infer<TSchema>[TFieldName]>
++  >;
++
++  /**
++   * Field name - must be a valid string key in the schema
++   */
++  name: TFieldName;
++
++  /**
++   * Zod schema for validation
++   */
++  schema: TSchema;
++}
++
++export function AutoSaveField<
++  TSchema extends z.ZodObject<z.ZodRawShape>,
++  TFieldName extends Extract<keyof z.infer<TSchema>, string>,
++>(props: AutoSaveFieldProps<TSchema, TFieldName>) {
++  const {name, schema, initialValue, mutationOptions, children} = props;
++
++  const id = useId();
++  const mutation = useMutation(mutationOptions);
++
++  const form = useScrapsForm({
++    formId: `${name}-${id}-(auto-save)`,
++    defaultValues: {[name]: initialValue} as Record<
++      TFieldName,
++      z.infer<TSchema>[TFieldName]
++    >,
++    validators: {
++      onChange: schema.pick({[name]: true}) as never,
++    },
++    listeners: {
++      onBlur: ({formApi, fieldApi}) => {
++        if (!fieldApi.state.meta.isDefaultValue) {
++          void formApi.handleSubmit();
++        }
++      },
++    },
++    onSubmit: ({value}) => {
++      return mutation.mutateAsync(value);
++    },
++  });
++
++  return (
++    <form.AppForm>
++      <AutoSaveContextProvider value={{status: mutation.status}}>
++        <form.FormWrapper>
++          <form.AppField name={name}>{field => children(field as never)}</form.AppField>
++        </form.FormWrapper>
++      </AutoSaveContextProvider>
++    </form.AppForm>
++  );
++}
+diff --git a/static/app/components/core/form/field/baseField.spec.tsx b/static/app/components/core/form/field/baseField.spec.tsx
+new file mode 100644
+index 00000000000..8b4872e9c2c
+--- /dev/null
++++ b/static/app/components/core/form/field/baseField.spec.tsx
+@@ -0,0 +1,228 @@
++import {z} from 'zod';
++
++import {render, screen, userEvent, waitFor} from 'sentry-test/reactTestingLibrary';
++
++import {AutoSaveField, defaultFormOptions, useScrapsForm} from '@sentry/scraps/form';
++
++interface TestFormProps {
++  label: string;
++  defaultValue?: string;
++  hintText?: string;
++  required?: boolean;
++  validator?: z.ZodObject<{testField: z.ZodString}>;
++}
++
++function TestForm({label, hintText, required, defaultValue, validator}: TestFormProps) {
++  const form = useScrapsForm({
++    ...defaultFormOptions,
++    defaultValues: {
++      testField: defaultValue ?? '',
++    },
++    validators: validator ? {onBlur: validator} : undefined,
++  });
++
++  return (
++    <form.AppForm>
++      <form.AppField name="testField">
++        {field => (
++          <field.Layout.Row label={label} hintText={hintText} required={required}>
++            <field.Input value={field.state.value} onChange={field.handleChange} />
++          </field.Layout.Row>
++        )}
++      </form.AppField>
++    </form.AppForm>
++  );
++}
++
++const testSchema = z.object({
++  testField: z.string(),
++});
++
++interface AutoSaveTestFormProps {
++  mutationFn: (data: {testField: string}) => Promise<{testField: string}>;
++  initialValue?: string;
++  label?: string;
++}
++
++function AutoSaveTestForm({
++  mutationFn,
++  initialValue = '',
++  label = 'Username',
++}: AutoSaveTestFormProps) {
++  return (
++    <AutoSaveField
++      name="testField"
++      schema={testSchema}
++      initialValue={initialValue}
++      mutationOptions={{mutationFn}}
++    >
++      {field => (
++        <field.Layout.Row label={label}>
++          <field.Input value={field.state.value} onChange={field.handleChange} />
++        </field.Layout.Row>
++      )}
++    </AutoSaveField>
++  );
++}
++
++describe('BaseField a11y', () => {
++  it('associates the input with its label via htmlFor/id', () => {
++    render(<TestForm label="Username" />);
++
++    const input = screen.getByRole('textbox');
++    const label = screen.getByText('Username');
++
++    expect(input).toHaveAttribute('id');
++    expect(label).toHaveAttribute('for', input.getAttribute('id'));
++  });
++
++  it('associates the input with hint text via aria-describedby', () => {
++    render(<TestForm label="Username" hintText="Enter your username" />);
++
++    const input = screen.getByRole('textbox');
++    const hintText = screen.getByText('Enter your username');
++
++    expect(input).toHaveAttribute('aria-describedby');
++    expect(hintText).toHaveAttribute('id', input.getAttribute('aria-describedby'));
++  });
++
++  it('can find input by accessible name from label', () => {
++    render(<TestForm label="Email Address" />);
++
++    expect(screen.getByRole('textbox', {name: 'Email Address'})).toBeInTheDocument();
++  });
++
++  it('includes required in accessible name when required is true', () => {
++    render(<TestForm label="Required Field" required />);
++
++    expect(screen.getByText('(required)')).toBeInTheDocument();
++  });
++});
++
++describe('BaseField aria-invalid', () => {
++  const validationSchema = z.object({
++    testField: z.string().min(3, 'Must be at least 3 characters'),
++  });
++
++  it('is not invalid when field is untouched', () => {
++    render(<TestForm label="Username" defaultValue="" validator={validationSchema} />);
++
++    expect(screen.getByRole('textbox')).toHaveAttribute('aria-invalid', 'false');
++  });
++
++  it('is invalid when field is touched and has validation errors', async () => {
++    render(<TestForm label="Username" defaultValue="ab" validator={validationSchema} />);
++
++    const input = screen.getByRole('textbox');
++    await userEvent.click(input);
++    await userEvent.tab(); // blur
++
++    await waitFor(() => {
++      expect(input).toHaveAttribute('aria-invalid', 'true');
++    });
++  });
++
++  it('is not invalid when field is touched and valid', async () => {
++    render(<TestForm label="Username" defaultValue="abc" validator={validationSchema} />);
++
++    const input = screen.getByRole('textbox');
++    await userEvent.click(input);
++    await userEvent.tab(); // blur
++
++    await waitFor(() => {
++      expect(input).toHaveAttribute('aria-invalid', 'false');
++    });
++  });
++});
++
++describe('BaseField indicator', () => {
++  it('shows no indicator initially', () => {
++    render(<TestForm label="Username" />);
++
++    expect(screen.queryByTestId('icon-check-mark')).not.toBeInTheDocument();
++    expect(screen.queryByRole('img')).not.toBeInTheDocument();
++  });
++
++  it('shows spinner when auto-save is pending', async () => {
++    // Mutation that never resolves to keep the spinner visible
++    const mutationFn = jest.fn(() => new Promise<{testField: string}>(() => {}));
++
++    render(<AutoSaveTestForm mutationFn={mutationFn} initialValue="initial" />);
++
++    const input = screen.getByRole('textbox');
++    await userEvent.clear(input);
++    await userEvent.type(input, 'changed');
++    await userEvent.tab(); // blur triggers auto-save
++
++    expect(
++      await screen.findByRole('status', {name: 'Saving testField'})
++    ).toBeInTheDocument();
++    expect(mutationFn).toHaveBeenCalledWith({testField: 'changed'});
++  });
++
++  it('shows checkmark when auto-save succeeds', async () => {
++    const mutationFn = jest.fn((data: {testField: string}) => Promise.resolve(data));
++
++    render(<AutoSaveTestForm mutationFn={mutationFn} initialValue="initial" />);
++
++    const input = screen.getByRole('textbox');
++    await userEvent.clear(input);
++    await userEvent.type(input, 'changed');
++    await userEvent.tab(); // blur triggers auto-save
++
++    expect(await screen.findByTestId('icon-check-mark')).toBeInTheDocument();
++    expect(mutationFn).toHaveBeenCalledWith({testField: 'changed'});
++  });
++
++  it('shows warning icon when field has validation errors', async () => {
++    const validationSchema = z.object({
++      testField: z.string().min(3, 'Must be at least 3 characters'),
++    });
++
++    render(<TestForm label="Username" defaultValue="ab" validator={validationSchema} />);
++
++    const input = screen.getByRole('textbox');
++    await userEvent.click(input);
++    await userEvent.tab(); // blur to trigger validation
++
++    await waitFor(() => {
++      expect(screen.getByRole('img')).toBeInTheDocument();
++    });
++  });
++
++  it('shows error message in tooltip when field has validation errors', async () => {
++    const validationSchema = z.object({
++      testField: z.string().min(3, 'Must be at least 3 characters'),
++    });
++
++    render(<TestForm label="Username" defaultValue="ab" validator={validationSchema} />);
++
++    const input = screen.getByRole('textbox');
++    await userEvent.click(input);
++    await userEvent.tab(); // blur to trigger validation
++
++    await waitFor(() => {
++      expect(screen.getByText('Must be at least 3 characters')).toBeInTheDocument();
++    });
++  });
++});
++
++describe('BaseField onBlur', () => {
++  it('triggers validation on blur', async () => {
++    const validationSchema = z.object({
++      testField: z.string().min(3, 'Too short'),
++    });
++
++    render(<TestForm label="Username" defaultValue="ab" validator={validationSchema} />);
++
++    const input = screen.getByRole('textbox');
++    expect(input).toHaveAttribute('aria-invalid', 'false');
++
++    await userEvent.click(input);
++    await userEvent.tab(); // blur
++
++    await waitFor(() => {
++      expect(input).toHaveAttribute('aria-invalid', 'true');
++    });
++  });
++});
+diff --git a/static/app/components/core/form/field/baseField.tsx b/static/app/components/core/form/field/baseField.tsx
+new file mode 100644
+index 00000000000..edaf29500ec
+--- /dev/null
++++ b/static/app/components/core/form/field/baseField.tsx
+@@ -0,0 +1,79 @@
++import {useAutoSaveContext} from '@sentry/scraps/form/autoSaveContext';
++import {useFieldContext} from '@sentry/scraps/form/formContext';
++import {Checkmark, Spinner, Warning} from '@sentry/scraps/form/icons';
++import {Tooltip} from '@sentry/scraps/tooltip';
++
++export type BaseFieldProps = Record<never, unknown>;
++
++type FieldChildrenProps = {
++  'aria-describedby': string;
++  'aria-invalid': boolean;
++  id: string;
++  name: string;
++  onBlur: () => void;
++};
++
++type FieldStateProps = {
++  indicator: React.JSX.Element | null;
++};
++
++const useFieldStateIndicator = () => {
++  const field = useFieldContext();
++  const hasValidationError = field.state.meta.isTouched && !field.state.meta.isValid;
++  const status = useAutoSaveContext()?.status;
++
++  if (status === 'pending') {
++    return (
++      <Spinner role="status" aria-label={`Saving ${field.name}`} aria-live="polite" />
++    );
++  }
++
++  if (status === 'success') {
++    return <Checkmark variant="success" size="sm" />;
++  }
++
++  if (hasValidationError) {
++    const errorMessage = field.state.meta.errors.map(e => e?.message).join(',');
++    return (
++      <Tooltip position="bottom" offset={8} title={errorMessage} forceVisible skipWrapper>
++        <Warning variant="danger" size="sm" />
++      </Tooltip>
++    );
++  }
++  return null;
++};
++
++export const useFieldId = () => {
++  const field = useFieldContext();
++
++  return field.form.formId + field.name;
++};
++
++export const useHintTextId = () => {
++  const fieldId = useFieldId();
++
++  return `${fieldId}-hint`;
++};
++
++export function BaseField(
++  props: BaseFieldProps & {
++    children: (props: FieldChildrenProps, state: FieldStateProps) => React.ReactNode;
++  }
++) {
++  const field = useFieldContext();
++  const hasError = field.state.meta.isTouched && !field.state.meta.isValid;
++  const indicator = useFieldStateIndicator();
++  const fieldId = useFieldId();
++  const hintTextId = useHintTextId();
++
++  return props.children(
++    {
++      'aria-invalid': hasError,
++      'aria-describedby': hintTextId,
++      onBlur: field.handleBlur,
++      name: field.name,
++      id: fieldId,
++    },
++    {indicator}
++  );
++}
+diff --git a/static/app/components/core/form/field/inputField.tsx b/static/app/components/core/form/field/inputField.tsx
+new file mode 100644
+index 00000000000..424ef0934de
+--- /dev/null
++++ b/static/app/components/core/form/field/inputField.tsx
+@@ -0,0 +1,50 @@
++import {useAutoSaveContext} from '@sentry/scraps/form/autoSaveContext';
++import {type InputProps} from '@sentry/scraps/input';
++import {InputGroup} from '@sentry/scraps/input/inputGroup';
++import {Tooltip} from '@sentry/scraps/tooltip';
++
++import {BaseField, type BaseFieldProps} from './baseField';
++
++export function InputField({
++  onChange,
++  disabled,
++  ...props
++}: BaseFieldProps &
++  Omit<InputProps, 'value' | 'onChange' | 'onBlur' | 'disabled'> & {
++    onChange: (value: string) => void;
++    value: string;
++    disabled?: boolean | string;
++  }) {
++  const autoSaveContext = useAutoSaveContext();
++  const isDisabled = !!disabled || autoSaveContext?.status === 'pending';
++  const disabledReason = typeof disabled === 'string' ? disabled : undefined;
++
++  return (
++    <BaseField>
++      {(fieldProps, {indicator}) => {
++        const input = (
++          <InputGroup>
++            <InputGroup.Input
++              {...fieldProps}
++              {...props}
++              aria-disabled={isDisabled}
++              readOnly={isDisabled}
++              onChange={e => onChange(e.target.value)}
++            />
++            <InputGroup.TrailingItems>{indicator}</InputGroup.TrailingItems>
++          </InputGroup>
++        );
++
++        if (disabledReason) {
++          return (
++            <Tooltip skipWrapper title={disabledReason}>
++              {input}
++            </Tooltip>
++          );
++        }
++
++        return input;
++      }}
++    </BaseField>
++  );
++}
+diff --git a/static/app/components/core/form/field/meta.tsx b/static/app/components/core/form/field/meta.tsx
+new file mode 100644
+index 00000000000..9035bd7882d
+--- /dev/null
++++ b/static/app/components/core/form/field/meta.tsx
+@@ -0,0 +1,42 @@
++import {useFieldId, useHintTextId} from '@sentry/scraps/form/field/baseField';
++import {RequiredIndicator} from '@sentry/scraps/form/icons';
++import {Container, Flex} from '@sentry/scraps/layout';
++import {Text} from '@sentry/scraps/text';
++
++function HintText(props: {children: string}) {
++  const id = useHintTextId();
++
++  return (
++    <Container width="fit-content">
++      {containerProps => (
++        <Text {...containerProps} size="sm" variant="muted" id={id}>
++          {props.children}
++        </Text>
++      )}
++    </Container>
++  );
++}
++
++function Label(props: {children: string; required?: boolean}) {
++  const fieldId = useFieldId();
++
++  return (
++    <Container width="fit-content">
++      {containerProps => (
++        <Flex gap="xs">
++          <Text {...containerProps} as="label" htmlFor={fieldId}>
++            {props.children}
++          </Text>
++          {props.required ? <RequiredIndicator /> : null}
++        </Flex>
++      )}
++    </Container>
++  );
++}
++
++export function FieldMeta() {
++  return null;
++}
++
++FieldMeta.Label = Label;
++FieldMeta.HintText = HintText;
+diff --git a/static/app/components/core/form/field/numberField.tsx b/static/app/components/core/form/field/numberField.tsx
+new file mode 100644
+index 00000000000..04dfaec51de
+--- /dev/null
++++ b/static/app/components/core/form/field/numberField.tsx
+@@ -0,0 +1,22 @@
++import {InputField} from '@sentry/scraps/form/field/inputField';
++import {type InputProps} from '@sentry/scraps/input';
++
++import {type BaseFieldProps} from './baseField';
++
++export function NumberField(
++  props: BaseFieldProps &
++    Omit<InputProps, 'type' | 'value' | 'onChange' | 'onBlur' | 'disabled'> & {
++      onChange: (value: number) => void;
++      value: number;
++      disabled?: boolean | string;
++    }
++) {
++  return (
++    <InputField
++      {...props}
++      value={String(props.value)}
++      onChange={value => props.onChange(Number(value))}
++      type="number"
++    />
++  );
++}
+diff --git a/static/app/components/core/form/field/selectField.spec.tsx b/static/app/components/core/form/field/selectField.spec.tsx
+new file mode 100644
+index 00000000000..061331cf16d
+--- /dev/null
++++ b/static/app/components/core/form/field/selectField.spec.tsx
+@@ -0,0 +1,354 @@
++import {z} from 'zod';
++
++import {render, screen, userEvent, waitFor} from 'sentry-test/reactTestingLibrary';
++
++import {AutoSaveField, defaultFormOptions, useScrapsForm} from '@sentry/scraps/form';
++
++const OPTIONS = [
++  {value: 'apple', label: 'Apple'},
++  {value: 'banana', label: 'Banana'},
++  {value: 'cherry', label: 'Cherry'},
++];
++
++interface TestFormProps {
++  label: string;
++  defaultValue?: string;
++  disabled?: boolean | string;
++  hintText?: string;
++  placeholder?: string;
++  required?: boolean;
++  validator?: z.ZodObject<{fruit: z.ZodString}>;
++}
++
++function TestForm({
++  label,
++  hintText,
++  required,
++  defaultValue = '',
++  disabled,
++  placeholder,
++  validator,
++}: TestFormProps) {
++  const form = useScrapsForm({
++    ...defaultFormOptions,
++    defaultValues: {
++      fruit: defaultValue,
++    },
++    validators: validator ? {onBlur: validator} : undefined,
++  });
++
++  return (
++    <form.AppForm>
++      <form.AppField name="fruit">
++        {field => (
++          <field.Layout.Row label={label} hintText={hintText} required={required}>
++            <field.Select
++              value={field.state.value}
++              onChange={field.handleChange}
++              options={OPTIONS}
++              disabled={disabled}
++              placeholder={placeholder}
++            />
++          </field.Layout.Row>
++        )}
++      </form.AppField>
++    </form.AppForm>
++  );
++}
++
++const testSchema = z.object({
++  fruit: z.string(),
++});
++
++interface AutoSaveTestFormProps {
++  mutationFn: (data: {fruit: string}) => Promise<{fruit: string}>;
++  initialValue?: string;
++  label?: string;
++}
++
++function AutoSaveTestForm({
++  mutationFn,
++  initialValue = '',
++  label = 'Favorite Fruit',
++}: AutoSaveTestFormProps) {
++  return (
++    <AutoSaveField
++      name="fruit"
++      schema={testSchema}
++      initialValue={initialValue}
++      mutationOptions={{mutationFn}}
++    >
++      {field => (
++        <field.Layout.Row label={label}>
++          <field.Select
++            value={field.state.value}
++            onChange={field.handleChange}
++            options={OPTIONS}
++          />
++        </field.Layout.Row>
++      )}
++    </AutoSaveField>
++  );
++}
++
++describe('SelectField', () => {
++  it('renders with a label', () => {
++    render(<TestForm label="Favorite Fruit" />);
++
++    expect(screen.getByText('Favorite Fruit')).toBeInTheDocument();
++    expect(screen.getByRole('textbox')).toBeInTheDocument();
++  });
++
++  it('displays the selected value', () => {
++    render(<TestForm label="Favorite Fruit" defaultValue="banana" />);
++
++    expect(screen.getByText('Banana')).toBeInTheDocument();
++  });
++
++  it('shows options when clicked', async () => {
++    render(<TestForm label="Favorite Fruit" />);
++
++    await userEvent.click(screen.getByRole('textbox'));
++
++    expect(screen.getByRole('menuitemradio', {name: 'Apple'})).toBeInTheDocument();
++    expect(screen.getByRole('menuitemradio', {name: 'Banana'})).toBeInTheDocument();
++    expect(screen.getByRole('menuitemradio', {name: 'Cherry'})).toBeInTheDocument();
++  });
++
++  it('allows selecting an option', async () => {
++    render(<TestForm label="Favorite Fruit" />);
++
++    await userEvent.click(screen.getByRole('textbox'));
++    await userEvent.click(screen.getByRole('menuitemradio', {name: 'Cherry'}));
++
++    expect(screen.getByText('Cherry')).toBeInTheDocument();
++  });
++});
++
++describe('SelectField disabled', () => {
++  it('is disabled when disabled prop is true', () => {
++    render(<TestForm label="Favorite Fruit" disabled />);
++
++    expect(screen.getByRole('textbox')).toBeDisabled();
++  });
++
++  it('shows tooltip with reason when disabled is a string', async () => {
++    render(<TestForm label="Favorite Fruit" disabled="Feature not available" />);
++
++    expect(screen.getByRole('textbox')).toBeDisabled();
++
++    // Hover on the select container to trigger tooltip
++    const selectContainer = screen.getByRole('textbox').closest('[class*="container"]');
++    await userEvent.hover(selectContainer!);
++
++    await waitFor(() => {
++      expect(screen.getByText('Feature not available')).toBeInTheDocument();
++    });
++  });
++});
++
++describe('SelectField auto-save', () => {
++  it('shows spinner when auto-save is pending', async () => {
++    const mutationFn = jest.fn(() => new Promise<{fruit: string}>(() => {}));
++
++    render(<AutoSaveTestForm mutationFn={mutationFn} initialValue="apple" />);
++
++    await userEvent.click(screen.getByRole('textbox'));
++    await userEvent.click(screen.getByRole('menuitemradio', {name: 'Banana'}));
++
++    expect(await screen.findByRole('status', {name: 'Saving fruit'})).toBeInTheDocument();
++    expect(mutationFn).toHaveBeenCalledWith({fruit: 'banana'});
++  });
++
++  it('shows checkmark when auto-save succeeds', async () => {
++    const mutationFn = jest.fn((data: {fruit: string}) => Promise.resolve(data));
++
++    render(<AutoSaveTestForm mutationFn={mutationFn} initialValue="apple" />);
++
++    await userEvent.click(screen.getByRole('textbox'));
++    await userEvent.click(screen.getByRole('menuitemradio', {name: 'Banana'}));
++
++    expect(await screen.findByTestId('icon-check-mark')).toBeInTheDocument();
++    expect(mutationFn).toHaveBeenCalledWith({fruit: 'banana'});
++  });
++
++  it('disables select while auto-save is pending', async () => {
++    const mutationFn = jest.fn(() => new Promise<{fruit: string}>(() => {}));
++
++    render(<AutoSaveTestForm mutationFn={mutationFn} initialValue="apple" />);
++
++    await userEvent.click(screen.getByRole('textbox'));
++    await userEvent.click(screen.getByRole('menuitemradio', {name: 'Banana'}));
++
++    await waitFor(() => {
++      expect(screen.getByRole('textbox')).toBeDisabled();
++    });
++  });
++
++  it('does not trigger mutation when selecting the same value', async () => {
++    const mutationFn = jest.fn((data: {fruit: string}) => Promise.resolve(data));
++
++    render(<AutoSaveTestForm mutationFn={mutationFn} initialValue="apple" />);
++
++    await userEvent.click(screen.getByRole('textbox'));
++    await userEvent.click(screen.getByRole('menuitemradio', {name: 'Apple'}));
++
++    // Wait a bit to ensure no mutation is triggered
++    await new Promise(resolve => setTimeout(resolve, 100));
++    expect(mutationFn).not.toHaveBeenCalled();
++  });
++});
++
++describe('SelectField keyboard navigation', () => {
++  it('opens menu with arrow down key', async () => {
++    render(<TestForm label="Favorite Fruit" />);
++
++    const input = screen.getByRole('textbox');
++    await userEvent.click(input);
++    await userEvent.keyboard('{Escape}'); // Close menu first
++
++    expect(screen.queryByRole('menuitemradio')).not.toBeInTheDocument();
++
++    await userEvent.keyboard('{ArrowDown}');
++
++    expect(screen.getByRole('menuitemradio', {name: 'Apple'})).toBeInTheDocument();
++  });
++
++  it('navigates options with arrow keys', async () => {
++    render(<TestForm label="Favorite Fruit" />);
++
++    await userEvent.click(screen.getByRole('textbox'));
++
++    // First option is focused by default
++    expect(screen.getByRole('menuitemradio', {name: 'Apple'})).toHaveClass(
++      'option--is-focused'
++    );
++
++    await userEvent.keyboard('{ArrowDown}');
++    expect(screen.getByRole('menuitemradio', {name: 'Banana'})).toHaveClass(
++      'option--is-focused'
++    );
++
++    await userEvent.keyboard('{ArrowDown}');
++    expect(screen.getByRole('menuitemradio', {name: 'Cherry'})).toHaveClass(
++      'option--is-focused'
++    );
++  });
++
++  it('selects option with Enter key', async () => {
++    render(<TestForm label="Favorite Fruit" />);
++
++    await userEvent.click(screen.getByRole('textbox'));
++    await userEvent.keyboard('{ArrowDown}'); // Move to Banana
++    await userEvent.keyboard('{Enter}');
++
++    expect(screen.getByText('Banana')).toBeInTheDocument();
++    expect(screen.queryByRole('menuitemradio')).not.toBeInTheDocument();
++  });
++
++  it('closes menu with Escape key', async () => {
++    render(<TestForm label="Favorite Fruit" />);
++
++    await userEvent.click(screen.getByRole('textbox'));
++    expect(screen.getByRole('menuitemradio', {name: 'Apple'})).toBeInTheDocument();
++
++    await userEvent.keyboard('{Escape}');
++
++    expect(screen.queryByRole('menuitemradio')).not.toBeInTheDocument();
++  });
++});
++
++describe('SelectField filtering', () => {
++  it('filters options when typing', async () => {
++    render(<TestForm label="Favorite Fruit" />);
++
++    await userEvent.click(screen.getByRole('textbox'));
++    await userEvent.keyboard('ban');
++
++    expect(screen.getByRole('menuitemradio', {name: 'Banana'})).toBeInTheDocument();
++    expect(screen.queryByRole('menuitemradio', {name: 'Apple'})).not.toBeInTheDocument();
++    expect(screen.queryByRole('menuitemradio', {name: 'Cherry'})).not.toBeInTheDocument();
++  });
++
++  it('shows no options message when filter matches nothing', async () => {
++    render(<TestForm label="Favorite Fruit" />);
++
++    await userEvent.click(screen.getByRole('textbox'));
++    await userEvent.keyboard('xyz');
++
++    expect(screen.queryByRole('menuitemradio')).not.toBeInTheDocument();
++    expect(screen.getByText('No options')).toBeInTheDocument();
++  });
++});
++
++describe('SelectField placeholder', () => {
++  it('shows default placeholder when no value is selected', () => {
++    render(<TestForm label="Favorite Fruit" />);
++
++    expect(screen.getByText('Select...')).toBeInTheDocument();
++  });
++
++  it('shows custom placeholder when provided', () => {
++    render(<TestForm label="Favorite Fruit" placeholder="Choose a fruit" />);
++
++    expect(screen.getByText('Choose a fruit')).toBeInTheDocument();
++  });
++
++  it('hides placeholder when value is selected', () => {
++    render(
++      <TestForm
++        label="Favorite Fruit"
++        defaultValue="apple"
++        placeholder="Choose a fruit"
++      />
++    );
++
++    expect(screen.queryByText('Choose a fruit')).not.toBeInTheDocument();
++    expect(screen.getByText('Apple')).toBeInTheDocument();
++  });
++});
++
++describe('SelectField a11y', () => {
++  it('focuses the select input when clicking on the label', async () => {
++    render(<TestForm label="Favorite Fruit" />);
++
++    await userEvent.click(screen.getByText('Favorite Fruit'));
++
++    expect(screen.getByRole('textbox')).toHaveFocus();
++  });
++
++  it('includes required text for screen readers when required is true', () => {
++    render(<TestForm label="Favorite Fruit" required />);
++
++    // The label should include visually-hidden "(required)" text for screen readers
++    expect(screen.getByText('(required)')).toBeInTheDocument();
++  });
++
++  it('renders hint text', () => {
++    render(<TestForm label="Favorite Fruit" hintText="Select your favorite fruit" />);
++
++    expect(screen.getByText('Select your favorite fruit')).toBeInTheDocument();
++  });
++
++  it('has aria-invalid false by default', () => {
++    render(<TestForm label="Favorite Fruit" />);
++
++    expect(screen.getByRole('textbox')).toHaveAttribute('aria-invalid', 'false');
++  });
++
++  it('has aria-invalid true when validation fails', async () => {
++    const validationSchema = z.object({
++      fruit: z.string().min(1, 'Selection required'),
++    });
++
++    render(<TestForm label="Favorite Fruit" validator={validationSchema} />);
++
++    const input = screen.getByRole('textbox');
++    await userEvent.click(input);
++    await userEvent.tab(); // blur to trigger validation
++
++    await waitFor(() => {
++      expect(input).toHaveAttribute('aria-invalid', 'true');
++    });
++  });
++});
+diff --git a/static/app/components/core/form/field/selectField.tsx b/static/app/components/core/form/field/selectField.tsx
+new file mode 100644
+index 00000000000..3a4200fb919
+--- /dev/null
++++ b/static/app/components/core/form/field/selectField.tsx
+@@ -0,0 +1,70 @@
++import {useAutoSaveContext} from '@sentry/scraps/form/autoSaveContext';
++import {Flex} from '@sentry/scraps/layout';
++import {Select} from '@sentry/scraps/select';
++import {Tooltip} from '@sentry/scraps/tooltip';
++
++import {components} from 'sentry/components/forms/controls/reactSelectWrapper';
++import type {SelectValue} from 'sentry/types/core';
++
++import {BaseField, type BaseFieldProps} from './baseField';
++
++function SelectInput({
++  selectProps,
++  ...props
++}: React.ComponentProps<typeof components.Input> & {
++  selectProps: {'aria-invalid': boolean};
++}) {
++  return <components.Input {...props} aria-invalid={selectProps['aria-invalid']} />;
++}
++
++export function SelectField({
++  onChange,
++  disabled,
++  ...props
++}: BaseFieldProps &
++  Omit<
++    React.ComponentProps<typeof Select>,
++    'value' | 'onChange' | 'onBlur' | 'disabled'
++  > & {
++    onChange: (value: string) => void;
++    value: string;
++    disabled?: boolean | string;
++  }) {
++  const autoSaveContext = useAutoSaveContext();
++  const isDisabled = !!disabled || autoSaveContext?.status === 'pending';
++  const disabledReason = typeof disabled === 'string' ? disabled : undefined;
++
++  return (
++    <BaseField>
++      {({id, ...fieldProps}, {indicator}) => {
++        const select = (
++          <Select
++            {...fieldProps}
++            {...props}
++            inputId={id}
++            disabled={isDisabled}
++            components={{
++              ...props.components,
++              Input: SelectInput,
++              IndicatorsContainer: ({
++                children,
++              }: React.ComponentProps<typeof components.IndicatorsContainer>) => (
++                <Flex padding="sm" gap="sm" align="center">
++                  {indicator}
++                  {children}
++                </Flex>
++              ),
++            }}
++            onChange={(option: SelectValue<string>) => onChange(option?.value ?? '')}
++          />
++        );
++
++        if (disabledReason) {
++          return <Tooltip title={disabledReason}>{select}</Tooltip>;
++        }
++
++        return select;
++      }}
++    </BaseField>
++  );
++}
+diff --git a/static/app/components/core/form/form.stories.tsx b/static/app/components/core/form/form.stories.tsx
+new file mode 100644
+index 00000000000..07f559c903f
+--- /dev/null
++++ b/static/app/components/core/form/form.stories.tsx
+@@ -0,0 +1,319 @@
++import {Fragment} from 'react';
++import {TanStackDevtools} from '@tanstack/react-devtools';
++import {formDevtoolsPlugin} from '@tanstack/react-form-devtools';
++import {
++  mutationOptions,
++  queryOptions,
++  useQuery,
++  useQueryClient,
++  type QueryClient,
++} from '@tanstack/react-query';
++import {z} from 'zod';
++
++import {Button} from '@sentry/scraps/button';
++import {
++  AutoSaveField,
++  defaultFormOptions,
++  FieldGroup,
++  setFieldErrors,
++  useScrapsForm,
++} from '@sentry/scraps/form';
++import {Flex} from '@sentry/scraps/layout';
++
++import * as Storybook from 'sentry/stories';
++
++const COUNTRY_OPTIONS = [
++  {value: 'US', label: 'United States'},
++  {value: 'CA', label: 'Canada'},
++  {value: 'AT', label: 'Austria'},
++];
++
++const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
++
++const baseUserSchema = z.object({
++  age: z.number('Age is required').gte(13, 'You must be 13 to make an account'),
++  firstName: z.string().optional(),
++  lastName: z.string().min(2, 'Last name must be at least 2 characters'),
++  secret: z.string().optional(),
++  address: z.object({
++    street: z.string().min(1, 'Street is required'),
++    city: z.string().min(1, 'City is required'),
++    country: z.string().min(1, 'Country is required'),
++  }),
++});
++
++const userSchema = baseUserSchema.refine(
++  data => {
++    if (data.age === 42) {
++      return !!data.secret && data.secret.length > 0;
++    }
++    return true;
++  },
++  {
++    message: 'Secret is required when age is 42',
++    path: ['secret'],
++  }
++);
++
++const userQuery = queryOptions({
++  queryKey: ['user', 'example'],
++  queryFn: async () => {
++    await sleep(500);
++    return userSchema.parse({
++      firstName: 'John',
++      lastName: 'Doe',
++      age: 23,
++      address: {
++        street: '123 Main St',
++        city: 'Anytown',
++        country: 'US',
++      },
++    });
++  },
++});
++
++type User = z.infer<typeof baseUserSchema>;
++
++const addressMutationOptions = (client: QueryClient) =>
++  mutationOptions({
++    mutationFn: async (variables: Partial<User['address']>): Promise<User['address']> => {
++      // eslint-disable-next-line no-console
++      console.log('saving address', variables);
++      await sleep(1000);
++      return {
++        street: '123 Main St',
++        city: 'Anytown',
++        country: 'US',
++        ...variables,
++      };
++    },
++    onSuccess: data => {
++      client.setQueryData(['user', 'example'], oldData => {
++        if (!oldData) {
++          return oldData;
++        }
++        return {
++          ...oldData,
++          address: data,
++        };
++      });
++    },
++  });
++
++const userMutationOptions = (client: QueryClient) =>
++  mutationOptions({
++    mutationFn: async (variables: Partial<User>): Promise<User> => {
++      // eslint-disable-next-line no-console
++      console.log('saving user', variables);
++      await sleep(1000);
++      return {
++        firstName: 'John',
++        lastName: 'Doe',
++        age: 23,
++        address: {
++          street: '123 Main St',
++          city: 'Anytown',
++          country: 'US',
++        },
++        ...variables,
++      };
++    },
++    onSuccess: data => {
++      client.setQueryData(['user', 'example'], data);
++    },
++  });
++
++function AutoSaveExample() {
++  const user = useQuery(userQuery);
++  const client = useQueryClient();
++
++  if (user.isPending) {
++    return <div>Loading...</div>;
++  }
++
++  return (
++    <FieldGroup title="AutoSave Example">
++      <AutoSaveField
++        name="firstName"
++        schema={baseUserSchema}
++        initialValue={user.data?.firstName ?? ''}
++        mutationOptions={userMutationOptions(client)}
++      >
++        {field => (
++          <field.Layout.Stack label="First Name:" hintText="Your given name">
++            <field.Input value={field.state.value ?? ''} onChange={field.handleChange} />
++          </field.Layout.Stack>
++        )}
++      </AutoSaveField>
++
++      <AutoSaveField
++        name="lastName"
++        schema={baseUserSchema}
++        initialValue={user.data?.lastName ?? ''}
++        mutationOptions={userMutationOptions(client)}
++      >
++        {field => (
++          <field.Layout.Stack label="Last Name:" hintText="Your family name" required>
++            <field.Input value={field.state.value} onChange={field.handleChange} />
++          </field.Layout.Stack>
++        )}
++      </AutoSaveField>
++
++      <AutoSaveField
++        name="country"
++        schema={baseUserSchema.shape.address}
++        initialValue={user.data?.address.country ?? ''}
++        mutationOptions={addressMutationOptions(client)}
++      >
++        {field => (
++          <field.Layout.Stack label="Country:" required>
++            <field.Select
++              value={field.state.value}
++              onChange={field.handleChange}
++              options={COUNTRY_OPTIONS}
++            />
++          </field.Layout.Stack>
++        )}
++      </AutoSaveField>
++    </FieldGroup>
++  );
++}
++
++function BasicForm() {
++  const user = useQuery(userQuery);
++
++  const form = useScrapsForm({
++    ...defaultFormOptions,
++    defaultValues: user.data,
++    validators: {
++      onDynamic: baseUserSchema,
++    },
++    onSubmit: ({value, formApi}) => {
++      // eslint-disable-next-line no-alert
++      alert(JSON.stringify(value));
++      setFieldErrors(formApi, {
++        firstName: {message: 'This name is already taken'},
++      });
++    },
++  });
++
++  if (user.isPending) {
++    return <div>Loading...</div>;
++  }
++
++  return (
++    <form.AppForm>
++      <form.FormWrapper>
++        <form.FieldGroup title="Peronal Information">
++          <form.AppField name="firstName">
++            {field => (
++              <field.Layout.Row label="First Name:" hintText="Your given name">
++                <field.Input
++                  value={field.state.value ?? ''}
++                  onChange={field.handleChange}
++                />
++              </field.Layout.Row>
++            )}
++          </form.AppField>
++          <form.AppField name="lastName">
++            {field => (
++              <field.Layout.Row label="Last Name:" hintText="Your family name" required>
++                <field.Input
++                  value={field.state.value}
++                  onChange={field.handleChange}
++                  disabled="Can't touch this"
++                />
++              </field.Layout.Row>
++            )}
++          </form.AppField>
++          <form.AppField name="age">
++            {field => (
++              <field.Layout.Row label="Age:" hintText="Minimum 13" required>
++                <field.Number value={field.state.value} onChange={field.handleChange} />
++              </field.Layout.Row>
++            )}
++          </form.AppField>
++          <form.Subscribe selector={state => state.values.age === 42}>
++            {showSecret =>
++              showSecret ? (
++                <form.AppField
++                  name="secret"
++                  validators={{
++                    onDynamic: z
++                      .string('Secret is required when age is 42')
++                      .min(1, 'Secret is required when age is 42'),
++                  }}
++                >
++                  {field => (
++                    <field.Layout.Row
++                      label="Secret:"
++                      hintText="Secret is required when age is 42"
++                      required
++                    >
++                      <field.Input
++                        value={field.state.value ?? ''}
++                        onChange={field.handleChange}
++                      />
++                    </field.Layout.Row>
++                  )}
++                </form.AppField>
++              ) : null
++            }
++          </form.Subscribe>
++        </form.FieldGroup>
++
++        <form.FieldGroup title="Address Information">
++          <form.AppField name="address.street">
++            {field => (
++              <field.Layout.Row label="Street:" required>
++                <field.Input value={field.state.value} onChange={field.handleChange} />
++              </field.Layout.Row>
++            )}
++          </form.AppField>
++          <form.AppField name="address.city">
++            {field => (
++              <field.Layout.Row label="City:" required>
++                <field.Input value={field.state.value} onChange={field.handleChange} />
++              </field.Layout.Row>
++            )}
++          </form.AppField>
++          <form.AppField name="address.country">
++            {field => (
++              <field.Layout.Row label="Country:" required>
++                <field.Select
++                  value={field.state.value}
++                  onChange={field.handleChange}
++                  options={COUNTRY_OPTIONS}
++                />
++              </field.Layout.Row>
++            )}
++          </form.AppField>
++        </form.FieldGroup>
++
++        <Flex gap="md" justify="end">
++          <Button onClick={() => form.reset()}>Reset</Button>
++          <form.SubmitButton>Submit</form.SubmitButton>
++        </Flex>
++      </form.FormWrapper>
++    </form.AppForm>
++  );
++}
++
++export default Storybook.story('Form', story => {
++  story('Basic', () => {
++    return (
++      <Fragment>
++        <BasicForm />
++        <TanStackDevtools plugins={[formDevtoolsPlugin()]} />
++      </Fragment>
++    );
++  });
++
++  story('AutoSave', () => {
++    return (
++      <Fragment>
++        <AutoSaveExample />
++      </Fragment>
++    );
++  });
++});
+diff --git a/static/app/components/core/form/formContext.ts b/static/app/components/core/form/formContext.ts
+new file mode 100644
+index 00000000000..227bb1b2de4
+--- /dev/null
++++ b/static/app/components/core/form/formContext.ts
+@@ -0,0 +1,7 @@
++// eslint-disable-next-line no-restricted-imports
++import {createFormHookContexts} from '@tanstack/react-form';
++
++const {fieldContext, formContext, useFormContext, useFieldContext} =
++  createFormHookContexts();
++
++export {fieldContext, formContext, useFormContext, useFieldContext};
+diff --git a/static/app/components/core/form/icons.tsx b/static/app/components/core/form/icons.tsx
+new file mode 100644
+index 00000000000..f5a2370ad41
+--- /dev/null
++++ b/static/app/components/core/form/icons.tsx
+@@ -0,0 +1,54 @@
++import {Fragment} from 'react';
++import {keyframes} from '@emotion/react';
++import styled from '@emotion/styled';
++import {VisuallyHidden} from '@react-aria/visually-hidden';
++
++import {IconCheckmark, IconWarning} from 'sentry/icons';
++import {fadeOut, pulse} from 'sentry/styles/animations';
++
++const spin = keyframes`
++  0% {
++    transform: rotate(0deg);
++  }
++  100% {
++    transform: rotate(360deg);
++  }
++`;
++
++export const Spinner = styled('div')`
++  animation: ${spin} 0.4s linear infinite;
++  width: 18px;
++  height: 18px;
++  border-radius: 50%;
++  border: 2px solid ${p => p.theme.tokens.border.transparent.neutral.muted};
++  border-left-color: ${p => p.theme.tokens.border.accent.vibrant};
++  margin-left: 0;
++`;
++
++export const Checkmark = styled(IconCheckmark)`
++  animation: ${fadeOut} 0.3s ease 2s 1 forwards;
++`;
++
++export const Warning = styled(IconWarning)`
++  animation: ${() => pulse(1.15)} 1s ease infinite;
++`;
++
++const RequiredIndicatorBase = styled('div')`
++  display: inline-block;
++  background: ${p => p.theme.colors.red400};
++  opacity: 0.6;
++  width: 5px;
++  height: 5px;
++  border-radius: 5px;
++  text-indent: -9999em;
++  vertical-align: super;
++`;
++
++export function RequiredIndicator() {
++  return (
++    <Fragment>
++      <RequiredIndicatorBase aria-hidden />
++      <VisuallyHidden>(required)</VisuallyHidden>
++    </Fragment>
++  );
++}
+diff --git a/static/app/components/core/form/index.ts b/static/app/components/core/form/index.ts
+new file mode 100644
+index 00000000000..b4eaa9cb9c2
+--- /dev/null
++++ b/static/app/components/core/form/index.ts
+@@ -0,0 +1,3 @@
++export {useScrapsForm, defaultFormOptions, setFieldErrors} from './scrapsForm';
++export {AutoSaveField} from './field/autoSaveField';
++export {FieldGroup} from './layout/fieldGroup';
+diff --git a/static/app/components/core/form/layout/fieldGroup.tsx b/static/app/components/core/form/layout/fieldGroup.tsx
+new file mode 100644
+index 00000000000..64d64af41c9
+--- /dev/null
++++ b/static/app/components/core/form/layout/fieldGroup.tsx
+@@ -0,0 +1,32 @@
++import styled from '@emotion/styled';
++
++import {Container} from '@sentry/scraps/layout';
++
++import Panel from 'sentry/components/panels/panel';
++import PanelHeader from 'sentry/components/panels/panelHeader';
++
++export function FieldGroup({
++  title,
++  children,
++}: {
++  title: React.ReactNode;
++  children?: React.ReactNode;
++}) {
++  return (
++    <Panel>
++      <PanelHeader>{title}</PanelHeader>
++      <PanelBody>{children}</PanelBody>
++    </Panel>
++  );
++}
++
++const PanelBody = styled(Container)`
++  > * {
++    padding: ${p => p.theme.space.xl};
++    border-bottom: 1px solid ${p => p.theme.tokens.border.primary};
++
++    &:last-child {
++      border-bottom: none;
++    }
++  }
++`;
+diff --git a/static/app/components/core/form/layout/index.tsx b/static/app/components/core/form/layout/index.tsx
+new file mode 100644
+index 00000000000..6f2266350b2
+--- /dev/null
++++ b/static/app/components/core/form/layout/index.tsx
+@@ -0,0 +1,41 @@
++import {FieldMeta} from '@sentry/scraps/form/field/meta';
++import {Container, Flex, Stack} from '@sentry/scraps/layout';
++
++interface LayoutProps {
++  children: React.ReactNode;
++  label: string;
++  hintText?: string;
++  required?: boolean;
++}
++
++function RowLayout(props: LayoutProps) {
++  return (
++    <Flex gap="sm" align="center" justify="between">
++      <Stack width="50%" gap="xs">
++        <FieldMeta.Label required={props.required}>{props.label}</FieldMeta.Label>
++        {props.hintText ? (
++          <FieldMeta.HintText>{props.hintText}</FieldMeta.HintText>
++        ) : null}
++      </Stack>
++
++      <Container flexGrow={1}>{props.children}</Container>
++    </Flex>
++  );
++}
++
++function StackLayout(props: LayoutProps) {
++  return (
++    <Stack gap="md">
++      <FieldMeta.Label required={props.required}>{props.label}</FieldMeta.Label>
++      {props.children}
++      {props.hintText ? <FieldMeta.HintText>{props.hintText}</FieldMeta.HintText> : null}
++    </Stack>
++  );
++}
++
++export function FieldLayout() {
++  return null;
++}
++
++FieldLayout.Row = RowLayout;
++FieldLayout.Stack = StackLayout;
+diff --git a/static/app/components/core/form/scrapsForm.tsx b/static/app/components/core/form/scrapsForm.tsx
+new file mode 100644
+index 00000000000..0e5d90c17ae
+--- /dev/null
++++ b/static/app/components/core/form/scrapsForm.tsx
+@@ -0,0 +1,124 @@
++// eslint-disable-next-line no-restricted-imports
++import {
++  createFormHook,
++  formOptions,
++  revalidateLogic,
++  type DeepKeys,
++} from '@tanstack/react-form';
++
++import {Button, type ButtonProps} from '@sentry/scraps/button';
++import {FieldMeta} from '@sentry/scraps/form/field/meta';
++import {FieldLayout} from '@sentry/scraps/form/layout';
++import {FieldGroup} from '@sentry/scraps/form/layout/fieldGroup';
++
++import {InputField} from './field/inputField';
++import {NumberField} from './field/numberField';
++import {SelectField} from './field/selectField';
++import {fieldContext, formContext, useFormContext} from './formContext';
++
++export const defaultFormOptions = formOptions({
++  onSubmitInvalid({formApi}: {formApi: {formId: string}}) {
++    const InvalidInput = document.querySelector(
++      `#${CSS.escape(formApi.formId)} [aria-invalid="true"]`
++    ) as HTMLInputElement;
++
++    InvalidInput?.focus();
++  },
++  validationLogic: revalidateLogic({
++    mode: 'submit',
++    modeAfterSubmission: 'change',
++  }),
++});
++
++const fieldComponents = {
++  Input: InputField,
++  Number: NumberField,
++  Select: SelectField,
++  Meta: FieldMeta,
++  Layout: FieldLayout,
++} as const;
++
++export type BoundFieldComponents = typeof fieldComponents;
++
++const {useAppForm} = createFormHook({
++  fieldComponents,
++  formComponents: {
++    FieldGroup,
++    SubmitButton,
++    FormWrapper,
++  },
++  fieldContext,
++  formContext,
++});
++
++function SubmitButton(props: ButtonProps) {
++  const form = useFormContext();
++  return (
++    <form.Subscribe selector={state => state.isSubmitting}>
++      {isSubmitting => (
++        <Button
++          {...props}
++          priority="primary"
++          type="submit"
++          disabled={isSubmitting || props.disabled}
++        />
++      )}
++    </form.Subscribe>
++  );
++}
++
++function FormWrapper({children}: {children: React.ReactNode}) {
++  const form = useFormContext();
++
++  return (
++    <form
++      id={form.formId}
++      onSubmit={e => {
++        e.preventDefault();
++        form.handleSubmit();
++      }}
++    >
++      {children}
++    </form>
++  );
++}
++
++export const useScrapsForm = useAppForm;
++
++/**
++ * Type for field errors that can be set after form submission (e.g., from backend validation).
++ * Keys are constrained to valid field paths (including nested paths like 'address.city').
++ */
++type FieldErrors<TFormData> = Partial<Record<DeepKeys<TFormData>, {message: string}>>;
++
++/**
++ * Infers the form data type from a form API instance.
++ */
++type InferFormData<T> = T extends {state: {values: infer D}} ? D : never;
++
++/**
++ * Sets field errors on a form after submission (e.g., from backend validation).
++ * This provides a type-safe way to set errors on specific fields.
++ *
++ * @example
++ * ```tsx
++ * const form = useScrapsForm({
++ *   defaultValues: { firstName: '', lastName: '', address: { city: '' } },
++ * });
++ *
++ * // In onSubmit handler or after receiving backend errors:
++ * setFieldErrors(form, {
++ *   firstName: { message: 'This name is already taken' },
++ *   'address.city': { message: 'City not found' },
++ * });
++ * ```
++ */
++export function setFieldErrors<
++  TForm extends {setErrorMap: (...args: any[]) => unknown; state: {values: unknown}},
++>(formApi: TForm, errors: FieldErrors<InferFormData<TForm>>): void {
++  formApi.setErrorMap({
++    onSubmit: {
++      fields: errors,
++    },
++  });
++}
+diff --git a/static/app/stories/view/storyExports.tsx b/static/app/stories/view/storyExports.tsx
+index 2c11e2389e4..2146c6565d1 100644
+--- a/static/app/stories/view/storyExports.tsx
++++ b/static/app/stories/view/storyExports.tsx
+@@ -192,7 +192,7 @@ function StoryUsage() {
+   return (
+     <Fragment>
+       {Story && (
+-        <Storybook.Section>
++        <Storybook.Section flexGrow={1}>
+           <ErrorBoundary
+             fallback={
+               <Alert variant="danger" showIcon={false}>

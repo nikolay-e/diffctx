@@ -1,0 +1,49 @@
+repo: react-native
+base_commit: 700d320a5f1615a2ae6ea69bcc68b645a2cd4618
+commit: 2ce368604a1318984f53ef3bae9a08c731287107
+patch_stored: true
+gold:
+- path: .github/actions/test-ios-rntester/action.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/workflows/test-all.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/React/Base/RCTUtils.mm
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/cocoapods/__tests__/codegen_utils-test.rb
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/cocoapods/new_architecture.rb
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/cocoapods/utils.rb
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: scripts/.tests.env
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: scripts/objc-test.sh
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'A genuinely broad CI/test-infra fix spanning 40 files: renamed xcresult artifact paths in the
+  GH action, an extern "C" linkage fix in RCTUtils.mm (needed so a C-linkage test symbol isn''t C++-mangled),
+  and dozens of Ruby cocoapods test files with reordered assert_equal arguments plus new ObjC unit/integration
+  test files. At 360/297 line changes across 40 files this is a legitimately hard, spread-out diff — but
+  the tool produced nothing at all, so recall/precision are moot; the hang itself is the finding, and
+  notably it fires on a mid-size diff (40 files, ~660 changed lines), disproving any theory that hangs
+  are purely a function of file count or diff size.'

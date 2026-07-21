@@ -1,0 +1,41 @@
+repo: gitpod
+base_commit: 5bb738a53095fc6d52347bb7d332bd2996b782b1
+commit: 7f43d48115b891e21545a08480e2f1e4e86e449d
+patch_stored: true
+gold:
+- path: components/dashboard/src/data/organizations/orgs-query.ts:useCurrentOrg,getOrgSlugFromQuery
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: components/dashboard/src/dedicated-setup/use-needs-setup.ts:useNeedsSetup,useOnboardingState
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: components/dashboard/src/login/SSOLoginForm.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/menu/OrganizationSelector.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/gitpod/v1/installation.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/orgs/organization-service.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 2
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Confirmed hang: empty ctx.md/md.err, 0 changed fragments despite a substantial 48-file, 2742-insertion
+  diff. Strong suspects for the hang are the huge generated-code files in this diff: installation.pb.go
+  (+605/-diff), Installation.java (+2030 lines of generated protobuf/gRPC bindings), and installation_pb.ts
+  (+115) — dense generated code is a classic trigger for pathological behavior in tree-sitter-based or
+  line-diff-based selection algorithms. The genuinely hand-written logic (org-slug resolution priority,
+  feature-flag-to-real-config migration in useNeedsSetup) is exactly the kind of multi-file behavioral
+  change diffctx''s algorithm should shine on, but it never produces anything.'

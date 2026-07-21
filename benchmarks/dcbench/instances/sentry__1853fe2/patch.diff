@@ -1,0 +1,1793 @@
+From 1853fe25a1cb1970f0425052d424413a522f5e92 Mon Sep 17 00:00:00 2001
+From: Nate Moore <natemoo-re@users.noreply.github.com>
+Date: Wed, 16 Apr 2025 21:56:10 -0500
+Subject: [PATCH] chore: remove biome (#85552)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+**See https://github.com/getsentry/frontend-tsc/issues/67 for more
+details.** We've had numerous discussions about Biome vs ESLint in the
+Frontend TSC. Biome is in a half-implemented state and having multiple
+linters is a frequent source of confusion, so this PR is a _bias towards
+action_ and just removes Biome.
+
+**There's an important trade-off here!** Rule coverage is not exactly
+1:1 and some `@typescript-eslint` rules that replicate Biome's behavior
+require type-checking to be enabled. Type-aware linting can be painfully
+slow on the first run (100s+) in a project of our size, but subsequent
+runs from the cache are much faster.
+
+So... is the performance hit worth the tradeoff? IMO yes—simplifying our
+dependency tree and removing yet another configuration file helps
+everyone understand our tooling setup. We're also eliminating a
+potential source of divergence between the tools. These small papercuts
+really add up over time.
+
+If Biome adds support for all the rules we use down the road, it will be
+fairly trivial to revisit this decision.
+
+| enabled | biome | eslint | commit |
+|--------|--------|--------|--------|
+| ✅ | `useOptionalChain` | `@typescript-eslint/prefer-optional-chain` |
+33126cf8 |
+| ✅ | `useExportType` | `@typescript-eslint/consistent-type-exports` |
+aadec31d6 |
+| ✅ | `useImportType` | `@typescript-eslint/consistent-type-imports` |
+aadec31d6 |
+| ⛔ | `noBarrelFile` |
+[`eslint-plugin-barrel-files`](https://github.com/thepassle/eslint-plugin-barrel-files)
+is broken | |
+| ⛔ | `noApproximativeNumericConstant` | no equivalent |  |
+| ⛔ | `noMisrefactoredShorthandAssign` | no equivalent |   |
+| ⛔ | `noShoutyConstants` | no equivalent |   |
+
+closes https://github.com/getsentry/frontend-tsc/issues/67
+
+---------
+
+Co-authored-by: getsantry[bot] <66042841+getsantry[bot]@users.noreply.github.com>
+---
+ .github/CODEOWNERS                            |   1 -
+ .pre-commit-config.yaml                       |   7 -
+ .vercelignore                                 |   2 -
+ .vscode/extensions.json                       |   1 -
+ .vscode/settings.json                         |  14 +-
+ biome.json                                    | 191 ------------------
+ eslint.config.mjs                             |   4 +-
+ package.json                                  |   7 +-
+ .../components/charts/groupStatusChart.tsx    |   4 +-
+ static/app/components/charts/pieChart.tsx     |   2 +-
+ static/app/components/charts/utils.tsx        |   4 +-
+ .../components/discover/transactionsTable.tsx |   2 +-
+ .../events/autofix/autofixChanges.tsx         |   4 +-
+ .../components/events/autofix/autofixDiff.tsx |   2 +-
+ .../events/autofix/autofixRootCause.tsx       |   2 +-
+ .../events/autofix/autofixSolution.tsx        |   2 +-
+ .../autofix/autofixThumbsUpDownButtons.tsx    |   2 +-
+ .../exception/relatedExceptions.tsx           |   2 +-
+ .../exception/useActionableItems.tsx          |   2 +-
+ .../exception/useSourceMapDebug.tsx           |   2 +-
+ .../interfaces/performance/anrRootCause.tsx   |   2 +-
+ .../events/interfaces/spans/header.tsx        |   6 +-
+ .../interfaces/spans/spanSummaryButton.tsx    |   2 +-
+ .../events/interfaces/spans/traceView.tsx     |   5 +-
+ .../feedback/hydrateFeedbackTags.tsx          |   2 +-
+ .../forms/controls/reactSelectWrapper.tsx     |   7 +-
+ static/app/components/forms/jsonForm.tsx      |   7 +-
+ static/app/components/group/releaseChart.tsx  |   2 +-
+ static/app/components/hook.tsx                |   2 +-
+ .../inviteMembersModal/useInviteModal.tsx     |  13 +-
+ .../inviteMissingMembersModal/index.tsx       |  11 +-
+ .../onboardingWizard/taskConfig.tsx           |   4 +-
+ .../organizations/projectPageFilter/index.tsx |   2 +-
+ .../profiling/flamegraph/flamegraphSpans.tsx  |   2 +-
+ static/app/components/searchSyntax/parser.tsx |   2 +-
+ static/app/components/stream/group.tsx        |   2 +-
+ static/app/components/stream/groupChart.tsx   |   4 +-
+ .../app/plugins/components/issueActions.tsx   |   2 +-
+ static/app/utils/cursorPoller.tsx             |   2 +-
+ static/app/utils/discover/eventView.tsx       |   8 +-
+ static/app/utils/getStacktraceBody.tsx        |   2 +-
+ .../utils/performance/contexts/pageAlert.tsx  |   2 +-
+ .../app/utils/performanceForSentry/index.tsx  |   2 +-
+ .../app/utils/profiling/flamegraphChart.tsx   |   2 +-
+ static/app/utils/replaceRouterParams.tsx      |   2 +-
+ .../replays/hooks/useExtractDiffMutations.tsx |   6 +-
+ .../utils/replays/hooks/useFetchReplayList.ts |   2 +-
+ .../playback/hooks/useTouchEventsCheck.tsx    |   2 +-
+ .../utils/replays/projectSupportsReplay.tsx   |   4 +-
+ static/app/utils/statics-setup.tsx            |   1 -
+ .../rules/issue/feedbackAlertBanner.tsx       |   2 +-
+ static/app/views/alerts/rules/issue/index.tsx |   6 +-
+ .../metric/triggers/chart/thresholdsChart.tsx |   8 +-
+ .../alerts/utils/getIncidentDiscoverUrl.tsx   |   2 +-
+ .../alerts/utils/getMetricRuleDiscoverUrl.tsx |   2 +-
+ .../fixtures/sampleDurationTimeSeries.ts      |   2 +-
+ .../fixtures/sampleScoreTimeSeries.ts         |   2 +-
+ .../fixtures/sampleThroughputTimeSeries.ts    |   2 +-
+ .../fixtures/spanSamplesWithDurations.ts      |   2 +-
+ static/app/views/discover/breadcrumb.tsx      |   2 +-
+ .../discover/table/columnEditCollection.tsx   |   2 +-
+ .../explore/contexts/logs/logsPageParams.tsx  |   4 +-
+ .../insights/common/views/spans/types.tsx     |   2 +-
+ .../screenload/views/screenLoadSpansPage.tsx  |   2 +-
+ .../views/insights/pages/domainViewHeader.tsx |   2 +-
+ .../groupReplays/useReplaysFromIssue.tsx      |   2 +-
+ .../hooks/featureFlags/useFlagSeries.tsx      |   2 +-
+ static/app/views/issueList/utils.tsx          |   1 -
+ .../span/components/spanSummaryLink.tsx       |   2 +-
+ .../traceState/traceSearch.tsx                |   2 +-
+ .../newTraceDetailsTransactionBar.tsx         |   3 +-
+ .../performance/utils/getIntervalLine.tsx     |   2 +-
+ .../views/performance/vitalDetail/table.tsx   |   2 +-
+ .../releaseCard/releaseCardProjectRow.tsx     |   4 +-
+ .../detail/breadcrumbs/breadcrumbFilters.tsx  |   2 +-
+ .../replays/detail/console/consoleFilters.tsx |   2 +-
+ .../replays/detail/errorList/errorFilters.tsx |   2 +-
+ .../replays/detail/network/networkFilters.tsx |   2 +-
+ .../accountSecurity/accountSecurityEnroll.tsx |   2 +-
+ .../accountSecurityWrapper.tsx                |   2 +-
+ .../organizationMemberDetail.tsx              |   2 +-
+ .../organizationAccessRequests.tsx            |   2 +-
+ .../projectFilters/projectFiltersChart.tsx    |   2 +-
+ .../project/projectOwnership/ownerInput.tsx   |   3 +-
+ .../app/views/settings/projectTags/index.tsx  |   2 +-
+ static/gsAdmin/components/planList.tsx        |   2 +-
+ static/gsAdmin/views/customerDetails.tsx      |   6 +-
+ .../features/disabledSelectorItems.tsx        |   6 +-
+ .../components/allocationForm.tsx             |   3 +-
+ yarn.lock                                     |  54 -----
+ 90 files changed, 115 insertions(+), 410 deletions(-)
+ delete mode 100644 biome.json
+
+diff --git a/.github/CODEOWNERS b/.github/CODEOWNERS
+index e2f1e5cd942..b591e708287 100644
+--- a/.github/CODEOWNERS
++++ b/.github/CODEOWNERS
+@@ -123,7 +123,6 @@ pyproject.toml                                           @getsentry/owners-pytho
+ /.githib/worksflows/frontend.yml                         @getsentry/owners-js-build
+ /.github/file-filters.yml                                @getsentry/owners-js-build
+ babel.config.*                                           @getsentry/owners-js-build
+-biome.json                                               @getsentry/owners-js-build
+ build-utils/                                             @getsentry/owners-js-build
+ eslint.config.mjs                                        @getsentry/owners-js-build
+ jest.config.ts                                           @getsentry/owners-js-build
+diff --git a/.pre-commit-config.yaml b/.pre-commit-config.yaml
+index 8321d2575ff..6e53a790cfd 100644
+--- a/.pre-commit-config.yaml
++++ b/.pre-commit-config.yaml
+@@ -108,12 +108,6 @@ repos:
+       # additional_dependencies does not install a flattened dependency tree which is needed by,
+       # for example, our eslint setup.
+ 
+-      - id: biome
+-        name: biome (javascript, typescript, json)
+-        language: system
+-        files: \.(jsx?|tsx?|css)$
+-        entry: ./node_modules/.bin/biome check --log-level=error --write --files-ignore-unknown=true --no-errors-on-unmatched
+-
+       - id: eslint
+         name: eslint
+         language: system
+@@ -129,7 +123,6 @@ repos:
+       - id: prettier
+         name: prettier (yaml, markdown, ts, tsx, js, jsx, css)
+         language: system
+-        # TODO: Remove tsx and jsx when Biome supports styled CSS formatting.
+         types_or: [yaml, markdown, ts, tsx, javascript, jsx, css]
+         entry: ./node_modules/.bin/prettier --log-level=error --write
+         # https://pre-commit.com/#regular-expressions
+diff --git a/.vercelignore b/.vercelignore
+index 0a81ab86535..4187c313af6 100644
+--- a/.vercelignore
++++ b/.vercelignore
+@@ -1,4 +1,3 @@
+-
+ !static
+ !src
+ !src/sentry
+@@ -13,7 +12,6 @@
+ !jest.config.js
+ !now.json
+ !package.json
+-!biome.json
+ !stylelint.config.js
+ !tsconfig.json
+ !config
+diff --git a/.vscode/extensions.json b/.vscode/extensions.json
+index 54bf09a6a1d..526d4d861a6 100644
+--- a/.vscode/extensions.json
++++ b/.vscode/extensions.json
+@@ -3,7 +3,6 @@
+   // for the documentation about the extensions.json format
+   "recommendations": [
+     "esbenp.prettier-vscode",
+-    "biomejs.biome",
+     "mkhl.direnv",
+     "ms-python.python",
+     "ms-python.isort",
+diff --git a/.vscode/settings.json b/.vscode/settings.json
+index 2f56eebfde5..23fcd6ad6e5 100644
+--- a/.vscode/settings.json
++++ b/.vscode/settings.json
+@@ -22,7 +22,6 @@
+     "editor.tabSize": 2,
+     "editor.defaultFormatter": "esbenp.prettier-vscode",
+     "editor.codeActionsOnSave": {
+-      "quickfix.biome": "explicit",
+       "source.fixAll.eslint": "explicit"
+     }
+   },
+@@ -60,10 +59,7 @@
+     "editor.detectIndentation": false,
+     "editor.tabSize": 2,
+     "editor.formatOnSave": true,
+-    "editor.defaultFormatter": "biomejs.biome",
+-    "editor.codeActionsOnSave": {
+-      "quickfix.biome": "explicit"
+-    }
++    "editor.defaultFormatter": "esbenp.prettier-vscode"
+   },
+ 
+   "[yaml]": {
+@@ -71,10 +67,7 @@
+     "editor.detectIndentation": false,
+     "editor.tabSize": 2,
+     "editor.formatOnSave": true,
+-    "editor.defaultFormatter": "esbenp.prettier-vscode",
+-    "editor.codeActionsOnSave": {
+-      "quickfix.biome": "explicit"
+-    }
++    "editor.defaultFormatter": "esbenp.prettier-vscode"
+   },
+ 
+   "[markdown]": {
+@@ -105,5 +98,6 @@
+   "python.testing.pytestPath": "${workspaceFolder}/.venv/bin/pytest",
+   "python.testing.pytestArgs": ["tests"],
+   "python.analysis.autoImportCompletions": true,
+-  "prettier.configPath": "package.json"
++  "prettier.configPath": "package.json",
++  "biome.enabled": false
+ }
+diff --git a/biome.json b/biome.json
+deleted file mode 100644
+index 24fd4555ce4..00000000000
+--- a/biome.json
++++ /dev/null
+@@ -1,191 +0,0 @@
+-{
+-  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+-  "vcs": {
+-    "enabled": true,
+-    "clientKind": "git",
+-    "useIgnoreFile": true,
+-    "defaultBranch": "master"
+-  },
+-  "organizeImports": {
+-    "enabled": false
+-  },
+-  "linter": {
+-    "enabled": true,
+-    "rules": {
+-      "recommended": false,
+-      "a11y": {
+-        "noBlankTarget": "error"
+-      },
+-      "correctness": {
+-        "noGlobalObjectCalls": "error",
+-        "noUnreachable": "error",
+-        "useIsNan": "error",
+-        "noUnusedPrivateClassMembers": "error",
+-        "noInvalidUseBeforeDeclaration": "error",
+-        "noNodejsModules": "error"
+-      },
+-      "complexity": {
+-        "useFlatMap": "error",
+-        "useOptionalChain": "error",
+-        "noEmptyTypeParameters": "error",
+-        "noUselessLoneBlockStatements": "error",
+-        "noUselessEmptyExport": "error",
+-        "noUselessConstructor": "error",
+-        "noUselessTypeConstraint": "error",
+-        "noExcessiveNestedTestSuites": "error"
+-      },
+-      "nursery": {
+-        "noRestrictedImports": {
+-          "level": "warn",
+-          "options": {
+-            "paths": {}
+-          }
+-        }
+-      },
+-      "performance": {
+-        "noBarrelFile": "error"
+-      },
+-      "security": {
+-        "noDangerouslySetInnerHtmlWithChildren": "error"
+-      },
+-      "suspicious": {
+-        "noDebugger": "error",
+-        "noDoubleEquals": "error",
+-        "noDuplicateJsxProps": "error",
+-        "noDuplicateObjectKeys": "error",
+-        "noDuplicateParameters": "error",
+-        "noDuplicateCase": "error",
+-        "noFallthroughSwitchClause": "error",
+-        "noRedeclare": "error",
+-        "noSparseArray": "error",
+-        "noUnsafeDeclarationMerging": "error",
+-        "noUnsafeNegation": "error",
+-        "useIsArray": "error",
+-        "noApproximativeNumericConstant": "error",
+-        "noMisrefactoredShorthandAssign": "error",
+-        "useAwait": "error",
+-        "useNamespaceKeyword": "error",
+-        "noFocusedTests": "error",
+-        "noDuplicateTestHooks": "error"
+-      },
+-      "style": {
+-        "noCommaOperator": "error",
+-        "noShoutyConstants": "error",
+-        "noParameterProperties": "error",
+-        "noVar": "error",
+-        "useConst": "error",
+-        "useShorthandFunctionType": "error",
+-        "useExportType": "error",
+-        "useImportType": "error",
+-        "useNodejsImportProtocol": "error",
+-        "useLiteralEnumMembers": "error",
+-        "useEnumInitializers": "error",
+-        "useAsConstAssertion": "error",
+-        "useBlockStatements": "error"
+-      }
+-    }
+-  },
+-  "files": {
+-    "ignoreUnknown": true,
+-    "ignore": [
+-      "**/*/trace.json",
+-      "static/app/data/world.json",
+-      "**/*.sourcemap.js",
+-      "**/*.min.js",
+-      "fixtures",
+-      ".devenv",
+-      "package.json"
+-    ]
+-  },
+-  "css": {
+-    "formatter": {
+-      "enabled": false
+-    },
+-    "linter": {
+-      "enabled": false
+-    }
+-  },
+-  "formatter": {
+-    "enabled": true,
+-    "formatWithErrors": true,
+-    "indentStyle": "space",
+-    "indentWidth": 2,
+-    "lineEnding": "lf",
+-    "ignore": ["tests/**/*.json"]
+-  },
+-  "javascript": {
+-    "formatter": {
+-      "enabled": false,
+-      "lineWidth": 90,
+-      "quoteStyle": "single",
+-      "jsxQuoteStyle": "double",
+-      "quoteProperties": "asNeeded",
+-      "trailingCommas": "es5",
+-      "semicolons": "always",
+-      "arrowParentheses": "asNeeded",
+-      "bracketSpacing": false,
+-      "bracketSameLine": false
+-    }
+-  },
+-  "json": {
+-    "formatter": {
+-      "enabled": true
+-    },
+-    "parser": {
+-      "allowComments": true,
+-      "allowTrailingCommas": true
+-    }
+-  },
+-  "overrides": [
+-    {
+-      "include": [
+-        "api-docs/*.ts",
+-        "build-utils/*.ts",
+-        "config/*.ts",
+-        "scripts",
+-        "tests/js/sentry-test/loadFixtures.ts",
+-        "tests/js/jest-pegjs-transform.js",
+-        "tests/js/setup.ts",
+-        "tests/js/test-balancer/index.js",
+-        "*.config.ts"
+-      ],
+-      "linter": {
+-        "rules": {
+-          "correctness": {
+-            "noNodejsModules": "off"
+-          }
+-        }
+-      }
+-    },
+-    {
+-      "include": ["src/sentry/templates/sentry/error-page-embed.js"],
+-      "linter": {
+-        "rules": {
+-          "style": {
+-            "noVar": "off"
+-          }
+-        }
+-      }
+-    },
+-    {
+-      "include": [
+-        "static/app/utils/replays/types.tsx",
+-        "static/app/utils/queryClient.tsx",
+-        "static/app/views/performance/traceDetails/styles.tsx",
+-        "static/app/icons/index.tsx",
+-        "static/app/components/tabs/index.tsx",
+-        "static/app/components/sparklines/line.tsx",
+-        "static/app/types/index.tsx",
+-        "tests/js/sentry-test/reactTestingLibrary.tsx",
+-        "tests/js/sentry-test/index.tsx"
+-      ],
+-      "linter": {
+-        "rules": {
+-          "performance": {
+-            "noBarrelFile": "off"
+-          }
+-        }
+-      }
+-    }
+-  ]
+-}
+diff --git a/eslint.config.mjs b/eslint.config.mjs
+index 8511083212e..275a6f99b42 100644
+--- a/eslint.config.mjs
++++ b/eslint.config.mjs
+@@ -30,7 +30,6 @@ import typescriptSortKeys from 'eslint-plugin-typescript-sort-keys';
+ import unicorn from 'eslint-plugin-unicorn';
+ import globals from 'globals';
+ import invariant from 'invariant';
+-// biome-ignore lint/correctness/noNodejsModules: Need to get the list of things!
+ import {builtinModules} from 'node:module';
+ import typescript from 'typescript-eslint';
+ 
+@@ -45,6 +44,9 @@ export const typeAwareLintRules = {
+     '@typescript-eslint/await-thenable': 'error',
+     '@typescript-eslint/no-array-delete': 'error',
+     '@typescript-eslint/no-unnecessary-type-assertion': 'error',
++    '@typescript-eslint/prefer-optional-chain': 'error',
++    '@typescript-eslint/consistent-type-exports': 'error',
++    '@typescript-eslint/consistent-type-imports': 'error',
+   },
+ };
+ 
+diff --git a/package.json b/package.json
+index 8c4236f82ce..cdc56e8cfee 100644
+--- a/package.json
++++ b/package.json
+@@ -175,7 +175,6 @@
+     "zxcvbn": "^4.4.2"
+   },
+   "devDependencies": {
+-    "@biomejs/biome": "^1.9.4",
+     "@codecov/webpack-plugin": "^1.8.0",
+     "@emotion/eslint-plugin": "^11.12.0",
+     "@eslint/compat": "^1.2.7",
+@@ -240,14 +239,12 @@
+     "test-debug": "node --inspect-brk scripts/test.js --runInBand",
+     "test-precommit": "node scripts/test.js --bail --findRelatedTests -u",
+     "test-staged": "node scripts/test.js --findRelatedTests $(git diff --name-only --cached)",
+-    "lint": "yarn lint:biome && yarn lint:prettier && yarn lint:js && yarn lint:css",
++    "lint": "yarn lint:prettier && yarn lint:js && yarn lint:css",
+     "lint:js": "eslint",
+     "lint:css": "stylelint '**/*.[jt]sx'",
+-    "lint:biome": "biome check .",
+     "lint:prettier": "prettier \"**/*.md\" \"**/*.yaml\" \"**/*.[jt]s(x)?\" --check --log-level=error",
+-    "fix": "yarn fix:biome && yarn fix:prettier && yarn fix:eslint",
++    "fix": "yarn fix:prettier && yarn fix:eslint",
+     "fix:eslint": "eslint --fix",
+-    "fix:biome": "biome check . --write",
+     "fix:prettier": "prettier \"**/*.md\" \"**/*.yaml\" \"**/*.[jt]s(x)?\" --write --log-level=error",
+     "dev": "(yarn check --verify-tree || yarn install --check-files) && sentry devserver",
+     "dev-ui": "SENTRY_UI_DEV_ONLY=1 SENTRY_WEBPACK_PROXY_PORT=7999 SENTRY_UI_HOT_RELOAD=1 webpack serve",
+diff --git a/static/app/components/charts/groupStatusChart.tsx b/static/app/components/charts/groupStatusChart.tsx
+index 139bba07012..0188452540f 100644
+--- a/static/app/components/charts/groupStatusChart.tsx
++++ b/static/app/components/charts/groupStatusChart.tsx
+@@ -48,14 +48,14 @@ function GroupStatusChart({
+     emphasisColors: [string] | undefined;
+     series: Series[];
+   }>(() => {
+-    if (!stats || !stats.length) {
++    if (!stats?.length) {
+       return {colors: undefined, emphasisColors: undefined, series: []};
+     }
+     const max = Math.max(...stats.map(p => p[1]));
+ 
+     const formattedMarkLine = formatAbbreviatedNumber(max);
+ 
+-    if (showSecondaryPoints && secondaryStats && secondaryStats.length) {
++    if (showSecondaryPoints && secondaryStats?.length) {
+       const series: Series[] = [
+         {
+           seriesName: t('Total Events'),
+diff --git a/static/app/components/charts/pieChart.tsx b/static/app/components/charts/pieChart.tsx
+index f3854c67565..c6bc278f459 100644
+--- a/static/app/components/charts/pieChart.tsx
++++ b/static/app/components/charts/pieChart.tsx
+@@ -85,7 +85,7 @@ class PieChart extends Component<Props> {
+ 
+   render() {
+     const {series, theme, ...props} = this.props;
+-    if (!series || !series.length) {
++    if (!series?.length) {
+       return null;
+     }
+     if (series.length > 1) {
+diff --git a/static/app/components/charts/utils.tsx b/static/app/components/charts/utils.tsx
+index c499525ca19..08d0247529c 100644
+--- a/static/app/components/charts/utils.tsx
++++ b/static/app/components/charts/utils.tsx
+@@ -354,7 +354,7 @@ const DEFAULT_GEO_DATA = {
+   data: [],
+ };
+ export const processTableResults = (tableResults?: TableDataWithTitle[]) => {
+-  if (!tableResults || !tableResults.length) {
++  if (!tableResults?.length) {
+     return DEFAULT_GEO_DATA;
+   }
+ 
+@@ -362,7 +362,7 @@ export const processTableResults = (tableResults?: TableDataWithTitle[]) => {
+ 
+   const {data} = tableResult;
+ 
+-  if (!data || !data.length) {
++  if (!data?.length) {
+     return DEFAULT_GEO_DATA;
+   }
+ 
+diff --git a/static/app/components/discover/transactionsTable.tsx b/static/app/components/discover/transactionsTable.tsx
+index 30eb30495d7..0a859f918bf 100644
+--- a/static/app/components/discover/transactionsTable.tsx
++++ b/static/app/components/discover/transactionsTable.tsx
+@@ -210,7 +210,7 @@ function TransactionsTable(props: Props) {
+     if (isLoading) {
+       return cells;
+     }
+-    if (!tableData || !tableData.meta || !tableData.data) {
++    if (!tableData?.meta || !tableData.data) {
+       return cells;
+     }
+ 
+diff --git a/static/app/components/events/autofix/autofixChanges.tsx b/static/app/components/events/autofix/autofixChanges.tsx
+index 1af02dc54a8..5787b972606 100644
+--- a/static/app/components/events/autofix/autofixChanges.tsx
++++ b/static/app/components/events/autofix/autofixChanges.tsx
+@@ -295,9 +295,7 @@ export function AutofixChanges({
+                 </ButtonBar>
+               )}
+               {prsMade &&
+-                (step.changes.length === 1 &&
+-                step.changes[0] &&
+-                step.changes[0].pull_request?.pr_url ? (
++                (step.changes.length === 1 && step.changes[0]?.pull_request?.pr_url ? (
+                   <LinkButton
+                     size="xs"
+                     priority="primary"
+diff --git a/static/app/components/events/autofix/autofixDiff.tsx b/static/app/components/events/autofix/autofixDiff.tsx
+index dfb32de1351..3327bc835da 100644
+--- a/static/app/components/events/autofix/autofixDiff.tsx
++++ b/static/app/components/events/autofix/autofixDiff.tsx
+@@ -662,7 +662,7 @@ export function AutofixDiff({
+   previousInsightCount,
+   isExpandable = true,
+ }: AutofixDiffProps) {
+-  if (!diff || !diff.length) {
++  if (!diff?.length) {
+     return null;
+   }
+ 
+diff --git a/static/app/components/events/autofix/autofixRootCause.tsx b/static/app/components/events/autofix/autofixRootCause.tsx
+index 8c4581ac077..f0849ef715d 100644
+--- a/static/app/components/events/autofix/autofixRootCause.tsx
++++ b/static/app/components/events/autofix/autofixRootCause.tsx
+@@ -109,7 +109,7 @@ export function useSelectCause({groupId, runId}: {groupId: string; runId: string
+         queryClient,
+         makeAutofixQueryKey(groupId),
+         data => {
+-          if (!data || !data.autofix) {
++          if (!data?.autofix) {
+             return data;
+           }
+ 
+diff --git a/static/app/components/events/autofix/autofixSolution.tsx b/static/app/components/events/autofix/autofixSolution.tsx
+index 2d8903fc475..20d06904444 100644
+--- a/static/app/components/events/autofix/autofixSolution.tsx
++++ b/static/app/components/events/autofix/autofixSolution.tsx
+@@ -73,7 +73,7 @@ export function useSelectSolution({groupId, runId}: {groupId: string; runId: str
+         queryClient,
+         makeAutofixQueryKey(groupId),
+         data => {
+-          if (!data || !data.autofix) {
++          if (!data?.autofix) {
+             return data;
+           }
+ 
+diff --git a/static/app/components/events/autofix/autofixThumbsUpDownButtons.tsx b/static/app/components/events/autofix/autofixThumbsUpDownButtons.tsx
+index 3ebb35ebccb..e237a57ae9a 100644
+--- a/static/app/components/events/autofix/autofixThumbsUpDownButtons.tsx
++++ b/static/app/components/events/autofix/autofixThumbsUpDownButtons.tsx
+@@ -43,7 +43,7 @@ export function useUpdateAutofixFeedback({
+     },
+     onMutate: params => {
+       queryClient.setQueryData(makeAutofixQueryKey(groupId), (data: AutofixResponse) => {
+-        if (!data || !data.autofix) {
++        if (!data?.autofix) {
+           return data;
+         }
+ 
+diff --git a/static/app/components/events/interfaces/crashContent/exception/relatedExceptions.tsx b/static/app/components/events/interfaces/crashContent/exception/relatedExceptions.tsx
+index 168e4bb2262..5fc8a18e9f2 100644
+--- a/static/app/components/events/interfaces/crashContent/exception/relatedExceptions.tsx
++++ b/static/app/components/events/interfaces/crashContent/exception/relatedExceptions.tsx
+@@ -150,7 +150,7 @@ export function RelatedExceptions({
+   newestFirst,
+   onExceptionClick,
+ }: ExceptionGroupContextProps) {
+-  if (!mechanism || !mechanism.is_exception_group) {
++  if (!mechanism?.is_exception_group) {
+     return null;
+   }
+ 
+diff --git a/static/app/components/events/interfaces/crashContent/exception/useActionableItems.tsx b/static/app/components/events/interfaces/crashContent/exception/useActionableItems.tsx
+index 6451ab50752..0cb13ceb1f4 100644
+--- a/static/app/components/events/interfaces/crashContent/exception/useActionableItems.tsx
++++ b/static/app/components/events/interfaces/crashContent/exception/useActionableItems.tsx
+@@ -59,7 +59,7 @@ export function actionableItemsEnabled({
+   organization?: Organization | SharedViewOrganization | null;
+   projectSlug?: string;
+ }) {
+-  if (!organization || !organization.features || !projectSlug || !eventId) {
++  if (!organization?.features || !projectSlug || !eventId) {
+     return false;
+   }
+   return true;
+diff --git a/static/app/components/events/interfaces/crashContent/exception/useSourceMapDebug.tsx b/static/app/components/events/interfaces/crashContent/exception/useSourceMapDebug.tsx
+index b3e8d8ae54e..1994027a591 100644
+--- a/static/app/components/events/interfaces/crashContent/exception/useSourceMapDebug.tsx
++++ b/static/app/components/events/interfaces/crashContent/exception/useSourceMapDebug.tsx
+@@ -153,7 +153,7 @@ export function debugFramesEnabled({
+   projectSlug?: string;
+   sdkName?: string;
+ }) {
+-  if (!organization || !organization.features || !projectSlug || !eventId || !sdkName) {
++  if (!organization?.features || !projectSlug || !eventId || !sdkName) {
+     return false;
+   }
+ 
+diff --git a/static/app/components/events/interfaces/performance/anrRootCause.tsx b/static/app/components/events/interfaces/performance/anrRootCause.tsx
+index 453031d8d3d..fcc4a4f8fc1 100644
+--- a/static/app/components/events/interfaces/performance/anrRootCause.tsx
++++ b/static/app/components/events/interfaces/performance/anrRootCause.tsx
+@@ -38,7 +38,7 @@ export function AnrRootCause({event, organization}: Props) {
+   const anrCulprit = analyzeFramesForRootCause(event);
+ 
+   useEffect(() => {
+-    if (!anrCulprit || anrCulprit.culprit === null || anrCulprit.culprit === undefined) {
++    if (!anrCulprit?.culprit) {
+       return;
+     }
+ 
+diff --git a/static/app/components/events/interfaces/spans/header.tsx b/static/app/components/events/interfaces/spans/header.tsx
+index 858d99201ba..0c8a724355f 100644
+--- a/static/app/components/events/interfaces/spans/header.tsx
++++ b/static/app/components/events/interfaces/spans/header.tsx
+@@ -435,11 +435,7 @@ class TraceViewHeader extends Component<PropType, State> {
+     const handleStartWindowSelection = (event: React.MouseEvent<HTMLDivElement>) => {
+       const target = event.target;
+ 
+-      if (
+-        target instanceof Element &&
+-        target.getAttribute &&
+-        target.getAttribute('data-ignore')
+-      ) {
++      if (target instanceof Element && target.getAttribute?.('data-ignore')) {
+         // ignore this event if we need to
+         return;
+       }
+diff --git a/static/app/components/events/interfaces/spans/spanSummaryButton.tsx b/static/app/components/events/interfaces/spans/spanSummaryButton.tsx
+index f0f086a7870..aace7d05000 100644
+--- a/static/app/components/events/interfaces/spans/spanSummaryButton.tsx
++++ b/static/app/components/events/interfaces/spans/spanSummaryButton.tsx
+@@ -28,7 +28,7 @@ function SpanSummaryButton(props: Props) {
+   const {event, organization, span} = props;
+ 
+   const sentryTags = span.sentry_tags;
+-  if (!sentryTags || !sentryTags.group) {
++  if (!sentryTags?.group) {
+     return null;
+   }
+ 
+diff --git a/static/app/components/events/interfaces/spans/traceView.tsx b/static/app/components/events/interfaces/spans/traceView.tsx
+index b5f8cec9926..9fbe835a75d 100644
+--- a/static/app/components/events/interfaces/spans/traceView.tsx
++++ b/static/app/components/events/interfaces/spans/traceView.tsx
+@@ -86,10 +86,7 @@ function TraceView(props: Props) {
+       </EmptyStateWarning>
+     );
+   }
+-  if (
+-    (!waterfallModel.affectedSpanIds || !waterfallModel.affectedSpanIds.length) &&
+-    performanceIssues
+-  ) {
++  if (!waterfallModel.affectedSpanIds?.length && performanceIssues) {
+     const suspectSpans = performanceIssues.flatMap(issue => issue.suspect_spans);
+     if (suspectSpans.length) {
+       waterfallModel.affectedSpanIds = performanceIssues.flatMap(issue => [
+diff --git a/static/app/components/feedback/hydrateFeedbackTags.tsx b/static/app/components/feedback/hydrateFeedbackTags.tsx
+index aa4791944a0..5f429ed0247 100644
+--- a/static/app/components/feedback/hydrateFeedbackTags.tsx
++++ b/static/app/components/feedback/hydrateFeedbackTags.tsx
+@@ -5,7 +5,7 @@ export default function hydrateFeedbackTags(
+   eventData: Event | undefined,
+   issueData: FeedbackIssue | undefined
+ ): Record<string, string> {
+-  if (!eventData || !eventData.contexts) {
++  if (!eventData?.contexts) {
+     return {};
+   }
+   const context = eventData.contexts;
+diff --git a/static/app/components/forms/controls/reactSelectWrapper.tsx b/static/app/components/forms/controls/reactSelectWrapper.tsx
+index 45813d98591..9584d006bf3 100644
+--- a/static/app/components/forms/controls/reactSelectWrapper.tsx
++++ b/static/app/components/forms/controls/reactSelectWrapper.tsx
+@@ -1,4 +1,4 @@
+-// eslint-disable-next-line no-restricted-imports
++/* eslint-disable no-restricted-imports */
+ import ReactSelect, {components} from 'react-select';
+ 
+ // This file is a thin wrapper around react-select that removes defaultProps from functional components
+@@ -23,10 +23,7 @@ const ReactSelectWrapper = (({ref, ...props}: any) => {
+ }) as any as typeof ReactSelect;
+ 
+ export {ReactSelectWrapper as ReactSelect, ReactSelectWrapper as default, components};
+-
+-// biome-ignore lint/performance/noBarrelFile: not really a barrel file per say
+-export {createFilter, mergeStyles} from 'react-select'; // eslint-disable-line no-restricted-imports
+-// eslint-disable-next-line no-restricted-imports
++export {createFilter, mergeStyles} from 'react-select';
+ export type {
+   Props,
+   StylesConfig,
+diff --git a/static/app/components/forms/jsonForm.tsx b/static/app/components/forms/jsonForm.tsx
+index 57d892aeafd..eaf2544319b 100644
+--- a/static/app/components/forms/jsonForm.tsx
++++ b/static/app/components/forms/jsonForm.tsx
+@@ -174,10 +174,9 @@ class JsonForm extends Component<JsonFormProps, State> {
+ 
+     return (
+       <div {...otherProps}>
+-        {typeof forms !== 'undefined' &&
+-          forms.map((formGroup, i) => (
+-            <Fragment key={i}>{this.renderForm({formPanelProps, ...formGroup})}</Fragment>
+-          ))}
++        {forms?.map((formGroup, i) => (
++          <Fragment key={i}>{this.renderForm({formPanelProps, ...formGroup})}</Fragment>
++        ))}
+         {typeof forms === 'undefined' &&
+           typeof fields !== 'undefined' &&
+           this.renderForm({fields, formPanelProps, title})}
+diff --git a/static/app/components/group/releaseChart.tsx b/static/app/components/group/releaseChart.tsx
+index 060401537ff..43876a36cdd 100644
+--- a/static/app/components/group/releaseChart.tsx
++++ b/static/app/components/group/releaseChart.tsx
+@@ -140,7 +140,7 @@ function GroupReleaseChart(props: Props) {
+ 
+   const stats = group.stats[statsPeriod];
+   const environmentPeriodStats = environmentStats?.[statsPeriod];
+-  if (!stats || !stats.length || !environmentPeriodStats) {
++  if (!stats?.length || !environmentPeriodStats) {
+     return null;
+   }
+ 
+diff --git a/static/app/components/hook.tsx b/static/app/components/hook.tsx
+index 61eb214b8d8..71b0ccd3cfc 100644
+--- a/static/app/components/hook.tsx
++++ b/static/app/components/hook.tsx
+@@ -71,7 +71,7 @@ function Hook<H extends ComponentHookName>({name, ...props}: Props<H>) {
+     render() {
+       const {children} = props;
+ 
+-      if (!this.state.hooks || !this.state.hooks.length) {
++      if (!this.state.hooks?.length) {
+         return null;
+       }
+ 
+diff --git a/static/app/components/modals/inviteMembersModal/useInviteModal.tsx b/static/app/components/modals/inviteMembersModal/useInviteModal.tsx
+index a0880c27d03..4ab28adb29a 100644
+--- a/static/app/components/modals/inviteMembersModal/useInviteModal.tsx
++++ b/static/app/components/modals/inviteMembersModal/useInviteModal.tsx
+@@ -135,14 +135,11 @@ export default function useInviteModal({organization, initialData, source}: Prop
+ 
+         // Use the email error message if available. This inconsistently is
+         // returned as either a list of errors for the field, or a single error.
+-        const emailError =
+-          !errorResponse ||
+-          (errorResponse.email
+-            ? Array.isArray(errorResponse.email)
+-              ? errorResponse.email[0]
+-              : errorResponse.email
+-            : false) ||
+-          (errorResponse.role ? errorResponse.role : false);
++        const emailError = errorResponse?.email
++          ? Array.isArray(errorResponse.email)
++            ? errorResponse.email[0]
++            : errorResponse.email
++          : false;
+ 
+         const orgLevelError = errorResponse?.organization;
+         const error = orgLevelError || emailError || t('Could not invite user');
+diff --git a/static/app/components/modals/inviteMissingMembersModal/index.tsx b/static/app/components/modals/inviteMissingMembersModal/index.tsx
+index ca46c6d9e8e..6ef15dbcfb0 100644
+--- a/static/app/components/modals/inviteMissingMembersModal/index.tsx
++++ b/static/app/components/modals/inviteMissingMembersModal/index.tsx
+@@ -162,12 +162,11 @@ export function InviteMissingMembersModal({
+ 
+       // Use the email error message if available. This inconsistently is
+       // returned as either a list of errors for the field, or a single error.
+-      const emailError =
+-        !errorResponse || !errorResponse.email
+-          ? false
+-          : Array.isArray(errorResponse.email)
+-            ? errorResponse.email[0]
+-            : errorResponse.email;
++      const emailError = errorResponse?.email
++        ? Array.isArray(errorResponse.email)
++          ? errorResponse.email[0]
++          : errorResponse.email
++        : false;
+ 
+       const error = emailError || t('Could not invite user');
+ 
+diff --git a/static/app/components/onboardingWizard/taskConfig.tsx b/static/app/components/onboardingWizard/taskConfig.tsx
+index 0295e127ebc..b903d9578c4 100644
+--- a/static/app/components/onboardingWizard/taskConfig.tsx
++++ b/static/app/components/onboardingWizard/taskConfig.tsx
+@@ -46,7 +46,7 @@ type Options = {
+ };
+ 
+ function getIssueAlertUrl({projects, organization}: Options) {
+-  if (!projects || !projects.length) {
++  if (!projects?.length) {
+     return makeAlertsPathname({
+       path: '/rules/',
+       organization,
+@@ -65,7 +65,7 @@ function getOnboardingInstructionsUrl({projects, organization}: Options) {
+   // This shall never be the case, since this is step is locked until a project is created,
+   // but if the user falls into this case for some reason,
+   // he needs to select the platform again since it is not available as a parameter here
+-  if (!projects || !projects.length) {
++  if (!projects?.length) {
+     return `/${organization.slug}/:projectId/getting-started/`;
+   }
+ 
+diff --git a/static/app/components/organizations/projectPageFilter/index.tsx b/static/app/components/organizations/projectPageFilter/index.tsx
+index 45589b2b480..2186aab1847 100644
+--- a/static/app/components/organizations/projectPageFilter/index.tsx
++++ b/static/app/components/organizations/projectPageFilter/index.tsx
+@@ -438,7 +438,7 @@ export function ProjectPageFilter({
+ function shouldCloseOnInteractOutside(target: Element) {
+   // Don't close select menu when clicking on power hovercard ("Requires Business Plan")
+   const powerHovercard = document.querySelector("[data-test-id='power-hovercard']");
+-  return !powerHovercard || !powerHovercard.contains(target);
++  return !powerHovercard?.contains(target);
+ }
+ 
+ function checkboxWrapper(
+diff --git a/static/app/components/profiling/flamegraph/flamegraphSpans.tsx b/static/app/components/profiling/flamegraph/flamegraphSpans.tsx
+index 2b730ddcfb5..7cc6c153bad 100644
+--- a/static/app/components/profiling/flamegraph/flamegraphSpans.tsx
++++ b/static/app/components/profiling/flamegraph/flamegraphSpans.tsx
+@@ -189,7 +189,7 @@ export function FlamegraphSpans({
+   // us to link to specific spans via id without knowing their exact
+   // without knowing their exact position in the view.
+   useEffect(() => {
+-    if (!spansView || !spanChart || !spanChart.spans.length) {
++    if (!spansView || !spanChart?.spans.length) {
+       return;
+     }
+ 
+diff --git a/static/app/components/searchSyntax/parser.tsx b/static/app/components/searchSyntax/parser.tsx
+index aa620a51744..44303fd1883 100644
+--- a/static/app/components/searchSyntax/parser.tsx
++++ b/static/app/components/searchSyntax/parser.tsx
+@@ -1506,7 +1506,7 @@ export function joinQuery(
+   leadingSpace?: boolean,
+   additionalSpaceBetween?: boolean
+ ): string {
+-  if (!parsedTerms || !parsedTerms.length) {
++  if (!parsedTerms?.length) {
+     return '';
+   }
+ 
+diff --git a/static/app/components/stream/group.tsx b/static/app/components/stream/group.tsx
+index 18144b79910..989dd890f6f 100644
+--- a/static/app/components/stream/group.tsx
++++ b/static/app/components/stream/group.tsx
+@@ -420,7 +420,7 @@ function StreamGroup({
+   const lastTriggeredDate = group.lastTriggered;
+ 
+   const showSecondaryPoints = Boolean(
+-    withChart && group && group.filtered && statsPeriod && useFilteredStats
++    withChart && group?.filtered && statsPeriod && useFilteredStats
+   );
+ 
+   const groupCount = defined(primaryCount) ? (
+diff --git a/static/app/components/stream/groupChart.tsx b/static/app/components/stream/groupChart.tsx
+index 3934e9883d3..3dc7c42b1cf 100644
+--- a/static/app/components/stream/groupChart.tsx
++++ b/static/app/components/stream/groupChart.tsx
+@@ -39,7 +39,7 @@ function GroupChart({
+     emphasisColors: [string] | undefined;
+     series: Series[];
+   }>(() => {
+-    if (!stats || !stats.length) {
++    if (!stats?.length) {
+       return {colors: undefined, emphasisColors: undefined, series: []};
+     }
+ 
+@@ -47,7 +47,7 @@ function GroupChart({
+ 
+     const formattedMarkLine = formatAbbreviatedNumber(max);
+ 
+-    if (showSecondaryPoints && secondaryStats && secondaryStats.length) {
++    if (showSecondaryPoints && secondaryStats?.length) {
+       const series: Series[] = [
+         {
+           seriesName: t('Total Events'),
+diff --git a/static/app/plugins/components/issueActions.tsx b/static/app/plugins/components/issueActions.tsx
+index acea48ef9bf..530caf71f85 100644
+--- a/static/app/plugins/components/issueActions.tsx
++++ b/static/app/plugins/components/issueActions.tsx
+@@ -369,7 +369,7 @@ class IssueActions extends PluginComponentBase<Props, State> {
+ 
+     // only works with one impacted field
+     const impactedField = fieldList.find(({depends}) => {
+-      if (!depends || !depends.length) {
++      if (!depends?.length) {
+         return false;
+       }
+       // must be dependent on the field we just set
+diff --git a/static/app/utils/cursorPoller.tsx b/static/app/utils/cursorPoller.tsx
+index 61b5820ca4a..04136f4f7db 100644
+--- a/static/app/utils/cursorPoller.tsx
++++ b/static/app/utils/cursorPoller.tsx
+@@ -81,7 +81,7 @@ class CursorPoller {
+         }
+ 
+         // if theres no data, nothing changes
+-        if (!data || !data.length) {
++        if (!data?.length) {
+           this.reqsWithoutData += 1;
+           return;
+         }
+diff --git a/static/app/utils/discover/eventView.tsx b/static/app/utils/discover/eventView.tsx
+index 49cb41df8ec..e6c6d593ca8 100644
+--- a/static/app/utils/discover/eventView.tsx
++++ b/static/app/utils/discover/eventView.tsx
+@@ -144,7 +144,7 @@ export function isFieldSortable(
+ 
+ const decodeFields = (location: Location): Field[] => {
+   const {query} = location;
+-  if (!query || !query.field) {
++  if (!query?.field) {
+     return [];
+   }
+ 
+@@ -218,7 +218,7 @@ const collectQueryStringByKey = (query: Query, key: string): string[] => {
+ };
+ 
+ export const decodeQuery = (location: Location): string => {
+-  if (!location.query || !location.query.query) {
++  if (!location.query?.query) {
+     return '';
+   }
+ 
+@@ -235,7 +235,7 @@ const decodeTeam = (value: string): 'myteams' | number => {
+ };
+ 
+ const decodeTeams = (location: Location): Array<'myteams' | number> => {
+-  if (!location.query || !location.query.team) {
++  if (!location.query?.team) {
+     return [];
+   }
+   const value = location.query.team;
+@@ -245,7 +245,7 @@ const decodeTeams = (location: Location): Array<'myteams' | number> => {
+ };
+ 
+ export const decodeProjects = (location: Location): number[] => {
+-  if (!location.query || !location.query.project) {
++  if (!location.query?.project) {
+     return [];
+   }
+ 
+diff --git a/static/app/utils/getStacktraceBody.tsx b/static/app/utils/getStacktraceBody.tsx
+index 344b84b78ab..bc5d9189b1b 100644
+--- a/static/app/utils/getStacktraceBody.tsx
++++ b/static/app/utils/getStacktraceBody.tsx
+@@ -5,7 +5,7 @@ export default function getStacktraceBody(
+   event: Event,
+   hasSimilarityEmbeddingsFeature = false
+ ) {
+-  if (!event || !event.entries) {
++  if (!event?.entries) {
+     return [];
+   }
+ 
+diff --git a/static/app/utils/performance/contexts/pageAlert.tsx b/static/app/utils/performance/contexts/pageAlert.tsx
+index d9df76f280c..1f26a804b3b 100644
+--- a/static/app/utils/performance/contexts/pageAlert.tsx
++++ b/static/app/utils/performance/contexts/pageAlert.tsx
+@@ -88,7 +88,7 @@ export function PageAlert() {
+     []
+   );
+ 
+-  if (!pageAlert || !pageAlert.message) {
++  if (!pageAlert?.message) {
+     return null;
+   }
+ 
+diff --git a/static/app/utils/performanceForSentry/index.tsx b/static/app/utils/performanceForSentry/index.tsx
+index 184458a22aa..c759d63b2c0 100644
+--- a/static/app/utils/performanceForSentry/index.tsx
++++ b/static/app/utils/performanceForSentry/index.tsx
+@@ -163,7 +163,7 @@ export function VisuallyCompleteWithData({
+ 
+   const isVCDSet = useRef(false);
+ 
+-  if (isVCDSet && hasData && performance && performance.mark && !disabled) {
++  if (isVCDSet && hasData && performance?.mark && !disabled) {
+     performance.mark(`${id}-${VCD_START}`);
+     isVCDSet.current = true;
+   }
+diff --git a/static/app/utils/profiling/flamegraphChart.tsx b/static/app/utils/profiling/flamegraphChart.tsx
+index 1917bc45676..361e26cdac2 100644
+--- a/static/app/utils/profiling/flamegraphChart.tsx
++++ b/static/app/utils/profiling/flamegraphChart.tsx
+@@ -69,7 +69,7 @@ export class FlamegraphChart {
+     this.series = new Array<Series>();
+     this.timelineFormatter = makeTimelineFormatter(options.timelineUnit ?? 'nanoseconds');
+ 
+-    if (!measurements || !measurements.length) {
++    if (!measurements?.length) {
+       this.formatter = makeFormatter('percent');
+       this.tooltipFormatter = makeFormatter('percent');
+       this.unit = 'percent';
+diff --git a/static/app/utils/replaceRouterParams.tsx b/static/app/utils/replaceRouterParams.tsx
+index 49db16b68cd..5b23864303f 100644
+--- a/static/app/utils/replaceRouterParams.tsx
++++ b/static/app/utils/replaceRouterParams.tsx
+@@ -10,7 +10,7 @@ export default function replaceRouterParams(
+   // parse route params from route
+   const matches = route.match(/:\w+/g);
+ 
+-  if (!matches || !matches.length) {
++  if (!matches?.length) {
+     return route;
+   }
+ 
+diff --git a/static/app/utils/replays/hooks/useExtractDiffMutations.tsx b/static/app/utils/replays/hooks/useExtractDiffMutations.tsx
+index 514f9d3ecf8..d5de15a505b 100644
+--- a/static/app/utils/replays/hooks/useExtractDiffMutations.tsx
++++ b/static/app/utils/replays/hooks/useExtractDiffMutations.tsx
+@@ -88,7 +88,7 @@ async function extractDiffMutations({
+         const adds = {};
+         for (const add of lastFrame.data.adds) {
+           const node = mirror.getNode(add.node.id) as HTMLElement | null;
+-          if (!node || !node.outerHTML) {
++          if (!node?.outerHTML) {
+             continue;
+           }
+           const selector = getSelectorForElem(node);
+@@ -106,7 +106,7 @@ async function extractDiffMutations({
+         const attributes = {};
+         for (const attr of lastFrame.data.attributes) {
+           const node = mirror.getNode(attr.id) as HTMLElement | null;
+-          if (!node || !node.outerHTML) {
++          if (!node?.outerHTML) {
+             continue;
+           }
+           // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
+@@ -156,7 +156,7 @@ async function extractDiffMutations({
+         const removes = {};
+         for (const removal of frame.data.removes) {
+           const node = mirror.getNode(removal.id) as HTMLElement | null;
+-          if (!node || !node.outerHTML) {
++          if (!node?.outerHTML) {
+             continue;
+           }
+           const selector = getSelectorForElem(node);
+diff --git a/static/app/utils/replays/hooks/useFetchReplayList.ts b/static/app/utils/replays/hooks/useFetchReplayList.ts
+index bd7d52d3f19..b8261fa4b28 100644
+--- a/static/app/utils/replays/hooks/useFetchReplayList.ts
++++ b/static/app/utils/replays/hooks/useFetchReplayList.ts
+@@ -40,7 +40,7 @@ export default function useFetchReplayList({
+ }: Options) {
+   const fixedQueryKey = useMemo<ApiQueryKey>(() => {
+     const url = `/organizations/${organization.slug}/replays/`;
+-    if (!options || !options.query) {
++    if (!options?.query) {
+       return [url];
+     }
+ 
+diff --git a/static/app/utils/replays/playback/hooks/useTouchEventsCheck.tsx b/static/app/utils/replays/playback/hooks/useTouchEventsCheck.tsx
+index f49bc159978..b8819c345a2 100644
+--- a/static/app/utils/replays/playback/hooks/useTouchEventsCheck.tsx
++++ b/static/app/utils/replays/playback/hooks/useTouchEventsCheck.tsx
+@@ -9,7 +9,7 @@ interface Props {
+ 
+ export default function useTouchEventsCheck({replay}: Props) {
+   useEffect(() => {
+-    if (!replay || !replay.getVideoEvents()) {
++    if (!replay?.getVideoEvents()) {
+       return;
+     }
+     const touchEvents = replay.getRRwebTouchEvents() ?? [];
+diff --git a/static/app/utils/replays/projectSupportsReplay.tsx b/static/app/utils/replays/projectSupportsReplay.tsx
+index 105c67e83c3..d4d27bc466c 100644
+--- a/static/app/utils/replays/projectSupportsReplay.tsx
++++ b/static/app/utils/replays/projectSupportsReplay.tsx
+@@ -24,7 +24,7 @@ export function projectCanLinkToReplay(
+   _organization: Organization,
+   project: undefined | MinimalProject
+ ) {
+-  if (!project || !project.platform) {
++  if (!project?.platform) {
+     return false;
+   }
+   const supportedPlatforms = replayPlatforms;
+@@ -35,7 +35,7 @@ export function projectCanLinkToReplay(
+ }
+ 
+ export function projectCanUpsellReplay(project: undefined | MinimalProject) {
+-  if (!project || !project.platform) {
++  if (!project?.platform) {
+     return false;
+   }
+   return (
+diff --git a/static/app/utils/statics-setup.tsx b/static/app/utils/statics-setup.tsx
+index 3ece7581932..240d85cff6d 100644
+--- a/static/app/utils/statics-setup.tsx
++++ b/static/app/utils/statics-setup.tsx
+@@ -1,6 +1,5 @@
+ /* eslint no-native-reassign:0 */
+ 
+-// biome-ignore lint/style/noVar: Not required
+ declare var __webpack_public_path__: string; // eslint-disable-line no-var
+ 
+ /**
+diff --git a/static/app/views/alerts/rules/issue/feedbackAlertBanner.tsx b/static/app/views/alerts/rules/issue/feedbackAlertBanner.tsx
+index b15246c29d1..bd1f61a86cf 100644
+--- a/static/app/views/alerts/rules/issue/feedbackAlertBanner.tsx
++++ b/static/app/views/alerts/rules/issue/feedbackAlertBanner.tsx
+@@ -17,7 +17,7 @@ export default function FeedbackAlertBanner({
+ }) {
+   const organization = useOrganization();
+   const filterSet = filters?.filter(r => r.id === IssueAlertFilterType.ISSUE_CATEGORY);
+-  if (!filterSet || !filterSet.length) {
++  if (!filterSet?.length) {
+     return null;
+   }
+   const filterFeedback = filterSet.find(f => f.value === '6'); // category: feedback
+diff --git a/static/app/views/alerts/rules/issue/index.tsx b/static/app/views/alerts/rules/issue/index.tsx
+index 399eb5abb76..c388ddf9b7e 100644
+--- a/static/app/views/alerts/rules/issue/index.tsx
++++ b/static/app/views/alerts/rules/issue/index.tsx
+@@ -1019,8 +1019,7 @@ class IssueRuleEditor extends DeprecatedAsyncComponent<Props, State> {
+         []),
+     ];
+ 
+-    const environment =
+-      !rule || !rule.environment ? ALL_ENVIRONMENTS_KEY : rule.environment;
++    const environment = rule?.environment ? rule.environment : ALL_ENVIRONMENTS_KEY;
+ 
+     return (
+       <FormField
+@@ -1167,8 +1166,7 @@ class IssueRuleEditor extends DeprecatedAsyncComponent<Props, State> {
+     } = this.state;
+     const {actions, filters, conditions, frequency} = rule || {};
+ 
+-    const environment =
+-      !rule || !rule.environment ? ALL_ENVIRONMENTS_KEY : rule.environment;
++    const environment = rule?.environment ? rule.environment : ALL_ENVIRONMENTS_KEY;
+ 
+     const canCreateAlert = hasEveryAccess(['alerts:write'], {organization, project});
+     const disabled = loading || !(canCreateAlert || isActiveSuperuser());
+diff --git a/static/app/views/alerts/rules/metric/triggers/chart/thresholdsChart.tsx b/static/app/views/alerts/rules/metric/triggers/chart/thresholdsChart.tsx
+index 2f873a3333a..5c72ce457d8 100644
+--- a/static/app/views/alerts/rules/metric/triggers/chart/thresholdsChart.tsx
++++ b/static/app/views/alerts/rules/metric/triggers/chart/thresholdsChart.tsx
+@@ -156,7 +156,7 @@ export default class ThresholdsChart extends PureComponent<Props, State> {
+    */
+   updateDimensions = () => {
+     const chartRef = this.ref?.getEchartsInstance?.();
+-    if (!chartRef || !chartRef.getWidth?.()) {
++    if (!chartRef?.getWidth?.()) {
+       return;
+     }
+ 
+@@ -299,11 +299,7 @@ export default class ThresholdsChart extends PureComponent<Props, State> {
+ 
+   getChartPixelForThreshold = (threshold: number | '' | null) => {
+     const chartRef = this.ref?.getEchartsInstance?.();
+-    return (
+-      threshold !== '' &&
+-      chartRef &&
+-      chartRef.convertToPixel({yAxisIndex: 0}, `${threshold}`)
+-    );
++    return threshold !== '' && chartRef?.convertToPixel({yAxisIndex: 0}, `${threshold}`);
+   };
+ 
+   clampMaxValue(value: number) {
+diff --git a/static/app/views/alerts/utils/getIncidentDiscoverUrl.tsx b/static/app/views/alerts/utils/getIncidentDiscoverUrl.tsx
+index d8e9691cf69..69b70ef85b7 100644
+--- a/static/app/views/alerts/utils/getIncidentDiscoverUrl.tsx
++++ b/static/app/views/alerts/utils/getIncidentDiscoverUrl.tsx
+@@ -25,7 +25,7 @@ export function getIncidentDiscoverUrl(opts: {
+ }) {
+   const {organization, projects, incident, stats, extraQueryParams} = opts;
+ 
+-  if (!projects || !projects.length || !incident || !stats) {
++  if (!projects?.length || !incident || !stats) {
+     return '';
+   }
+ 
+diff --git a/static/app/views/alerts/utils/getMetricRuleDiscoverUrl.tsx b/static/app/views/alerts/utils/getMetricRuleDiscoverUrl.tsx
+index 546291a92f9..bbeaedf1979 100644
+--- a/static/app/views/alerts/utils/getMetricRuleDiscoverUrl.tsx
++++ b/static/app/views/alerts/utils/getMetricRuleDiscoverUrl.tsx
+@@ -57,7 +57,7 @@ export function getMetricRuleDiscoverQuery({
+   query,
+   extraQueryParams,
+ }: Omit<MetricRuleDiscoverUrlOptions, 'organization' | 'openInDiscoverDataset'>) {
+-  if (!projects || !projects.length || !rule) {
++  if (!projects?.length || !rule) {
+     return null;
+   }
+ 
+diff --git a/static/app/views/dashboards/widgets/timeSeriesWidget/fixtures/sampleDurationTimeSeries.ts b/static/app/views/dashboards/widgets/timeSeriesWidget/fixtures/sampleDurationTimeSeries.ts
+index f9b102f5038..89c96390a79 100644
+--- a/static/app/views/dashboards/widgets/timeSeriesWidget/fixtures/sampleDurationTimeSeries.ts
++++ b/static/app/views/dashboards/widgets/timeSeriesWidget/fixtures/sampleDurationTimeSeries.ts
+@@ -1,5 +1,5 @@
+ import {DurationUnit} from 'sentry/utils/discover/fields';
+-import {TimeSeries} from 'sentry/views/dashboards/widgets/common/types';
++import type {TimeSeries} from 'sentry/views/dashboards/widgets/common/types';
+ 
+ export const sampleDurationTimeSeries: TimeSeries = {
+   field: 'p99(span.duration)',
+diff --git a/static/app/views/dashboards/widgets/timeSeriesWidget/fixtures/sampleScoreTimeSeries.ts b/static/app/views/dashboards/widgets/timeSeriesWidget/fixtures/sampleScoreTimeSeries.ts
+index 87badd78746..dbef9d335b3 100644
+--- a/static/app/views/dashboards/widgets/timeSeriesWidget/fixtures/sampleScoreTimeSeries.ts
++++ b/static/app/views/dashboards/widgets/timeSeriesWidget/fixtures/sampleScoreTimeSeries.ts
+@@ -1,4 +1,4 @@
+-import {TimeSeries} from 'sentry/views/dashboards/widgets/common/types';
++import type {TimeSeries} from 'sentry/views/dashboards/widgets/common/types';
+ 
+ export const sampleScoreTimeSeries: TimeSeries = {
+   field: 'performance_score(measurements.score.lcp)',
+diff --git a/static/app/views/dashboards/widgets/timeSeriesWidget/fixtures/sampleThroughputTimeSeries.ts b/static/app/views/dashboards/widgets/timeSeriesWidget/fixtures/sampleThroughputTimeSeries.ts
+index 1c7bc80d487..9f9083685af 100644
+--- a/static/app/views/dashboards/widgets/timeSeriesWidget/fixtures/sampleThroughputTimeSeries.ts
++++ b/static/app/views/dashboards/widgets/timeSeriesWidget/fixtures/sampleThroughputTimeSeries.ts
+@@ -1,5 +1,5 @@
+ import {RateUnit} from 'sentry/utils/discover/fields';
+-import {TimeSeries} from 'sentry/views/dashboards/widgets/common/types';
++import type {TimeSeries} from 'sentry/views/dashboards/widgets/common/types';
+ 
+ export const sampleThroughputTimeSeries: TimeSeries = {
+   field: 'eps()',
+diff --git a/static/app/views/dashboards/widgets/timeSeriesWidget/fixtures/spanSamplesWithDurations.ts b/static/app/views/dashboards/widgets/timeSeriesWidget/fixtures/spanSamplesWithDurations.ts
+index 4b6e1d81259..a904377d637 100644
+--- a/static/app/views/dashboards/widgets/timeSeriesWidget/fixtures/spanSamplesWithDurations.ts
++++ b/static/app/views/dashboards/widgets/timeSeriesWidget/fixtures/spanSamplesWithDurations.ts
+@@ -1,5 +1,5 @@
+ import {DurationUnit} from 'sentry/utils/discover/fields';
+-import {TabularData} from 'sentry/views/dashboards/widgets/common/types';
++import type {TabularData} from 'sentry/views/dashboards/widgets/common/types';
+ 
+ export const spanSamplesWithDurations: TabularData = {
+   meta: {
+diff --git a/static/app/views/discover/breadcrumb.tsx b/static/app/views/discover/breadcrumb.tsx
+index 6a77ac6b644..b9af244bf05 100644
+--- a/static/app/views/discover/breadcrumb.tsx
++++ b/static/app/views/discover/breadcrumb.tsx
+@@ -45,7 +45,7 @@ function DiscoverBreadcrumb({
+     label: t('Discover'),
+   });
+ 
+-  if (!isHomepage && eventView && eventView.isValid()) {
++  if (!isHomepage && eventView?.isValid()) {
+     crumbs.push({
+       to: makeDiscoverPathname({
+         path: `/queries/`,
+diff --git a/static/app/views/discover/table/columnEditCollection.tsx b/static/app/views/discover/table/columnEditCollection.tsx
+index 73ddf2633bc..b0170f48068 100644
+--- a/static/app/views/discover/table/columnEditCollection.tsx
++++ b/static/app/views/discover/table/columnEditCollection.tsx
+@@ -584,7 +584,7 @@ class ColumnEditCollection extends Component<Props, State> {
+               const operation =
+                 // @ts-expect-error TS(7053): Element implicitly has an 'any' type because expre... Remove this comment to see the full error message
+                 AGGREGATIONS[col.function[0]] ?? SESSIONS_OPERATIONS[col.function[0]];
+-              if (!operation || !operation.parameters) {
++              if (!operation?.parameters) {
+                 // Operation should be in the look-up table, but not all operations are (eg. private). This should be changed at some point.
+                 return 3;
+               }
+diff --git a/static/app/views/explore/contexts/logs/logsPageParams.tsx b/static/app/views/explore/contexts/logs/logsPageParams.tsx
+index 9f7f2a5bbd9..a8287c99e91 100644
+--- a/static/app/views/explore/contexts/logs/logsPageParams.tsx
++++ b/static/app/views/explore/contexts/logs/logsPageParams.tsx
+@@ -117,7 +117,7 @@ export function LogsPageParamsProvider({
+ export const useLogsPageParams = _useLogsPageParams;
+ 
+ const decodeLogsQuery = (location: Location): string => {
+-  if (!location.query || !location.query[LOGS_QUERY_KEY]) {
++  if (!location.query?.[LOGS_QUERY_KEY]) {
+     return '';
+   }
+ 
+@@ -303,7 +303,7 @@ export function useLogsAnalyticsPageSource() {
+ }
+ 
+ function getLogCursorFromLocation(location: Location): string {
+-  if (!location.query || !location.query[LOGS_CURSOR_KEY]) {
++  if (!location.query?.[LOGS_CURSOR_KEY]) {
+     return '';
+   }
+ 
+diff --git a/static/app/views/insights/common/views/spans/types.tsx b/static/app/views/insights/common/views/spans/types.tsx
+index 4e4e2a537af..2f8b3d7d42b 100644
+--- a/static/app/views/insights/common/views/spans/types.tsx
++++ b/static/app/views/insights/common/views/spans/types.tsx
+@@ -1,7 +1,7 @@
+ import {t} from 'sentry/locale';
+ import {defined} from 'sentry/utils';
+ import {RATE_UNIT_TITLE, RateUnit} from 'sentry/utils/discover/fields';
+-import {SpanMetricsField, type SubregionCode} from 'sentry/views/insights/types';
++import type {SpanMetricsField, SubregionCode} from 'sentry/views/insights/types';
+ 
+ export type ModuleFilters = {
+   [SpanMetricsField.SPAN_ACTION]?: string;
+diff --git a/static/app/views/insights/mobile/screenload/views/screenLoadSpansPage.tsx b/static/app/views/insights/mobile/screenload/views/screenLoadSpansPage.tsx
+index c1e52b4042b..1127791ff33 100644
+--- a/static/app/views/insights/mobile/screenload/views/screenLoadSpansPage.tsx
++++ b/static/app/views/insights/mobile/screenload/views/screenLoadSpansPage.tsx
+@@ -22,7 +22,7 @@ import {
+ import {ToolRibbon} from 'sentry/views/insights/common/components/ribbon';
+ import {useReleaseSelection} from 'sentry/views/insights/common/queries/useReleases';
+ import {useSamplesDrawer} from 'sentry/views/insights/common/utils/useSamplesDrawer';
+-import {QueryParameterNames} from 'sentry/views/insights/common/views/queryParameters';
++import type {QueryParameterNames} from 'sentry/views/insights/common/views/queryParameters';
+ import {SpanSamplesPanel} from 'sentry/views/insights/mobile/common/components/spanSamplesPanel';
+ import useCrossPlatformProject from 'sentry/views/insights/mobile/common/queries/useCrossPlatformProject';
+ import {
+diff --git a/static/app/views/insights/pages/domainViewHeader.tsx b/static/app/views/insights/pages/domainViewHeader.tsx
+index 9cd3ddc8c2e..29fd64b0487 100644
+--- a/static/app/views/insights/pages/domainViewHeader.tsx
++++ b/static/app/views/insights/pages/domainViewHeader.tsx
+@@ -183,7 +183,7 @@ export function DomainViewHeader({
+               ))}
+             </TabList>
+           )}
+-          {hideDefaultTabs && tabs && tabs.tabList}
++          {hideDefaultTabs && tabs?.tabList}
+         </Layout.HeaderTabs>
+       </Layout.Header>
+     </Fragment>
+diff --git a/static/app/views/issueDetails/groupReplays/useReplaysFromIssue.tsx b/static/app/views/issueDetails/groupReplays/useReplaysFromIssue.tsx
+index 5ef25bdf4a1..e2a76dbfb1b 100644
+--- a/static/app/views/issueDetails/groupReplays/useReplaysFromIssue.tsx
++++ b/static/app/views/issueDetails/groupReplays/useReplaysFromIssue.tsx
+@@ -54,7 +54,7 @@ export default function useReplaysFromIssue({
+   }, [api, organization.slug, group.id, dataSource, location.query.environment]);
+ 
+   const eventView = useMemo(() => {
+-    if (!replayIds || !replayIds.length) {
++    if (!replayIds?.length) {
+       return null;
+     }
+     return EventView.fromSavedQuery({
+diff --git a/static/app/views/issueDetails/streamline/hooks/featureFlags/useFlagSeries.tsx b/static/app/views/issueDetails/streamline/hooks/featureFlags/useFlagSeries.tsx
+index a491ad52a72..55d45b0a93a 100644
+--- a/static/app/views/issueDetails/streamline/hooks/featureFlags/useFlagSeries.tsx
++++ b/static/app/views/issueDetails/streamline/hooks/featureFlags/useFlagSeries.tsx
+@@ -25,7 +25,7 @@ export default function useFlagSeries({query = {}, event}: FlagSeriesProps) {
+   } = useOrganizationFlagLog({organization, query});
+   const {selection} = usePageFilters();
+ 
+-  if (!rawFlagData || !rawFlagData.data.length || isError || isPending) {
++  if (!rawFlagData?.data.length || isError || isPending) {
+     return {
+       seriesName: t('Feature Flags'),
+       markLine: {},
+diff --git a/static/app/views/issueList/utils.tsx b/static/app/views/issueList/utils.tsx
+index aa7ff076b5c..594458f412f 100644
+--- a/static/app/views/issueList/utils.tsx
++++ b/static/app/views/issueList/utils.tsx
+@@ -9,7 +9,6 @@ import type {Organization} from 'sentry/types/organization';
+ 
+ export enum Query {
+   FOR_REVIEW = 'is:unresolved is:for_review assigned_or_suggested:[me, my_teams, none]',
+-  // biome-ignore lint/style/useLiteralEnumMembers: Disable for maintenance cost.
+   PRIORITIZED = DEFAULT_QUERY, // eslint-disable-line @typescript-eslint/prefer-literal-enum-member
+   UNRESOLVED = 'is:unresolved',
+   IGNORED = 'is:ignored',
+diff --git a/static/app/views/performance/newTraceDetails/traceDrawer/details/span/components/spanSummaryLink.tsx b/static/app/views/performance/newTraceDetails/traceDrawer/details/span/components/spanSummaryLink.tsx
+index faaf5f7c605..4f731f89bdf 100644
+--- a/static/app/views/performance/newTraceDetails/traceDrawer/details/span/components/spanSummaryLink.tsx
++++ b/static/app/views/performance/newTraceDetails/traceDrawer/details/span/components/spanSummaryLink.tsx
+@@ -31,7 +31,7 @@ function SpanSummaryLink(props: Props) {
+   const {event, organization, span} = props;
+ 
+   const sentryTags = span.sentry_tags;
+-  if (!sentryTags || !sentryTags.group) {
++  if (!sentryTags?.group) {
+     return null;
+   }
+ 
+diff --git a/static/app/views/performance/newTraceDetails/traceState/traceSearch.tsx b/static/app/views/performance/newTraceDetails/traceState/traceSearch.tsx
+index eb21e496b92..d44e9f40d3e 100644
+--- a/static/app/views/performance/newTraceDetails/traceState/traceSearch.tsx
++++ b/static/app/views/performance/newTraceDetails/traceState/traceSearch.tsx
+@@ -116,7 +116,7 @@ export function traceSearchReducer(
+     }
+     case 'go to previous match': {
+       if (state.resultIteratorIndex === null) {
+-        if (!state.results || !state.results.length) {
++        if (!state.results?.length) {
+           return state;
+         }
+         return {
+diff --git a/static/app/views/performance/traceDetails/newTraceDetailsTransactionBar.tsx b/static/app/views/performance/traceDetails/newTraceDetailsTransactionBar.tsx
+index 9b647145ab5..c0e6ceb10bf 100644
+--- a/static/app/views/performance/traceDetails/newTraceDetailsTransactionBar.tsx
++++ b/static/app/views/performance/traceDetails/newTraceDetailsTransactionBar.tsx
+@@ -393,8 +393,7 @@ function NewTraceDetailsTransactionBar(props: Props) {
+     );
+ 
+     const embeddedChildrenLength =
+-      (embeddedChildren && waterfallModel && waterfallModel.rootSpan.children.length) ??
+-      0;
++      (embeddedChildren && waterfallModel?.rootSpan.children.length) ?? 0;
+     if (
+       hasToggle &&
+       (isExpanded || (showEmbeddedChildren && embeddedChildrenLength > 0))
+diff --git a/static/app/views/performance/utils/getIntervalLine.tsx b/static/app/views/performance/utils/getIntervalLine.tsx
+index 32eac66e4ba..3e3272e74f1 100644
+--- a/static/app/views/performance/utils/getIntervalLine.tsx
++++ b/static/app/views/performance/utils/getIntervalLine.tsx
+@@ -21,7 +21,7 @@ export function getIntervalLine(
+   transaction?: NormalizedTrendsTransaction,
+   useRegressionFormat?: boolean
+ ): LineChartSeries[] {
+-  if (!transaction || !series.length || !series[0]!.data || !series[0]!.data.length) {
++  if (!transaction || !series.length || !series[0]!.data?.length) {
+     return [];
+   }
+ 
+diff --git a/static/app/views/performance/vitalDetail/table.tsx b/static/app/views/performance/vitalDetail/table.tsx
+index c574e621b33..042519f8ff0 100644
+--- a/static/app/views/performance/vitalDetail/table.tsx
++++ b/static/app/views/performance/vitalDetail/table.tsx
+@@ -116,7 +116,7 @@ class Table extends Component<Props, State> {
+     const {eventView, organization, projects, location, summaryConditions, theme} =
+       this.props;
+ 
+-    if (!tableData || !tableData.meta?.fields) {
++    if (!tableData?.meta?.fields) {
+       return dataRow[column.key];
+     }
+     const tableMeta = tableData.meta?.fields;
+diff --git a/static/app/views/releases/list/releaseCard/releaseCardProjectRow.tsx b/static/app/views/releases/list/releaseCard/releaseCardProjectRow.tsx
+index 4d0154fee57..99ce9afd864 100644
+--- a/static/app/views/releases/list/releaseCard/releaseCardProjectRow.tsx
++++ b/static/app/views/releases/list/releaseCard/releaseCardProjectRow.tsx
+@@ -101,9 +101,7 @@ function ReleaseCardProjectRow({
+   const adoption = getHealthData.getAdoption(releaseVersion, id, activeDisplay);
+ 
+   const adoptionStage =
+-    showReleaseAdoptionStages &&
+-    adoptionStages?.[project.slug] &&
+-    adoptionStages?.[project.slug]!.stage;
++    showReleaseAdoptionStages && adoptionStages?.[project.slug]?.stage;
+ 
+   const adoptionStageLabel =
+     get24hCountByProject && adoptionStage && isMobileRelease(project.platform)
+diff --git a/static/app/views/replays/detail/breadcrumbs/breadcrumbFilters.tsx b/static/app/views/replays/detail/breadcrumbs/breadcrumbFilters.tsx
+index 03b03e2a2a5..3823cd38c44 100644
+--- a/static/app/views/replays/detail/breadcrumbs/breadcrumbFilters.tsx
++++ b/static/app/views/replays/detail/breadcrumbs/breadcrumbFilters.tsx
+@@ -34,7 +34,7 @@ function BreadcrumbFilters({
+         onChange={setSearchTerm}
+         placeholder={t('Search Breadcrumb Events')}
+         query={searchTerm}
+-        disabled={!frames || !frames.length}
++        disabled={!frames?.length}
+       />
+     </FiltersGrid>
+   );
+diff --git a/static/app/views/replays/detail/console/consoleFilters.tsx b/static/app/views/replays/detail/console/consoleFilters.tsx
+index 14a2432d336..b3c5dc36332 100644
+--- a/static/app/views/replays/detail/console/consoleFilters.tsx
++++ b/static/app/views/replays/detail/console/consoleFilters.tsx
+@@ -34,7 +34,7 @@ function Filters({
+         placeholder={t('Search Console Logs')}
+         size="sm"
+         query={searchTerm}
+-        disabled={!frames || !frames.length}
++        disabled={!frames?.length}
+       />
+     </FiltersGrid>
+   );
+diff --git a/static/app/views/replays/detail/errorList/errorFilters.tsx b/static/app/views/replays/detail/errorList/errorFilters.tsx
+index baad20d462d..2dcc980b961 100644
+--- a/static/app/views/replays/detail/errorList/errorFilters.tsx
++++ b/static/app/views/replays/detail/errorList/errorFilters.tsx
+@@ -37,7 +37,7 @@ function ErrorFilters({
+         onChange={setSearchTerm}
+         placeholder={t('Search Errors')}
+         query={searchTerm}
+-        disabled={!errorFrames || !errorFrames.length}
++        disabled={!errorFrames?.length}
+       />
+     </FiltersGrid>
+   );
+diff --git a/static/app/views/replays/detail/network/networkFilters.tsx b/static/app/views/replays/detail/network/networkFilters.tsx
+index ae6f768d41a..9c1558b7834 100644
+--- a/static/app/views/replays/detail/network/networkFilters.tsx
++++ b/static/app/views/replays/detail/network/networkFilters.tsx
+@@ -53,7 +53,7 @@ function NetworkFilters({
+         onChange={setSearchTerm}
+         placeholder={t('Search Network Requests')}
+         query={searchTerm}
+-        disabled={!networkFrames || !networkFrames.length}
++        disabled={!networkFrames?.length}
+       />
+     </FiltersGrid>
+   );
+diff --git a/static/app/views/settings/account/accountSecurity/accountSecurityEnroll.tsx b/static/app/views/settings/account/accountSecurity/accountSecurityEnroll.tsx
+index 209d4efecfd..88f480a3669 100644
+--- a/static/app/views/settings/account/accountSecurity/accountSecurityEnroll.tsx
++++ b/static/app/views/settings/account/accountSecurity/accountSecurityEnroll.tsx
+@@ -373,7 +373,7 @@ class AccountSecurityEnroll extends DeprecatedAsyncComponent<Props, State> {
+   handleRemove = async () => {
+     const {authenticator} = this.state;
+ 
+-    if (!authenticator || !authenticator.authId) {
++    if (!authenticator?.authId) {
+       return;
+     }
+ 
+diff --git a/static/app/views/settings/account/accountSecurity/accountSecurityWrapper.tsx b/static/app/views/settings/account/accountSecurity/accountSecurityWrapper.tsx
+index 8ee46a51d98..3b29a446df1 100644
+--- a/static/app/views/settings/account/accountSecurity/accountSecurityWrapper.tsx
++++ b/static/app/views/settings/account/accountSecurity/accountSecurityWrapper.tsx
+@@ -41,7 +41,7 @@ function AccountSecurityWrapper({children}: Props) {
+ 
+   const disableAuthenticatorMutation = useMutation({
+     mutationFn: async (auth: Authenticator) => {
+-      if (!auth || !auth.authId) {
++      if (!auth?.authId) {
+         return;
+       }
+ 
+diff --git a/static/app/views/settings/organizationMembers/organizationMemberDetail.tsx b/static/app/views/settings/organizationMembers/organizationMemberDetail.tsx
+index 7abdf56a406..821e837ab96 100644
+--- a/static/app/views/settings/organizationMembers/organizationMemberDetail.tsx
++++ b/static/app/views/settings/organizationMembers/organizationMemberDetail.tsx
+@@ -206,7 +206,7 @@ function OrganizationMemberDetailContent({member}: {member: Member}) {
+   const showResetButton = useMemo(() => {
+     const {user} = member;
+ 
+-    if (!user || !user.authenticators || organization.require2FA) {
++    if (!user?.authenticators || organization.require2FA) {
+       return false;
+     }
+     const hasAuth = user.authenticators.length >= 1;
+diff --git a/static/app/views/settings/organizationTeams/organizationAccessRequests.tsx b/static/app/views/settings/organizationTeams/organizationAccessRequests.tsx
+index 9bdd3541875..ed78406cd65 100644
+--- a/static/app/views/settings/organizationTeams/organizationAccessRequests.tsx
++++ b/static/app/views/settings/organizationTeams/organizationAccessRequests.tsx
+@@ -83,7 +83,7 @@ class OrganizationAccessRequests extends Component<Props, State> {
+     const {requestList} = this.props;
+     const {accessRequestBusy} = this.state;
+ 
+-    if (!requestList || !requestList.length) {
++    if (!requestList?.length) {
+       return null;
+     }
+ 
+diff --git a/static/app/views/settings/project/projectFilters/projectFiltersChart.tsx b/static/app/views/settings/project/projectFilters/projectFiltersChart.tsx
+index 1089f7cfc9d..02571a49027 100644
+--- a/static/app/views/settings/project/projectFilters/projectFiltersChart.tsx
++++ b/static/app/views/settings/project/projectFilters/projectFiltersChart.tsx
+@@ -51,7 +51,7 @@ function makeStatOPColors(fallbackColor: string, theme: Theme): Record<string, s
+ }
+ 
+ function formatData(rawData: UsageSeries | undefined, theme: Theme) {
+-  if (!rawData || !rawData.groups?.length) {
++  if (!rawData?.groups?.length) {
+     return [];
+   }
+ 
+diff --git a/static/app/views/settings/project/projectOwnership/ownerInput.tsx b/static/app/views/settings/project/projectOwnership/ownerInput.tsx
+index cf2458f5803..ef0ef067a36 100644
+--- a/static/app/views/settings/project/projectOwnership/ownerInput.tsx
++++ b/static/app/views/settings/project/projectOwnership/ownerInput.tsx
+@@ -111,8 +111,7 @@ class OwnerInput extends Component<Props, State> {
+           );
+         } else if (
+           error.status === 400 &&
+-          error.responseJSON.raw &&
+-          error.responseJSON.raw[0].startsWith('Invalid rule owners:')
++          error.responseJSON.raw?.[0].startsWith('Invalid rule owners:')
+         ) {
+           addErrorMessage(
+             t(
+diff --git a/static/app/views/settings/projectTags/index.tsx b/static/app/views/settings/projectTags/index.tsx
+index 1a3e03a2cd8..7a3b6507a64 100644
+--- a/static/app/views/settings/projectTags/index.tsx
++++ b/static/app/views/settings/projectTags/index.tsx
+@@ -85,7 +85,7 @@ function ProjectTags(props: Props) {
+     return <LoadingError />;
+   }
+ 
+-  const isEmpty = !tags || !tags.length;
++  const isEmpty = !tags?.length;
+   return (
+     <Fragment>
+       <SentryDocumentTitle title={routeTitleGen(t('Tags & Context'), projectId, false)} />
+diff --git a/static/gsAdmin/components/planList.tsx b/static/gsAdmin/components/planList.tsx
+index 7fa0081c0de..d036e80e8ce 100644
+--- a/static/gsAdmin/components/planList.tsx
++++ b/static/gsAdmin/components/planList.tsx
+@@ -48,7 +48,7 @@ function PlanList({
+       // Get the category data using type assertion to allow string indexing
+       const categories = subscription.categories as Record<string, {reserved?: number}>;
+ 
+-      if (categories[category] && categories[category].reserved !== undefined) {
++      if (categories[category]?.reserved !== undefined) {
+         const reservedValue = categories[category].reserved;
+ 
+         return (
+diff --git a/static/gsAdmin/views/customerDetails.tsx b/static/gsAdmin/views/customerDetails.tsx
+index 0d9d0643908..305b5a913f3 100644
+--- a/static/gsAdmin/views/customerDetails.tsx
++++ b/static/gsAdmin/views/customerDetails.tsx
+@@ -126,7 +126,7 @@ class CustomerDetails extends DeprecatedAsyncComponent<Props, State> {
+   get giftCategories() {
+     const {data} = this.state;
+ 
+-    if (data === null || !data.planDetails) {
++    if (!data?.planDetails) {
+       return {};
+     }
+     // Can only gift for checkout categories
+@@ -577,9 +577,7 @@ class CustomerDetails extends DeprecatedAsyncComponent<Props, State> {
+               disabled:
+                 // Enabling admin to modify NT for partnership support
+                 data.partner?.partnership.id !== 'NT' &&
+-                (data.partner?.isActive ||
+-                  !data.paymentSource ||
+-                  !data.paymentSource.last4),
++                (data.partner?.isActive || !data.paymentSource?.last4),
+               disabledReason: data.partner?.isActive
+                 ? 'This account is managed by a third-party.'
+                 : 'No payment method on file.',
+diff --git a/static/gsApp/components/features/disabledSelectorItems.tsx b/static/gsApp/components/features/disabledSelectorItems.tsx
+index 506c0ad9be4..525885829d3 100644
+--- a/static/gsApp/components/features/disabledSelectorItems.tsx
++++ b/static/gsApp/components/features/disabledSelectorItems.tsx
+@@ -28,10 +28,10 @@ function DisabledSelectorItems({
+ }: Props) {
+   let hasFeature: boolean;
+ 
+-  if (!subscription || !subscription.planDetails) {
+-    hasFeature = true;
+-  } else {
++  if (subscription?.planDetails) {
+     hasFeature = subscription.planDetails.retentionDays === MAX_PICKABLE_DAYS;
++  } else {
++    hasFeature = true;
+   }
+ 
+   const relativePeriods = relativePeriodsProp ?? DEFAULT_RELATIVE_PERIODS;
+diff --git a/static/gsApp/views/spendAllocations/components/allocationForm.tsx b/static/gsApp/views/spendAllocations/components/allocationForm.tsx
+index 1c0a6e861c4..3d4072c62f5 100644
+--- a/static/gsApp/views/spendAllocations/components/allocationForm.tsx
++++ b/static/gsApp/views/spendAllocations/components/allocationForm.tsx
+@@ -145,8 +145,7 @@ function AllocationForm({
+     if (
+       targetId &&
+       !initializedData &&
+-      allocatedTargetIds[AllocationTargetTypes.PROJECT] &&
+-      allocatedTargetIds[AllocationTargetTypes.PROJECT].includes(targetId)
++      allocatedTargetIds[AllocationTargetTypes.PROJECT]?.includes(targetId)
+     ) {
+       setTargetId(undefined);
+       setAllocationVolume(0);
+diff --git a/yarn.lock b/yarn.lock
+index 73ed4099c2a..5aca8f8f4d1 100644
+--- a/yarn.lock
++++ b/yarn.lock
+@@ -1186,60 +1186,6 @@
+   resolved "https://registry.yarnpkg.com/@bcoe/v8-coverage/-/v8-coverage-0.2.3.tgz#75a2e8b51cb758a7553d6804a5932d7aace75c39"
+   integrity sha512-0hYQ8SB4Db5zvZB4axdMHGwEaQjkZzFjQiN9LVYvIFB2nSUHW9tYpxWriPrWDASIxiaXax83REcLxuSdnGPZtw==
+ 
+-"@biomejs/biome@^1.9.4":
+-  version "1.9.4"
+-  resolved "https://registry.yarnpkg.com/@biomejs/biome/-/biome-1.9.4.tgz#89766281cbc3a0aae865a7ff13d6aaffea2842bf"
+-  integrity sha512-1rkd7G70+o9KkTn5KLmDYXihGoTaIGO9PIIN2ZB7UJxFrWw04CZHPYiMRjYsaDvVV7hP1dYNRLxSANLaBFGpog==
+-  optionalDependencies:
+-    "@biomejs/cli-darwin-arm64" "1.9.4"
+-    "@biomejs/cli-darwin-x64" "1.9.4"
+-    "@biomejs/cli-linux-arm64" "1.9.4"
+-    "@biomejs/cli-linux-arm64-musl" "1.9.4"
+-    "@biomejs/cli-linux-x64" "1.9.4"
+-    "@biomejs/cli-linux-x64-musl" "1.9.4"
+-    "@biomejs/cli-win32-arm64" "1.9.4"
+-    "@biomejs/cli-win32-x64" "1.9.4"
+-
+-"@biomejs/cli-darwin-arm64@1.9.4":
+-  version "1.9.4"
+-  resolved "https://registry.yarnpkg.com/@biomejs/cli-darwin-arm64/-/cli-darwin-arm64-1.9.4.tgz#dfa376d23a54a2d8f17133c92f23c1bf2e62509f"
+-  integrity sha512-bFBsPWrNvkdKrNCYeAp+xo2HecOGPAy9WyNyB/jKnnedgzl4W4Hb9ZMzYNbf8dMCGmUdSavlYHiR01QaYR58cw==
+-
+-"@biomejs/cli-darwin-x64@1.9.4":
+-  version "1.9.4"
+-  resolved "https://registry.yarnpkg.com/@biomejs/cli-darwin-x64/-/cli-darwin-x64-1.9.4.tgz#eafc2ce3849d385fc02238aad1ca4a73395a64d9"
+-  integrity sha512-ngYBh/+bEedqkSevPVhLP4QfVPCpb+4BBe2p7Xs32dBgs7rh9nY2AIYUL6BgLw1JVXV8GlpKmb/hNiuIxfPfZg==
+-
+-"@biomejs/cli-linux-arm64-musl@1.9.4":
+-  version "1.9.4"
+-  resolved "https://registry.yarnpkg.com/@biomejs/cli-linux-arm64-musl/-/cli-linux-arm64-musl-1.9.4.tgz#d780c3e01758fc90f3268357e3f19163d1f84fca"
+-  integrity sha512-v665Ct9WCRjGa8+kTr0CzApU0+XXtRgwmzIf1SeKSGAv+2scAlW6JR5PMFo6FzqqZ64Po79cKODKf3/AAmECqA==
+-
+-"@biomejs/cli-linux-arm64@1.9.4":
+-  version "1.9.4"
+-  resolved "https://registry.yarnpkg.com/@biomejs/cli-linux-arm64/-/cli-linux-arm64-1.9.4.tgz#8ed1dd0e89419a4b66a47f95aefb8c46ae6041c9"
+-  integrity sha512-fJIW0+LYujdjUgJJuwesP4EjIBl/N/TcOX3IvIHJQNsAqvV2CHIogsmA94BPG6jZATS4Hi+xv4SkBBQSt1N4/g==
+-
+-"@biomejs/cli-linux-x64-musl@1.9.4":
+-  version "1.9.4"
+-  resolved "https://registry.yarnpkg.com/@biomejs/cli-linux-x64-musl/-/cli-linux-x64-musl-1.9.4.tgz#f36982b966bd671a36671e1de4417963d7db15fb"
+-  integrity sha512-gEhi/jSBhZ2m6wjV530Yy8+fNqG8PAinM3oV7CyO+6c3CEh16Eizm21uHVsyVBEB6RIM8JHIl6AGYCv6Q6Q9Tg==
+-
+-"@biomejs/cli-linux-x64@1.9.4":
+-  version "1.9.4"
+-  resolved "https://registry.yarnpkg.com/@biomejs/cli-linux-x64/-/cli-linux-x64-1.9.4.tgz#a0a7f56680c76b8034ddc149dbf398bdd3a462e8"
+-  integrity sha512-lRCJv/Vi3Vlwmbd6K+oQ0KhLHMAysN8lXoCI7XeHlxaajk06u7G+UsFSO01NAs5iYuWKmVZjmiOzJ0OJmGsMwg==
+-
+-"@biomejs/cli-win32-arm64@1.9.4":
+-  version "1.9.4"
+-  resolved "https://registry.yarnpkg.com/@biomejs/cli-win32-arm64/-/cli-win32-arm64-1.9.4.tgz#e2ef4e0084e76b7e26f0fc887c5ef1265ea56200"
+-  integrity sha512-tlbhLk+WXZmgwoIKwHIHEBZUwxml7bRJgk0X2sPyNR3S93cdRq6XulAZRQJ17FYGGzWne0fgrXBKpl7l4M87Hg==
+-
+-"@biomejs/cli-win32-x64@1.9.4":
+-  version "1.9.4"
+-  resolved "https://registry.yarnpkg.com/@biomejs/cli-win32-x64/-/cli-win32-x64-1.9.4.tgz#4c7afa90e3970213599b4095e62f87e5972b2340"
+-  integrity sha512-8Y5wMhVIPaWe6jw2H+KlEm4wP/f7EW3810ZLmDlrEEy5KvBsb9ECEfu/kMWD484ijfQ8+nIi0giMgu9g1UAuuA==
+-
+ "@codecov/bundler-plugin-core@^1.8.0":
+   version "1.8.0"
+   resolved "https://registry.yarnpkg.com/@codecov/bundler-plugin-core/-/bundler-plugin-core-1.8.0.tgz#662369cc13efecc860759dcbdf90636cb665b21e"

@@ -1,0 +1,65 @@
+repo: gitpod
+base_commit: 4fe4bf6ce4dfb3797369ff8e3731aa908753a7c3
+commit: 37772682abc0607d2c816615e9ddd8272a18729d
+patch_stored: true
+gold:
+- path: components/BUILD.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/refresh-credential/BUILD.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/refresh-credential/cmd/root.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/refresh-credential/leeway.Dockerfile
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/refresh-credential/pkg/config/config.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/registry-credential/pkg/ecr/updater.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/installer/pkg/common/storage.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/installer/pkg/components/components-workspace/configmap.go
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: install/installer/pkg/components/components-workspace/cronjob.go
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: install/installer/pkg/config/v1/config.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/installer/pkg/config/v1/validation.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/installer/pkg/config/versions/versions.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: install/installer/cmd/testdata/render/*/output.golden
+nontrivial_gold_count: 2
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Complete hang on a genuinely modest diff: 48 files, only 210 insertions / 238 deletions net (truth.diff
+  is 1330 lines total, mostly straightforward rename+string-substitution). This is nowhere near pathological
+  scale, so the hang here is a clear regression rather than an understandable scale limitation — the tool
+  should have returned output near-instantly. Real semantic content (UpdateCredential->RefreshCredential
+  rename, CredentialSecret->CredentialsFile field rename, AWS config loading change in updater.go) never
+  surfaced.'

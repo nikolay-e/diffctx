@@ -1,0 +1,49 @@
+repo: gitpod
+base_commit: 2791ff7ed9720185f1eec4865afed04d896d8914
+commit: f580e6bd00c7cc76ac7050a2e6f8249485aad744
+patch_stored: true
+gold:
+- path: components/common-go/BUILD.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/common-go/go.mod
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/common-go/log/log.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/common-go/log/log_test.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/common-go/tracing/tracing.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/image-builder-mk3/pkg/orchestrator/orchestrator.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/scrubber/scrubber.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/scrubber/scrubber_test.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: the ~40 unrelated go.mod/go.sum bumps across services (blobserve, ide-metrics, service-waiter,
+    dev/gpctl, install/installer, test/go.sum, etc.) that only reflect transitive dependency-graph propagation
+    of the new common-go->scrubber dep, not the logical change
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'status=hang, 0 output, on an 85-file diff whose real content is small and self-contained (log.go
+  gains a gcpFormatter scrub step wired to the new components/scrubber dependency; the rest is go.sum/go.mod
+  churn from the module graph). A correct tool should trivially separate the 4-5 substantive files from
+  ~80 mechanical dependency-file diffs; instead it produced nothing, another instance of #70.'

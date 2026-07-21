@@ -1,0 +1,3553 @@
+From 7094f19ee81cbee597b463e181c3bd1ad7a6d8d5 Mon Sep 17 00:00:00 2001
+From: Huiwen <mhqnwt@gmail.com>
+Date: Fri, 12 Jan 2024 16:53:49 +0800
+Subject: [PATCH] Add `collaborator` role to organization (#19311)
+
+* Update spicedb schema
+
+* SpiceDB gen code
+
+* [server] add collaborator
+
+* Update papi
+
+* Dashboard
+
+* nit
+
+* Complete TODOs
+
+* server dataops pass teamId
+
+* Add test cases for collaborator's PAT and cookie API fetch
+
+* Add test case description
+
+* remove unnecessary export
+
+* Redirect to dashboard after join an org
+
+* Hide settings for collaborator
+
+* dataops join via oidc should be collaborator
+
+* Fix test
+
+* Goes back to /workspaces
+---
+ components/dashboard/src/admin/TeamDetail.tsx |   4 +
+ .../dashboard/src/data/featureflag-query.ts   |   6 +
+ .../src/data/organizations/members-query.ts   |  31 +-
+ components/dashboard/src/data/setup.tsx       |  13 +
+ components/dashboard/src/menu/Menu.tsx        |  20 +-
+ .../src/menu/OrganizationSelector.tsx         |  88 +++---
+ components/dashboard/src/teams/JoinTeam.tsx   |   5 +-
+ components/dashboard/src/teams/Members.tsx    |  64 ++---
+ .../dashboard/src/teams/OrgSettingsPage.tsx   |   2 +-
+ .../src/teams-projects-protocol.ts            |   4 +-
+ .../public-api/gitpod/v1/organization.proto   |   1 +
+ .../public-api/go/experimental/v1/dummy.pb.go |   2 +-
+ .../go/experimental/v1/dummy_grpc.pb.go       |   2 +-
+ .../go/experimental/v1/editor_service.pb.go   |   2 +-
+ .../experimental/v1/editor_service_grpc.pb.go |   2 +-
+ .../go/experimental/v1/ide_client.pb.go       |   2 +-
+ .../go/experimental/v1/ide_client_grpc.pb.go  |   2 +-
+ .../go/experimental/v1/identityprovider.pb.go |   2 +-
+ .../v1/identityprovider_grpc.pb.go            |   2 +-
+ .../public-api/go/experimental/v1/oidc.pb.go  |   2 +-
+ .../go/experimental/v1/oidc_grpc.pb.go        |   2 +-
+ .../go/experimental/v1/pagination.pb.go       |   2 +-
+ .../go/experimental/v1/projects.pb.go         |   2 +-
+ .../go/experimental/v1/projects_grpc.pb.go    |   2 +-
+ .../public-api/go/experimental/v1/scm.pb.go   |   2 +-
+ .../go/experimental/v1/scm_grpc.pb.go         |   2 +-
+ .../public-api/go/experimental/v1/stats.pb.go |   2 +-
+ .../go/experimental/v1/stats_grpc.pb.go       |   2 +-
+ .../public-api/go/experimental/v1/teams.pb.go |   2 +-
+ .../go/experimental/v1/teams_grpc.pb.go       |   2 +-
+ .../go/experimental/v1/tokens.pb.go           |   2 +-
+ .../go/experimental/v1/tokens_grpc.pb.go      |   2 +-
+ .../public-api/go/experimental/v1/user.pb.go  |   2 +-
+ .../go/experimental/v1/user_grpc.pb.go        |   2 +-
+ .../v1/v1connect/dummy.connect.go             |   2 +-
+ .../v1/v1connect/dummy.proxy.connect.go       |   2 +-
+ .../v1/v1connect/editor_service.connect.go    |   2 +-
+ .../v1connect/editor_service.proxy.connect.go |   2 +-
+ .../v1/v1connect/ide_client.connect.go        |   2 +-
+ .../v1/v1connect/ide_client.proxy.connect.go  |   2 +-
+ .../v1/v1connect/identityprovider.connect.go  |   2 +-
+ .../identityprovider.proxy.connect.go         |   2 +-
+ .../experimental/v1/v1connect/oidc.connect.go |   2 +-
+ .../v1/v1connect/oidc.proxy.connect.go        |   2 +-
+ .../v1/v1connect/projects.connect.go          |   2 +-
+ .../v1/v1connect/projects.proxy.connect.go    |   2 +-
+ .../experimental/v1/v1connect/scm.connect.go  |   2 +-
+ .../v1/v1connect/scm.proxy.connect.go         |   2 +-
+ .../v1/v1connect/stats.connect.go             |   2 +-
+ .../v1/v1connect/stats.proxy.connect.go       |   2 +-
+ .../v1/v1connect/teams.connect.go             |   2 +-
+ .../v1/v1connect/teams.proxy.connect.go       |   2 +-
+ .../v1/v1connect/tokens.connect.go            |   2 +-
+ .../v1/v1connect/tokens.proxy.connect.go      |   2 +-
+ .../experimental/v1/v1connect/user.connect.go |   2 +-
+ .../v1/v1connect/user.proxy.connect.go        |   2 +-
+ .../v1/v1connect/workspaces.connect.go        |   2 +-
+ .../v1/v1connect/workspaces.proxy.connect.go  |   2 +-
+ .../go/experimental/v1/workspaces.pb.go       |   2 +-
+ .../go/experimental/v1/workspaces_grpc.pb.go  |   2 +-
+ .../public-api/go/v1/authprovider.pb.go       |   2 +-
+ .../public-api/go/v1/authprovider_grpc.pb.go  |   2 +-
+ .../public-api/go/v1/configuration.pb.go      |   2 +-
+ .../public-api/go/v1/configuration_grpc.pb.go |   2 +-
+ components/public-api/go/v1/editor.pb.go      |   2 +-
+ components/public-api/go/v1/envvar.pb.go      |   2 +-
+ components/public-api/go/v1/envvar_grpc.pb.go |   2 +-
+ components/public-api/go/v1/error.pb.go       |   2 +-
+ .../public-api/go/v1/installation.pb.go       |   2 +-
+ .../public-api/go/v1/installation_grpc.pb.go  |   2 +-
+ .../public-api/go/v1/organization.pb.go       | 229 +++++++--------
+ .../public-api/go/v1/organization_grpc.pb.go  |   2 +-
+ components/public-api/go/v1/pagination.pb.go  |   2 +-
+ components/public-api/go/v1/prebuild.pb.go    |   2 +-
+ .../public-api/go/v1/prebuild_grpc.pb.go      |   2 +-
+ components/public-api/go/v1/scm.pb.go         |   2 +-
+ components/public-api/go/v1/scm_grpc.pb.go    |   2 +-
+ components/public-api/go/v1/sorting.pb.go     |   2 +-
+ components/public-api/go/v1/ssh.pb.go         |   2 +-
+ components/public-api/go/v1/ssh_grpc.pb.go    |   2 +-
+ components/public-api/go/v1/user.pb.go        |   2 +-
+ components/public-api/go/v1/user_grpc.pb.go   |   2 +-
+ .../go/v1/v1connect/authprovider.connect.go   |   2 +-
+ .../v1connect/authprovider.proxy.connect.go   |   2 +-
+ .../go/v1/v1connect/configuration.connect.go  |   2 +-
+ .../v1connect/configuration.proxy.connect.go  |   2 +-
+ .../go/v1/v1connect/envvar.connect.go         |   2 +-
+ .../go/v1/v1connect/envvar.proxy.connect.go   |   2 +-
+ .../go/v1/v1connect/installation.connect.go   |   2 +-
+ .../v1connect/installation.proxy.connect.go   |   2 +-
+ .../go/v1/v1connect/organization.connect.go   |   2 +-
+ .../v1connect/organization.proxy.connect.go   |   2 +-
+ .../go/v1/v1connect/prebuild.connect.go       |   2 +-
+ .../go/v1/v1connect/prebuild.proxy.connect.go |   2 +-
+ .../public-api/go/v1/v1connect/scm.connect.go |   2 +-
+ .../go/v1/v1connect/scm.proxy.connect.go      |   2 +-
+ .../public-api/go/v1/v1connect/ssh.connect.go |   2 +-
+ .../go/v1/v1connect/ssh.proxy.connect.go      |   2 +-
+ .../go/v1/v1connect/user.connect.go           |   2 +-
+ .../go/v1/v1connect/user.proxy.connect.go     |   2 +-
+ .../go/v1/v1connect/verification.connect.go   |   2 +-
+ .../v1connect/verification.proxy.connect.go   |   2 +-
+ .../go/v1/v1connect/workspace.connect.go      |   2 +-
+ .../v1/v1connect/workspace.proxy.connect.go   |   2 +-
+ .../public-api/go/v1/verification.pb.go       |   2 +-
+ .../public-api/go/v1/verification_grpc.pb.go  |   2 +-
+ components/public-api/go/v1/workspace.pb.go   |   2 +-
+ .../public-api/go/v1/workspace_grpc.pb.go     |   2 +-
+ .../src/public-api-converter.ts               |   4 +
+ .../gitpod/experimental/v1/dummy_connect.ts   |   2 +-
+ .../src/gitpod/experimental/v1/dummy_pb.ts    |   2 +-
+ .../experimental/v1/editor_service_connect.ts |   2 +-
+ .../experimental/v1/editor_service_pb.ts      |   2 +-
+ .../experimental/v1/ide_client_connect.ts     |   2 +-
+ .../gitpod/experimental/v1/ide_client_pb.ts   |   2 +-
+ .../v1/identityprovider_connect.ts            |   2 +-
+ .../experimental/v1/identityprovider_pb.ts    |   2 +-
+ .../gitpod/experimental/v1/oidc_connect.ts    |   2 +-
+ .../src/gitpod/experimental/v1/oidc_pb.ts     |   2 +-
+ .../gitpod/experimental/v1/pagination_pb.ts   |   2 +-
+ .../experimental/v1/projects_connect.ts       |   2 +-
+ .../src/gitpod/experimental/v1/projects_pb.ts |   2 +-
+ .../src/gitpod/experimental/v1/scm_connect.ts |   2 +-
+ .../src/gitpod/experimental/v1/scm_pb.ts      |   2 +-
+ .../gitpod/experimental/v1/stats_connect.ts   |   2 +-
+ .../src/gitpod/experimental/v1/stats_pb.ts    |   2 +-
+ .../gitpod/experimental/v1/teams_connect.ts   |   2 +-
+ .../src/gitpod/experimental/v1/teams_pb.ts    |   2 +-
+ .../gitpod/experimental/v1/tokens_connect.ts  |   2 +-
+ .../src/gitpod/experimental/v1/tokens_pb.ts   |   2 +-
+ .../gitpod/experimental/v1/user_connect.ts    |   2 +-
+ .../src/gitpod/experimental/v1/user_pb.ts     |   2 +-
+ .../experimental/v1/workspaces_connect.ts     |   2 +-
+ .../gitpod/experimental/v1/workspaces_pb.ts   |   2 +-
+ .../src/gitpod/v1/authprovider_connect.ts     |   2 +-
+ .../src/gitpod/v1/authprovider_pb.ts          |   2 +-
+ .../src/gitpod/v1/configuration_connect.ts    |   2 +-
+ .../src/gitpod/v1/configuration_pb.ts         |   2 +-
+ .../typescript/src/gitpod/v1/editor_pb.ts     |   2 +-
+ .../src/gitpod/v1/envvar_connect.ts           |   2 +-
+ .../typescript/src/gitpod/v1/envvar_pb.ts     |   2 +-
+ .../typescript/src/gitpod/v1/error_pb.ts      |   2 +-
+ .../src/gitpod/v1/installation_connect.ts     |   2 +-
+ .../src/gitpod/v1/installation_pb.ts          |   2 +-
+ .../src/gitpod/v1/organization_connect.ts     |   2 +-
+ .../src/gitpod/v1/organization_pb.ts          |   8 +-
+ .../typescript/src/gitpod/v1/pagination_pb.ts |   2 +-
+ .../src/gitpod/v1/prebuild_connect.ts         |   2 +-
+ .../typescript/src/gitpod/v1/prebuild_pb.ts   |   2 +-
+ .../typescript/src/gitpod/v1/scm_connect.ts   |   2 +-
+ .../typescript/src/gitpod/v1/scm_pb.ts        |   2 +-
+ .../typescript/src/gitpod/v1/sorting_pb.ts    |   2 +-
+ .../typescript/src/gitpod/v1/ssh_connect.ts   |   2 +-
+ .../typescript/src/gitpod/v1/ssh_pb.ts        |   2 +-
+ .../typescript/src/gitpod/v1/user_connect.ts  |   2 +-
+ .../typescript/src/gitpod/v1/user_pb.ts       |   2 +-
+ .../src/gitpod/v1/verification_connect.ts     |   2 +-
+ .../src/gitpod/v1/verification_pb.ts          |   2 +-
+ .../src/gitpod/v1/workspace_connect.ts        |   2 +-
+ .../typescript/src/gitpod/v1/workspace_pb.ts  |   2 +-
+ .../server/src/authorization/authorizer.ts    |  41 ++-
+ .../server/src/authorization/definitions.ts   |  22 +-
+ components/server/src/iam/iam-session-app.ts  |  30 +-
+ .../src/orgs/organization-service.spec.db.ts  | 123 +++++++-
+ .../server/src/orgs/organization-service.ts   |  62 ++--
+ components/spicedb/schema/schema.yaml         |  21 +-
+ .../google/api/expr/v1alpha1/checked.pb.ts    |   2 +-
+ .../src/google/api/expr/v1alpha1/syntax.pb.ts |   2 +-
+ .../src/google/protobuf/duration.pb.ts        |   2 +-
+ .../src/google/protobuf/empty.pb.ts           |   2 +-
+ .../src/google/protobuf/struct.pb.ts          |   2 +-
+ .../src/google/protobuf/timestamp.pb.ts       |   2 +-
+ .../spicedb/typescript/src/impl/v1/impl.pb.ts |   2 +-
+ test/BUILD.yaml                               |   1 +
+ test/go.mod                                   |  10 +-
+ test/go.sum                                   |   6 +-
+ test/tests/smoke-test/collaborator_test.go    | 272 ++++++++++++++++++
+ 177 files changed, 951 insertions(+), 422 deletions(-)
+ create mode 100644 test/tests/smoke-test/collaborator_test.go
+
+diff --git a/components/dashboard/src/admin/TeamDetail.tsx b/components/dashboard/src/admin/TeamDetail.tsx
+index 1a4b56719..1d35b31ee 100644
+--- a/components/dashboard/src/admin/TeamDetail.tsx
++++ b/components/dashboard/src/admin/TeamDetail.tsx
+@@ -214,6 +214,10 @@ export default function TeamDetail(props: { team: Team }) {
+                                                 title: "member",
+                                                 onClick: () => setTeamMemberRole(m.userId, "member"),
+                                             },
++                                            {
++                                                title: "collaborator",
++                                                onClick: () => setTeamMemberRole(m.userId, "collaborator"),
++                                            },
+                                         ]}
+                                     />
+                                 </span>
+diff --git a/components/dashboard/src/data/featureflag-query.ts b/components/dashboard/src/data/featureflag-query.ts
+index d863f7827..34c6678b5 100644
+--- a/components/dashboard/src/data/featureflag-query.ts
++++ b/components/dashboard/src/data/featureflag-query.ts
+@@ -33,6 +33,8 @@ const featureFlags = {
+      * Whether to enable org-level workspace class restrictions
+      */
+     org_workspace_class_restrictions: false,
++    // dummy specified dataops feature, default false
++    dataops: false,
+ };
+ 
+ type FeatureFlags = typeof featureFlags;
+@@ -60,3 +62,7 @@ export const useFeatureFlag = <K extends keyof FeatureFlags>(featureFlag: K): Fe
+ 
+     return query.data !== undefined ? query.data : featureFlags[featureFlag];
+ };
++
++export const useIsDataOps = () => {
++    return useFeatureFlag("dataops");
++};
+diff --git a/components/dashboard/src/data/organizations/members-query.ts b/components/dashboard/src/data/organizations/members-query.ts
+index a8b384004..dbd781c32 100644
+--- a/components/dashboard/src/data/organizations/members-query.ts
++++ b/components/dashboard/src/data/organizations/members-query.ts
+@@ -40,12 +40,35 @@ export function useListOrganizationMembers() {
+ }
+ 
+ export function useIsOwner(): boolean {
++    const role = useMemberRole();
++    return role === OrganizationRole.OWNER;
++}
++
++function useMemberRole(): OrganizationRole {
+     const user = useCurrentUser();
+     const members = useListOrganizationMembers();
+-    const isOwner = useMemo(() => {
+-        return members?.data?.some((m) => m.userId === user?.id && m.role === OrganizationRole.OWNER);
+-    }, [members?.data, user?.id]);
+-    return !!isOwner;
++    return useMemo(
++        () => members.data?.find((m) => m.userId === user?.id)?.role ?? OrganizationRole.UNSPECIFIED,
++        [members.data, user?.id],
++    );
++}
++
++const roleScore: Record<OrganizationRole, number> = {
++    [OrganizationRole.UNSPECIFIED]: 0,
++    [OrganizationRole.COLLABORATOR]: 1,
++    [OrganizationRole.MEMBER]: 2,
++    [OrganizationRole.OWNER]: 3,
++};
++
++// Would be better to align schema.yaml but we can do it simple for now
++export function useHasRolePermission(role: OrganizationRole): boolean {
++    const userRole = useMemberRole();
++    return useMemo(() => {
++        if (userRole === OrganizationRole.UNSPECIFIED) {
++            return false;
++        }
++        return roleScore[userRole] >= roleScore[role];
++    }, [role, userRole]);
+ }
+ 
+ function getQueryKey(organizationId: string | undefined) {
+diff --git a/components/dashboard/src/data/setup.tsx b/components/dashboard/src/data/setup.tsx
+index 5ec6c8e5c..d6dbf78f2 100644
+--- a/components/dashboard/src/data/setup.tsx
++++ b/components/dashboard/src/data/setup.tsx
+@@ -29,6 +29,7 @@ import * as InstallationClasses from "@gitpod/public-api/lib/gitpod/v1/installat
+ import * as SCMClasses from "@gitpod/public-api/lib/gitpod/v1/scm_pb";
+ import * as SSHClasses from "@gitpod/public-api/lib/gitpod/v1/ssh_pb";
+ import * as UserClasses from "@gitpod/public-api/lib/gitpod/v1/user_pb";
++import { ErrorCodes } from "@gitpod/gitpod-protocol/lib/messaging/error";
+ 
+ // This is used to version the cache
+ // If data we cache changes in a non-backwards compatible way, increment this version
+@@ -42,6 +43,8 @@ export function isNoPersistence(queryKey: QueryKey): boolean {
+     return queryKey.some((e) => e === "no-persistence");
+ }
+ 
++const defaultRetryTimes = 3;
++
+ export const setupQueryClientProvider = () => {
+     const client = new QueryClient({
+         defaultOptions: {
+@@ -49,6 +52,16 @@ export const setupQueryClientProvider = () => {
+                 // Default stale time to help avoid re-fetching data too frequently
+                 staleTime: 1000 * 5, // 5 seconds
+                 refetchOnWindowFocus: false,
++                retry: (failureCount, error) => {
++                    if (failureCount > defaultRetryTimes) {
++                        return false;
++                    }
++                    // Don't retry if the error is a permission denied error
++                    if (error && (error as any).code === ErrorCodes.PERMISSION_DENIED) {
++                        return false;
++                    }
++                    return true;
++                },
+             },
+         },
+         queryCache: new QueryCache({
+diff --git a/components/dashboard/src/menu/Menu.tsx b/components/dashboard/src/menu/Menu.tsx
+index 3dd758c0a..44c28c01c 100644
+--- a/components/dashboard/src/menu/Menu.tsx
++++ b/components/dashboard/src/menu/Menu.tsx
+@@ -21,6 +21,8 @@ import { getAdminTabs } from "../admin/admin.routes";
+ import classNames from "classnames";
+ import { User, RoleOrPermission } from "@gitpod/public-api/lib/gitpod/v1/user_pb";
+ import { getPrimaryEmail } from "@gitpod/public-api-common/lib/user-utils";
++import { useHasRolePermission } from "../data/organizations/members-query";
++import { OrganizationRole } from "@gitpod/public-api/lib/gitpod/v1/organization_pb";
+ 
+ interface Entry {
+     title: string;
+@@ -127,22 +129,26 @@ type OrgPagesNavProps = {
+ };
+ const OrgPagesNav: FC<OrgPagesNavProps> = ({ className }) => {
+     const location = useLocation();
++    const hasMemberPermission = useHasRolePermission(OrganizationRole.MEMBER);
+ 
+-    const leftMenu: Entry[] = useMemo(
+-        () => [
++    const leftMenu: Entry[] = useMemo(() => {
++        const menus = [
+             {
+                 title: "Workspaces",
+                 link: "/workspaces",
+                 alternatives: ["/"],
+             },
+-            {
++        ];
++        // collaborator can't access projects
++        if (hasMemberPermission) {
++            menus.push({
+                 title: "Projects",
+                 link: `/projects`,
+                 alternatives: [] as string[],
+-            },
+-        ],
+-        [],
+-    );
++            });
++        }
++        return menus;
++    }, [hasMemberPermission]);
+ 
+     return (
+         <div
+diff --git a/components/dashboard/src/menu/OrganizationSelector.tsx b/components/dashboard/src/menu/OrganizationSelector.tsx
+index c93f08fd0..927611051 100644
+--- a/components/dashboard/src/menu/OrganizationSelector.tsx
++++ b/components/dashboard/src/menu/OrganizationSelector.tsx
+@@ -12,8 +12,9 @@ import { useCurrentOrg, useOrganizations } from "../data/organizations/orgs-quer
+ import { useLocation } from "react-router";
+ import { useOrgBillingMode } from "../data/billing-mode/org-billing-mode-query";
+ import { useFeatureFlag } from "../data/featureflag-query";
+-import { useIsOwner, useListOrganizationMembers } from "../data/organizations/members-query";
++import { useIsOwner, useListOrganizationMembers, useHasRolePermission } from "../data/organizations/members-query";
+ import { isOrganizationOwned } from "@gitpod/public-api-common/lib/user-utils";
++import { OrganizationRole } from "@gitpod/public-api/lib/gitpod/v1/organization_pb";
+ 
+ export default function OrganizationSelector() {
+     const user = useCurrentUser();
+@@ -21,6 +22,7 @@ export default function OrganizationSelector() {
+     const currentOrg = useCurrentOrg();
+     const members = useListOrganizationMembers().data || [];
+     const owner = useIsOwner();
++    const hasMemberPermission = useHasRolePermission(OrganizationRole.MEMBER);
+     const { data: billingMode } = useOrgBillingMode();
+     const getOrgURL = useGetOrgURL();
+     const repoConfigListAndDetail = useFeatureFlag("repoConfigListAndDetail");
+@@ -44,7 +46,7 @@ export default function OrganizationSelector() {
+               customContent: (
+                   <CurrentOrgEntry
+                       title={currentOrg.data.name}
+-                      subtitle={`${members.length} member${members.length === 1 ? "" : "s"}`}
++                      subtitle={hasMemberPermission ? `${members.length} member${members.length === 1 ? "" : "s"}` : ""}
+                   />
+               ),
+               active: false,
+@@ -56,50 +58,56 @@ export default function OrganizationSelector() {
+ 
+     // Show members if we have an org selected
+     if (currentOrg.data) {
+-        // Check both flags as one just controls if the menu item is present, the other if the page is accessible
+-        if (repoConfigListAndDetail && showRepoConfigMenuItem) {
+-            linkEntries.push({
+-                title: "Repositories",
+-                customContent: <LinkEntry>Repositories</LinkEntry>,
+-                active: false,
+-                separator: false,
+-                link: "/repositories",
+-            });
+-        }
+-        linkEntries.push({
+-            title: "Members",
+-            customContent: <LinkEntry>Members</LinkEntry>,
+-            active: false,
+-            separator: true,
+-            link: "/members",
+-        });
+-        linkEntries.push({
+-            title: "Usage",
+-            customContent: <LinkEntry>Usage</LinkEntry>,
+-            active: false,
+-            separator: false,
+-            link: "/usage",
+-        });
+-        // Show billing if user is an owner of current org
+-        if (owner) {
+-            if (billingMode?.mode === "usage-based") {
++        // collaborator can't access projects, members, usage and billing
++        if (hasMemberPermission) {
++            // Check both flags as one just controls if the menu item is present, the other if the page is accessible
++            if (repoConfigListAndDetail && showRepoConfigMenuItem) {
+                 linkEntries.push({
+-                    title: "Billing",
+-                    customContent: <LinkEntry>Billing</LinkEntry>,
++                    title: "Repositories",
++                    customContent: <LinkEntry>Repositories</LinkEntry>,
+                     active: false,
+                     separator: false,
+-                    link: "/billing",
++                    link: "/repositories",
+                 });
+             }
++            linkEntries.push({
++                title: "Members",
++                customContent: <LinkEntry>Members</LinkEntry>,
++                active: false,
++                separator: true,
++                link: "/members",
++            });
++            linkEntries.push({
++                title: "Usage",
++                customContent: <LinkEntry>Usage</LinkEntry>,
++                active: false,
++                separator: false,
++                link: "/usage",
++            });
++            // Show billing if user is an owner of current org
++            if (owner) {
++                if (billingMode?.mode === "usage-based") {
++                    linkEntries.push({
++                        title: "Billing",
++                        customContent: <LinkEntry>Billing</LinkEntry>,
++                        active: false,
++                        separator: false,
++                        link: "/billing",
++                    });
++                }
++            }
++
++            // Org settings is available for all members, but only owner can change them
++            // collaborator can read org setting via API so that other feature like restrict org workspace classes could work
++            // we only hide the menu from dashboard
++            linkEntries.push({
++                title: "Settings",
++                customContent: <LinkEntry>Settings</LinkEntry>,
++                active: false,
++                separator: false,
++                link: "/settings",
++            });
+         }
+-        // Org settings is available for all members, but only owner can change them
+-        linkEntries.push({
+-            title: "Settings",
+-            customContent: <LinkEntry>Settings</LinkEntry>,
+-            active: false,
+-            separator: false,
+-            link: "/settings",
+-        });
+     }
+ 
+     // Ensure only last link entry has a separator
+diff --git a/components/dashboard/src/teams/JoinTeam.tsx b/components/dashboard/src/teams/JoinTeam.tsx
+index b10e94500..f5e9a41e1 100644
+--- a/components/dashboard/src/teams/JoinTeam.tsx
++++ b/components/dashboard/src/teams/JoinTeam.tsx
+@@ -9,6 +9,7 @@ import { useHistory, useLocation } from "react-router-dom";
+ import { useOrganizationsInvalidator } from "../data/organizations/orgs-query";
+ import { useDocumentTitle } from "../hooks/use-document-title";
+ import { organizationClient } from "../service/public-api";
++import { workspacesPathMain } from "../workspaces/workspaces.routes";
+ 
+ export default function JoinTeamPage() {
+     const orgInvalidator = useOrganizationsInvalidator();
+@@ -24,10 +25,10 @@ export default function JoinTeamPage() {
+                 if (!inviteId) {
+                     throw new Error("This invite URL is incorrect.");
+                 }
+-                const result = await organizationClient.joinOrganization({ invitationId: inviteId });
++                await organizationClient.joinOrganization({ invitationId: inviteId });
+                 orgInvalidator();
+ 
+-                history.push(`/members?org=${result.organizationId}`);
++                history.push(workspacesPathMain);
+             } catch (error) {
+                 console.error(error);
+                 setJoinError(error);
+diff --git a/components/dashboard/src/teams/Members.tsx b/components/dashboard/src/teams/Members.tsx
+index 45d8fa1ad..afd548de8 100644
+--- a/components/dashboard/src/teams/Members.tsx
++++ b/components/dashboard/src/teams/Members.tsx
+@@ -24,6 +24,13 @@ import { useListOrganizationMembers, useOrganizationMembersInvalidator } from ".
+ import { useInvitationId, useInviteInvalidator } from "../data/organizations/invite-query";
+ import { Delayed } from "@podkit/loading/Delayed";
+ import { Button } from "@podkit/buttons/Button";
++import { useIsDataOps } from "../data/featureflag-query";
++
++function getHumanReadable(role: OrganizationRole): string {
++    return OrganizationRole[role].toLowerCase();
++}
++
++const AvailableRoleOptions = [OrganizationRole.OWNER, OrganizationRole.MEMBER, OrganizationRole.COLLABORATOR];
+ 
+ export default function MembersPage() {
+     const user = useCurrentUser();
+@@ -39,6 +46,8 @@ export default function MembersPage() {
+     const [memberToRemove, setMemberToRemove] = useState<OrganizationMember | undefined>(undefined);
+     const inviteId = useInvitationId().data;
+ 
++    const isDataOps = useIsDataOps();
++
+     const inviteUrl = useMemo(() => {
+         if (!org.data) {
+             return undefined;
+@@ -118,29 +127,19 @@ export default function MembersPage() {
+                             onChange={(e) => setSearchText(e.target.value)}
+                         />
+                     </div>
+-                    <div className="py-2 pl-3 pr-1 border border-gray-100 dark:border-gray-800 ml-2 rounded-md">
++                    <div className="py-2 pl-3 capitalize pr-1 border border-gray-100 dark:border-gray-800 ml-2 rounded-md">
+                         <DropDown
+-                            customClasses="w-32"
+-                            activeEntry={
+-                                roleFilter === OrganizationRole.OWNER
+-                                    ? "Owners"
+-                                    : roleFilter === OrganizationRole.MEMBER
+-                                    ? "Members"
+-                                    : "All"
+-                            }
++                            customClasses="w-36"
++                            activeEntry={roleFilter ? getHumanReadable(roleFilter) + "s" : "All"}
+                             entries={[
+                                 {
+                                     title: "All",
+                                     onClick: () => setRoleFilter(undefined),
+                                 },
+-                                {
+-                                    title: "Owners",
+-                                    onClick: () => setRoleFilter(OrganizationRole.OWNER),
+-                                },
+-                                {
+-                                    title: "Members",
+-                                    onClick: () => setRoleFilter(OrganizationRole.OWNER),
+-                                },
++                                ...AvailableRoleOptions.map((role) => ({
++                                    title: getHumanReadable(role) + "s",
++                                    onClick: () => setRoleFilter(role),
++                                })),
+                             ]}
+                         />
+                     </div>
+@@ -215,25 +214,15 @@ export default function MembersPage() {
+                                     <span className="text-gray-400 capitalize">
+                                         {isOwner ? (
+                                             <DropDown
+-                                                customClasses="w-32"
+-                                                activeEntry={m.role === OrganizationRole.OWNER ? "owner" : "member"}
+-                                                entries={[
+-                                                    {
+-                                                        title: "owner",
+-                                                        onClick: () =>
+-                                                            setTeamMemberRole(m.userId, OrganizationRole.OWNER),
+-                                                    },
+-                                                    {
+-                                                        title: "member",
+-                                                        onClick: () =>
+-                                                            setTeamMemberRole(m.userId, OrganizationRole.MEMBER),
+-                                                    },
+-                                                ]}
++                                                customClasses="w-36"
++                                                activeEntry={getHumanReadable(m.role)}
++                                                entries={AvailableRoleOptions.map((role) => ({
++                                                    title: getHumanReadable(role),
++                                                    onClick: () => setTeamMemberRole(m.userId, role),
++                                                }))}
+                                             />
+-                                        ) : m.role === OrganizationRole.OWNER ? (
+-                                            "owner"
+                                         ) : (
+-                                            "member"
++                                            getHumanReadable(m.role)
+                                         )}
+                                     </span>
+                                     <span className="flex-grow" />
+@@ -274,7 +263,12 @@ export default function MembersPage() {
+                 <Modal visible={true} onClose={() => setShowInviteModal(false)}>
+                     <ModalHeader>Invite Members</ModalHeader>
+                     <ModalBody>
+-                        <InputField label="Invite URL" hint="Use this URL to join this organization as a member.">
++                        <InputField
++                            label="Invite URL"
++                            hint={`Use this URL to join this organization as a ${
++                                isDataOps ? "collaborator" : "member"
++                            }.`}
++                        >
+                             <InputWithCopy value={inviteUrl} tip="Copy Invite URL" />
+                         </InputField>
+                     </ModalBody>
+diff --git a/components/dashboard/src/teams/OrgSettingsPage.tsx b/components/dashboard/src/teams/OrgSettingsPage.tsx
+index 8ce6b69f5..c38f4f988 100644
+--- a/components/dashboard/src/teams/OrgSettingsPage.tsx
++++ b/components/dashboard/src/teams/OrgSettingsPage.tsx
+@@ -43,7 +43,7 @@ export function OrgSettingsPage({ children }: OrgSettingsPageProps) {
+     const subtitle = "Manage your organization's settings.";
+ 
+     // Render as much of the page as we can in a loading state to avoid content shift
+-    if (org.isLoading || orgBillingMode.isLoading) {
++    if (org.isLoading) {
+         return (
+             <div className="w-full">
+                 <Header title={title} subtitle={subtitle} />
+diff --git a/components/gitpod-protocol/src/teams-projects-protocol.ts b/components/gitpod-protocol/src/teams-projects-protocol.ts
+index 3633e7619..59aa699c7 100644
+--- a/components/gitpod-protocol/src/teams-projects-protocol.ts
++++ b/components/gitpod-protocol/src/teams-projects-protocol.ts
+@@ -202,11 +202,11 @@ export interface OrganizationSettings {
+ }
+ 
+ export type TeamMemberRole = OrgMemberRole;
+-export type OrgMemberRole = "owner" | "member";
++export type OrgMemberRole = "owner" | "member" | "collaborator";
+ 
+ export namespace TeamMemberRole {
+     export function isValid(role: any): role is TeamMemberRole {
+-        return role === "owner" || role === "member";
++        return role === "owner" || role === "member" || role === "collaborator";
+     }
+ }
+ 
+diff --git a/components/public-api/gitpod/v1/organization.proto b/components/public-api/gitpod/v1/organization.proto
+index 44149715c..b14be1c43 100644
+--- a/components/public-api/gitpod/v1/organization.proto
++++ b/components/public-api/gitpod/v1/organization.proto
+@@ -29,6 +29,7 @@ enum OrganizationRole {
+   ORGANIZATION_ROLE_UNSPECIFIED = 0;
+   ORGANIZATION_ROLE_OWNER = 1;
+   ORGANIZATION_ROLE_MEMBER = 2;
++  ORGANIZATION_ROLE_COLLABORATOR = 3;
+ }
+ 
+ message OrganizationSettings {
+diff --git a/components/public-api/go/experimental/v1/dummy.pb.go b/components/public-api/go/experimental/v1/dummy.pb.go
+index 069a5c82c..f695481fc 100644
+--- a/components/public-api/go/experimental/v1/dummy.pb.go
++++ b/components/public-api/go/experimental/v1/dummy.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/dummy_grpc.pb.go b/components/public-api/go/experimental/v1/dummy_grpc.pb.go
+index f3e907072..e933bcf38 100644
+--- a/components/public-api/go/experimental/v1/dummy_grpc.pb.go
++++ b/components/public-api/go/experimental/v1/dummy_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/editor_service.pb.go b/components/public-api/go/experimental/v1/editor_service.pb.go
+index 7536061a4..7ee41d378 100644
+--- a/components/public-api/go/experimental/v1/editor_service.pb.go
++++ b/components/public-api/go/experimental/v1/editor_service.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/editor_service_grpc.pb.go b/components/public-api/go/experimental/v1/editor_service_grpc.pb.go
+index bf62c23ce..3a98c6dec 100644
+--- a/components/public-api/go/experimental/v1/editor_service_grpc.pb.go
++++ b/components/public-api/go/experimental/v1/editor_service_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/ide_client.pb.go b/components/public-api/go/experimental/v1/ide_client.pb.go
+index 89c7403ef..e70f66efc 100644
+--- a/components/public-api/go/experimental/v1/ide_client.pb.go
++++ b/components/public-api/go/experimental/v1/ide_client.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/ide_client_grpc.pb.go b/components/public-api/go/experimental/v1/ide_client_grpc.pb.go
+index b3d46117a..1db2e97d1 100644
+--- a/components/public-api/go/experimental/v1/ide_client_grpc.pb.go
++++ b/components/public-api/go/experimental/v1/ide_client_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/identityprovider.pb.go b/components/public-api/go/experimental/v1/identityprovider.pb.go
+index ce48a39f2..bf0a8e652 100644
+--- a/components/public-api/go/experimental/v1/identityprovider.pb.go
++++ b/components/public-api/go/experimental/v1/identityprovider.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/identityprovider_grpc.pb.go b/components/public-api/go/experimental/v1/identityprovider_grpc.pb.go
+index 94cc37821..53d7f6dff 100644
+--- a/components/public-api/go/experimental/v1/identityprovider_grpc.pb.go
++++ b/components/public-api/go/experimental/v1/identityprovider_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/oidc.pb.go b/components/public-api/go/experimental/v1/oidc.pb.go
+index 1fc4ab8de..80956b36d 100644
+--- a/components/public-api/go/experimental/v1/oidc.pb.go
++++ b/components/public-api/go/experimental/v1/oidc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/oidc_grpc.pb.go b/components/public-api/go/experimental/v1/oidc_grpc.pb.go
+index fc14c04c1..8c57335fe 100644
+--- a/components/public-api/go/experimental/v1/oidc_grpc.pb.go
++++ b/components/public-api/go/experimental/v1/oidc_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/pagination.pb.go b/components/public-api/go/experimental/v1/pagination.pb.go
+index 079c7a7bc..ec40f0f15 100644
+--- a/components/public-api/go/experimental/v1/pagination.pb.go
++++ b/components/public-api/go/experimental/v1/pagination.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/projects.pb.go b/components/public-api/go/experimental/v1/projects.pb.go
+index 220b43507..a8fcab405 100644
+--- a/components/public-api/go/experimental/v1/projects.pb.go
++++ b/components/public-api/go/experimental/v1/projects.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/projects_grpc.pb.go b/components/public-api/go/experimental/v1/projects_grpc.pb.go
+index 89d00bbb2..fcf42345c 100644
+--- a/components/public-api/go/experimental/v1/projects_grpc.pb.go
++++ b/components/public-api/go/experimental/v1/projects_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/scm.pb.go b/components/public-api/go/experimental/v1/scm.pb.go
+index b6b8003ee..8bd80d207 100644
+--- a/components/public-api/go/experimental/v1/scm.pb.go
++++ b/components/public-api/go/experimental/v1/scm.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/scm_grpc.pb.go b/components/public-api/go/experimental/v1/scm_grpc.pb.go
+index 145072f83..9c0cda043 100644
+--- a/components/public-api/go/experimental/v1/scm_grpc.pb.go
++++ b/components/public-api/go/experimental/v1/scm_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/stats.pb.go b/components/public-api/go/experimental/v1/stats.pb.go
+index c6f63b029..e8a08a21e 100644
+--- a/components/public-api/go/experimental/v1/stats.pb.go
++++ b/components/public-api/go/experimental/v1/stats.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/stats_grpc.pb.go b/components/public-api/go/experimental/v1/stats_grpc.pb.go
+index 60c43d865..a691e9d0f 100644
+--- a/components/public-api/go/experimental/v1/stats_grpc.pb.go
++++ b/components/public-api/go/experimental/v1/stats_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/teams.pb.go b/components/public-api/go/experimental/v1/teams.pb.go
+index 453e1911a..901b7f52f 100644
+--- a/components/public-api/go/experimental/v1/teams.pb.go
++++ b/components/public-api/go/experimental/v1/teams.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/teams_grpc.pb.go b/components/public-api/go/experimental/v1/teams_grpc.pb.go
+index 18c0ca70b..0a5e9df36 100644
+--- a/components/public-api/go/experimental/v1/teams_grpc.pb.go
++++ b/components/public-api/go/experimental/v1/teams_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/tokens.pb.go b/components/public-api/go/experimental/v1/tokens.pb.go
+index 95a9e805e..842610790 100644
+--- a/components/public-api/go/experimental/v1/tokens.pb.go
++++ b/components/public-api/go/experimental/v1/tokens.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/tokens_grpc.pb.go b/components/public-api/go/experimental/v1/tokens_grpc.pb.go
+index 8de6c71ad..320667375 100644
+--- a/components/public-api/go/experimental/v1/tokens_grpc.pb.go
++++ b/components/public-api/go/experimental/v1/tokens_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/user.pb.go b/components/public-api/go/experimental/v1/user.pb.go
+index ee0a613d9..16c9c508e 100644
+--- a/components/public-api/go/experimental/v1/user.pb.go
++++ b/components/public-api/go/experimental/v1/user.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/user_grpc.pb.go b/components/public-api/go/experimental/v1/user_grpc.pb.go
+index a2df3b36b..e505a10fa 100644
+--- a/components/public-api/go/experimental/v1/user_grpc.pb.go
++++ b/components/public-api/go/experimental/v1/user_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/dummy.connect.go b/components/public-api/go/experimental/v1/v1connect/dummy.connect.go
+index dd552b7c5..bbce5784b 100644
+--- a/components/public-api/go/experimental/v1/v1connect/dummy.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/dummy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/dummy.proxy.connect.go b/components/public-api/go/experimental/v1/v1connect/dummy.proxy.connect.go
+index ec2e591a3..65f627256 100644
+--- a/components/public-api/go/experimental/v1/v1connect/dummy.proxy.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/dummy.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/editor_service.connect.go b/components/public-api/go/experimental/v1/v1connect/editor_service.connect.go
+index 4b0a44fe9..8471bd064 100644
+--- a/components/public-api/go/experimental/v1/v1connect/editor_service.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/editor_service.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/editor_service.proxy.connect.go b/components/public-api/go/experimental/v1/v1connect/editor_service.proxy.connect.go
+index d53d6b311..e874ba4af 100644
+--- a/components/public-api/go/experimental/v1/v1connect/editor_service.proxy.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/editor_service.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/ide_client.connect.go b/components/public-api/go/experimental/v1/v1connect/ide_client.connect.go
+index 2b2053123..ae3cd7c47 100644
+--- a/components/public-api/go/experimental/v1/v1connect/ide_client.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/ide_client.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/ide_client.proxy.connect.go b/components/public-api/go/experimental/v1/v1connect/ide_client.proxy.connect.go
+index b261036db..6b72ca964 100644
+--- a/components/public-api/go/experimental/v1/v1connect/ide_client.proxy.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/ide_client.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/identityprovider.connect.go b/components/public-api/go/experimental/v1/v1connect/identityprovider.connect.go
+index 0cff9bd81..ded992d95 100644
+--- a/components/public-api/go/experimental/v1/v1connect/identityprovider.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/identityprovider.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/identityprovider.proxy.connect.go b/components/public-api/go/experimental/v1/v1connect/identityprovider.proxy.connect.go
+index 48cbf94f6..6681922de 100644
+--- a/components/public-api/go/experimental/v1/v1connect/identityprovider.proxy.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/identityprovider.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/oidc.connect.go b/components/public-api/go/experimental/v1/v1connect/oidc.connect.go
+index 54b029607..b49f44dac 100644
+--- a/components/public-api/go/experimental/v1/v1connect/oidc.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/oidc.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/oidc.proxy.connect.go b/components/public-api/go/experimental/v1/v1connect/oidc.proxy.connect.go
+index b40600d40..a5b51cfec 100644
+--- a/components/public-api/go/experimental/v1/v1connect/oidc.proxy.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/oidc.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/projects.connect.go b/components/public-api/go/experimental/v1/v1connect/projects.connect.go
+index 63464a373..9d4cab2cf 100644
+--- a/components/public-api/go/experimental/v1/v1connect/projects.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/projects.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/projects.proxy.connect.go b/components/public-api/go/experimental/v1/v1connect/projects.proxy.connect.go
+index d82cc96a5..1a47a24e8 100644
+--- a/components/public-api/go/experimental/v1/v1connect/projects.proxy.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/projects.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/scm.connect.go b/components/public-api/go/experimental/v1/v1connect/scm.connect.go
+index 985b5369b..ac911e4b5 100644
+--- a/components/public-api/go/experimental/v1/v1connect/scm.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/scm.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/scm.proxy.connect.go b/components/public-api/go/experimental/v1/v1connect/scm.proxy.connect.go
+index 1d82bef1d..f695f046e 100644
+--- a/components/public-api/go/experimental/v1/v1connect/scm.proxy.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/scm.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/stats.connect.go b/components/public-api/go/experimental/v1/v1connect/stats.connect.go
+index e7ad6fe7b..4ac65fb33 100644
+--- a/components/public-api/go/experimental/v1/v1connect/stats.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/stats.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/stats.proxy.connect.go b/components/public-api/go/experimental/v1/v1connect/stats.proxy.connect.go
+index a4cf8ec5e..b08b0cb57 100644
+--- a/components/public-api/go/experimental/v1/v1connect/stats.proxy.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/stats.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/teams.connect.go b/components/public-api/go/experimental/v1/v1connect/teams.connect.go
+index ecd092946..79a00e47f 100644
+--- a/components/public-api/go/experimental/v1/v1connect/teams.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/teams.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/teams.proxy.connect.go b/components/public-api/go/experimental/v1/v1connect/teams.proxy.connect.go
+index ff15a8f4a..b3d6eb395 100644
+--- a/components/public-api/go/experimental/v1/v1connect/teams.proxy.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/teams.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/tokens.connect.go b/components/public-api/go/experimental/v1/v1connect/tokens.connect.go
+index c7ffc21a0..12b881e86 100644
+--- a/components/public-api/go/experimental/v1/v1connect/tokens.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/tokens.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/tokens.proxy.connect.go b/components/public-api/go/experimental/v1/v1connect/tokens.proxy.connect.go
+index d3202037e..a6058c345 100644
+--- a/components/public-api/go/experimental/v1/v1connect/tokens.proxy.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/tokens.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/user.connect.go b/components/public-api/go/experimental/v1/v1connect/user.connect.go
+index 78891b1ba..dce9c16d4 100644
+--- a/components/public-api/go/experimental/v1/v1connect/user.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/user.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/user.proxy.connect.go b/components/public-api/go/experimental/v1/v1connect/user.proxy.connect.go
+index 13e7a765c..34450d8a2 100644
+--- a/components/public-api/go/experimental/v1/v1connect/user.proxy.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/user.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/workspaces.connect.go b/components/public-api/go/experimental/v1/v1connect/workspaces.connect.go
+index 8c8bcebf2..6a43f5ce1 100644
+--- a/components/public-api/go/experimental/v1/v1connect/workspaces.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/workspaces.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/v1connect/workspaces.proxy.connect.go b/components/public-api/go/experimental/v1/v1connect/workspaces.proxy.connect.go
+index 649f286f1..967ec6fcb 100644
+--- a/components/public-api/go/experimental/v1/v1connect/workspaces.proxy.connect.go
++++ b/components/public-api/go/experimental/v1/v1connect/workspaces.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/workspaces.pb.go b/components/public-api/go/experimental/v1/workspaces.pb.go
+index 816b15c70..85b60cbf9 100644
+--- a/components/public-api/go/experimental/v1/workspaces.pb.go
++++ b/components/public-api/go/experimental/v1/workspaces.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/experimental/v1/workspaces_grpc.pb.go b/components/public-api/go/experimental/v1/workspaces_grpc.pb.go
+index 962b3a8b5..6df42641a 100644
+--- a/components/public-api/go/experimental/v1/workspaces_grpc.pb.go
++++ b/components/public-api/go/experimental/v1/workspaces_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/authprovider.pb.go b/components/public-api/go/v1/authprovider.pb.go
+index 4562a2c81..3262d5d8b 100644
+--- a/components/public-api/go/v1/authprovider.pb.go
++++ b/components/public-api/go/v1/authprovider.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/authprovider_grpc.pb.go b/components/public-api/go/v1/authprovider_grpc.pb.go
+index 096c71775..65fbca4db 100644
+--- a/components/public-api/go/v1/authprovider_grpc.pb.go
++++ b/components/public-api/go/v1/authprovider_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/configuration.pb.go b/components/public-api/go/v1/configuration.pb.go
+index 7b71b3b34..7679c5ff9 100644
+--- a/components/public-api/go/v1/configuration.pb.go
++++ b/components/public-api/go/v1/configuration.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/configuration_grpc.pb.go b/components/public-api/go/v1/configuration_grpc.pb.go
+index c366572fb..326bfb50d 100644
+--- a/components/public-api/go/v1/configuration_grpc.pb.go
++++ b/components/public-api/go/v1/configuration_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/editor.pb.go b/components/public-api/go/v1/editor.pb.go
+index 8fca8ace0..b66b88a4a 100644
+--- a/components/public-api/go/v1/editor.pb.go
++++ b/components/public-api/go/v1/editor.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/envvar.pb.go b/components/public-api/go/v1/envvar.pb.go
+index 42fe4476d..cd936cec0 100644
+--- a/components/public-api/go/v1/envvar.pb.go
++++ b/components/public-api/go/v1/envvar.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/envvar_grpc.pb.go b/components/public-api/go/v1/envvar_grpc.pb.go
+index a4c6c2d21..c86e7c8db 100644
+--- a/components/public-api/go/v1/envvar_grpc.pb.go
++++ b/components/public-api/go/v1/envvar_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/error.pb.go b/components/public-api/go/v1/error.pb.go
+index 46da9eaf8..b708853de 100644
+--- a/components/public-api/go/v1/error.pb.go
++++ b/components/public-api/go/v1/error.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/installation.pb.go b/components/public-api/go/v1/installation.pb.go
+index 70c809896..ff45278b6 100644
+--- a/components/public-api/go/v1/installation.pb.go
++++ b/components/public-api/go/v1/installation.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/installation_grpc.pb.go b/components/public-api/go/v1/installation_grpc.pb.go
+index 5060f7162..12be3b120 100644
+--- a/components/public-api/go/v1/installation_grpc.pb.go
++++ b/components/public-api/go/v1/installation_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/organization.pb.go b/components/public-api/go/v1/organization.pb.go
+index 6fb74f639..51bac5f07 100644
+--- a/components/public-api/go/v1/organization.pb.go
++++ b/components/public-api/go/v1/organization.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+@@ -28,9 +28,10 @@ const (
+ type OrganizationRole int32
+ 
+ const (
+-	OrganizationRole_ORGANIZATION_ROLE_UNSPECIFIED OrganizationRole = 0
+-	OrganizationRole_ORGANIZATION_ROLE_OWNER       OrganizationRole = 1
+-	OrganizationRole_ORGANIZATION_ROLE_MEMBER      OrganizationRole = 2
++	OrganizationRole_ORGANIZATION_ROLE_UNSPECIFIED  OrganizationRole = 0
++	OrganizationRole_ORGANIZATION_ROLE_OWNER        OrganizationRole = 1
++	OrganizationRole_ORGANIZATION_ROLE_MEMBER       OrganizationRole = 2
++	OrganizationRole_ORGANIZATION_ROLE_COLLABORATOR OrganizationRole = 3
+ )
+ 
+ // Enum value maps for OrganizationRole.
+@@ -39,11 +40,13 @@ var (
+ 		0: "ORGANIZATION_ROLE_UNSPECIFIED",
+ 		1: "ORGANIZATION_ROLE_OWNER",
+ 		2: "ORGANIZATION_ROLE_MEMBER",
++		3: "ORGANIZATION_ROLE_COLLABORATOR",
+ 	}
+ 	OrganizationRole_value = map[string]int32{
+-		"ORGANIZATION_ROLE_UNSPECIFIED": 0,
+-		"ORGANIZATION_ROLE_OWNER":       1,
+-		"ORGANIZATION_ROLE_MEMBER":      2,
++		"ORGANIZATION_ROLE_UNSPECIFIED":  0,
++		"ORGANIZATION_ROLE_OWNER":        1,
++		"ORGANIZATION_ROLE_MEMBER":       2,
++		"ORGANIZATION_ROLE_COLLABORATOR": 3,
+ 	}
+ )
+ 
+@@ -2030,118 +2033,120 @@ var file_gitpod_v1_organization_proto_rawDesc = []byte{
+ 	0x69, 0x64, 0x18, 0x02, 0x20, 0x01, 0x28, 0x09, 0x52, 0x06, 0x75, 0x73, 0x65, 0x72, 0x49, 0x64,
+ 	0x22, 0x22, 0x0a, 0x20, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69,
+ 	0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x4d, 0x65, 0x6d, 0x62, 0x65, 0x72, 0x52, 0x65, 0x73, 0x70,
+-	0x6f, 0x6e, 0x73, 0x65, 0x2a, 0x70, 0x0a, 0x10, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61,
+-	0x74, 0x69, 0x6f, 0x6e, 0x52, 0x6f, 0x6c, 0x65, 0x12, 0x21, 0x0a, 0x1d, 0x4f, 0x52, 0x47, 0x41,
+-	0x4e, 0x49, 0x5a, 0x41, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x52, 0x4f, 0x4c, 0x45, 0x5f, 0x55, 0x4e,
+-	0x53, 0x50, 0x45, 0x43, 0x49, 0x46, 0x49, 0x45, 0x44, 0x10, 0x00, 0x12, 0x1b, 0x0a, 0x17, 0x4f,
+-	0x52, 0x47, 0x41, 0x4e, 0x49, 0x5a, 0x41, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x52, 0x4f, 0x4c, 0x45,
+-	0x5f, 0x4f, 0x57, 0x4e, 0x45, 0x52, 0x10, 0x01, 0x12, 0x1c, 0x0a, 0x18, 0x4f, 0x52, 0x47, 0x41,
+-	0x4e, 0x49, 0x5a, 0x41, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x52, 0x4f, 0x4c, 0x45, 0x5f, 0x4d, 0x45,
+-	0x4d, 0x42, 0x45, 0x52, 0x10, 0x02, 0x32, 0xbe, 0x0c, 0x0a, 0x13, 0x4f, 0x72, 0x67, 0x61, 0x6e,
+-	0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x53, 0x65, 0x72, 0x76, 0x69, 0x63, 0x65, 0x12, 0x63,
+-	0x0a, 0x12, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61,
+-	0x74, 0x69, 0x6f, 0x6e, 0x12, 0x24, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31,
+-	0x2e, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74,
+-	0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x25, 0x2e, 0x67, 0x69, 0x74,
+-	0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x4f, 0x72, 0x67,
+-	0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73,
+-	0x65, 0x22, 0x00, 0x12, 0x5a, 0x0a, 0x0f, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69,
+-	0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x21, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e,
+-	0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69,
+-	0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x22, 0x2e, 0x67, 0x69, 0x74, 0x70,
+-	0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a,
+-	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12,
+-	0x63, 0x0a, 0x12, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a,
+-	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x24, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76,
+-	0x31, 0x2e, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61,
+-	0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x25, 0x2e, 0x67, 0x69,
+-	0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4f, 0x72,
++	0x6f, 0x6e, 0x73, 0x65, 0x2a, 0x94, 0x01, 0x0a, 0x10, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a,
++	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x6f, 0x6c, 0x65, 0x12, 0x21, 0x0a, 0x1d, 0x4f, 0x52, 0x47,
++	0x41, 0x4e, 0x49, 0x5a, 0x41, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x52, 0x4f, 0x4c, 0x45, 0x5f, 0x55,
++	0x4e, 0x53, 0x50, 0x45, 0x43, 0x49, 0x46, 0x49, 0x45, 0x44, 0x10, 0x00, 0x12, 0x1b, 0x0a, 0x17,
++	0x4f, 0x52, 0x47, 0x41, 0x4e, 0x49, 0x5a, 0x41, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x52, 0x4f, 0x4c,
++	0x45, 0x5f, 0x4f, 0x57, 0x4e, 0x45, 0x52, 0x10, 0x01, 0x12, 0x1c, 0x0a, 0x18, 0x4f, 0x52, 0x47,
++	0x41, 0x4e, 0x49, 0x5a, 0x41, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x52, 0x4f, 0x4c, 0x45, 0x5f, 0x4d,
++	0x45, 0x4d, 0x42, 0x45, 0x52, 0x10, 0x02, 0x12, 0x22, 0x0a, 0x1e, 0x4f, 0x52, 0x47, 0x41, 0x4e,
++	0x49, 0x5a, 0x41, 0x54, 0x49, 0x4f, 0x4e, 0x5f, 0x52, 0x4f, 0x4c, 0x45, 0x5f, 0x43, 0x4f, 0x4c,
++	0x4c, 0x41, 0x42, 0x4f, 0x52, 0x41, 0x54, 0x4f, 0x52, 0x10, 0x03, 0x32, 0xbe, 0x0c, 0x0a, 0x13,
++	0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x53, 0x65, 0x72, 0x76,
++	0x69, 0x63, 0x65, 0x12, 0x63, 0x0a, 0x12, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x4f, 0x72, 0x67,
++	0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x24, 0x2e, 0x67, 0x69, 0x74, 0x70,
++	0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x72, 0x65, 0x61, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61,
++	0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a,
++	0x25, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x43, 0x72, 0x65, 0x61,
++	0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65,
++	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x5a, 0x0a, 0x0f, 0x47, 0x65, 0x74, 0x4f,
++	0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x21, 0x2e, 0x67, 0x69,
++	0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e,
++	0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x22,
++	0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x4f, 0x72,
+ 	0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+-	0x73, 0x65, 0x22, 0x00, 0x12, 0x60, 0x0a, 0x11, 0x4c, 0x69, 0x73, 0x74, 0x4f, 0x72, 0x67, 0x61,
+-	0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x23, 0x2e, 0x67, 0x69, 0x74, 0x70,
+-	0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69,
+-	0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x24,
++	0x73, 0x65, 0x22, 0x00, 0x12, 0x63, 0x0a, 0x12, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4f, 0x72,
++	0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x24, 0x2e, 0x67, 0x69, 0x74,
++	0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4f, 0x72, 0x67,
++	0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
++	0x1a, 0x25, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x70, 0x64,
++	0x61, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52,
++	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x60, 0x0a, 0x11, 0x4c, 0x69, 0x73,
++	0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x12, 0x23,
+ 	0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x4f,
+-	0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x73, 0x70,
+-	0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x63, 0x0a, 0x12, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65,
+-	0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x24, 0x2e, 0x67,
+-	0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x4f,
+-	0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65,
+-	0x73, 0x74, 0x1a, 0x25, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x44,
++	0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x73, 0x52, 0x65, 0x71, 0x75,
++	0x65, 0x73, 0x74, 0x1a, 0x24, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e,
++	0x4c, 0x69, 0x73, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e,
++	0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x63, 0x0a, 0x12, 0x44,
+ 	0x65, 0x6c, 0x65, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f,
+-	0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x78, 0x0a, 0x19, 0x47,
+-	0x65, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x6e,
+-	0x76, 0x69, 0x74, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x2b, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f,
+-	0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61,
+-	0x74, 0x69, 0x6f, 0x6e, 0x49, 0x6e, 0x76, 0x69, 0x74, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65,
+-	0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2c, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76,
+-	0x31, 0x2e, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f,
+-	0x6e, 0x49, 0x6e, 0x76, 0x69, 0x74, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f,
+-	0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x5d, 0x0a, 0x10, 0x4a, 0x6f, 0x69, 0x6e, 0x4f, 0x72, 0x67,
+-	0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x22, 0x2e, 0x67, 0x69, 0x74, 0x70,
+-	0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x4a, 0x6f, 0x69, 0x6e, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69,
+-	0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x23, 0x2e,
+-	0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x4a, 0x6f, 0x69, 0x6e, 0x4f, 0x72,
+-	0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+-	0x73, 0x65, 0x22, 0x00, 0x12, 0x7e, 0x0a, 0x1b, 0x52, 0x65, 0x73, 0x65, 0x74, 0x4f, 0x72, 0x67,
++	0x6e, 0x12, 0x24, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x44, 0x65,
++	0x6c, 0x65, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e,
++	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x25, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64,
++	0x2e, 0x76, 0x31, 0x2e, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69,
++	0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00,
++	0x12, 0x78, 0x0a, 0x19, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74,
++	0x69, 0x6f, 0x6e, 0x49, 0x6e, 0x76, 0x69, 0x74, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x2b, 0x2e,
++	0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x67,
+ 	0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x6e, 0x76, 0x69, 0x74, 0x61, 0x74,
+-	0x69, 0x6f, 0x6e, 0x12, 0x2d, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e,
+-	0x52, 0x65, 0x73, 0x65, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f,
+-	0x6e, 0x49, 0x6e, 0x76, 0x69, 0x74, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65,
+-	0x73, 0x74, 0x1a, 0x2e, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x52,
+-	0x65, 0x73, 0x65, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e,
+-	0x49, 0x6e, 0x76, 0x69, 0x74, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
+-	0x73, 0x65, 0x22, 0x00, 0x12, 0x72, 0x0a, 0x17, 0x4c, 0x69, 0x73, 0x74, 0x4f, 0x72, 0x67, 0x61,
+-	0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x4d, 0x65, 0x6d, 0x62, 0x65, 0x72, 0x73, 0x12,
+-	0x29, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74,
++	0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2c, 0x2e, 0x67, 0x69, 0x74,
++	0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69,
++	0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x6e, 0x76, 0x69, 0x74, 0x61, 0x74, 0x69, 0x6f, 0x6e,
++	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x5d, 0x0a, 0x10, 0x4a, 0x6f,
++	0x69, 0x6e, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x22,
++	0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x4a, 0x6f, 0x69, 0x6e, 0x4f,
++	0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52, 0x65, 0x71, 0x75, 0x65,
++	0x73, 0x74, 0x1a, 0x23, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x4a,
++	0x6f, 0x69, 0x6e, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52,
++	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x7e, 0x0a, 0x1b, 0x52, 0x65, 0x73,
++	0x65, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x6e,
++	0x76, 0x69, 0x74, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x12, 0x2d, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f,
++	0x64, 0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x73, 0x65, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69,
++	0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x6e, 0x76, 0x69, 0x74, 0x61, 0x74, 0x69, 0x6f, 0x6e,
++	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2e, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64,
++	0x2e, 0x76, 0x31, 0x2e, 0x52, 0x65, 0x73, 0x65, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a,
++	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x49, 0x6e, 0x76, 0x69, 0x74, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x52,
++	0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x72, 0x0a, 0x17, 0x4c, 0x69, 0x73,
++	0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x4d, 0x65, 0x6d,
++	0x62, 0x65, 0x72, 0x73, 0x12, 0x29, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31,
++	0x2e, 0x4c, 0x69, 0x73, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f,
++	0x6e, 0x4d, 0x65, 0x6d, 0x62, 0x65, 0x72, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a,
++	0x2a, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74,
+ 	0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x4d, 0x65, 0x6d, 0x62,
+-	0x65, 0x72, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2a, 0x2e, 0x67, 0x69, 0x74,
+-	0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e,
+-	0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x4d, 0x65, 0x6d, 0x62, 0x65, 0x72, 0x73, 0x52, 0x65,
+-	0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x75, 0x0a, 0x18, 0x55, 0x70, 0x64, 0x61,
+-	0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x4d, 0x65,
+-	0x6d, 0x62, 0x65, 0x72, 0x12, 0x2a, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31,
+-	0x2e, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74,
+-	0x69, 0x6f, 0x6e, 0x4d, 0x65, 0x6d, 0x62, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
+-	0x1a, 0x2b, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x70, 0x64,
+-	0x61, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x4d,
+-	0x65, 0x6d, 0x62, 0x65, 0x72, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12,
+-	0x75, 0x0a, 0x18, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a,
+-	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x4d, 0x65, 0x6d, 0x62, 0x65, 0x72, 0x12, 0x2a, 0x2e, 0x67, 0x69,
+-	0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x4f, 0x72,
++	0x65, 0x72, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x75, 0x0a,
++	0x18, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74,
++	0x69, 0x6f, 0x6e, 0x4d, 0x65, 0x6d, 0x62, 0x65, 0x72, 0x12, 0x2a, 0x2e, 0x67, 0x69, 0x74, 0x70,
++	0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61,
++	0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x4d, 0x65, 0x6d, 0x62, 0x65, 0x72, 0x52, 0x65,
++	0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2b, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76,
++	0x31, 0x2e, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61,
++	0x74, 0x69, 0x6f, 0x6e, 0x4d, 0x65, 0x6d, 0x62, 0x65, 0x72, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e,
++	0x73, 0x65, 0x22, 0x00, 0x12, 0x75, 0x0a, 0x18, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x4f, 0x72,
+ 	0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x4d, 0x65, 0x6d, 0x62, 0x65, 0x72,
+-	0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2b, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64,
+-	0x2e, 0x76, 0x31, 0x2e, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69,
+-	0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x4d, 0x65, 0x6d, 0x62, 0x65, 0x72, 0x52, 0x65, 0x73, 0x70,
+-	0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x72, 0x0a, 0x17, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x67,
+-	0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67,
+-	0x73, 0x12, 0x29, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65,
++	0x12, 0x2a, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x44, 0x65, 0x6c,
++	0x65, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x4d,
++	0x65, 0x6d, 0x62, 0x65, 0x72, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2b, 0x2e, 0x67,
++	0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x44, 0x65, 0x6c, 0x65, 0x74, 0x65, 0x4f,
++	0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x4d, 0x65, 0x6d, 0x62, 0x65,
++	0x72, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x72, 0x0a, 0x17, 0x47,
++	0x65, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x53, 0x65,
++	0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x12, 0x29, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e,
++	0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69,
++	0x6f, 0x6e, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73,
++	0x74, 0x1a, 0x2a, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65,
+ 	0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x53, 0x65, 0x74,
+-	0x74, 0x69, 0x6e, 0x67, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2a, 0x2e, 0x67,
+-	0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x47, 0x65, 0x74, 0x4f, 0x72, 0x67, 0x61,
+-	0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73,
+-	0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x7b, 0x0a, 0x1a, 0x55, 0x70,
+-	0x64, 0x61, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e,
+-	0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x12, 0x2c, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f,
+-	0x64, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e,
+-	0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x52,
+-	0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2d, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e,
+-	0x76, 0x31, 0x2e, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a,
+-	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x52, 0x65, 0x73,
+-	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x8d, 0x01, 0x0a, 0x20, 0x4c, 0x69, 0x73, 0x74,
+-	0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x57, 0x6f, 0x72, 0x6b,
+-	0x73, 0x70, 0x61, 0x63, 0x65, 0x43, 0x6c, 0x61, 0x73, 0x73, 0x65, 0x73, 0x12, 0x32, 0x2e, 0x67,
+-	0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x4f, 0x72, 0x67,
+-	0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61,
+-	0x63, 0x65, 0x43, 0x6c, 0x61, 0x73, 0x73, 0x65, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74,
+-	0x1a, 0x33, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69, 0x73,
+-	0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x57, 0x6f, 0x72,
+-	0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x43, 0x6c, 0x61, 0x73, 0x73, 0x65, 0x73, 0x52, 0x65, 0x73,
+-	0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42, 0x39, 0x5a, 0x37, 0x67, 0x69, 0x74, 0x68, 0x75,
+-	0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2d, 0x69, 0x6f, 0x2f,
+-	0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2f, 0x63, 0x6f, 0x6d, 0x70, 0x6f, 0x6e, 0x65, 0x6e, 0x74,
+-	0x73, 0x2f, 0x70, 0x75, 0x62, 0x6c, 0x69, 0x63, 0x2d, 0x61, 0x70, 0x69, 0x2f, 0x67, 0x6f, 0x2f,
+-	0x76, 0x31, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
++	0x74, 0x69, 0x6e, 0x67, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12,
++	0x7b, 0x0a, 0x1a, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a,
++	0x61, 0x74, 0x69, 0x6f, 0x6e, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e, 0x67, 0x73, 0x12, 0x2c, 0x2e,
++	0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65,
++	0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x53, 0x65, 0x74, 0x74,
++	0x69, 0x6e, 0x67, 0x73, 0x52, 0x65, 0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x2d, 0x2e, 0x67, 0x69,
++	0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x55, 0x70, 0x64, 0x61, 0x74, 0x65, 0x4f, 0x72,
++	0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x53, 0x65, 0x74, 0x74, 0x69, 0x6e,
++	0x67, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x12, 0x8d, 0x01, 0x0a,
++	0x20, 0x4c, 0x69, 0x73, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f,
++	0x6e, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x43, 0x6c, 0x61, 0x73, 0x73, 0x65,
++	0x73, 0x12, 0x32, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76, 0x31, 0x2e, 0x4c, 0x69,
++	0x73, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69, 0x6f, 0x6e, 0x57, 0x6f,
++	0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x43, 0x6c, 0x61, 0x73, 0x73, 0x65, 0x73, 0x52, 0x65,
++	0x71, 0x75, 0x65, 0x73, 0x74, 0x1a, 0x33, 0x2e, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2e, 0x76,
++	0x31, 0x2e, 0x4c, 0x69, 0x73, 0x74, 0x4f, 0x72, 0x67, 0x61, 0x6e, 0x69, 0x7a, 0x61, 0x74, 0x69,
++	0x6f, 0x6e, 0x57, 0x6f, 0x72, 0x6b, 0x73, 0x70, 0x61, 0x63, 0x65, 0x43, 0x6c, 0x61, 0x73, 0x73,
++	0x65, 0x73, 0x52, 0x65, 0x73, 0x70, 0x6f, 0x6e, 0x73, 0x65, 0x22, 0x00, 0x42, 0x39, 0x5a, 0x37,
++	0x67, 0x69, 0x74, 0x68, 0x75, 0x62, 0x2e, 0x63, 0x6f, 0x6d, 0x2f, 0x67, 0x69, 0x74, 0x70, 0x6f,
++	0x64, 0x2d, 0x69, 0x6f, 0x2f, 0x67, 0x69, 0x74, 0x70, 0x6f, 0x64, 0x2f, 0x63, 0x6f, 0x6d, 0x70,
++	0x6f, 0x6e, 0x65, 0x6e, 0x74, 0x73, 0x2f, 0x70, 0x75, 0x62, 0x6c, 0x69, 0x63, 0x2d, 0x61, 0x70,
++	0x69, 0x2f, 0x67, 0x6f, 0x2f, 0x76, 0x31, 0x62, 0x06, 0x70, 0x72, 0x6f, 0x74, 0x6f, 0x33,
+ }
+ 
+ var (
+diff --git a/components/public-api/go/v1/organization_grpc.pb.go b/components/public-api/go/v1/organization_grpc.pb.go
+index b8de5f9b5..b3b84b7f4 100644
+--- a/components/public-api/go/v1/organization_grpc.pb.go
++++ b/components/public-api/go/v1/organization_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/pagination.pb.go b/components/public-api/go/v1/pagination.pb.go
+index fffd320e1..4f645e468 100644
+--- a/components/public-api/go/v1/pagination.pb.go
++++ b/components/public-api/go/v1/pagination.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/prebuild.pb.go b/components/public-api/go/v1/prebuild.pb.go
+index 4f7b5fc30..3ebca23d2 100644
+--- a/components/public-api/go/v1/prebuild.pb.go
++++ b/components/public-api/go/v1/prebuild.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/prebuild_grpc.pb.go b/components/public-api/go/v1/prebuild_grpc.pb.go
+index fc98b26ab..1af2337fd 100644
+--- a/components/public-api/go/v1/prebuild_grpc.pb.go
++++ b/components/public-api/go/v1/prebuild_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/scm.pb.go b/components/public-api/go/v1/scm.pb.go
+index 74b40ff20..449ab2ae6 100644
+--- a/components/public-api/go/v1/scm.pb.go
++++ b/components/public-api/go/v1/scm.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/scm_grpc.pb.go b/components/public-api/go/v1/scm_grpc.pb.go
+index 96b8cfdc8..09c8cf35b 100644
+--- a/components/public-api/go/v1/scm_grpc.pb.go
++++ b/components/public-api/go/v1/scm_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/sorting.pb.go b/components/public-api/go/v1/sorting.pb.go
+index e312dbbdf..d85fef343 100644
+--- a/components/public-api/go/v1/sorting.pb.go
++++ b/components/public-api/go/v1/sorting.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/ssh.pb.go b/components/public-api/go/v1/ssh.pb.go
+index a27489660..0e51754ef 100644
+--- a/components/public-api/go/v1/ssh.pb.go
++++ b/components/public-api/go/v1/ssh.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/ssh_grpc.pb.go b/components/public-api/go/v1/ssh_grpc.pb.go
+index 451ec9dc6..0a4515ba3 100644
+--- a/components/public-api/go/v1/ssh_grpc.pb.go
++++ b/components/public-api/go/v1/ssh_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/user.pb.go b/components/public-api/go/v1/user.pb.go
+index c7c58a5cb..cd65dcf40 100644
+--- a/components/public-api/go/v1/user.pb.go
++++ b/components/public-api/go/v1/user.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/user_grpc.pb.go b/components/public-api/go/v1/user_grpc.pb.go
+index cf669fdc2..3e0f93e21 100644
+--- a/components/public-api/go/v1/user_grpc.pb.go
++++ b/components/public-api/go/v1/user_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/authprovider.connect.go b/components/public-api/go/v1/v1connect/authprovider.connect.go
+index d7b51524d..01987f410 100644
+--- a/components/public-api/go/v1/v1connect/authprovider.connect.go
++++ b/components/public-api/go/v1/v1connect/authprovider.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/authprovider.proxy.connect.go b/components/public-api/go/v1/v1connect/authprovider.proxy.connect.go
+index 8fd9bc2e6..ff1f7bb3c 100644
+--- a/components/public-api/go/v1/v1connect/authprovider.proxy.connect.go
++++ b/components/public-api/go/v1/v1connect/authprovider.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/configuration.connect.go b/components/public-api/go/v1/v1connect/configuration.connect.go
+index a3785aadc..260e8863c 100644
+--- a/components/public-api/go/v1/v1connect/configuration.connect.go
++++ b/components/public-api/go/v1/v1connect/configuration.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/configuration.proxy.connect.go b/components/public-api/go/v1/v1connect/configuration.proxy.connect.go
+index 8b0b51fc8..2c6fcf4c9 100644
+--- a/components/public-api/go/v1/v1connect/configuration.proxy.connect.go
++++ b/components/public-api/go/v1/v1connect/configuration.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/envvar.connect.go b/components/public-api/go/v1/v1connect/envvar.connect.go
+index 792b6e82c..1c083e4da 100644
+--- a/components/public-api/go/v1/v1connect/envvar.connect.go
++++ b/components/public-api/go/v1/v1connect/envvar.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/envvar.proxy.connect.go b/components/public-api/go/v1/v1connect/envvar.proxy.connect.go
+index fbb2f6a6c..c2430cf72 100644
+--- a/components/public-api/go/v1/v1connect/envvar.proxy.connect.go
++++ b/components/public-api/go/v1/v1connect/envvar.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/installation.connect.go b/components/public-api/go/v1/v1connect/installation.connect.go
+index 47826d3c6..211540b94 100644
+--- a/components/public-api/go/v1/v1connect/installation.connect.go
++++ b/components/public-api/go/v1/v1connect/installation.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/installation.proxy.connect.go b/components/public-api/go/v1/v1connect/installation.proxy.connect.go
+index c99d1a651..f97b62c1a 100644
+--- a/components/public-api/go/v1/v1connect/installation.proxy.connect.go
++++ b/components/public-api/go/v1/v1connect/installation.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/organization.connect.go b/components/public-api/go/v1/v1connect/organization.connect.go
+index 3a5a3ab94..ec414dddc 100644
+--- a/components/public-api/go/v1/v1connect/organization.connect.go
++++ b/components/public-api/go/v1/v1connect/organization.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/organization.proxy.connect.go b/components/public-api/go/v1/v1connect/organization.proxy.connect.go
+index 99ce68431..cf5ae470b 100644
+--- a/components/public-api/go/v1/v1connect/organization.proxy.connect.go
++++ b/components/public-api/go/v1/v1connect/organization.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/prebuild.connect.go b/components/public-api/go/v1/v1connect/prebuild.connect.go
+index 72116a00f..2af2f9e41 100644
+--- a/components/public-api/go/v1/v1connect/prebuild.connect.go
++++ b/components/public-api/go/v1/v1connect/prebuild.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/prebuild.proxy.connect.go b/components/public-api/go/v1/v1connect/prebuild.proxy.connect.go
+index 4f785fa51..362f0dcc0 100644
+--- a/components/public-api/go/v1/v1connect/prebuild.proxy.connect.go
++++ b/components/public-api/go/v1/v1connect/prebuild.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/scm.connect.go b/components/public-api/go/v1/v1connect/scm.connect.go
+index c361543e5..d3f44d93e 100644
+--- a/components/public-api/go/v1/v1connect/scm.connect.go
++++ b/components/public-api/go/v1/v1connect/scm.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/scm.proxy.connect.go b/components/public-api/go/v1/v1connect/scm.proxy.connect.go
+index d084b51d5..57ad6b74a 100644
+--- a/components/public-api/go/v1/v1connect/scm.proxy.connect.go
++++ b/components/public-api/go/v1/v1connect/scm.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/ssh.connect.go b/components/public-api/go/v1/v1connect/ssh.connect.go
+index 622b2e9be..7a298d654 100644
+--- a/components/public-api/go/v1/v1connect/ssh.connect.go
++++ b/components/public-api/go/v1/v1connect/ssh.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/ssh.proxy.connect.go b/components/public-api/go/v1/v1connect/ssh.proxy.connect.go
+index 3add5a918..b7f365087 100644
+--- a/components/public-api/go/v1/v1connect/ssh.proxy.connect.go
++++ b/components/public-api/go/v1/v1connect/ssh.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/user.connect.go b/components/public-api/go/v1/v1connect/user.connect.go
+index 1b92a0cad..15a442e1a 100644
+--- a/components/public-api/go/v1/v1connect/user.connect.go
++++ b/components/public-api/go/v1/v1connect/user.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/user.proxy.connect.go b/components/public-api/go/v1/v1connect/user.proxy.connect.go
+index 4c23324a3..1e6b4e4b7 100644
+--- a/components/public-api/go/v1/v1connect/user.proxy.connect.go
++++ b/components/public-api/go/v1/v1connect/user.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/verification.connect.go b/components/public-api/go/v1/v1connect/verification.connect.go
+index d1ddfa360..9563de20d 100644
+--- a/components/public-api/go/v1/v1connect/verification.connect.go
++++ b/components/public-api/go/v1/v1connect/verification.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/verification.proxy.connect.go b/components/public-api/go/v1/v1connect/verification.proxy.connect.go
+index 25473e044..d5cf6a195 100644
+--- a/components/public-api/go/v1/v1connect/verification.proxy.connect.go
++++ b/components/public-api/go/v1/v1connect/verification.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/workspace.connect.go b/components/public-api/go/v1/v1connect/workspace.connect.go
+index 58f332985..c4f1560ba 100644
+--- a/components/public-api/go/v1/v1connect/workspace.connect.go
++++ b/components/public-api/go/v1/v1connect/workspace.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/v1connect/workspace.proxy.connect.go b/components/public-api/go/v1/v1connect/workspace.proxy.connect.go
+index ac3fcb4cc..8d6ad2c80 100644
+--- a/components/public-api/go/v1/v1connect/workspace.proxy.connect.go
++++ b/components/public-api/go/v1/v1connect/workspace.proxy.connect.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/verification.pb.go b/components/public-api/go/v1/verification.pb.go
+index f951db3a0..6b852b562 100644
+--- a/components/public-api/go/v1/verification.pb.go
++++ b/components/public-api/go/v1/verification.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/verification_grpc.pb.go b/components/public-api/go/v1/verification_grpc.pb.go
+index cccea279d..bc530d299 100644
+--- a/components/public-api/go/v1/verification_grpc.pb.go
++++ b/components/public-api/go/v1/verification_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/workspace.pb.go b/components/public-api/go/v1/workspace.pb.go
+index 970324d94..134cee5f0 100644
+--- a/components/public-api/go/v1/workspace.pb.go
++++ b/components/public-api/go/v1/workspace.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/go/v1/workspace_grpc.pb.go b/components/public-api/go/v1/workspace_grpc.pb.go
+index fd056cd1c..2b5cdfa33 100644
+--- a/components/public-api/go/v1/workspace_grpc.pb.go
++++ b/components/public-api/go/v1/workspace_grpc.pb.go
+@@ -1,4 +1,4 @@
+-// Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+ // Licensed under the GNU Affero General Public License (AGPL).
+ // See License.AGPL.txt in the project root for license information.
+ 
+diff --git a/components/public-api/typescript-common/src/public-api-converter.ts b/components/public-api/typescript-common/src/public-api-converter.ts
+index e5a8facbe..7ca855009 100644
+--- a/components/public-api/typescript-common/src/public-api-converter.ts
++++ b/components/public-api/typescript-common/src/public-api-converter.ts
+@@ -878,6 +878,8 @@ export class PublicAPIConverter {
+                 return OrganizationRole.OWNER;
+             case "member":
+                 return OrganizationRole.MEMBER;
++            case "collaborator":
++                return OrganizationRole.COLLABORATOR;
+             default:
+                 return OrganizationRole.UNSPECIFIED;
+         }
+@@ -889,6 +891,8 @@ export class PublicAPIConverter {
+                 return "owner";
+             case OrganizationRole.MEMBER:
+                 return "member";
++            case OrganizationRole.COLLABORATOR:
++                return "collaborator";
+             default:
+                 throw new Error(`unknown org member role ${role}`);
+         }
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/dummy_connect.ts b/components/public-api/typescript/src/gitpod/experimental/v1/dummy_connect.ts
+index dbcc7f3b0..c1b772a03 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/dummy_connect.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/dummy_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/dummy_pb.ts b/components/public-api/typescript/src/gitpod/experimental/v1/dummy_pb.ts
+index d7f24499a..c8f8f9dea 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/dummy_pb.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/dummy_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/editor_service_connect.ts b/components/public-api/typescript/src/gitpod/experimental/v1/editor_service_connect.ts
+index 27c394a52..a9ec55506 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/editor_service_connect.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/editor_service_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/editor_service_pb.ts b/components/public-api/typescript/src/gitpod/experimental/v1/editor_service_pb.ts
+index 362a3e68e..60e016254 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/editor_service_pb.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/editor_service_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/ide_client_connect.ts b/components/public-api/typescript/src/gitpod/experimental/v1/ide_client_connect.ts
+index 180bf4bc6..0fb9d6a58 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/ide_client_connect.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/ide_client_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/ide_client_pb.ts b/components/public-api/typescript/src/gitpod/experimental/v1/ide_client_pb.ts
+index b75562141..246e87284 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/ide_client_pb.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/ide_client_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/identityprovider_connect.ts b/components/public-api/typescript/src/gitpod/experimental/v1/identityprovider_connect.ts
+index 892118200..828022a75 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/identityprovider_connect.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/identityprovider_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/identityprovider_pb.ts b/components/public-api/typescript/src/gitpod/experimental/v1/identityprovider_pb.ts
+index 2754254c0..c11ed2f38 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/identityprovider_pb.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/identityprovider_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/oidc_connect.ts b/components/public-api/typescript/src/gitpod/experimental/v1/oidc_connect.ts
+index 75bcce80f..a8d31b38c 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/oidc_connect.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/oidc_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/oidc_pb.ts b/components/public-api/typescript/src/gitpod/experimental/v1/oidc_pb.ts
+index 37457dc56..39f7d4cd0 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/oidc_pb.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/oidc_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/pagination_pb.ts b/components/public-api/typescript/src/gitpod/experimental/v1/pagination_pb.ts
+index da22da663..19e175daf 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/pagination_pb.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/pagination_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/projects_connect.ts b/components/public-api/typescript/src/gitpod/experimental/v1/projects_connect.ts
+index 293839e24..e91b25f4f 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/projects_connect.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/projects_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/projects_pb.ts b/components/public-api/typescript/src/gitpod/experimental/v1/projects_pb.ts
+index 403bf03a4..d2846f3cd 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/projects_pb.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/projects_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/scm_connect.ts b/components/public-api/typescript/src/gitpod/experimental/v1/scm_connect.ts
+index 534f29ca5..8839ad961 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/scm_connect.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/scm_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/scm_pb.ts b/components/public-api/typescript/src/gitpod/experimental/v1/scm_pb.ts
+index bf2a2209e..ada4aa793 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/scm_pb.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/scm_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/stats_connect.ts b/components/public-api/typescript/src/gitpod/experimental/v1/stats_connect.ts
+index 798ea0908..171a713b5 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/stats_connect.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/stats_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/stats_pb.ts b/components/public-api/typescript/src/gitpod/experimental/v1/stats_pb.ts
+index 72421c68a..6b47b026e 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/stats_pb.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/stats_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/teams_connect.ts b/components/public-api/typescript/src/gitpod/experimental/v1/teams_connect.ts
+index 7d7b2b27a..c1582155c 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/teams_connect.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/teams_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/teams_pb.ts b/components/public-api/typescript/src/gitpod/experimental/v1/teams_pb.ts
+index 7badc017d..adfc988a2 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/teams_pb.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/teams_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/tokens_connect.ts b/components/public-api/typescript/src/gitpod/experimental/v1/tokens_connect.ts
+index b1f792cc1..25659e2ac 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/tokens_connect.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/tokens_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/tokens_pb.ts b/components/public-api/typescript/src/gitpod/experimental/v1/tokens_pb.ts
+index 61b4c0c53..428458c8a 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/tokens_pb.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/tokens_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/user_connect.ts b/components/public-api/typescript/src/gitpod/experimental/v1/user_connect.ts
+index 5ee1800d7..614185091 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/user_connect.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/user_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/user_pb.ts b/components/public-api/typescript/src/gitpod/experimental/v1/user_pb.ts
+index ae826cc43..3c5a6c8e2 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/user_pb.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/user_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/workspaces_connect.ts b/components/public-api/typescript/src/gitpod/experimental/v1/workspaces_connect.ts
+index 31c4cb957..a7d98d0bd 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/workspaces_connect.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/workspaces_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/experimental/v1/workspaces_pb.ts b/components/public-api/typescript/src/gitpod/experimental/v1/workspaces_pb.ts
+index b53754990..51c7432f3 100644
+--- a/components/public-api/typescript/src/gitpod/experimental/v1/workspaces_pb.ts
++++ b/components/public-api/typescript/src/gitpod/experimental/v1/workspaces_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/authprovider_connect.ts b/components/public-api/typescript/src/gitpod/v1/authprovider_connect.ts
+index 79400907d..9762200d4 100644
+--- a/components/public-api/typescript/src/gitpod/v1/authprovider_connect.ts
++++ b/components/public-api/typescript/src/gitpod/v1/authprovider_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/authprovider_pb.ts b/components/public-api/typescript/src/gitpod/v1/authprovider_pb.ts
+index c46927b9a..f38300d49 100644
+--- a/components/public-api/typescript/src/gitpod/v1/authprovider_pb.ts
++++ b/components/public-api/typescript/src/gitpod/v1/authprovider_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/configuration_connect.ts b/components/public-api/typescript/src/gitpod/v1/configuration_connect.ts
+index 2e0ff3e3e..60e1c141d 100644
+--- a/components/public-api/typescript/src/gitpod/v1/configuration_connect.ts
++++ b/components/public-api/typescript/src/gitpod/v1/configuration_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/configuration_pb.ts b/components/public-api/typescript/src/gitpod/v1/configuration_pb.ts
+index e69ef4752..16a877475 100644
+--- a/components/public-api/typescript/src/gitpod/v1/configuration_pb.ts
++++ b/components/public-api/typescript/src/gitpod/v1/configuration_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/editor_pb.ts b/components/public-api/typescript/src/gitpod/v1/editor_pb.ts
+index f2ae32bfe..a6d61a609 100644
+--- a/components/public-api/typescript/src/gitpod/v1/editor_pb.ts
++++ b/components/public-api/typescript/src/gitpod/v1/editor_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/envvar_connect.ts b/components/public-api/typescript/src/gitpod/v1/envvar_connect.ts
+index 87430907e..aec8c4ee2 100644
+--- a/components/public-api/typescript/src/gitpod/v1/envvar_connect.ts
++++ b/components/public-api/typescript/src/gitpod/v1/envvar_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/envvar_pb.ts b/components/public-api/typescript/src/gitpod/v1/envvar_pb.ts
+index 38b80a17e..ead24bf30 100644
+--- a/components/public-api/typescript/src/gitpod/v1/envvar_pb.ts
++++ b/components/public-api/typescript/src/gitpod/v1/envvar_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/error_pb.ts b/components/public-api/typescript/src/gitpod/v1/error_pb.ts
+index 9126a836e..c5472acc6 100644
+--- a/components/public-api/typescript/src/gitpod/v1/error_pb.ts
++++ b/components/public-api/typescript/src/gitpod/v1/error_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/installation_connect.ts b/components/public-api/typescript/src/gitpod/v1/installation_connect.ts
+index 2a50cccf3..50d4ce245 100644
+--- a/components/public-api/typescript/src/gitpod/v1/installation_connect.ts
++++ b/components/public-api/typescript/src/gitpod/v1/installation_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/installation_pb.ts b/components/public-api/typescript/src/gitpod/v1/installation_pb.ts
+index f2032dd67..336954502 100644
+--- a/components/public-api/typescript/src/gitpod/v1/installation_pb.ts
++++ b/components/public-api/typescript/src/gitpod/v1/installation_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/organization_connect.ts b/components/public-api/typescript/src/gitpod/v1/organization_connect.ts
+index 8a2404c7d..9d600b561 100644
+--- a/components/public-api/typescript/src/gitpod/v1/organization_connect.ts
++++ b/components/public-api/typescript/src/gitpod/v1/organization_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/organization_pb.ts b/components/public-api/typescript/src/gitpod/v1/organization_pb.ts
+index 7f1c138a3..f7036dd89 100644
+--- a/components/public-api/typescript/src/gitpod/v1/organization_pb.ts
++++ b/components/public-api/typescript/src/gitpod/v1/organization_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+@@ -32,12 +32,18 @@ export enum OrganizationRole {
+    * @generated from enum value: ORGANIZATION_ROLE_MEMBER = 2;
+    */
+   MEMBER = 2,
++
++  /**
++   * @generated from enum value: ORGANIZATION_ROLE_COLLABORATOR = 3;
++   */
++  COLLABORATOR = 3,
+ }
+ // Retrieve enum metadata with: proto3.getEnumType(OrganizationRole)
+ proto3.util.setEnumType(OrganizationRole, "gitpod.v1.OrganizationRole", [
+   { no: 0, name: "ORGANIZATION_ROLE_UNSPECIFIED" },
+   { no: 1, name: "ORGANIZATION_ROLE_OWNER" },
+   { no: 2, name: "ORGANIZATION_ROLE_MEMBER" },
++  { no: 3, name: "ORGANIZATION_ROLE_COLLABORATOR" },
+ ]);
+ 
+ /**
+diff --git a/components/public-api/typescript/src/gitpod/v1/pagination_pb.ts b/components/public-api/typescript/src/gitpod/v1/pagination_pb.ts
+index 7d5b48051..66cdd62d0 100644
+--- a/components/public-api/typescript/src/gitpod/v1/pagination_pb.ts
++++ b/components/public-api/typescript/src/gitpod/v1/pagination_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/prebuild_connect.ts b/components/public-api/typescript/src/gitpod/v1/prebuild_connect.ts
+index a4484fd9c..e2cec796f 100644
+--- a/components/public-api/typescript/src/gitpod/v1/prebuild_connect.ts
++++ b/components/public-api/typescript/src/gitpod/v1/prebuild_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/prebuild_pb.ts b/components/public-api/typescript/src/gitpod/v1/prebuild_pb.ts
+index 2f400965b..3f702fdd5 100644
+--- a/components/public-api/typescript/src/gitpod/v1/prebuild_pb.ts
++++ b/components/public-api/typescript/src/gitpod/v1/prebuild_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/scm_connect.ts b/components/public-api/typescript/src/gitpod/v1/scm_connect.ts
+index d3aa713b5..cc99c834f 100644
+--- a/components/public-api/typescript/src/gitpod/v1/scm_connect.ts
++++ b/components/public-api/typescript/src/gitpod/v1/scm_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/scm_pb.ts b/components/public-api/typescript/src/gitpod/v1/scm_pb.ts
+index 6b8e5303c..68639c6f1 100644
+--- a/components/public-api/typescript/src/gitpod/v1/scm_pb.ts
++++ b/components/public-api/typescript/src/gitpod/v1/scm_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/sorting_pb.ts b/components/public-api/typescript/src/gitpod/v1/sorting_pb.ts
+index 0c698ee68..efe8826ab 100644
+--- a/components/public-api/typescript/src/gitpod/v1/sorting_pb.ts
++++ b/components/public-api/typescript/src/gitpod/v1/sorting_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/ssh_connect.ts b/components/public-api/typescript/src/gitpod/v1/ssh_connect.ts
+index 0554f6e37..375f2b78b 100644
+--- a/components/public-api/typescript/src/gitpod/v1/ssh_connect.ts
++++ b/components/public-api/typescript/src/gitpod/v1/ssh_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/ssh_pb.ts b/components/public-api/typescript/src/gitpod/v1/ssh_pb.ts
+index 19c74178b..f08a9f0c1 100644
+--- a/components/public-api/typescript/src/gitpod/v1/ssh_pb.ts
++++ b/components/public-api/typescript/src/gitpod/v1/ssh_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/user_connect.ts b/components/public-api/typescript/src/gitpod/v1/user_connect.ts
+index 9311dfcf0..ce728be97 100644
+--- a/components/public-api/typescript/src/gitpod/v1/user_connect.ts
++++ b/components/public-api/typescript/src/gitpod/v1/user_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/user_pb.ts b/components/public-api/typescript/src/gitpod/v1/user_pb.ts
+index 044d723f3..47d4ef83a 100644
+--- a/components/public-api/typescript/src/gitpod/v1/user_pb.ts
++++ b/components/public-api/typescript/src/gitpod/v1/user_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/verification_connect.ts b/components/public-api/typescript/src/gitpod/v1/verification_connect.ts
+index 7899904eb..9c56f3333 100644
+--- a/components/public-api/typescript/src/gitpod/v1/verification_connect.ts
++++ b/components/public-api/typescript/src/gitpod/v1/verification_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/verification_pb.ts b/components/public-api/typescript/src/gitpod/v1/verification_pb.ts
+index ed3b664a1..198bba403 100644
+--- a/components/public-api/typescript/src/gitpod/v1/verification_pb.ts
++++ b/components/public-api/typescript/src/gitpod/v1/verification_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/workspace_connect.ts b/components/public-api/typescript/src/gitpod/v1/workspace_connect.ts
+index f3f8008e6..8a7cba847 100644
+--- a/components/public-api/typescript/src/gitpod/v1/workspace_connect.ts
++++ b/components/public-api/typescript/src/gitpod/v1/workspace_connect.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/public-api/typescript/src/gitpod/v1/workspace_pb.ts b/components/public-api/typescript/src/gitpod/v1/workspace_pb.ts
+index 1d4407ddc..7237ad053 100644
+--- a/components/public-api/typescript/src/gitpod/v1/workspace_pb.ts
++++ b/components/public-api/typescript/src/gitpod/v1/workspace_pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/server/src/authorization/authorizer.ts b/components/server/src/authorization/authorizer.ts
+index 61f90893b..be3d6679e 100644
+--- a/components/server/src/authorization/authorizer.ts
++++ b/components/server/src/authorization/authorizer.ts
+@@ -299,11 +299,27 @@ export class Authorizer {
+         if (!(await isFgaWritesEnabled(userID))) {
+             return;
+         }
+-        const updates = [set(rel.organization(orgID).member.user(userID))];
++        const updates = [];
+         if (role === "owner") {
+-            updates.push(set(rel.organization(orgID).owner.user(userID)));
+-        } else {
+-            updates.push(remove(rel.organization(orgID).owner.user(userID)));
++            updates.push(
++                set(rel.organization(orgID).owner.user(userID)),
++                // TODO: owner has all permission member's permission should define in schema
++                // we should remove member but since old code was not, keep it to avoid breaking
++                set(rel.organization(orgID).member.user(userID)),
++                remove(rel.organization(orgID).collaborator.user(userID)),
++            );
++        } else if (role === "member") {
++            updates.push(
++                remove(rel.organization(orgID).owner.user(userID)),
++                set(rel.organization(orgID).member.user(userID)),
++                remove(rel.organization(orgID).collaborator.user(userID)),
++            );
++        } else if (role === "collaborator") {
++            updates.push(
++                remove(rel.organization(orgID).owner.user(userID)),
++                remove(rel.organization(orgID).member.user(userID)),
++                set(rel.organization(orgID).collaborator.user(userID)),
++            );
+         }
+         await this.authorizer.writeRelationships(...updates);
+     }
+@@ -312,9 +328,20 @@ export class Authorizer {
+         if (!(await isFgaWritesEnabled(userID))) {
+             return;
+         }
+-        const updates = [remove(rel.organization(orgID).owner.user(userID))];
+-        if (role === "member") {
+-            updates.push(remove(rel.organization(orgID).member.user(userID)));
++        const updates = [];
++        if (role === "owner") {
++            updates.push(remove(rel.organization(orgID).owner.user(userID)));
++        } else if (role === "member") {
++            updates.push(
++                remove(rel.organization(orgID).owner.user(userID)),
++                remove(rel.organization(orgID).member.user(userID)),
++            );
++        } else if (role === "collaborator") {
++            updates.push(
++                remove(rel.organization(orgID).owner.user(userID)),
++                remove(rel.organization(orgID).member.user(userID)),
++                remove(rel.organization(orgID).collaborator.user(userID)),
++            );
+         }
+         await this.authorizer.writeRelationships(...updates);
+     }
+diff --git a/components/server/src/authorization/definitions.ts b/components/server/src/authorization/definitions.ts
+index a67e84991..0c933dc23 100644
+--- a/components/server/src/authorization/definitions.ts
++++ b/components/server/src/authorization/definitions.ts
+@@ -54,7 +54,7 @@ export type InstallationPermission = "create_organization" | "configure";
+ 
+ export type OrganizationResourceType = "organization";
+ 
+-export type OrganizationRelation = "installation" | "member" | "owner" | "snapshoter";
++export type OrganizationRelation = "installation" | "member" | "owner" | "snapshoter" | "collaborator";
+ 
+ export type OrganizationPermission =
+     | "installation_admin"
+@@ -312,6 +312,26 @@ export const rel = {
+                     },
+                 };
+             },
++
++            get collaborator() {
++                const result2 = {
++                    ...result,
++                    relation: "collaborator",
++                };
++                return {
++                    user(objectId: string) {
++                        return {
++                            ...result2,
++                            subject: {
++                                object: {
++                                    objectType: "user",
++                                    objectId: objectId,
++                                },
++                            },
++                        } as v1.Relationship;
++                    },
++                };
++            },
+         };
+     },
+ 
+diff --git a/components/server/src/iam/iam-session-app.ts b/components/server/src/iam/iam-session-app.ts
+index 274d4a947..c4908ce77 100644
+--- a/components/server/src/iam/iam-session-app.ts
++++ b/components/server/src/iam/iam-session-app.ts
+@@ -16,7 +16,7 @@ import { reportJWTCookieIssued } from "../prometheus-metrics";
+ import { ApplicationError } from "@gitpod/gitpod-protocol/lib/messaging/error";
+ import { OrganizationService } from "../orgs/organization-service";
+ import { UserService } from "../user/user-service";
+-import { BUILTIN_INSTLLATION_ADMIN_USER_ID, TeamDB, UserDB } from "@gitpod/gitpod-db/lib";
++import { UserDB } from "@gitpod/gitpod-db/lib";
+ import { SYSTEM_USER, SYSTEM_USER_ID } from "../authorization/authorizer";
+ import { runWithSubjectId, runWithRequestContext } from "../util/request-context";
+ 
+@@ -30,7 +30,6 @@ export class IamSessionApp {
+         @inject(OrganizationService) private readonly orgService: OrganizationService,
+         @inject(SessionHandler) private readonly session: SessionHandler,
+         @inject(UserDB) private readonly userDb: UserDB,
+-        @inject(TeamDB) private readonly teamDb: TeamDB,
+     ) {}
+ 
+     public getMiddlewares() {
+@@ -85,17 +84,13 @@ export class IamSessionApp {
+                 //TODO we need to fix users without a team membership that happened because of a bug in the past
+                 // this is a workaround to fix the issue for now, but should be removed after a while
+                 if (existingUser.organizationId) {
+-                    const result = await this.teamDb.addMemberToTeam(existingUser.id, existingUser.organizationId);
+-                    if (result === "added") {
+-                        const teamMemberships = await this.teamDb.findMembersByTeam(existingUser.organizationId);
+-                        const otherOwners = teamMemberships.filter(
+-                            (tm) => tm.userId !== BUILTIN_INSTLLATION_ADMIN_USER_ID && tm.role !== "member",
+-                        );
+-                        // if there is no owner on the team besides the admin user, we make this user an owner
+-                        if (otherOwners.length === 0) {
+-                            await this.teamDb.setTeamMemberRole(existingUser.id, existingUser.organizationId, "owner");
+-                        }
+-                    }
++                    await this.orgService.addOrUpdateMember(
++                        SYSTEM_USER_ID,
++                        existingUser.organizationId,
++                        existingUser.id,
++                        "member",
++                        { flexibleRole: true, skipRoleUpdate: true },
++                    );
+                 }
+             } catch (error) {
+                 log.error("Error fixing user team membership", error);
+@@ -187,7 +182,14 @@ export class IamSessionApp {
+                 ctx,
+             );
+ 
+-            await this.orgService.addOrUpdateMember(SYSTEM_USER_ID, organizationId, user.id, "member", ctx);
++            await this.orgService.addOrUpdateMember(
++                SYSTEM_USER_ID,
++                organizationId,
++                user.id,
++                "member",
++                { flexibleRole: true },
++                ctx,
++            );
+             return user;
+         });
+     }
+diff --git a/components/server/src/orgs/organization-service.spec.db.ts b/components/server/src/orgs/organization-service.spec.db.ts
+index 8da4e33fa..eae9afcfd 100644
+--- a/components/server/src/orgs/organization-service.spec.db.ts
++++ b/components/server/src/orgs/organization-service.spec.db.ts
+@@ -5,7 +5,7 @@
+  */
+ 
+ import { BUILTIN_INSTLLATION_ADMIN_USER_ID, TypeORM } from "@gitpod/gitpod-db/lib";
+-import { Organization, OrganizationSettings, User } from "@gitpod/gitpod-protocol";
++import { Organization, OrganizationSettings, TeamMemberRole, User } from "@gitpod/gitpod-protocol";
+ import { Experiments } from "@gitpod/gitpod-protocol/lib/experiments/configcat-server";
+ import { ErrorCodes } from "@gitpod/gitpod-protocol/lib/messaging/error";
+ import * as chai from "chai";
+@@ -27,6 +27,7 @@ describe("OrganizationService", async () => {
+ 
+     let owner: User;
+     let member: User;
++    let collaborator: User;
+     let stranger: User;
+     const adminId = BUILTIN_INSTLLATION_ADMIN_USER_ID;
+     let org: Organization;
+@@ -36,6 +37,7 @@ describe("OrganizationService", async () => {
+         container = createTestContainer();
+         Experiments.configureTestingClient({
+             centralizedPermissions: true,
++            dataops: true,
+         });
+         validateDefaultWorkspaceImage = undefined;
+         container
+@@ -64,7 +66,16 @@ describe("OrganizationService", async () => {
+                 authProviderId: "github",
+             },
+         });
+-        await os.joinOrganization(member.id, invite.id);
++        await os.addOrUpdateMember(owner.id, org.id, member.id, "member", { flexibleRole: false });
++
++        collaborator = await userService.createUser({
++            identity: {
++                authId: "github|1234",
++                authName: "github",
++                authProviderId: "github",
++            },
++        });
++        await os.joinOrganization(collaborator.id, invite.id);
+ 
+         stranger = await userService.createUser({
+             identity: {
+@@ -84,6 +95,7 @@ describe("OrganizationService", async () => {
+ 
+     it("should deleteOrganization", async () => {
+         await expectError(ErrorCodes.PERMISSION_DENIED, os.deleteOrganization(member.id, org.id));
++        await expectError(ErrorCodes.PERMISSION_DENIED, os.deleteOrganization(collaborator.id, org.id));
+         await expectError(ErrorCodes.NOT_FOUND, os.deleteOrganization(stranger.id, org.id));
+ 
+         await os.deleteOrganization(owner.id, org.id);
+@@ -104,32 +116,72 @@ describe("OrganizationService", async () => {
+         const invite4 = await os.resetInvite(member.id, org.id);
+         expect(invite4.id).to.not.equal(invite3.id);
+ 
++        await expectError(ErrorCodes.PERMISSION_DENIED, os.getOrCreateInvite(collaborator.id, org.id));
++        await expectError(ErrorCodes.PERMISSION_DENIED, os.resetInvite(collaborator.id, org.id));
++
+         await expectError(ErrorCodes.NOT_FOUND, os.getOrCreateInvite(stranger.id, org.id));
+         await expectError(ErrorCodes.NOT_FOUND, os.resetInvite(stranger.id, org.id));
+     });
+ 
+-    it("should listMembers", async () => {
++    it("re-join org should not change role", async () => {
++        const invite = await os.getOrCreateInvite(owner.id, org.id);
++        expect(invite).to.not.be.undefined;
++
++        await assertUserRole(owner.id, "owner");
++        await assertUserRole(member.id, "member");
++        await assertUserRole(collaborator.id, "collaborator");
++
++        await os.joinOrganization(owner.id, invite.id);
++        await assertUserRole(owner.id, "owner");
++
++        await os.joinOrganization(member.id, invite.id);
++        await assertUserRole(member.id, "member");
++
++        await os.joinOrganization(collaborator.id, invite.id);
++        await assertUserRole(collaborator.id, "collaborator");
++    });
++
++    it.only("should listMembers", async () => {
+         let members = await os.listMembers(owner.id, org.id);
+-        expect(members.length).to.eq(2);
++        expect(members.length).to.eq(3);
+         expect(members.some((m) => m.userId === owner.id)).to.be.true;
+         expect(members.some((m) => m.userId === member.id)).to.be.true;
+ 
+         members = await os.listMembers(member.id, org.id);
+-        expect(members.length).to.eq(2);
++        expect(members.length).to.eq(3);
+         expect(members.some((m) => m.userId === owner.id)).to.be.true;
+         expect(members.some((m) => m.userId === member.id)).to.be.true;
+ 
++        await expectError(ErrorCodes.PERMISSION_DENIED, os.listMembers(collaborator.id, org.id));
+         await expectError(ErrorCodes.NOT_FOUND, () => os.listMembers(stranger.id, org.id));
+     });
+ 
++    const assertUserRole = async (userId: string, role: TeamMemberRole) => {
++        const list = await os.listMembers(owner.id, org.id);
++        expect(list.find((m) => m.userId === userId)?.role).to.be.equal(role);
++    };
++
+     it("should setOrganizationMemberRole and removeOrganizationMember", async () => {
+         await expectError(ErrorCodes.PERMISSION_DENIED, os.addOrUpdateMember(member.id, org.id, owner.id, "member"));
++        await expectError(
++            ErrorCodes.PERMISSION_DENIED,
++            os.addOrUpdateMember(collaborator.id, org.id, owner.id, "member"),
++        );
+ 
+         // try upgrade the member to owner
+         await expectError(ErrorCodes.PERMISSION_DENIED, os.addOrUpdateMember(member.id, org.id, member.id, "owner"));
++        await expectError(
++            ErrorCodes.PERMISSION_DENIED,
++            os.addOrUpdateMember(collaborator.id, org.id, member.id, "owner"),
++        );
+ 
+         // try removing the owner
+         await expectError(ErrorCodes.PERMISSION_DENIED, os.removeOrganizationMember(member.id, org.id, owner.id));
++        await expectError(ErrorCodes.PERMISSION_DENIED, os.removeOrganizationMember(collaborator.id, org.id, owner.id));
++
++        // owner can't downgrade if org only have on owner
++        await os.addOrUpdateMember(owner.id, org.id, owner.id, "member");
++        await assertUserRole(owner.id, "owner");
+ 
+         // owners can upgrade members
+         await os.addOrUpdateMember(owner.id, org.id, member.id, "owner");
+@@ -148,17 +200,19 @@ describe("OrganizationService", async () => {
+         // owner can downgrade themselves only if they are not the last owner
+         await os.addOrUpdateMember(owner.id, org.id, owner.id, "member");
+         // verify they are still an owner
+-        const members = await os.listMembers(owner.id, org.id);
+-        expect(members.some((m) => m.userId === owner.id && m.role === "owner")).to.be.true;
++        await assertUserRole(owner.id, "owner");
+ 
+         // owner can delete themselves only if they are not the last owner
+         await expectError(ErrorCodes.CONFLICT, os.removeOrganizationMember(owner.id, org.id, owner.id));
+ 
+         // members can remove themselves
+         await os.removeOrganizationMember(member.id, org.id, member.id);
++        // collaborators can remove themselves
++        await os.removeOrganizationMember(collaborator.id, org.id, collaborator.id);
+ 
+         // try remove the member again
+         await expectError(ErrorCodes.NOT_FOUND, os.removeOrganizationMember(member.id, org.id, member.id));
++        await expectError(ErrorCodes.NOT_FOUND, os.removeOrganizationMember(collaborator.id, org.id, collaborator.id));
+     });
+ 
+     it("should delete owned user when removing it", async () => {
+@@ -192,6 +246,8 @@ describe("OrganizationService", async () => {
+         expect(orgs.length).to.eq(3);
+         orgs = await os.listOrganizationsByMember(member.id, member.id);
+         expect(orgs.length).to.eq(1);
++        orgs = await os.listOrganizationsByMember(collaborator.id, collaborator.id);
++        expect(orgs.length).to.eq(1);
+         orgs = await os.listOrganizationsByMember(stranger.id, stranger.id);
+         expect(orgs.length).to.eq(0);
+         await expectError(ErrorCodes.NOT_FOUND, os.listOrganizationsByMember(stranger.id, owner.id));
+@@ -204,6 +260,9 @@ describe("OrganizationService", async () => {
+         const foundByMember = await os.getOrganization(member.id, org.id);
+         expect(foundByMember.name).to.equal(org.name);
+ 
++        const foundByCollaborator = await os.getOrganization(collaborator.id, org.id);
++        expect(foundByCollaborator.name).to.equal(org.name);
++
+         await expectError(ErrorCodes.NOT_FOUND, os.getOrganization(stranger.id, org.id));
+     });
+ 
+@@ -214,6 +273,7 @@ describe("OrganizationService", async () => {
+         expect(updated.name).to.equal(org.name);
+ 
+         await expectError(ErrorCodes.PERMISSION_DENIED, os.updateOrganization(member.id, org.id, org));
++        await expectError(ErrorCodes.PERMISSION_DENIED, os.updateOrganization(collaborator.id, org.id, org));
+         await expectError(ErrorCodes.NOT_FOUND, os.updateOrganization(stranger.id, org.id, org));
+     });
+ 
+@@ -229,6 +289,7 @@ describe("OrganizationService", async () => {
+         expect(updated.workspaceSharingDisabled).to.be.true;
+ 
+         await expectError(ErrorCodes.PERMISSION_DENIED, os.updateSettings(member.id, org.id, settings));
++        await expectError(ErrorCodes.PERMISSION_DENIED, os.updateSettings(collaborator.id, org.id, settings));
+         await expectError(ErrorCodes.NOT_FOUND, os.updateSettings(stranger.id, org.id, settings));
+     });
+ 
+@@ -270,6 +331,54 @@ describe("OrganizationService", async () => {
+         expect(orgs.total).to.eq(2);
+     });
+ 
++    it("should ad as collaborator with dataops + flexibleRole", async () => {
++        await assertUserRole(collaborator.id, "collaborator");
++        const u2 = await userService.createUser({
++            identity: {
++                authId: "github|1234",
++                authName: "github",
++                authProviderId: "github",
++            },
++        });
++        await os.addOrUpdateMember(owner.id, org.id, u2.id, "member");
++        await assertUserRole(u2.id, "member");
++        // flexibleRole: true + dataops should be collaborator
++        await os.addOrUpdateMember(owner.id, org.id, u2.id, "member", { flexibleRole: true });
++        await assertUserRole(u2.id, "collaborator");
++    });
++
++    it("should join an org with different cell id", async () => {
++        Experiments.configureTestingClient({
++            centralizedPermissions: true,
++            dataops: false,
++        });
++        const u1 = await userService.createUser({
++            identity: {
++                authId: "github|1234",
++                authName: "github",
++                authProviderId: "github",
++            },
++        });
++        const invite = await os.getOrCreateInvite(owner.id, org.id);
++
++        await os.joinOrganization(u1.id, invite.id);
++        await assertUserRole(u1.id, "member");
++
++        Experiments.configureTestingClient({
++            centralizedPermissions: true,
++            dataops: true,
++        });
++        const u2 = await userService.createUser({
++            identity: {
++                authId: "github|1234",
++                authName: "github",
++                authProviderId: "github",
++            },
++        });
++        await os.joinOrganization(u2.id, invite.id);
++        await assertUserRole(u2.id, "collaborator");
++    });
++
+     it("should manage settings", async () => {
+         const myOrg = await os.createOrganization(adminId, "My Org");
+         const settings = await os.getSettings(adminId, myOrg.id);
+diff --git a/components/server/src/orgs/organization-service.ts b/components/server/src/orgs/organization-service.ts
+index 2edb196a7..ba542fda3 100644
+--- a/components/server/src/orgs/organization-service.ts
++++ b/components/server/src/orgs/organization-service.ts
+@@ -16,7 +16,7 @@ import { IAnalyticsWriter } from "@gitpod/gitpod-protocol/lib/analytics";
+ import { ApplicationError, ErrorCodes } from "@gitpod/gitpod-protocol/lib/messaging/error";
+ import { log } from "@gitpod/gitpod-protocol/lib/util/logging";
+ import { inject, injectable } from "inversify";
+-import { Authorizer } from "../authorization/authorizer";
++import { Authorizer, SYSTEM_USER_ID } from "../authorization/authorizer";
+ import { ProjectsService } from "../projects/projects-service";
+ import { TransactionalContext } from "@gitpod/gitpod-db/lib/typeorm/transactional-db-impl";
+ import { DefaultWorkspaceImageValidator } from "./default-workspace-image-validator";
+@@ -24,6 +24,7 @@ import { getPrimaryEmail } from "@gitpod/public-api-common/lib/user-utils";
+ import { UserService } from "../user/user-service";
+ import { SupportedWorkspaceClass } from "@gitpod/gitpod-protocol/lib/workspace-class";
+ import { InstallationService } from "../auth/installation-service";
++import { getExperimentsClientForBackend } from "@gitpod/gitpod-protocol/lib/experiments/configcat-server";
+ 
+ @injectable()
+ export class OrganizationService {
+@@ -245,31 +246,27 @@ export class OrganizationService {
+         if (await this.teamDB.hasActiveSSO(invite.teamId)) {
+             throw new ApplicationError(ErrorCodes.NOT_FOUND, "Invites are disabled for SSO-enabled organizations.");
+         }
+-        try {
+-            return await this.teamDB.transaction(async (db) => {
+-                await this.teamDB.addMemberToTeam(userId, invite.teamId);
+-                await this.auth.addOrganizationRole(invite.teamId, userId, invite.role);
+-                this.analytics.track({
+-                    userId: userId,
+-                    event: "team_joined",
+-                    properties: {
+-                        team_id: invite.teamId,
+-                        invite_id: inviteId,
+-                    },
+-                });
+-                return invite.teamId;
+-            });
+-        } catch (err) {
+-            await this.auth.removeOrganizationRole(invite.teamId, userId, "member");
+-            throw err;
+-        }
++        // set skipRoleUpdate=true to avoid member/owner click join link again cause role change
++        await this.addOrUpdateMember(SYSTEM_USER_ID, invite.teamId, userId, invite.role, {
++            flexibleRole: true,
++            skipRoleUpdate: true,
++        });
++        return invite.teamId;
+     }
+ 
++    /**
++     * Add or update member to an organization, if there's no `owner` in the organization, target role will be owner
++     *
++     * @param opts.flexibleRole when target role is not owner, target role is flexible. Is affected by:
++     *     - `dataops` feature
++     * @param opts.notUpdate don't update role
++     */
+     public async addOrUpdateMember(
+         userId: string,
+         orgId: string,
+         memberId: string,
+         role: OrgMemberRole,
++        opts?: { flexibleRole?: boolean; skipRoleUpdate?: true },
+         txCtx?: TransactionalContext,
+     ): Promise<void> {
+         await this.auth.checkPermissionOnOrganization(userId, "write_members", orgId);
+@@ -290,7 +287,19 @@ export class OrganizationService {
+                     log.info({ userId: memberId }, "First member of organization, setting role to owner.");
+                 }
+ 
+-                await teamDB.addMemberToTeam(memberId, orgId);
++                const result = await teamDB.addMemberToTeam(memberId, orgId);
++                if (result === "already_member" && opts?.skipRoleUpdate) {
++                    return;
++                }
++
++                if (role !== "owner" && opts?.flexibleRole) {
++                    const isDataOps = await getExperimentsClientForBackend().getValueAsync("dataops", false, {
++                        teamId: orgId,
++                    });
++                    if (isDataOps) {
++                        role = "collaborator";
++                    }
++                }
+                 await teamDB.setTeamMemberRole(memberId, orgId, role);
+                 await this.auth.addOrganizationRole(orgId, memberId, role);
+                 // we can remove the built-in installation admin if we have added an owner
+@@ -303,11 +312,12 @@ export class OrganizationService {
+                 }
+             });
+         } catch (err) {
+-            await this.auth.removeOrganizationRole(
+-                orgId,
+-                memberId,
+-                members.find((m) => m.userId === memberId)?.role || "member",
+-            );
++            // remove target role and add old role back
++            await this.auth.removeOrganizationRole(orgId, memberId, role);
++            const oldRole = members.find((m) => m.userId === memberId)?.role;
++            if (oldRole) {
++                await this.auth.addOrganizationRole(orgId, memberId, oldRole);
++            }
+             throw err;
+         }
+     }
+@@ -352,7 +362,7 @@ export class OrganizationService {
+                     await this.userService.deleteUser(userId, memberId);
+                 }
+                 await db.removeMemberFromTeam(userToBeRemoved.id, orgId);
+-                await this.auth.removeOrganizationRole(orgId, memberId, "member");
++                await this.auth.removeOrganizationRole(orgId, memberId, membership.role);
+             });
+         } catch (err) {
+             if (membership) {
+diff --git a/components/spicedb/schema/schema.yaml b/components/spicedb/schema/schema.yaml
+index c7c56c231..d1e76b038 100644
+--- a/components/spicedb/schema/schema.yaml
++++ b/components/spicedb/schema/schema.yaml
+@@ -55,6 +55,9 @@ schema: |-
+     relation owner: user
+     // users who can snapshot workspaces
+     relation snapshoter: organization#member
++    // Some users in an organization may additionally have the `collaborator` role
++    // collaborator can't access members, projects and usage
++    relation collaborator: user
+ 
+ 
+     // synthetic permission for installation->admin (because https://github.com/authzed/spicedb/issues/15)
+@@ -62,29 +65,29 @@ schema: |-
+     permission installation_member = installation->member
+ 
+     // General operations on organization
+-    permission read_info = member + owner + installation->admin
++    permission read_info = member + owner + collaborator + installation->admin
+     permission write_info = owner + installation->admin
+     permission delete = owner + installation->admin
+ 
+-    permission read_settings = member + owner + installation->admin
++    permission read_settings = member + owner + collaborator + installation->admin
+     permission write_settings = owner + installation->admin
+ 
+     // Operations on Organization's Members
+     permission read_members = member + owner + installation->admin
+     permission invite_members = member + owner + installation->admin
+     permission write_members = owner + installation->admin
+-    permission leave = owner + member + installation->admin
++    permission leave = owner + member + collaborator + installation->admin
+ 
+     // Permissions on (sub-)resources
+     permission create_project = member + owner + installation->admin
+ 
+-    permission read_git_provider = owner + member + installation->admin
++    permission read_git_provider = owner + member + collaborator + installation->admin
+     permission write_git_provider = owner + installation->admin
+ 
+     permission read_billing = member + owner + installation->admin
+     permission write_billing = owner + installation->admin
+ 
+-    permission create_workspace = member
++    permission create_workspace = member + collaborator
+ 
+     // can add credit notes and change the spending limits even for free users
+     permission write_billing_admin = installation->admin
+@@ -162,6 +165,8 @@ relationships: |-
+   organization:org_2#owner@user:user_0
+   organization:org_2#member@user:user_1
+   organization:org_2#member@user:user_10
++  // user_2 is a collaborator of org_2
++  organization:org_2#collaborator@user:user_2
+ 
+   // org_2 has a project project_2
+   project:project_2#org@organization:org_2
+@@ -253,3 +258,9 @@ assertions:
+     - organization:org_1#delete@user:user_1
+     # stranger can't access other's non-shared workspace
+     - workspace:workspace_1#access@user:user_2
++    # collaborator(user_2) can't access members, projects, usage
++    - organization:org_2#read_members@user:user_2
++    - project:project_2#read_info@user:user_2
++    - project:project_2#write_info@user:user_2
++    - project:project_2#delete@user:user_2
++    - organization:org_2#read_billing@user:user_2
+diff --git a/components/spicedb/typescript/src/google/api/expr/v1alpha1/checked.pb.ts b/components/spicedb/typescript/src/google/api/expr/v1alpha1/checked.pb.ts
+index efe7c339c..4b5783228 100644
+--- a/components/spicedb/typescript/src/google/api/expr/v1alpha1/checked.pb.ts
++++ b/components/spicedb/typescript/src/google/api/expr/v1alpha1/checked.pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/spicedb/typescript/src/google/api/expr/v1alpha1/syntax.pb.ts b/components/spicedb/typescript/src/google/api/expr/v1alpha1/syntax.pb.ts
+index 1ca5960dc..ac4b4be3e 100644
+--- a/components/spicedb/typescript/src/google/api/expr/v1alpha1/syntax.pb.ts
++++ b/components/spicedb/typescript/src/google/api/expr/v1alpha1/syntax.pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/spicedb/typescript/src/google/protobuf/duration.pb.ts b/components/spicedb/typescript/src/google/protobuf/duration.pb.ts
+index 47da9c5e7..16554fe27 100644
+--- a/components/spicedb/typescript/src/google/protobuf/duration.pb.ts
++++ b/components/spicedb/typescript/src/google/protobuf/duration.pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/spicedb/typescript/src/google/protobuf/empty.pb.ts b/components/spicedb/typescript/src/google/protobuf/empty.pb.ts
+index 3db639eb4..7ac02c269 100644
+--- a/components/spicedb/typescript/src/google/protobuf/empty.pb.ts
++++ b/components/spicedb/typescript/src/google/protobuf/empty.pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/spicedb/typescript/src/google/protobuf/struct.pb.ts b/components/spicedb/typescript/src/google/protobuf/struct.pb.ts
+index ea1d9cdb1..f1af0a902 100644
+--- a/components/spicedb/typescript/src/google/protobuf/struct.pb.ts
++++ b/components/spicedb/typescript/src/google/protobuf/struct.pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/spicedb/typescript/src/google/protobuf/timestamp.pb.ts b/components/spicedb/typescript/src/google/protobuf/timestamp.pb.ts
+index fb8680145..7a2c31bad 100644
+--- a/components/spicedb/typescript/src/google/protobuf/timestamp.pb.ts
++++ b/components/spicedb/typescript/src/google/protobuf/timestamp.pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/components/spicedb/typescript/src/impl/v1/impl.pb.ts b/components/spicedb/typescript/src/impl/v1/impl.pb.ts
+index 9ac49b6f6..adcb0b2f8 100644
+--- a/components/spicedb/typescript/src/impl/v1/impl.pb.ts
++++ b/components/spicedb/typescript/src/impl/v1/impl.pb.ts
+@@ -1,5 +1,5 @@
+ /**
+- * Copyright (c) 2023 Gitpod GmbH. All rights reserved.
++ * Copyright (c) 2024 Gitpod GmbH. All rights reserved.
+  * Licensed under the GNU Affero General Public License (AGPL).
+  * See License.AGPL.txt in the project root for license information.
+  */
+diff --git a/test/BUILD.yaml b/test/BUILD.yaml
+index 9352f367a..1acae95b6 100644
+--- a/test/BUILD.yaml
++++ b/test/BUILD.yaml
+@@ -19,6 +19,7 @@ packages:
+       - components/supervisor-api/go:lib
+       - components/ws-manager-api/go:lib
+       - components/ide-service-api/go:lib
++      - components/public-api/go:lib
+     prep:
+       - ["go", "get", "-v", "./..."]
+       - ["sh", "-c", "echo package main > main.go"]
+diff --git a/test/go.mod b/test/go.mod
+index 00353654b..f2a392e26 100644
+--- a/test/go.mod
++++ b/test/go.mod
+@@ -3,7 +3,9 @@ module github.com/gitpod-io/gitpod/test
+ go 1.21
+ 
+ require (
++	github.com/bufbuild/connect-go v1.10.0
+ 	github.com/gitpod-io/gitpod/common-go v0.0.0-00010101000000-000000000000
++	github.com/gitpod-io/gitpod/components/public-api/go v0.0.0-00010101000000-000000000000
+ 	github.com/gitpod-io/gitpod/content-service v0.0.0-00010101000000-000000000000
+ 	github.com/gitpod-io/gitpod/content-service/api v0.0.0-00010101000000-000000000000
+ 	github.com/gitpod-io/gitpod/gitpod-protocol v0.0.0-00010101000000-000000000000
+@@ -15,9 +17,11 @@ require (
+ 	github.com/google/go-github/v42 v42.0.0
+ 	github.com/google/nftables v0.1.0
+ 	github.com/google/uuid v1.3.0
++	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0
+ 	github.com/helloyi/go-sshclient v1.1.1
+ 	github.com/mitchellh/go-ps v1.0.0
+ 	github.com/prometheus/procfs v0.10.1
++	github.com/sirupsen/logrus v1.9.3
+ 	github.com/vishvananda/netns v0.0.4
+ 	golang.org/x/exp v0.0.0-20220722155223-a9213eeb770e
+ 	golang.org/x/oauth2 v0.8.0
+@@ -25,7 +29,7 @@ require (
+ 	golang.org/x/sys v0.11.0
+ 	golang.org/x/xerrors v0.0.0-20220907171357-04be3eba64a2
+ 	google.golang.org/grpc v1.53.0
+-	google.golang.org/protobuf v1.30.0
++	google.golang.org/protobuf v1.31.0
+ 	k8s.io/api v0.27.3
+ 	k8s.io/apimachinery v0.27.3
+ 	k8s.io/cli-runtime v0.27.3
+@@ -102,7 +106,6 @@ require (
+ 	github.com/googleapis/gax-go/v2 v2.7.1 // indirect
+ 	github.com/gorilla/websocket v1.5.0 // indirect
+ 	github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7 // indirect
+-	github.com/grpc-ecosystem/go-grpc-middleware v1.3.0 // indirect
+ 	github.com/grpc-ecosystem/go-grpc-prometheus v1.2.0 // indirect
+ 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.11.3 // indirect
+ 	github.com/hashicorp/golang-lru v1.0.2 // indirect
+@@ -144,7 +147,6 @@ require (
+ 	github.com/prometheus/common v0.42.0 // indirect
+ 	github.com/rs/xid v1.2.1 // indirect
+ 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
+-	github.com/sirupsen/logrus v1.9.3 // indirect
+ 	github.com/slok/go-http-metrics v0.10.0 // indirect
+ 	github.com/sourcegraph/jsonrpc2 v0.0.0-20200429184054-15c2290dcb37 // indirect
+ 	github.com/spf13/cobra v1.6.0 // indirect
+@@ -249,3 +251,5 @@ replace k8s.io/kubectl => k8s.io/kubectl v0.27.3 // leeway indirect from compone
+ replace k8s.io/mount-utils => k8s.io/mount-utils v0.27.3 // leeway indirect from components/common-go:lib
+ 
+ replace k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.27.3 // leeway indirect from components/common-go:lib
++
++replace github.com/gitpod-io/gitpod/components/public-api/go => ../components/public-api/go // leeway
+diff --git a/test/go.sum b/test/go.sum
+index 03d11f4f9..e6b0cb2d3 100644
+--- a/test/go.sum
++++ b/test/go.sum
+@@ -66,6 +66,8 @@ github.com/aws/smithy-go v1.13.4 h1:/RN2z1txIJWeXeOkzX+Hk/4Uuvv7dWtCjbmVJcrskyk=
+ github.com/aws/smithy-go v1.13.4/go.mod h1:Tg+OJXh4MB2R/uN61Ko2f6hTZwB/ZYGOtib8J3gBHzA=
+ github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
+ github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
++github.com/bufbuild/connect-go v1.10.0 h1:QAJ3G9A1OYQW2Jbk3DeoJbkCxuKArrvZgDt47mjdTbg=
++github.com/bufbuild/connect-go v1.10.0/go.mod h1:CAIePUgkDR5pAFaylSMtNK45ANQjp9JvpluG20rhpV8=
+ github.com/cenkalti/backoff/v4 v4.1.3 h1:cFAlzYUlVYDysBEH2T5hyJZMh3+5+WCBvSnK6Q8UtC4=
+ github.com/cenkalti/backoff/v4 v4.1.3/go.mod h1:scbssz8iZGpm3xbr14ovlUdkxfGXNInqkPWOWmG2CLw=
+ github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
+@@ -587,8 +589,8 @@ google.golang.org/protobuf v1.24.0/go.mod h1:r/3tXBNzIEhYS9I1OUVjXDlt8tc493IdKGj
+ google.golang.org/protobuf v1.25.0/go.mod h1:9JNX74DMeImyA3h4bdi1ymwjUzf21/xIlbajtzgsN7c=
+ google.golang.org/protobuf v1.26.0-rc.1/go.mod h1:jlhhOSvTdKEhbULTjvd4ARK9grFBp09yW+WbY/TyQbw=
+ google.golang.org/protobuf v1.26.0/go.mod h1:9q0QmTI4eRPtz6boOQmLYwt+qCgq0jsYwAQnmE0givc=
+-google.golang.org/protobuf v1.30.0 h1:kPPoIgf3TsEvrm0PFe15JQ+570QVxYzEvvHqChK+cng=
+-google.golang.org/protobuf v1.30.0/go.mod h1:HV8QOd/L58Z+nl8r43ehVNZIU/HEI6OcFqwMG9pJV4I=
++google.golang.org/protobuf v1.31.0 h1:g0LDEJHgrBl9N9r17Ru3sqWhkIx2NB67okBHPwC7hs8=
++google.golang.org/protobuf v1.31.0/go.mod h1:HV8QOd/L58Z+nl8r43ehVNZIU/HEI6OcFqwMG9pJV4I=
+ gopkg.in/DATA-DOG/go-sqlmock.v1 v1.3.0 h1:FVCohIoYO7IJoDDVpV2pdq7SgrMH6wHnuTyrdrxJNoY=
+ gopkg.in/DATA-DOG/go-sqlmock.v1 v1.3.0/go.mod h1:OdE7CF6DbADk7lN8LIKRzRJTTZXIjtWgA5THM5lhBAw=
+ gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
+diff --git a/test/tests/smoke-test/collaborator_test.go b/test/tests/smoke-test/collaborator_test.go
+new file mode 100644
+index 000000000..cabb58e03
+--- /dev/null
++++ b/test/tests/smoke-test/collaborator_test.go
+@@ -0,0 +1,272 @@
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
++// Licensed under the GNU Affero General Public License (AGPL).
++// See License.AGPL.txt in the project root for license information.
++
++package smoketest
++
++import (
++	"context"
++	"fmt"
++	"net/http"
++	"os"
++	"strings"
++	"testing"
++	"time"
++
++	connect "github.com/bufbuild/connect-go"
++	"github.com/gitpod-io/gitpod/common-go/util"
++	experimentalv1 "github.com/gitpod-io/gitpod/components/public-api/go/experimental/v1"
++	experimentalv1connect "github.com/gitpod-io/gitpod/components/public-api/go/experimental/v1/v1connect"
++	v1 "github.com/gitpod-io/gitpod/components/public-api/go/v1"
++	v1connect "github.com/gitpod-io/gitpod/components/public-api/go/v1/v1connect"
++	serverapi "github.com/gitpod-io/gitpod/gitpod-protocol"
++	log "github.com/sirupsen/logrus"
++	"golang.org/x/xerrors"
++	"google.golang.org/grpc"
++	"google.golang.org/grpc/credentials/insecure"
++)
++
++/**
++ *
++# 1. Create an org
++# 2. Invite your another account to be a collaborator of this org
++# 3. Create a project in this org
++
++cd test
++export TEST_COLLABORATOR=true
++export GITPOD_HOST=hw-collaborator.preview.gitpod-dev.com
++export ORG_ID=130d67cf-8b11-45e9-b8d2-33bf34ca4a4c
++export PROJECT_ID=699c6566-1049-469e-9e61-c8fe0db9d396
++
++# test with cookie, cookie should format like `_hw_collaborator_preview_gitpod_dev_com_jwt2_=xxx“
++export USE_COOKIE=true
++	export USER_TOKEN="<your_cookie>"
++go test -run "^TestMembers|TestProjects|TestGetProject$" github.com/gitpod-io/gitpod/test/tests/smoke-test -v -count=1
++
++# test with PAT
++export USE_COOKIE=false
++	export USER_TOKEN=<your_pat>
++go test -run "^TestMembers|TestProjects|TestGetProject$" github.com/gitpod-io/gitpod/test/tests/smoke-test -v -count=1
++
++# debug: go test -run "^TestProjects$" github.com/gitpod-io/gitpod/test/tests/smoke-test -v -count=1
++*/
++
++// TestMembers tests collaborator can't access members with:
++//  1. experimental.v1 + COOKIE     -> permission_denied
++//  2. experimental.v1 + PAT        -> permission_denied
++//  3. v1 + COOKIE                  -> permission_denied
++//  4. v1 + PAT                     -> permission_denied
++//  5. server + COOKIE              -> code 403
++func TestMembers(t *testing.T) {
++	if !shouldTestCollaborator() {
++		t.Skip("skipping collaborator test")
++		return
++	}
++	userToken, _ := os.LookupEnv("USER_TOKEN")
++	gitpodHost, _ := os.LookupEnv("GITPOD_HOST")
++	orgID, _ := os.LookupEnv("ORG_ID")
++
++	if _, err := connectToServer(gitpodHost, userToken); err != nil {
++		t.Errorf("failed getting server conn: %v", err)
++	}
++	v1Http, v1Opts, v1Host := getPAPIConnSettings(gitpodHost, userToken, getUseCookie(), false)
++	ev1Http, ev1Opts, ev1Host := getPAPIConnSettings(gitpodHost, userToken, getUseCookie(), true)
++	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
++	defer cancel()
++	client := experimentalv1connect.NewTeamsServiceClient(ev1Http, ev1Host, ev1Opts...)
++	v1Client := v1connect.NewOrganizationServiceClient(v1Http, v1Host, v1Opts...)
++	_, err := client.ListTeamMembers(ctx, connect.NewRequest(&experimentalv1.ListTeamMembersRequest{
++		TeamId: orgID,
++	}))
++	_, err2 := v1Client.ListOrganizationMembers(ctx, connect.NewRequest(&v1.ListOrganizationMembersRequest{
++		OrganizationId: orgID,
++		Pagination:     &v1.PaginationRequest{},
++	}))
++	_, err3 := serverConn.GetTeamMembers(ctx, orgID)
++
++	if !strings.Contains(err.Error(), "permission_denied:") {
++		t.Errorf("experimental should respond permission_denied, got: %s", err)
++	}
++	if !strings.Contains(err2.Error(), "permission_denied:") {
++		t.Errorf("v1 should respond permission_denied, got: %s", err2)
++	}
++	if getUseCookie() {
++		if !strings.Contains(err3.Error(), "code 403 ") {
++			t.Errorf("server should respond permission_denied, got: %s", err3)
++		}
++	}
++}
++
++// TestProjects tests collaborator can't access projects with:
++//  1. experimental.v1 + COOKIE     -> empty array
++//  2. experimental.v1 + PAT        -> empty array
++//  3. v1 + COOKIE                  -> empty array
++//  4. v1 + PAT                     -> empty array
++//  5. server + COOKIE              -> empty array
++func TestProjects(t *testing.T) {
++	if !shouldTestCollaborator() {
++		t.Skip("skipping collaborator test")
++		return
++	}
++	userToken, _ := os.LookupEnv("USER_TOKEN")
++	gitpodHost, _ := os.LookupEnv("GITPOD_HOST")
++	orgID, _ := os.LookupEnv("ORG_ID")
++
++	if _, err := connectToServer(gitpodHost, userToken); err != nil {
++		t.Errorf("failed getting server conn: %v", err)
++	}
++	v1Http, v1Opts, v1Host := getPAPIConnSettings(gitpodHost, userToken, getUseCookie(), false)
++	ev1Http, ev1Opts, ev1Host := getPAPIConnSettings(gitpodHost, userToken, getUseCookie(), false)
++
++	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
++	defer cancel()
++	client := experimentalv1connect.NewProjectsServiceClient(ev1Http, ev1Host, ev1Opts...)
++	v1Client := v1connect.NewConfigurationServiceClient(v1Http, v1Host, v1Opts...)
++	resp, err := client.ListProjects(ctx, connect.NewRequest(&experimentalv1.ListProjectsRequest{
++		TeamId:     orgID,
++		Pagination: &experimentalv1.Pagination{},
++	}))
++	resp2, err2 := v1Client.ListConfigurations(ctx, connect.NewRequest(&v1.ListConfigurationsRequest{
++		OrganizationId: orgID,
++		Pagination:     &v1.PaginationRequest{},
++	}))
++	resp3, err3 := serverConn.GetTeamProjects(ctx, orgID)
++
++	if getUseCookie() {
++		if err != nil || err2 != nil || err3 != nil {
++			t.Errorf("should respond empty array, got: %v, %v, %v", err, err2, err3)
++		}
++		if len(resp.Msg.GetProjects()) != 0 || len(resp2.Msg.GetConfigurations()) != 0 || len(resp3) != 0 {
++			t.Errorf("should respond empty array, got: %d, %d, %d", len(resp.Msg.GetProjects()), len(resp2.Msg.GetConfigurations()), len(resp3))
++		}
++	} else {
++		if err != nil || err2 != nil {
++			t.Errorf("should respond empty array, got: %v, %v, %v", err, err2, err3)
++		}
++
++		if len(resp.Msg.GetProjects()) != 0 || len(resp2.Msg.GetConfigurations()) != 0 {
++			t.Errorf("should respond empty array, got: %d, %d", len(resp.Msg.GetProjects()), len(resp2.Msg.GetConfigurations()))
++		}
++	}
++}
++
++// TestGetProject tests collaborator can't access project detail with:
++//  1. v1 + COOKIE        -> not_found
++//  2. v1 + PAT           -> not_found
++func TestGetProject(t *testing.T) {
++	if !shouldTestCollaborator() {
++		t.Skip("skipping collaborator test")
++		return
++	}
++	userToken, _ := os.LookupEnv("USER_TOKEN")
++	gitpodHost, _ := os.LookupEnv("GITPOD_HOST")
++	projectID, _ := os.LookupEnv("PROJECT_ID")
++
++	if _, err := connectToServer(gitpodHost, userToken); err != nil {
++		t.Errorf("failed getting server conn: %v", err)
++	}
++	v1Http, v1Opts, v1Host := getPAPIConnSettings(gitpodHost, userToken, getUseCookie(), false)
++
++	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
++	defer cancel()
++
++	v1Client := v1connect.NewConfigurationServiceClient(v1Http, v1Host, v1Opts...)
++	_, err2 := v1Client.GetConfiguration(ctx, connect.NewRequest(&v1.GetConfigurationRequest{
++		ConfigurationId: projectID,
++	}))
++	if !strings.Contains(err2.Error(), "not_found") {
++		t.Errorf("v1 should respond not_found, got: %s", err2)
++	}
++}
++
++// Note: there's no usage endpoint in the server / public v1 experimental.v1 APIs
++
++var serverConn *serverapi.APIoverJSONRPC
++
++func shouldTestCollaborator() bool {
++	should, _ := os.LookupEnv("TEST_COLLABORATOR")
++	return should != "true"
++}
++
++func getUseCookie() bool {
++	useCookie, _ := os.LookupEnv("USE_COOKIE")
++	return useCookie == "true"
++}
++
++func connectToServer(gitpodHost, token string) (*serverapi.APIoverJSONRPC, error) {
++	if serverConn != nil {
++		return serverConn, nil
++	}
++	supervisorConn, err := grpc.Dial(util.GetSupervisorAddress(), grpc.WithTransportCredentials(insecure.NewCredentials()))
++	if err != nil {
++		return nil, xerrors.Errorf("failed connecting to supervisor: %w", err)
++	}
++	defer supervisorConn.Close()
++	if err != nil {
++		return nil, xerrors.Errorf("failed getting token from supervisor: %w", err)
++	}
++
++	endpoint := "wss://" + gitpodHost + "/api/gitpod"
++	useCookie := getUseCookie()
++	opts := serverapi.ConnectToServerOpts{
++		Context: context.Background(),
++		Log:     log.NewEntry(log.StandardLogger()),
++		ExtraHeaders: map[string]string{
++			"User-Agent":       "gitpod/cli",
++			"X-Client-Version": "0.0.1",
++		},
++	}
++	if useCookie {
++		opts.ExtraHeaders["Cookie"] = token
++	} else {
++		opts.Token = token
++	}
++	client, err := serverapi.ConnectToServer(endpoint, opts)
++	if err != nil {
++		return nil, xerrors.Errorf("failed connecting to server: %w", err)
++	}
++	serverConn = client
++	return client, nil
++}
++
++func getPAPIConnSettings(gitpodHost, token string, useCookie, isExperimental bool) (*http.Client, []connect.ClientOption, string) {
++	client := &http.Client{
++		Transport: &AuthenticatedTransport{Token: token, T: http.DefaultTransport, UseCookie: useCookie},
++	}
++	opts := []connect.ClientOption{
++		connect.WithInterceptors(
++			connect.UnaryInterceptorFunc(func(next connect.UnaryFunc) connect.UnaryFunc {
++				return func(ctx context.Context, req connect.AnyRequest) (connect.AnyResponse, error) {
++					if req.Spec().IsClient {
++						if useCookie {
++							req.Header().Set("Cookie", token)
++						} else {
++							req.Header().Set("Authorization", fmt.Sprintf("Bearer %s", token))
++						}
++					}
++					return next(ctx, req)
++				}
++			}),
++		),
++	}
++	endpoint := fmt.Sprintf("https://%s/public-api", gitpodHost)
++	if isExperimental {
++		endpoint = fmt.Sprintf("https://api.%s", gitpodHost)
++	}
++	return client, opts, endpoint
++}
++
++type AuthenticatedTransport struct {
++	T         http.RoundTripper
++	UseCookie bool
++	Token     string
++}
++
++func (t *AuthenticatedTransport) RoundTrip(req *http.Request) (*http.Response, error) {
++	if t.UseCookie {
++		req.Header.Add("Cookie", t.Token)
++	} else {
++		req.Header.Add("Authorization", "Bearer "+t.Token)
++	}
++	return t.T.RoundTrip(req)
++}

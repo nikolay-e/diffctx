@@ -1,0 +1,2257 @@
+From cf914e412dcf7fbaa8aa6215141f08b9bb3e8c49 Mon Sep 17 00:00:00 2001
+From: Nicola Corti <ncor@meta.com>
+Date: Fri, 7 Jun 2024 10:32:16 -0700
+Subject: [PATCH] RNGP - Autolinking. Add support for linking projects.
+ (#44799)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/44799
+
+This is the final part of core autolinking:
+1. I split RNGP into an `app-plugin` and a `settings-plugin`. This was necessary as the Gradle modules need to be loaded inside the settings.gradle.kts.
+2. I've introduced a Settings Plugin to take care of either invoking the `config` command from CLI or receiving a file in input.
+3. I've removed the former `RunAutolinkingConfigTask` as now the command is invoked inside the settings plugin
+4. I've added hashing computed based on the lockfiles so we won't be re-executing teh `config` command if the lockfiles are not changed.
+5. I've updated RN-Tester to use the core autolinking rather than manual linking for the 2 libraries it's using.
+
+Changelog:linking
+[Internal] [Changed] - RNGP - Autolinking. Add support for linking projects
+
+Reviewed By: blakef
+
+Differential Revision: D58190363
+
+fbshipit-source-id: 6ab8b36729e77ca715f50a4a00aa0ca4eb5b63b1
+---
+ .gitignore                                    |   1 -
+ packages/helloworld/android/app/build.gradle  |   6 +-
+ .../java/com/helloworld/MainApplication.kt    |   4 +-
+ packages/helloworld/android/settings.gradle   |   7 +-
+ .../react-native-gradle-plugin/.gitignore     |   4 +
+ .../build.gradle.kts                          |  75 +------
+ .../react-native-gradle-plugin/package.json   |   6 +-
+ .../react-native-gradle-plugin/README.md      |  17 ++
+ .../build.gradle.kts                          |  86 +++++++
+ .../com/facebook/react/ReactExtension.kt      |  79 ++++---
+ .../kotlin/com/facebook/react/ReactPlugin.kt  |  24 +-
+ .../facebook/react/ReactRootProjectPlugin.kt  |   0
+ .../com/facebook/react/TaskConfiguration.kt   |   0
+ .../react/internal/PrivateReactExtension.kt   |   0
+ .../facebook/react/tasks/BundleHermesCTask.kt |   0
+ ...rateAutolinkingNewArchitecturesFileTask.kt |  15 +-
+ .../tasks/GenerateCodegenArtifactsTask.kt     |   0
+ .../react/tasks/GenerateCodegenSchemaTask.kt  |   0
+ .../react/tasks/GeneratePackageListTask.kt    |   0
+ .../tasks/internal/BuildCodegenCLITask.kt     |   0
+ .../react/tasks/internal/PrepareBoostTask.kt  |   0
+ .../react/tasks/internal/PrepareGlogTask.kt   |   0
+ .../react/tasks/internal/PrepareJSCTask.kt    |   0
+ .../internal/PreparePrefabHeadersTask.kt      |   0
+ .../utils/PrefabPreprocessingEntry.kt         |   0
+ .../react/utils/AgpConfiguratorUtils.kt       |   0
+ .../react/utils/BackwardCompatUtils.kt        |   0
+ .../facebook/react/utils/DependencyUtils.kt   |   0
+ .../com/facebook/react/utils/FileUtils.kt     |   0
+ .../react/utils/JdkConfiguratorUtils.kt       |   0
+ .../react/utils/KotlinStdlibCompatUtils.kt    |   0
+ .../react/utils/NdkConfiguratorUtils.kt       |   0
+ .../kotlin/com/facebook/react/utils/Os.kt     |   0
+ .../com/facebook/react/utils/PathUtils.kt     |   0
+ .../com/facebook/react/utils/ProjectUtils.kt  |   0
+ .../com/facebook/react/utils/PropertyUtils.kt |   0
+ .../com/facebook/react/utils/TaskUtils.kt     |   0
+ .../com/facebook/react/ReactExtensionTest.kt  | 164 ++++++++++++++
+ .../com/facebook/react/TestReactExtension.kt  |   0
+ .../ModelAutolinkingDependenciesJsonTest.kt   |   0
+ .../react/tasks/BundleHermesCTaskTest.kt      |   0
+ ...AutolinkingNewArchitecturesFileTaskTest.kt |   0
+ .../tasks/GenerateCodegenArtifactsTaskTest.kt |   0
+ .../tasks/GenerateCodegenSchemaTaskTest.kt    |   0
+ .../tasks/GeneratePackageListTaskTest.kt      |   0
+ .../tasks/internal/BuildCodegenCLITaskTest.kt |   0
+ .../tasks/internal/PrepareBoostTaskTest.kt    |   0
+ .../tasks/internal/PrepareGlogTaskTest.kt     |   0
+ .../tasks/internal/PrepareJSCTaskTest.kt      |   0
+ .../internal/PreparePrefabHeadersTaskTest.kt  |   0
+ .../utils/PrefabPreprocessingEntryTest.kt     |   0
+ .../kotlin/com/facebook/react/tests/OsRule.kt |   0
+ .../com/facebook/react/tests/TaskTestUtils.kt |   0
+ .../kotlin/com/facebook/react/tests/WithOs.kt |   0
+ .../react/utils/AgpConfiguratorUtilsTest.kt   |   0
+ .../react/utils/BackwardCompatUtilsTest.kt    |   0
+ .../react/utils/DependencyUtilsTest.kt        |   0
+ .../com/facebook/react/utils/FileUtilsTest.kt |   0
+ .../utils/KotlinStdlibCompatUtilsTest.kt      |   0
+ .../react/utils/NdkConfiguratorUtilsTest.kt   |   0
+ .../kotlin/com/facebook/react/utils/OsTest.kt |   0
+ .../com/facebook/react/utils/PathUtilsTest.kt |   0
+ .../facebook/react/utils/ProjectUtilsTest.kt  |   0
+ .../com/facebook/react/utils/TaskUtilsTest.kt |   0
+ .../settings-plugin/build.gradle.kts          |  76 +++++++
+ .../facebook/react/ReactSettingsExtension.kt  | 121 ++++++++++
+ .../com/facebook/react/ReactSettingsPlugin.kt |  23 ++
+ .../react/ReactSettingsExtensionTest.kt       | 211 ++++++++++++++++++
+ .../settings.gradle.kts                       |   8 +-
+ .../shared/build.gradle.kts                   |  42 ++++
+ .../ModelAutolinkingAndroidProjectJson.kt     |   0
+ .../react/model/ModelAutolinkingConfigJson.kt |   0
+ .../model/ModelAutolinkingDependenciesJson.kt |   0
+ ...olinkingDependenciesPlatformAndroidJson.kt |   0
+ ...odelAutolinkingDependenciesPlatformJson.kt |   0
+ .../model/ModelAutolinkingProjectJson.kt      |   0
+ .../react/model/ModelCodegenConfig.kt         |   0
+ .../react/model/ModelCodegenConfigAndroid.kt  |   0
+ .../facebook/react/model/ModelPackageJson.kt  |   0
+ .../com/facebook/react/utils/JsonUtils.kt     |   0
+ .../com/facebook/react/utils/JsonUtilsTest.kt |   0
+ .../react/tasks/RunAutolinkingConfigTask.kt   |  78 -------
+ .../tasks/RunAutolinkingConfigTaskTest.kt     | 159 -------------
+ .../android/src/main/jni/CMakeLists.txt       |  49 ++++
+ .../ReactPopupMenuAndroidSpecs-generated.cpp  |  22 ++
+ .../src/main/jni/ReactPopupMenuAndroidSpecs.h |  24 ++
+ .../ComponentDescriptors.h                    |   0
+ .../EventEmitters.cpp                         |   0
+ .../EventEmitters.h                           |   0
+ .../ReactPopupMenuAndroidSpecs/Props.cpp      |   0
+ .../ReactPopupMenuAndroidSpecs/Props.h        |   0
+ .../ShadowNodes.cpp                           |   0
+ .../ReactPopupMenuAndroidSpecs/ShadowNodes.h  |   0
+ .../ReactPopupMenuAndroidSpecs/States.cpp     |   0
+ .../ReactPopupMenuAndroidSpecs/States.h       |   0
+ .../react-native.config.js                    |  16 ++
+ .../react-native.config.js                    |  16 ++
+ .../cmake-utils/ReactNative-application.cmake |   8 +-
+ .../template/android/app/build.gradle         |   5 +-
+ .../java/com/helloworld/MainApplication.kt    |   4 +-
+ .../template/android/settings.gradle          |   5 +-
+ .../rn-tester/android/app/build.gradle.kts    |   6 +-
+ settings.gradle.kts                           |  11 +-
+ 103 files changed, 983 insertions(+), 389 deletions(-)
+ create mode 100644 packages/react-native-gradle-plugin/.gitignore
+ create mode 100644 packages/react-native-gradle-plugin/react-native-gradle-plugin/README.md
+ create mode 100644 packages/react-native-gradle-plugin/react-native-gradle-plugin/build.gradle.kts
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/ReactExtension.kt (71%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/ReactPlugin.kt (93%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/ReactRootProjectPlugin.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/TaskConfiguration.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/internal/PrivateReactExtension.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTask.kt (92%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTask.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTask.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/tasks/GeneratePackageListTask.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITask.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/tasks/internal/PrepareBoostTask.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/tasks/internal/PrepareGlogTask.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/tasks/internal/PrepareJSCTask.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTask.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntry.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/utils/AgpConfiguratorUtils.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/utils/BackwardCompatUtils.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/utils/DependencyUtils.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/utils/FileUtils.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/utils/JdkConfiguratorUtils.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtils.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/utils/NdkConfiguratorUtils.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/utils/Os.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/utils/PathUtils.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/utils/ProjectUtils.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/utils/PropertyUtils.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/main/kotlin/com/facebook/react/utils/TaskUtils.kt (100%)
+ create mode 100644 packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/ReactExtensionTest.kt
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/TestReactExtension.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJsonTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/tasks/BundleHermesCTaskTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTaskTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTaskTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTaskTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/tasks/GeneratePackageListTaskTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITaskTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/tasks/internal/PrepareBoostTaskTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/tasks/internal/PrepareGlogTaskTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/tasks/internal/PrepareJSCTaskTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTaskTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntryTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/tests/OsRule.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/tests/TaskTestUtils.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/tests/WithOs.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/utils/AgpConfiguratorUtilsTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/utils/BackwardCompatUtilsTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/utils/DependencyUtilsTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/utils/FileUtilsTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtilsTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/utils/NdkConfiguratorUtilsTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/utils/OsTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/utils/PathUtilsTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/utils/ProjectUtilsTest.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => react-native-gradle-plugin}/src/test/kotlin/com/facebook/react/utils/TaskUtilsTest.kt (100%)
+ create mode 100644 packages/react-native-gradle-plugin/settings-plugin/build.gradle.kts
+ create mode 100644 packages/react-native-gradle-plugin/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsExtension.kt
+ create mode 100644 packages/react-native-gradle-plugin/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsPlugin.kt
+ create mode 100644 packages/react-native-gradle-plugin/settings-plugin/src/test/kotlin/com/facebook/react/ReactSettingsExtensionTest.kt
+ create mode 100644 packages/react-native-gradle-plugin/shared/build.gradle.kts
+ rename packages/react-native-gradle-plugin/{ => shared}/src/main/kotlin/com/facebook/react/model/ModelAutolinkingAndroidProjectJson.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => shared}/src/main/kotlin/com/facebook/react/model/ModelAutolinkingConfigJson.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => shared}/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJson.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => shared}/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformAndroidJson.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => shared}/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformJson.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => shared}/src/main/kotlin/com/facebook/react/model/ModelAutolinkingProjectJson.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => shared}/src/main/kotlin/com/facebook/react/model/ModelCodegenConfig.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => shared}/src/main/kotlin/com/facebook/react/model/ModelCodegenConfigAndroid.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => shared}/src/main/kotlin/com/facebook/react/model/ModelPackageJson.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => shared}/src/main/kotlin/com/facebook/react/utils/JsonUtils.kt (100%)
+ rename packages/react-native-gradle-plugin/{ => shared}/src/test/kotlin/com/facebook/react/utils/JsonUtilsTest.kt (100%)
+ delete mode 100644 packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/RunAutolinkingConfigTask.kt
+ delete mode 100644 packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/RunAutolinkingConfigTaskTest.kt
+ create mode 100644 packages/react-native-popup-menu-android/android/src/main/jni/CMakeLists.txt
+ create mode 100644 packages/react-native-popup-menu-android/android/src/main/jni/ReactPopupMenuAndroidSpecs-generated.cpp
+ create mode 100644 packages/react-native-popup-menu-android/android/src/main/jni/ReactPopupMenuAndroidSpecs.h
+ rename packages/react-native-popup-menu-android/android/src/{ => main}/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/ComponentDescriptors.h (100%)
+ rename packages/react-native-popup-menu-android/android/src/{ => main}/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/EventEmitters.cpp (100%)
+ rename packages/react-native-popup-menu-android/android/src/{ => main}/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/EventEmitters.h (100%)
+ rename packages/react-native-popup-menu-android/android/src/{ => main}/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/Props.cpp (100%)
+ rename packages/react-native-popup-menu-android/android/src/{ => main}/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/Props.h (100%)
+ rename packages/react-native-popup-menu-android/android/src/{ => main}/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/ShadowNodes.cpp (100%)
+ rename packages/react-native-popup-menu-android/android/src/{ => main}/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/ShadowNodes.h (100%)
+ rename packages/react-native-popup-menu-android/android/src/{ => main}/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/States.cpp (100%)
+ rename packages/react-native-popup-menu-android/android/src/{ => main}/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/States.h (100%)
+ create mode 100644 packages/react-native-popup-menu-android/react-native.config.js
+ create mode 100644 packages/react-native-test-library/react-native.config.js
+
+diff --git a/.gitignore b/.gitignore
+index b331cd3cd3e..3e528e79409 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -24,7 +24,6 @@ project.xcworkspace
+ 
+ # Gradle
+ /build/
+-/packages/react-native-gradle-plugin/build/
+ /packages/rn-tester/build
+ /packages/rn-tester/android/app/.cxx/
+ /packages/rn-tester/android/app/build/
+diff --git a/packages/helloworld/android/app/build.gradle b/packages/helloworld/android/app/build.gradle
+index f3db66d5ed3..7647c0d5058 100644
+--- a/packages/helloworld/android/app/build.gradle
++++ b/packages/helloworld/android/app/build.gradle
+@@ -56,6 +56,9 @@ react {
+     //
+     //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
+     // hermesFlags = ["-O", "-output-source-map"]
++
++    /* Autolinking */
++    autolinkLibrariesWithApp()
+ }
+ 
+ /**
+@@ -121,6 +124,3 @@ dependencies {
+         implementation jscFlavor
+     }
+ }
+-
+-// TODO: This needs to use the new autolinking code in the gradle-plugin instead
+-// apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)
+diff --git a/packages/helloworld/android/app/src/main/java/com/helloworld/MainApplication.kt b/packages/helloworld/android/app/src/main/java/com/helloworld/MainApplication.kt
+index 5db83cc76e4..3a5a22a6c82 100644
+--- a/packages/helloworld/android/app/src/main/java/com/helloworld/MainApplication.kt
++++ b/packages/helloworld/android/app/src/main/java/com/helloworld/MainApplication.kt
+@@ -8,7 +8,7 @@
+ package com.helloworld
+ 
+ import android.app.Application
+-import com.facebook.react.PackageList
++import com.facebook.react.PackageList2
+ import com.facebook.react.ReactApplication
+ import com.facebook.react.ReactHost
+ import com.facebook.react.ReactNativeHost
+@@ -23,7 +23,7 @@ class MainApplication : Application(), ReactApplication {
+   override val reactNativeHost: ReactNativeHost =
+       object : DefaultReactNativeHost(this) {
+         override fun getPackages(): List<ReactPackage> =
+-            PackageList(this).packages.apply {
++            PackageList2(this).packages.apply {
+               // Packages that cannot be autolinked yet can be added manually here, for example:
+               // add(MyReactNativePackage())
+             }
+diff --git a/packages/helloworld/android/settings.gradle b/packages/helloworld/android/settings.gradle
+index 0125930e708..0a791606d8e 100644
+--- a/packages/helloworld/android/settings.gradle
++++ b/packages/helloworld/android/settings.gradle
+@@ -5,7 +5,12 @@
+  * LICENSE file in the root directory of this source tree.
+  */
+ 
++// Autolinking has now moved into the React Native Gradle Plugin
++import com.facebook.react.ReactSettingsExtension
++pluginManagement { includeBuild("../node_modules/@react-native/gradle-plugin") }
++plugins { id("com.facebook.react.settings") }
++extensions.configure(ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
++
+ rootProject.name = 'HelloWorld'
+ include ':app'
+-// Autolinking has now moved into the React Native Gradle Plugin
+ includeBuild('../../react-native-gradle-plugin')
+diff --git a/packages/react-native-gradle-plugin/.gitignore b/packages/react-native-gradle-plugin/.gitignore
+new file mode 100644
+index 00000000000..7b987dbf0c9
+--- /dev/null
++++ b/packages/react-native-gradle-plugin/.gitignore
+@@ -0,0 +1,4 @@
++build/
++app-plugin/build/
++settings-plugin/build/
++shared/build/
+diff --git a/packages/react-native-gradle-plugin/build.gradle.kts b/packages/react-native-gradle-plugin/build.gradle.kts
+index 6e09a3e22a7..f167cfc8285 100644
+--- a/packages/react-native-gradle-plugin/build.gradle.kts
++++ b/packages/react-native-gradle-plugin/build.gradle.kts
+@@ -5,80 +5,7 @@
+  * LICENSE file in the root directory of this source tree.
+  */
+ 
+-import org.gradle.api.internal.classpath.ModuleRegistry
+-import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+-import org.gradle.configurationcache.extensions.serviceOf
+-import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+-
+ plugins {
+-  alias(libs.plugins.kotlin.jvm)
++  alias(libs.plugins.kotlin.jvm).apply(false)
+   id("java-gradle-plugin")
+ }
+-
+-repositories {
+-  google()
+-  mavenCentral()
+-}
+-
+-gradlePlugin {
+-  plugins {
+-    create("react") {
+-      id = "com.facebook.react"
+-      implementationClass = "com.facebook.react.ReactPlugin"
+-    }
+-    create("reactrootproject") {
+-      id = "com.facebook.react.rootproject"
+-      implementationClass = "com.facebook.react.ReactRootProjectPlugin"
+-    }
+-  }
+-}
+-
+-group = "com.facebook.react"
+-
+-dependencies {
+-  implementation(gradleApi())
+-
+-  // The KGP/AGP version is defined by React Native Gradle plugin.
+-  // Therefore we specify an implementation dep rather than a compileOnly.
+-  implementation(libs.kotlin.gradle.plugin)
+-  implementation(libs.android.gradle.plugin)
+-
+-  implementation(libs.gson)
+-  implementation(libs.guava)
+-  implementation(libs.javapoet)
+-
+-  testImplementation(libs.junit)
+-
+-  testRuntimeOnly(
+-      files(
+-          serviceOf<ModuleRegistry>()
+-              .getModule("gradle-tooling-api-builders")
+-              .classpath
+-              .asFiles
+-              .first()))
+-}
+-
+-// We intentionally don't build for Java 17 as users will see a cryptic bytecode version
+-// error first. Instead we produce a Java 11-compatible Gradle Plugin, so that AGP can print their
+-// nice message showing that JDK 11 (or 17) is required first
+-java { targetCompatibility = JavaVersion.VERSION_11 }
+-
+-kotlin { jvmToolchain(17) }
+-
+-tasks.withType<KotlinCompile>().configureEach {
+-  kotlinOptions {
+-    apiVersion = "1.6"
+-    // See comment above on JDK 11 support
+-    jvmTarget = "11"
+-    allWarningsAsErrors = true
+-  }
+-}
+-
+-tasks.withType<Test>().configureEach {
+-  testLogging {
+-    exceptionFormat = TestExceptionFormat.FULL
+-    showExceptions = true
+-    showCauses = true
+-    showStackTraces = true
+-  }
+-}
+diff --git a/packages/react-native-gradle-plugin/package.json b/packages/react-native-gradle-plugin/package.json
+index c9c794d1bc5..81c6915f3f5 100644
+--- a/packages/react-native-gradle-plugin/package.json
++++ b/packages/react-native-gradle-plugin/package.json
+@@ -29,7 +29,9 @@
+     "gradle",
+     "gradlew",
+     "gradlew.bat",
+-    "src/main",
+-    "README.md"
++    "README.md",
++    "react-native-gradle-plugin",
++    "settings-plugin",
++    "shared"
+   ]
+ }
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/README.md b/packages/react-native-gradle-plugin/react-native-gradle-plugin/README.md
+new file mode 100644
+index 00000000000..2dd4784f38b
+--- /dev/null
++++ b/packages/react-native-gradle-plugin/react-native-gradle-plugin/README.md
+@@ -0,0 +1,17 @@
++# React Native Gradle Plugin
++
++This plugin is used by React Native Apps to configure themselves.
++
++NOTE: It's important that this folder is called `react-native-gradle-plugin` as it's used
++by users in their `build.gradle` file as follows:
++
++```gradle
++buildscript {
++    // ...
++    dependencies {
++        classpath("com.facebook.react:react-native-gradle-plugin")
++    }
++}
++```
++
++The name of the artifact is imposed by the folder name.
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/build.gradle.kts b/packages/react-native-gradle-plugin/react-native-gradle-plugin/build.gradle.kts
+new file mode 100644
+index 00000000000..b34e30a6786
+--- /dev/null
++++ b/packages/react-native-gradle-plugin/react-native-gradle-plugin/build.gradle.kts
+@@ -0,0 +1,86 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++import org.gradle.api.internal.classpath.ModuleRegistry
++import org.gradle.api.tasks.testing.logging.TestExceptionFormat
++import org.gradle.configurationcache.extensions.serviceOf
++import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
++
++plugins {
++  alias(libs.plugins.kotlin.jvm)
++  id("java-gradle-plugin")
++}
++
++repositories {
++  google()
++  mavenCentral()
++}
++
++gradlePlugin {
++  plugins {
++    create("react") {
++      id = "com.facebook.react"
++      implementationClass = "com.facebook.react.ReactPlugin"
++    }
++    create("reactrootproject") {
++      id = "com.facebook.react.rootproject"
++      implementationClass = "com.facebook.react.ReactRootProjectPlugin"
++    }
++  }
++}
++
++group = "com.facebook.react"
++
++dependencies {
++  implementation(project(":shared"))
++
++  implementation(gradleApi())
++
++  // The KGP/AGP version is defined by React Native Gradle plugin.
++  // Therefore we specify an implementation dep rather than a compileOnly.
++  implementation(libs.kotlin.gradle.plugin)
++  implementation(libs.android.gradle.plugin)
++
++  implementation(libs.gson)
++  implementation(libs.guava)
++  implementation(libs.javapoet)
++
++  testImplementation(libs.junit)
++
++  testRuntimeOnly(
++      files(
++          serviceOf<ModuleRegistry>()
++              .getModule("gradle-tooling-api-builders")
++              .classpath
++              .asFiles
++              .first()))
++}
++
++// We intentionally don't build for Java 17 as users will see a cryptic bytecode version
++// error first. Instead we produce a Java 11-compatible Gradle Plugin, so that AGP can print their
++// nice message showing that JDK 11 (or 17) is required first
++java { targetCompatibility = JavaVersion.VERSION_11 }
++
++kotlin { jvmToolchain(17) }
++
++tasks.withType<KotlinCompile>().configureEach {
++  kotlinOptions {
++    apiVersion = "1.6"
++    // See comment above on JDK 11 support
++    jvmTarget = "11"
++    allWarningsAsErrors = true
++  }
++}
++
++tasks.withType<Test>().configureEach {
++  testLogging {
++    exceptionFormat = TestExceptionFormat.FULL
++    showExceptions = true
++    showCauses = true
++    showStackTraces = true
++  }
++}
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactExtension.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactExtension.kt
+similarity index 71%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactExtension.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactExtension.kt
+index 62f77508641..6c925e71110 100644
+--- a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactExtension.kt
++++ b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactExtension.kt
+@@ -7,16 +7,17 @@
+ 
+ package com.facebook.react
+ 
++import com.facebook.react.utils.JsonUtils
+ import com.facebook.react.utils.projectPathToLibraryName
++import java.io.File
+ import javax.inject.Inject
+ import org.gradle.api.Project
+ import org.gradle.api.file.DirectoryProperty
+-import org.gradle.api.file.FileCollection
+ import org.gradle.api.file.RegularFileProperty
+ import org.gradle.api.provider.ListProperty
+ import org.gradle.api.provider.Property
+ 
+-abstract class ReactExtension @Inject constructor(project: Project) {
++abstract class ReactExtension @Inject constructor(val project: Project) {
+ 
+   private val objects = project.objects
+ 
+@@ -149,34 +150,54 @@ abstract class ReactExtension @Inject constructor(project: Project) {
+   val codegenJavaPackageName: Property<String> =
+       objects.property(String::class.java).convention("com.facebook.fbreact.specs")
+ 
+-  /** Auto-linking Config */
++  /** Auto-linking Utils */
+ 
+   /**
+-   * Location of the JSON file used to configure autolinking. This file is the output of the
+-   * `@react-native-community/cli` config command.
++   * Utility function to autolink libraries to the app.
+    *
+-   * If not specified, RNGP will just invoke whatever you pass as [autolinkConfigCommand].
+-   */
+-  val autolinkConfigFile: RegularFileProperty = objects.fileProperty()
+-
+-  /**
+-   * The command to invoke as source of truth for the autolinking configuration. Default is `["npx",
+-   * "@react-native-community/cli", "config"]`.
+-   */
+-  val autolinkConfigCommand: ListProperty<String> =
+-      objects
+-          .listProperty(String::class.java)
+-          .convention(listOf("npx", "@react-native-community/cli", "config"))
+-
+-  /**
+-   * Location of the lock files used to consider whether autolinking [autolinkConfigCommand] should
+-   * re-execute or not. If file collection is unchanged, the autolinking command will not be
+-   * re-executed.
+-   *
+-   * If not specified, RNGP will just look for both yarn.lock and package.lock in the [root] folder.
+-   */
+-  val autolinkLockFiles: Property<FileCollection> =
+-      objects
+-          .property(FileCollection::class.java)
+-          .convention(root.files("../yarn.lock", "../package-lock.json"))
++   * This function will read the autolinking configuration file and add Gradle dependencies to the
++   * app. This function should be invoked inside the react {} block in the app's build.gradle and is
++   * necessary for libraries to be linked correctly.
++   */
++  fun autolinkLibrariesWithApp() {
++    val inputFile =
++        project.rootProject.layout.buildDirectory
++            .file("generated/autolinking/autolinking.json")
++            .get()
++            .asFile
++    val dependenciesToApply = getGradleDependenciesToApply(inputFile)
++    dependenciesToApply.forEach { (configuration, path) ->
++      project.dependencies.add(configuration, project.dependencies.project(mapOf("path" to path)))
++    }
++  }
++
++  companion object {
++    /**
++     * Util function to construct a list of Gradle Configuration <-> Project name pairs for
++     * autolinking. Pairs looks like: "implementation" -> ":react-native_oss-library-example"
++     *
++     * They will be applied to the Gradle project for linking the libraries.
++     *
++     * @param inputFile The file to read the autolinking configuration from.
++     * @return A list of Gradle Configuration <-> Project name pairs.
++     */
++    internal fun getGradleDependenciesToApply(inputFile: File): MutableList<Pair<String, String>> {
++      val model = JsonUtils.fromAutolinkingConfigJson(inputFile)
++      val result = mutableListOf<Pair<String, String>>()
++      model?.dependencies?.values?.forEach { deps ->
++        val nameCleansed = deps.nameCleansed
++        val dependencyConfiguration = deps.platforms?.android?.dependencyConfiguration
++        val buildTypes = deps.platforms?.android?.buildTypes ?: emptyList()
++        if (buildTypes.isEmpty()) {
++          result.add((dependencyConfiguration ?: "implementation") to ":$nameCleansed")
++        } else {
++          buildTypes.forEach { buildType ->
++            result.add(
++                (dependencyConfiguration ?: "${buildType}Implementation") to ":$nameCleansed")
++          }
++        }
++      }
++      return result
++    }
++  }
+ }
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactPlugin.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactPlugin.kt
+similarity index 93%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactPlugin.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactPlugin.kt
+index 221139d3898..1bc7c4e7ecc 100644
+--- a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactPlugin.kt
++++ b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactPlugin.kt
+@@ -14,7 +14,6 @@ import com.facebook.react.tasks.GenerateAutolinkingNewArchitecturesFileTask
+ import com.facebook.react.tasks.GenerateCodegenArtifactsTask
+ import com.facebook.react.tasks.GenerateCodegenSchemaTask
+ import com.facebook.react.tasks.GeneratePackageListTask
+-import com.facebook.react.tasks.RunAutolinkingConfigTask
+ import com.facebook.react.utils.AgpConfiguratorUtils.configureBuildConfigFieldsForApp
+ import com.facebook.react.utils.AgpConfiguratorUtils.configureBuildConfigFieldsForLibraries
+ import com.facebook.react.utils.AgpConfiguratorUtils.configureDevPorts
+@@ -220,22 +219,15 @@ class ReactPlugin : Plugin<Project> {
+       project: Project,
+       extension: ReactExtension,
+   ) {
+-    val generatedAutolinkingDir: Provider<Directory> =
+-        project.layout.buildDirectory.dir("generated/autolinking")
+     val generatedAutolinkingJavaDir: Provider<Directory> =
+         project.layout.buildDirectory.dir("generated/autolinking/src/main/java")
+     val generatedAutolinkingJniDir: Provider<Directory> =
+         project.layout.buildDirectory.dir("generated/autolinking/src/main/jni")
+-    val configOutputFile = generatedAutolinkingDir.get().file("config-output.json")
+-
+-    val runAutolinkingConfigTask =
+-        project.tasks.register("runAutolinkingConfig", RunAutolinkingConfigTask::class.java) { task
+-          ->
+-          task.autolinkConfigCommand.set(extension.autolinkConfigCommand)
+-          task.autolinkConfigFile.set(extension.autolinkConfigFile)
+-          task.autolinkOutputFile.set(configOutputFile)
+-          task.autolinkLockFiles.set(extension.autolinkLockFiles)
+-        }
++
++    // The autolinking.json file is available in the root build folder as it's generated
++    // by ReactSettingsPlugin.kt
++    val rootGeneratedAutolinkingFile =
++        project.rootProject.layout.buildDirectory.file("generated/autolinking/autolinking.json")
+ 
+     // We add a task called generateAutolinkingPackageList to do not clash with the existing task
+     // called generatePackageList. This can to be renamed once we unlink the rn <-> cli
+@@ -243,8 +235,7 @@ class ReactPlugin : Plugin<Project> {
+     val generatePackageListTask =
+         project.tasks.register(
+             "generateAutolinkingPackageList", GeneratePackageListTask::class.java) { task ->
+-              task.dependsOn(runAutolinkingConfigTask)
+-              task.autolinkInputFile.set(configOutputFile)
++              task.autolinkInputFile.set(rootGeneratedAutolinkingFile)
+               task.generatedOutputDirectory.set(generatedAutolinkingJavaDir)
+             }
+ 
+@@ -254,8 +245,7 @@ class ReactPlugin : Plugin<Project> {
+           project.tasks.register(
+               "generateAutolinkingNewArchitectureFiles",
+               GenerateAutolinkingNewArchitecturesFileTask::class.java) { task ->
+-                task.dependsOn(runAutolinkingConfigTask)
+-                task.autolinkInputFile.set(configOutputFile)
++                task.autolinkInputFile.set(rootGeneratedAutolinkingFile)
+                 task.generatedOutputDirectory.set(generatedAutolinkingJniDir)
+               }
+       project.tasks
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactRootProjectPlugin.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactRootProjectPlugin.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactRootProjectPlugin.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactRootProjectPlugin.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/TaskConfiguration.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/TaskConfiguration.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/TaskConfiguration.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/TaskConfiguration.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/internal/PrivateReactExtension.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/internal/PrivateReactExtension.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/internal/PrivateReactExtension.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/internal/PrivateReactExtension.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTask.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTask.kt
+similarity index 92%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTask.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTask.kt
+index 2cea892b65a..84c225dabf2 100644
+--- a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTask.kt
++++ b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTask.kt
+@@ -54,17 +54,20 @@ abstract class GenerateAutolinkingNewArchitecturesFileTask : DefaultTask() {
+     val libraryIncludes =
+         packages.joinToString("\n") { dep ->
+           var addDirectoryString = ""
+-          if (dep.libraryName != null && dep.cmakeListsPath != null) {
++          val libraryName = dep.libraryName
++          val cmakeListsPath = dep.cmakeListsPath
++          val cxxModuleCMakeListsPath = dep.cxxModuleCMakeListsPath
++          if (libraryName != null && cmakeListsPath != null) {
+             // If user provided a custom cmakeListsPath, let's honor it.
+-            val nativeFolderPath = dep.cmakeListsPath.replace("CMakeLists.txt", "")
++            val nativeFolderPath = cmakeListsPath.replace("CMakeLists.txt", "")
+             addDirectoryString +=
+-                "add_subdirectory($nativeFolderPath ${dep.libraryName}_autolinked_build)"
++                "add_subdirectory($nativeFolderPath ${libraryName}_autolinked_build)"
+           }
+-          if (dep.cxxModuleCMakeListsPath != null) {
++          if (cxxModuleCMakeListsPath != null) {
+             // If user provided a custom cxxModuleCMakeListsPath, let's honor it.
+-            val nativeFolderPath = dep.cxxModuleCMakeListsPath.replace("CMakeLists.txt", "")
++            val nativeFolderPath = cxxModuleCMakeListsPath.replace("CMakeLists.txt", "")
+             addDirectoryString +=
+-                "\nadd_subdirectory($nativeFolderPath ${dep.libraryName}_cxxmodule_autolinked_build)"
++                "\nadd_subdirectory($nativeFolderPath ${libraryName}_cxxmodule_autolinked_build)"
+           }
+           addDirectoryString
+         }
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTask.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTask.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTask.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTask.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTask.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTask.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GeneratePackageListTask.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GeneratePackageListTask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GeneratePackageListTask.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GeneratePackageListTask.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITask.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITask.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITask.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareBoostTask.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareBoostTask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareBoostTask.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareBoostTask.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareGlogTask.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareGlogTask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareGlogTask.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareGlogTask.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareJSCTask.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareJSCTask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareJSCTask.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareJSCTask.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTask.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTask.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTask.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntry.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntry.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntry.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntry.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/AgpConfiguratorUtils.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/AgpConfiguratorUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/AgpConfiguratorUtils.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/AgpConfiguratorUtils.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/BackwardCompatUtils.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/BackwardCompatUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/BackwardCompatUtils.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/BackwardCompatUtils.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/DependencyUtils.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/DependencyUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/DependencyUtils.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/DependencyUtils.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/FileUtils.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/FileUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/FileUtils.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/FileUtils.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/JdkConfiguratorUtils.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/JdkConfiguratorUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/JdkConfiguratorUtils.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/JdkConfiguratorUtils.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtils.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtils.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtils.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/NdkConfiguratorUtils.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/NdkConfiguratorUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/NdkConfiguratorUtils.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/NdkConfiguratorUtils.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/Os.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/Os.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/Os.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/Os.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PathUtils.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PathUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PathUtils.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PathUtils.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/ProjectUtils.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/ProjectUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/ProjectUtils.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/ProjectUtils.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PropertyUtils.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PropertyUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PropertyUtils.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PropertyUtils.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/TaskUtils.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/TaskUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/TaskUtils.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/TaskUtils.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/ReactExtensionTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/ReactExtensionTest.kt
+new file mode 100644
+index 00000000000..6e40922be3e
+--- /dev/null
++++ b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/ReactExtensionTest.kt
+@@ -0,0 +1,164 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react
++
++import com.facebook.react.ReactExtension.Companion.getGradleDependenciesToApply
++import org.intellij.lang.annotations.Language
++import org.junit.Assert.*
++import org.junit.Rule
++import org.junit.Test
++import org.junit.rules.TemporaryFolder
++
++class ReactExtensionTest {
++
++  @get:Rule val tempFolder = TemporaryFolder()
++
++  @Test
++  fun getGradleDependenciesToApply_withEmptyFile_returnsEmptyMap() {
++    val validJsonFile =
++        createJsonFile(
++            """
++      {
++        "reactNativeVersion": "1000.0.0"
++      }
++      """
++                .trimIndent())
++
++    val deps = getGradleDependenciesToApply(validJsonFile)
++    assertEquals(0, deps.size)
++  }
++
++  @Test
++  fun getGradleDependenciesToApply_withOneDependency_returnsValidDep() {
++    val validJsonFile =
++        createJsonFile(
++            """
++      {
++        "reactNativeVersion": "1000.0.0",
++        "dependencies": {
++          "@react-native/oss-library-example": {
++            "root": "./node_modules/@react-native/oss-library-example",
++            "name": "@react-native/oss-library-example",
++            "platforms": {
++              "android": {
++                "sourceDir": "src/main/java",
++                "packageImportPath": "com.facebook.react"
++              }
++            }
++          }
++        }
++      }
++      """
++                .trimIndent())
++
++    val deps = getGradleDependenciesToApply(validJsonFile)
++    assertEquals(1, deps.size)
++    assertTrue("implementation" to ":react-native_oss-library-example" in deps)
++  }
++
++  @Test
++  fun getGradleDependenciesToApply_withDependencyConfiguration_returnsValidConfiguration() {
++    val validJsonFile =
++        createJsonFile(
++            """
++      {
++        "reactNativeVersion": "1000.0.0",
++        "dependencies": {
++          "@react-native/oss-library-example": {
++            "root": "./node_modules/@react-native/oss-library-example",
++            "name": "@react-native/oss-library-example",
++            "platforms": {
++              "android": {
++                "sourceDir": "src/main/java",
++                "packageImportPath": "com.facebook.react",
++                "dependencyConfiguration": "compileOnly"
++              }
++            }
++          }
++        }
++      }
++      """
++                .trimIndent())
++
++    val deps = getGradleDependenciesToApply(validJsonFile)
++    assertEquals(1, deps.size)
++    assertTrue("compileOnly" to ":react-native_oss-library-example" in deps)
++  }
++
++  @Test
++  fun getGradleDependenciesToApply_withBuildTypes_returnsValidConfiguration() {
++    val validJsonFile =
++        createJsonFile(
++            """
++      {
++        "reactNativeVersion": "1000.0.0",
++        "dependencies": {
++          "@react-native/oss-library-example": {
++            "root": "./node_modules/@react-native/oss-library-example",
++            "name": "@react-native/oss-library-example",
++            "platforms": {
++              "android": {
++                "sourceDir": "src/main/java",
++                "packageImportPath": "com.facebook.react",
++                "buildTypes": ["debug", "release"]
++              }
++            }
++          }
++        }
++      }
++      """
++                .trimIndent())
++
++    val deps = getGradleDependenciesToApply(validJsonFile)
++    assertEquals(2, deps.size)
++    assertTrue("debugImplementation" to ":react-native_oss-library-example" in deps)
++    assertTrue("releaseImplementation" to ":react-native_oss-library-example" in deps)
++  }
++
++  @Test
++  fun getGradleDependenciesToApply_withMultipleDependencies_returnsValidConfiguration() {
++    val validJsonFile =
++        createJsonFile(
++            """
++      {
++        "reactNativeVersion": "1000.0.0",
++        "dependencies": {
++          "@react-native/oss-library-example": {
++            "root": "./node_modules/@react-native/oss-library-example",
++            "name": "@react-native/oss-library-example",
++            "platforms": {
++              "android": {
++                "sourceDir": "src/main/java",
++                "packageImportPath": "com.facebook.react"
++              }
++            }
++          },
++          "@react-native/another-library-for-testing": {
++            "root": "./node_modules/@react-native/another-library-for-testing",
++            "name": "@react-native/another-library-for-testing",
++            "platforms": {
++              "android": {
++                "sourceDir": "src/main/java",
++                "packageImportPath": "com.facebook.react"
++              }
++            }
++          }
++        }
++      }
++      """
++                .trimIndent())
++
++    val deps = getGradleDependenciesToApply(validJsonFile)
++    assertEquals(2, deps.size)
++    assertTrue("implementation" to ":react-native_oss-library-example" in deps)
++    assertTrue("implementation" to ":react-native_another-library-for-testing" in deps)
++  }
++
++  private fun createJsonFile(@Language("JSON") input: String) =
++      tempFolder.newFile().apply { writeText(input) }
++}
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/TestReactExtension.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/TestReactExtension.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/TestReactExtension.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/TestReactExtension.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJsonTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJsonTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJsonTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJsonTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/BundleHermesCTaskTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/BundleHermesCTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/BundleHermesCTaskTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/BundleHermesCTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTaskTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTaskTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTaskTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTaskTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTaskTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTaskTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GeneratePackageListTaskTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GeneratePackageListTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GeneratePackageListTaskTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GeneratePackageListTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITaskTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITaskTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareBoostTaskTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareBoostTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareBoostTaskTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareBoostTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareGlogTaskTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareGlogTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareGlogTaskTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareGlogTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareJSCTaskTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareJSCTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareJSCTaskTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareJSCTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTaskTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTaskTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntryTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntryTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntryTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntryTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/OsRule.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/OsRule.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/OsRule.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/OsRule.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/TaskTestUtils.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/TaskTestUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/TaskTestUtils.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/TaskTestUtils.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/WithOs.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/WithOs.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/WithOs.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/WithOs.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/AgpConfiguratorUtilsTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/AgpConfiguratorUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/AgpConfiguratorUtilsTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/AgpConfiguratorUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/BackwardCompatUtilsTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/BackwardCompatUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/BackwardCompatUtilsTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/BackwardCompatUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/DependencyUtilsTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/DependencyUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/DependencyUtilsTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/DependencyUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/FileUtilsTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/FileUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/FileUtilsTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/FileUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtilsTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtilsTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/NdkConfiguratorUtilsTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/NdkConfiguratorUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/NdkConfiguratorUtilsTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/NdkConfiguratorUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/OsTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/OsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/OsTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/OsTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/PathUtilsTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/PathUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/PathUtilsTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/PathUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/ProjectUtilsTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/ProjectUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/ProjectUtilsTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/ProjectUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/TaskUtilsTest.kt b/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/TaskUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/TaskUtilsTest.kt
+rename to packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/TaskUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/settings-plugin/build.gradle.kts b/packages/react-native-gradle-plugin/settings-plugin/build.gradle.kts
+new file mode 100644
+index 00000000000..b6687a8a04d
+--- /dev/null
++++ b/packages/react-native-gradle-plugin/settings-plugin/build.gradle.kts
+@@ -0,0 +1,76 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++import org.gradle.api.internal.classpath.ModuleRegistry
++import org.gradle.api.tasks.testing.logging.TestExceptionFormat
++import org.gradle.configurationcache.extensions.serviceOf
++import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
++
++plugins {
++  alias(libs.plugins.kotlin.jvm)
++  id("java-gradle-plugin")
++}
++
++repositories {
++  google()
++  mavenCentral()
++}
++
++gradlePlugin {
++  plugins {
++    create("react.settings") {
++      id = "com.facebook.react.settings"
++      implementationClass = "com.facebook.react.ReactSettingsPlugin"
++    }
++  }
++}
++
++group = "com.facebook.react"
++
++dependencies {
++  implementation(project(":shared"))
++
++  implementation(gradleApi())
++  implementation(libs.gson)
++  implementation(libs.guava)
++  implementation(libs.javapoet)
++
++  testImplementation(libs.junit)
++
++  testRuntimeOnly(
++      files(
++          serviceOf<ModuleRegistry>()
++              .getModule("gradle-tooling-api-builders")
++              .classpath
++              .asFiles
++              .first()))
++}
++
++// We intentionally don't build for Java 17 as users will see a cryptic bytecode version
++// error first. Instead we produce a Java 11-compatible Gradle Plugin, so that AGP can print their
++// nice message showing that JDK 11 (or 17) is required first
++java { targetCompatibility = JavaVersion.VERSION_11 }
++
++kotlin { jvmToolchain(17) }
++
++tasks.withType<KotlinCompile>().configureEach {
++  kotlinOptions {
++    apiVersion = "1.6"
++    // See comment above on JDK 11 support
++    jvmTarget = "11"
++    allWarningsAsErrors = true
++  }
++}
++
++tasks.withType<Test>().configureEach {
++  testLogging {
++    exceptionFormat = TestExceptionFormat.FULL
++    showExceptions = true
++    showCauses = true
++    showStackTraces = true
++  }
++}
+diff --git a/packages/react-native-gradle-plugin/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsExtension.kt b/packages/react-native-gradle-plugin/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsExtension.kt
+new file mode 100644
+index 00000000000..acee860db47
+--- /dev/null
++++ b/packages/react-native-gradle-plugin/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsExtension.kt
+@@ -0,0 +1,121 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react
++
++import com.facebook.react.utils.JsonUtils
++import java.io.File
++import java.math.BigInteger
++import java.security.MessageDigest
++import java.util.concurrent.TimeUnit
++import javax.inject.Inject
++import org.gradle.api.file.FileCollection
++import org.gradle.api.initialization.Settings
++
++abstract class ReactSettingsExtension @Inject constructor(val settings: Settings) {
++
++  private val outputFile =
++      settings.layout.rootDirectory.file("build/generated/autolinking/autolinking.json").asFile
++  private val outputFolder =
++      settings.layout.rootDirectory.file("build/generated/autolinking/").asFile
++
++  /**
++   * Utility function to autolink libraries using an external command as source of truth.
++   *
++   * This should be invoked inside the `settings.gradle` file, and will make sure the Gradle project
++   * is loading all the discovered libraries.
++   *
++   * @param command The command to execute to get the autolinking configuration. Default is
++   *   `npx @react-native-community/cli config`.
++   * @param workingDirectory The directory where the command should be executed.
++   * @param lockFiles The list of lock files to check for changes (if lockfiles are not changed, the
++   *   command will not be executed).
++   */
++  @JvmOverloads
++  public fun autolinkLibrariesFromCommand(
++      command: List<String> = listOf("npx", "@react-native-community/cli", "config"),
++      workingDirectory: File? = settings.layout.rootDirectory.dir("../").asFile,
++      lockFiles: FileCollection =
++          settings.layout.rootDirectory.dir("../").files("yarn.lock", "package-lock.json")
++  ) {
++    outputFile.parentFile.mkdirs()
++    val lockFilesChanged = checkAndUpdateLockfiles(lockFiles, outputFolder)
++    if (lockFilesChanged || outputFile.exists().not()) {
++      ProcessBuilder(command)
++          .directory(workingDirectory)
++          .redirectOutput(ProcessBuilder.Redirect.to(outputFile))
++          .redirectError(ProcessBuilder.Redirect.INHERIT)
++          .start()
++          .waitFor(5, TimeUnit.MINUTES)
++    }
++    linkLibraries(getLibrariesToAutolink(outputFile))
++  }
++
++  /**
++   * Utility function to autolink libraries using an external file as source of truth.
++   *
++   * The file should be a JSON file with the same structure as the one generated by the
++   * `npx @react-native-community/cli config` command.
++   *
++   * @param autolinkConfigFile The file to read the autolinking configuration from.
++   */
++  public fun autolinkLibrariesFromConfigFile(
++      autolinkConfigFile: File,
++  ) {
++    // We copy the file to the build directory so that the various Gradle tasks can access it.
++    autolinkConfigFile.copyTo(outputFile, overwrite = true)
++    linkLibraries(getLibrariesToAutolink(autolinkConfigFile))
++  }
++
++  /**
++   * Utility function so that for each tuple :project-name -> project-dir, it instructs Gradle to
++   * lad this extra module.
++   */
++  private fun linkLibraries(input: Map<String, File>) {
++    input.forEach { (path, projectDir) ->
++      settings.include(path)
++      settings.project(path).projectDir = projectDir
++    }
++  }
++
++  companion object {
++    private val md = MessageDigest.getInstance("SHA-256")
++
++    /**
++     * Utility function to check if the provided lockfiles have been updated or not. This function
++     * will both check and update the lockfiles hashes if necessary.
++     *
++     * @param lockFiles The [FileCollection] of the lockfiles to check.
++     * @param outputFolder The folder where the hashes will be stored.
++     * @return `true` if the lockfiles have been updated, `false` otherwise.
++     */
++    internal fun checkAndUpdateLockfiles(lockFiles: FileCollection, outputFolder: File): Boolean {
++      var changed = false
++      lockFiles.forEach { lockFile ->
++        if (lockFile.exists()) {
++          val sha = computeSha256(lockFile)
++          val shaFile = File(outputFolder, "${lockFile.name}.sha")
++          if (shaFile.exists().not() || shaFile.readText() != sha) {
++            shaFile.writeText(sha)
++            changed = true
++          }
++        }
++      }
++      return changed
++    }
++
++    internal fun getLibrariesToAutolink(buildFile: File): Map<String, File> {
++      val model = JsonUtils.fromAutolinkingConfigJson(buildFile)
++      return model?.dependencies?.values?.associate { deps ->
++        ":${deps.nameCleansed}" to File(deps.platforms?.android?.sourceDir)
++      } ?: emptyMap()
++    }
++
++    internal fun computeSha256(lockFile: File) =
++        String.format("%032x", BigInteger(1, md.digest(lockFile.readBytes())))
++  }
++}
+diff --git a/packages/react-native-gradle-plugin/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsPlugin.kt b/packages/react-native-gradle-plugin/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsPlugin.kt
+new file mode 100644
+index 00000000000..47da627e440
+--- /dev/null
++++ b/packages/react-native-gradle-plugin/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsPlugin.kt
+@@ -0,0 +1,23 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react
++
++import org.gradle.api.Plugin
++import org.gradle.api.initialization.Settings
++
++/**
++ * This is the settings.gradle plugin for React Native.
++ *
++ * It just registers the [ReactSettingsExtension] extension, so that utility functions over there
++ * can be called to support autolinking.
++ */
++class ReactSettingsPlugin : Plugin<Settings> {
++  override fun apply(settings: Settings) {
++    settings.extensions.create("reactSettings", ReactSettingsExtension::class.java, settings)
++  }
++}
+diff --git a/packages/react-native-gradle-plugin/settings-plugin/src/test/kotlin/com/facebook/react/ReactSettingsExtensionTest.kt b/packages/react-native-gradle-plugin/settings-plugin/src/test/kotlin/com/facebook/react/ReactSettingsExtensionTest.kt
+new file mode 100644
+index 00000000000..21454324253
+--- /dev/null
++++ b/packages/react-native-gradle-plugin/settings-plugin/src/test/kotlin/com/facebook/react/ReactSettingsExtensionTest.kt
+@@ -0,0 +1,211 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react
++
++import com.facebook.react.ReactSettingsExtension.Companion.checkAndUpdateLockfiles
++import com.facebook.react.ReactSettingsExtension.Companion.computeSha256
++import com.facebook.react.ReactSettingsExtension.Companion.getLibrariesToAutolink
++import groovy.test.GroovyTestCase.assertEquals
++import java.io.File
++import org.gradle.testfixtures.ProjectBuilder
++import org.intellij.lang.annotations.Language
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertTrue
++import org.junit.Rule
++import org.junit.Test
++import org.junit.rules.TemporaryFolder
++
++class ReactSettingsExtensionTest {
++
++  @get:Rule val tempFolder = TemporaryFolder()
++
++  @Test
++  fun computeSha256_worksCorrectly() {
++    val validFile =
++        createJsonFile(
++            """
++      {
++        "value": "¯\\_(ツ)_/¯"
++      }
++      """
++                .trimIndent())
++
++    assertEquals(
++        "838aa9a72a16fdd55b0d49b510a82e264a30f59333b5fdd97c7798a29146f6a8",
++        computeSha256(validFile))
++  }
++
++  @Test
++  fun getLibrariesToAutolink_withEmptyFile_returnsEmptyMap() {
++    val validJsonFile =
++        createJsonFile(
++            """
++      {
++        "reactNativeVersion": "1000.0.0"
++      }
++      """
++                .trimIndent())
++
++    val map = getLibrariesToAutolink(validJsonFile)
++    assertEquals(0, map.keys.size)
++  }
++
++  @Test
++  fun getLibrariesToAutolink_withLibraryToAutolink_returnsValidMap() {
++    val validJsonFile =
++        createJsonFile(
++            """
++      {
++        "reactNativeVersion": "1000.0.0",
++        "dependencies": {
++          "@react-native/oss-library-example": {
++            "root": "./node_modules/@react-native/oss-library-example",
++            "name": "@react-native/oss-library-example",
++            "platforms": {
++              "ios": {
++                "podspecPath": "./node_modules/@react-native/oss-library-example/OSSLibraryExample.podspec",
++                "version": "0.0.1",
++                "configurations": [],
++                "scriptPhases": []
++              },
++              "android": {
++                "sourceDir": "./node_modules/@react-native/oss-library-example/android",
++                "packageImportPath": "import com.facebook.react.osslibraryexample.OSSLibraryExamplePackage;",
++                "packageInstance": "new OSSLibraryExamplePackage()",
++                "buildTypes": ["staging", "debug", "release"],
++                "libraryName": "OSSLibraryExampleSpec",
++                "componentDescriptors": [
++                  "SampleNativeComponentComponentDescriptor"
++                ],
++                "cmakeListsPath": "./node_modules/@react-native/oss-library-example/android/build/generated/source/codegen/jni/CMakeLists.txt",
++                "cxxModuleCMakeListsModuleName": null,
++                "cxxModuleCMakeListsPath": null,
++                "cxxModuleHeaderName": null,
++                "dependencyConfiguration": "implementation"
++              }
++            }
++          }
++        }
++      }
++      """
++                .trimIndent())
++
++    val map = getLibrariesToAutolink(validJsonFile)
++    assertEquals(1, map.keys.size)
++    assertTrue(":react-native_oss-library-example" in map.keys)
++    assertEquals(
++        File("./node_modules/@react-native/oss-library-example/android"),
++        map[":react-native_oss-library-example"])
++  }
++
++  @Test
++  fun checkAndUpdateLockfiles_withNothingToCheck_returnsFalse() {
++    val project = ProjectBuilder.builder().build()
++    val noFiles = project.files()
++    assertFalse(checkAndUpdateLockfiles(noFiles, tempFolder.root))
++  }
++
++  @Test
++  fun checkAndUpdateLockfiles_withOneLockfileNoHash_returnsTrue() {
++    val project = ProjectBuilder.builder().withProjectDir(tempFolder.root).build()
++    val buildFolder = tempFolder.newFolder("build")
++    tempFolder.newFile("yarn.lock").apply { writeText("I'm a lockfile") }
++    val lockfileCollection = project.files("yarn.lock")
++
++    assertTrue(checkAndUpdateLockfiles(lockfileCollection, buildFolder))
++    assertTrue(File(buildFolder, "yarn.lock.sha").exists())
++    assertEquals(
++        "76046b72442ee7eb130627e56c3db7c9907eef4913b17ad130335edc0eb702a8",
++        File(buildFolder, "yarn.lock.sha").readText())
++  }
++
++  @Test
++  fun checkAndUpdateLockfiles_withOneLockfileInvalidHash_returnsTrue() {
++    val project = ProjectBuilder.builder().withProjectDir(tempFolder.root).build()
++    val buildFolder =
++        tempFolder.newFolder("build").apply {
++          File(this, "yarn.lock.sha").writeText("Just a stale hash")
++        }
++    tempFolder.newFile("yarn.lock").apply { writeText("I'm a lockfile") }
++    val lockfileCollection = project.files("yarn.lock")
++
++    assertTrue(checkAndUpdateLockfiles(lockfileCollection, buildFolder))
++    assertTrue(File(buildFolder, "yarn.lock.sha").exists())
++    assertEquals(
++        "76046b72442ee7eb130627e56c3db7c9907eef4913b17ad130335edc0eb702a8",
++        File(buildFolder, "yarn.lock.sha").readText())
++  }
++
++  @Test
++  fun checkAndUpdateLockfiles_withOneLockfileValidHash_returnsFalse() {
++    val project = ProjectBuilder.builder().withProjectDir(tempFolder.root).build()
++    val buildFolder =
++        tempFolder.newFolder("build").apply {
++          File(this, "yarn.lock.sha")
++              .writeText("76046b72442ee7eb130627e56c3db7c9907eef4913b17ad130335edc0eb702a8")
++        }
++    tempFolder.newFile("yarn.lock").apply { writeText("I'm a lockfile") }
++    val lockfileCollection = project.files("yarn.lock")
++
++    assertFalse(checkAndUpdateLockfiles(lockfileCollection, buildFolder))
++    assertTrue(File(buildFolder, "yarn.lock.sha").exists())
++    assertEquals(
++        "76046b72442ee7eb130627e56c3db7c9907eef4913b17ad130335edc0eb702a8",
++        File(buildFolder, "yarn.lock.sha").readText())
++  }
++
++  @Test
++  fun checkAndUpdateLockfiles_withMultipleLockfilesInvalidHash_returnsTrue() {
++    val project = ProjectBuilder.builder().withProjectDir(tempFolder.root).build()
++    val buildFolder =
++        tempFolder.newFolder("build").apply {
++          File(this, "yarn.lock.sha").writeText("I'm an invalid hash")
++        }
++    tempFolder.newFile("yarn.lock").apply { writeText("I'm a lockfile") }
++    tempFolder.newFile("package-lock.json").apply { writeText("and I'm another lockfile") }
++    val lockfileCollection = project.files("yarn.lock", "package-lock.json")
++
++    assertTrue(checkAndUpdateLockfiles(lockfileCollection, buildFolder))
++    assertTrue(File(buildFolder, "yarn.lock.sha").exists())
++    assertTrue(File(buildFolder, "package-lock.json.sha").exists())
++    assertEquals(
++        "76046b72442ee7eb130627e56c3db7c9907eef4913b17ad130335edc0eb702a8",
++        File(buildFolder, "yarn.lock.sha").readText())
++    assertEquals(
++        "9be5bca432b81becf4f54451aea021add68376330581eaa93ab9a0b3e4e29a3b",
++        File(buildFolder, "package-lock.json.sha").readText())
++  }
++
++  @Test
++  fun checkAndUpdateLockfiles_withMultipleLockfilesValidHash_returnsFalse() {
++    val project = ProjectBuilder.builder().withProjectDir(tempFolder.root).build()
++    val buildFolder =
++        tempFolder.newFolder("build").apply {
++          File(this, "yarn.lock.sha")
++              .writeText("76046b72442ee7eb130627e56c3db7c9907eef4913b17ad130335edc0eb702a8")
++          File(this, "package-lock.json.sha")
++              .writeText("9be5bca432b81becf4f54451aea021add68376330581eaa93ab9a0b3e4e29a3b")
++        }
++    tempFolder.newFile("yarn.lock").apply { writeText("I'm a lockfile") }
++    tempFolder.newFile("package-lock.json").apply { writeText("and I'm another lockfile") }
++    val lockfileCollection = project.files("yarn.lock", "package-lock.json")
++
++    assertFalse(checkAndUpdateLockfiles(lockfileCollection, buildFolder))
++    assertTrue(File(buildFolder, "yarn.lock.sha").exists())
++    assertTrue(File(buildFolder, "package-lock.json.sha").exists())
++    assertEquals(
++        "76046b72442ee7eb130627e56c3db7c9907eef4913b17ad130335edc0eb702a8",
++        File(buildFolder, "yarn.lock.sha").readText())
++    assertEquals(
++        "9be5bca432b81becf4f54451aea021add68376330581eaa93ab9a0b3e4e29a3b",
++        File(buildFolder, "package-lock.json.sha").readText())
++  }
++
++  private fun createJsonFile(@Language("JSON") input: String) =
++      tempFolder.newFile().apply { writeText(input) }
++}
+diff --git a/packages/react-native-gradle-plugin/settings.gradle.kts b/packages/react-native-gradle-plugin/settings.gradle.kts
+index 8a0ecaa26f4..f342618821e 100644
+--- a/packages/react-native-gradle-plugin/settings.gradle.kts
++++ b/packages/react-native-gradle-plugin/settings.gradle.kts
+@@ -15,4 +15,10 @@ pluginManagement {
+ 
+ plugins { id("org.gradle.toolchains.foojay-resolver-convention").version("0.5.0") }
+ 
+-rootProject.name = "react-native-gradle-plugin"
++include(
++    ":react-native-gradle-plugin",
++    ":settings-plugin",
++    ":shared",
++)
++
++rootProject.name = "gradle-plugins-root"
+diff --git a/packages/react-native-gradle-plugin/shared/build.gradle.kts b/packages/react-native-gradle-plugin/shared/build.gradle.kts
+new file mode 100644
+index 00000000000..bccaeb47e85
+--- /dev/null
++++ b/packages/react-native-gradle-plugin/shared/build.gradle.kts
+@@ -0,0 +1,42 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++import org.gradle.api.tasks.testing.logging.TestExceptionFormat
++import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
++
++plugins { alias(libs.plugins.kotlin.jvm) }
++
++repositories { mavenCentral() }
++
++group = "com.facebook.react"
++
++dependencies {
++  implementation(libs.gson)
++  implementation(libs.guava)
++  testImplementation(libs.junit)
++}
++
++java { targetCompatibility = JavaVersion.VERSION_11 }
++
++kotlin { jvmToolchain(17) }
++
++tasks.withType<KotlinCompile>().configureEach {
++  kotlinOptions {
++    apiVersion = "1.6"
++    jvmTarget = "11"
++    allWarningsAsErrors = true
++  }
++}
++
++tasks.withType<Test>().configureEach {
++  testLogging {
++    exceptionFormat = TestExceptionFormat.FULL
++    showExceptions = true
++    showCauses = true
++    showStackTraces = true
++  }
++}
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelAutolinkingAndroidProjectJson.kt b/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingAndroidProjectJson.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelAutolinkingAndroidProjectJson.kt
+rename to packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingAndroidProjectJson.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelAutolinkingConfigJson.kt b/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingConfigJson.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelAutolinkingConfigJson.kt
+rename to packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingConfigJson.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJson.kt b/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJson.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJson.kt
+rename to packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJson.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformAndroidJson.kt b/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformAndroidJson.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformAndroidJson.kt
+rename to packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformAndroidJson.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformJson.kt b/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformJson.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformJson.kt
+rename to packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformJson.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelAutolinkingProjectJson.kt b/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingProjectJson.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelAutolinkingProjectJson.kt
+rename to packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingProjectJson.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelCodegenConfig.kt b/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelCodegenConfig.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelCodegenConfig.kt
+rename to packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelCodegenConfig.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelCodegenConfigAndroid.kt b/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelCodegenConfigAndroid.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelCodegenConfigAndroid.kt
+rename to packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelCodegenConfigAndroid.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelPackageJson.kt b/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelPackageJson.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/model/ModelPackageJson.kt
+rename to packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelPackageJson.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/JsonUtils.kt b/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/utils/JsonUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/JsonUtils.kt
+rename to packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/utils/JsonUtils.kt
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/JsonUtilsTest.kt b/packages/react-native-gradle-plugin/shared/src/test/kotlin/com/facebook/react/utils/JsonUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/JsonUtilsTest.kt
+rename to packages/react-native-gradle-plugin/shared/src/test/kotlin/com/facebook/react/utils/JsonUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/RunAutolinkingConfigTask.kt b/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/RunAutolinkingConfigTask.kt
+deleted file mode 100644
+index f22a657946d..00000000000
+--- a/packages/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/RunAutolinkingConfigTask.kt
++++ /dev/null
+@@ -1,78 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.tasks
+-
+-import com.facebook.react.utils.windowsAwareCommandLine
+-import java.io.FileOutputStream
+-import org.gradle.api.file.FileCollection
+-import org.gradle.api.file.RegularFileProperty
+-import org.gradle.api.provider.ListProperty
+-import org.gradle.api.provider.Property
+-import org.gradle.api.tasks.*
+-
+-/**
+- * A task that will run @react-native-community/cli config if necessary to generate the autolinking
+- * configuration file.
+- */
+-abstract class RunAutolinkingConfigTask : Exec() {
+-
+-  init {
+-    group = "react"
+-  }
+-
+-  @get:Input abstract val autolinkConfigCommand: ListProperty<String>
+-
+-  /*
+-   * We don't want to re-run config if the lockfiles haven't changed.
+-   * So we have the lockfiles as @InputFiles for this task.
+-   */
+-  @get:InputFiles abstract val autolinkLockFiles: Property<FileCollection>
+-
+-  @get:InputFile @get:Optional abstract val autolinkConfigFile: RegularFileProperty
+-
+-  @get:OutputFile abstract val autolinkOutputFile: RegularFileProperty
+-
+-  override fun exec() {
+-    wipeOutputDir()
+-    setupCommandLine()
+-    super.exec()
+-  }
+-
+-  internal fun setupCommandLine() {
+-    if (!autolinkConfigFile.isPresent || !autolinkConfigFile.get().asFile.exists()) {
+-      setupConfigCommandLine()
+-    } else {
+-      setupConfigCopyCommandLine()
+-    }
+-  }
+-
+-  internal fun wipeOutputDir() {
+-    autolinkOutputFile.asFile.get().apply {
+-      deleteRecursively()
+-      parentFile.mkdirs()
+-    }
+-  }
+-
+-  internal fun setupConfigCommandLine() {
+-    workingDir(project.projectDir)
+-    standardOutput = FileOutputStream(autolinkOutputFile.get().asFile)
+-    commandLine(
+-        windowsAwareCommandLine(
+-            *autolinkConfigCommand.get().toTypedArray(),
+-        ))
+-  }
+-
+-  internal fun setupConfigCopyCommandLine() {
+-    workingDir(project.projectDir)
+-    commandLine(
+-        windowsAwareCommandLine(
+-            "cp",
+-            autolinkConfigFile.get().asFile.absolutePath,
+-            autolinkOutputFile.get().asFile.absolutePath))
+-  }
+-}
+diff --git a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/RunAutolinkingConfigTaskTest.kt b/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/RunAutolinkingConfigTaskTest.kt
+deleted file mode 100644
+index 45d258321ad..00000000000
+--- a/packages/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/RunAutolinkingConfigTaskTest.kt
++++ /dev/null
+@@ -1,159 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.tasks
+-
+-import com.facebook.react.tests.createProject
+-import com.facebook.react.tests.createTestTask
+-import java.io.File
+-import java.io.FileOutputStream
+-import org.junit.Assert.assertEquals
+-import org.junit.Assert.assertFalse
+-import org.junit.Assert.assertTrue
+-import org.junit.Rule
+-import org.junit.Test
+-import org.junit.rules.TemporaryFolder
+-
+-class RunAutolinkingConfigTaskTest {
+-
+-  @get:Rule val tempFolder = TemporaryFolder()
+-
+-  @Test
+-  fun runAutolinkingConfigTask_groupIsSetCorrectly() {
+-    val task = createTestTask<RunAutolinkingConfigTask> {}
+-    assertEquals("react", task.group)
+-  }
+-
+-  @Test
+-  fun runAutolinkingConfigTask_staticInputs_areSetCorrectly() {
+-    val project = createProject()
+-
+-    val task =
+-        createTestTask<RunAutolinkingConfigTask> {
+-          it.autolinkConfigCommand.set(listOf("rm", "-rf", "/"))
+-          it.autolinkLockFiles.set(project.files("packager.lock", "another-packager.lock"))
+-          it.autolinkConfigFile.set(tempFolder.newFile("dependencies.json"))
+-          it.autolinkOutputFile.set(tempFolder.newFile("output.json"))
+-        }
+-
+-    assertEquals(3, task.inputs.files.files.size)
+-    task.autolinkLockFiles.get().files.forEach {
+-      assertTrue(
+-          it.name == "depedencies.json" ||
+-              it.name == "packager.lock" ||
+-              it.name == "another-packager.lock")
+-    }
+-
+-    assertTrue(task.inputs.properties.containsKey("autolinkConfigCommand"))
+-    assertEquals(1, task.outputs.files.files.size)
+-    assertEquals(File(tempFolder.root, "output.json"), task.outputs.files.singleFile)
+-    assertEquals(listOf("rm", "-rf", "/"), task.autolinkConfigCommand.get())
+-
+-    assertEquals(2, task.autolinkLockFiles.get().files.size)
+-    task.autolinkLockFiles.get().files.forEach {
+-      assertTrue(it.name == "packager.lock" || it.name == "another-packager.lock")
+-    }
+-
+-    assertEquals(File(tempFolder.root, "dependencies.json"), task.autolinkConfigFile.get().asFile)
+-    assertEquals(File(tempFolder.root, "output.json"), task.autolinkOutputFile.get().asFile)
+-  }
+-
+-  @Test
+-  fun wipeOutputDir_worksCorrectly() {
+-    val outputDir =
+-        tempFolder.newFolder("output").apply {
+-          File(this, "output.json").createNewFile()
+-          File(this, "NothingToSeeHere.java").createNewFile()
+-        }
+-
+-    val task = createTestTask<RunAutolinkingConfigTask> { it.autolinkOutputFile.set(outputDir) }
+-    task.wipeOutputDir()
+-
+-    assertFalse(outputDir.exists())
+-  }
+-
+-  @Test
+-  fun setupConfigCommandLine_worksCorrectly() {
+-    val project = createProject()
+-
+-    val task =
+-        createTestTask<RunAutolinkingConfigTask>(project) {
+-          it.autolinkConfigCommand.set(listOf("rm", "-rf", "/"))
+-          it.autolinkOutputFile.set(tempFolder.newFile("output.json"))
+-        }
+-    task.setupConfigCommandLine()
+-
+-    assertEquals(project.projectDir, task.workingDir)
+-    assertTrue(task.standardOutput is FileOutputStream)
+-    assertEquals(listOf("rm", "-rf", "/"), task.commandLine)
+-  }
+-
+-  @Test
+-  fun setupConfigCopyCommandLine_worksCorrectly() {
+-    val project = createProject()
+-
+-    val task =
+-        createTestTask<RunAutolinkingConfigTask>(project) {
+-          it.autolinkConfigFile.set(tempFolder.newFile("dependencies.json"))
+-          it.autolinkOutputFile.set(tempFolder.newFile("output.json"))
+-        }
+-    task.setupConfigCopyCommandLine()
+-
+-    assertEquals(project.projectDir, task.workingDir)
+-    assertTrue(task.standardOutput !is FileOutputStream)
+-    assertEquals("cp", task.commandLine[0])
+-    assertEquals(File(tempFolder.root, "dependencies.json").absolutePath, task.commandLine[1])
+-    assertEquals(File(tempFolder.root, "output.json").absolutePath, task.commandLine[2])
+-  }
+-
+-  @Test
+-  fun setupCommandLine_withoutAutolinkConfigFileConfigured_invokesCommand() {
+-    val project = createProject()
+-
+-    val task =
+-        createTestTask<RunAutolinkingConfigTask>(project) {
+-          it.autolinkConfigCommand.set(listOf("rm", "-rf", "/"))
+-          it.autolinkOutputFile.set(tempFolder.newFile("output.json"))
+-        }
+-    task.setupCommandLine()
+-
+-    assertEquals(listOf("rm", "-rf", "/"), task.commandLine)
+-  }
+-
+-  @Test
+-  fun setupCommandLine_withoutMissingConfigFile_invokesCommand() {
+-    val project = createProject()
+-
+-    val task =
+-        createTestTask<RunAutolinkingConfigTask>(project) {
+-          it.autolinkConfigCommand.set(listOf("rm", "-rf", "/"))
+-          it.autolinkConfigFile.set(File(tempFolder.root, "dependencies.json"))
+-          it.autolinkOutputFile.set(tempFolder.newFile("output.json"))
+-        }
+-    task.setupCommandLine()
+-
+-    assertEquals(listOf("rm", "-rf", "/"), task.commandLine)
+-  }
+-
+-  @Test
+-  fun setupCommandLine_withoutExistingConfigFile_invokesCp() {
+-    val project = createProject()
+-    val configFile = tempFolder.newFile("dependencies.json").apply { writeText("¯\\_(ツ)_/¯") }
+-
+-    val task =
+-        createTestTask<RunAutolinkingConfigTask>(project) {
+-          it.autolinkConfigCommand.set(listOf("rm", "-rf", "/"))
+-          it.autolinkConfigFile.set(configFile)
+-          it.autolinkOutputFile.set(tempFolder.newFile("output.json"))
+-        }
+-    task.setupCommandLine()
+-
+-    assertEquals(
+-        listOf("cp", configFile.absolutePath, File(tempFolder.root, "output.json").absolutePath),
+-        task.commandLine)
+-  }
+-}
+diff --git a/packages/react-native-popup-menu-android/android/src/main/jni/CMakeLists.txt b/packages/react-native-popup-menu-android/android/src/main/jni/CMakeLists.txt
+new file mode 100644
+index 00000000000..cac7dbbb97c
+--- /dev/null
++++ b/packages/react-native-popup-menu-android/android/src/main/jni/CMakeLists.txt
+@@ -0,0 +1,49 @@
++# Copyright (c) Meta Platforms, Inc. and affiliates.
++#
++# This source code is licensed under the MIT license found in the
++# LICENSE file in the root directory of this source tree.
++
++cmake_minimum_required(VERSION 3.13)
++set(CMAKE_VERBOSE_MAKEFILE on)
++
++file(GLOB react_codegen_SRCS CONFIGURE_DEPENDS *.cpp react/renderer/components/ReactPopupMenuAndroidSpecs/*.cpp)
++
++add_library(
++  react_codegen_ReactPopupMenuAndroidSpecs
++  SHARED
++  ${react_codegen_SRCS}
++)
++
++target_include_directories(react_codegen_ReactPopupMenuAndroidSpecs PUBLIC . react/renderer/components/ReactPopupMenuAndroidSpecs)
++
++target_link_libraries(
++  react_codegen_ReactPopupMenuAndroidSpecs
++  fbjni
++  folly_runtime
++  glog
++  jsi
++  react_codegen_rncore
++  react_debug
++  react_nativemodule_core
++  react_render_componentregistry
++  react_render_core
++  react_render_debug
++  react_render_graphics
++  react_render_imagemanager
++  react_render_mapbuffer
++  react_utils
++  rrc_image
++  rrc_view
++  turbomodulejsijni
++  yoga
++)
++
++target_compile_options(
++  react_codegen_ReactPopupMenuAndroidSpecs
++  PRIVATE
++  -DLOG_TAG=\"ReactNative\"
++  -fexceptions
++  -frtti
++  -std=c++20
++  -Wall
++)
+diff --git a/packages/react-native-popup-menu-android/android/src/main/jni/ReactPopupMenuAndroidSpecs-generated.cpp b/packages/react-native-popup-menu-android/android/src/main/jni/ReactPopupMenuAndroidSpecs-generated.cpp
+new file mode 100644
+index 00000000000..6613e525901
+--- /dev/null
++++ b/packages/react-native-popup-menu-android/android/src/main/jni/ReactPopupMenuAndroidSpecs-generated.cpp
+@@ -0,0 +1,22 @@
++
++/**
++ * This code was generated by [react-native-codegen](https://www.npmjs.com/package/react-native-codegen).
++ *
++ * Do not edit this file as changes may cause incorrect behavior and will be lost
++ * once the code is regenerated.
++ *
++ * @generated by codegen project: GenerateModuleJniCpp.js
++ */
++
++#include "ReactPopupMenuAndroidSpecs.h"
++
++namespace facebook::react {
++
++
++
++std::shared_ptr<TurboModule> ReactPopupMenuAndroidSpecs_ModuleProvider(const std::string &moduleName, const JavaTurboModule::InitParams &params) {
++
++  return nullptr;
++}
++
++} // namespace facebook::react
+diff --git a/packages/react-native-popup-menu-android/android/src/main/jni/ReactPopupMenuAndroidSpecs.h b/packages/react-native-popup-menu-android/android/src/main/jni/ReactPopupMenuAndroidSpecs.h
+new file mode 100644
+index 00000000000..251fb6983bf
+--- /dev/null
++++ b/packages/react-native-popup-menu-android/android/src/main/jni/ReactPopupMenuAndroidSpecs.h
+@@ -0,0 +1,24 @@
++
++/**
++ * This code was generated by [react-native-codegen](https://www.npmjs.com/package/react-native-codegen).
++ *
++ * Do not edit this file as changes may cause incorrect behavior and will be lost
++ * once the code is regenerated.
++ *
++ * @generated by codegen project: GenerateModuleJniH.js
++ */
++
++#pragma once
++
++#include <ReactCommon/JavaTurboModule.h>
++#include <ReactCommon/TurboModule.h>
++#include <jsi/jsi.h>
++
++namespace facebook::react {
++
++
++
++JSI_EXPORT
++std::shared_ptr<TurboModule> ReactPopupMenuAndroidSpecs_ModuleProvider(const std::string &moduleName, const JavaTurboModule::InitParams &params);
++
++} // namespace facebook::react
+diff --git a/packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/ComponentDescriptors.h b/packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/ComponentDescriptors.h
+similarity index 100%
+rename from packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/ComponentDescriptors.h
+rename to packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/ComponentDescriptors.h
+diff --git a/packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/EventEmitters.cpp b/packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/EventEmitters.cpp
+similarity index 100%
+rename from packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/EventEmitters.cpp
+rename to packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/EventEmitters.cpp
+diff --git a/packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/EventEmitters.h b/packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/EventEmitters.h
+similarity index 100%
+rename from packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/EventEmitters.h
+rename to packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/EventEmitters.h
+diff --git a/packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/Props.cpp b/packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/Props.cpp
+similarity index 100%
+rename from packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/Props.cpp
+rename to packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/Props.cpp
+diff --git a/packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/Props.h b/packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/Props.h
+similarity index 100%
+rename from packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/Props.h
+rename to packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/Props.h
+diff --git a/packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/ShadowNodes.cpp b/packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/ShadowNodes.cpp
+similarity index 100%
+rename from packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/ShadowNodes.cpp
+rename to packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/ShadowNodes.cpp
+diff --git a/packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/ShadowNodes.h b/packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/ShadowNodes.h
+similarity index 100%
+rename from packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/ShadowNodes.h
+rename to packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/ShadowNodes.h
+diff --git a/packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/States.cpp b/packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/States.cpp
+similarity index 100%
+rename from packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/States.cpp
+rename to packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/States.cpp
+diff --git a/packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/States.h b/packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/States.h
+similarity index 100%
+rename from packages/react-native-popup-menu-android/android/src/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/States.h
+rename to packages/react-native-popup-menu-android/android/src/main/jni/react/renderer/components/ReactPopupMenuAndroidSpecs/States.h
+diff --git a/packages/react-native-popup-menu-android/react-native.config.js b/packages/react-native-popup-menu-android/react-native.config.js
+new file mode 100644
+index 00000000000..2fed1e155b5
+--- /dev/null
++++ b/packages/react-native-popup-menu-android/react-native.config.js
+@@ -0,0 +1,16 @@
++/**
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++module.exports = {
++  dependency: {
++    platforms: {
++      android: {
++        'cmakeListsPath': '../android/src/main/jni/CMakeLists.txt',
++      },
++    },
++  },
++};
+diff --git a/packages/react-native-test-library/react-native.config.js b/packages/react-native-test-library/react-native.config.js
+new file mode 100644
+index 00000000000..2fed1e155b5
+--- /dev/null
++++ b/packages/react-native-test-library/react-native.config.js
+@@ -0,0 +1,16 @@
++/**
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++module.exports = {
++  dependency: {
++    platforms: {
++      android: {
++        'cmakeListsPath': '../android/src/main/jni/CMakeLists.txt',
++      },
++    },
++  },
++};
+diff --git a/packages/react-native/ReactAndroid/cmake-utils/ReactNative-application.cmake b/packages/react-native/ReactAndroid/cmake-utils/ReactNative-application.cmake
+index c8ca2f988dc..468b5c1c975 100644
+--- a/packages/react-native/ReactAndroid/cmake-utils/ReactNative-application.cmake
++++ b/packages/react-native/ReactAndroid/cmake-utils/ReactNative-application.cmake
+@@ -37,14 +37,14 @@ endif()
+ 
+ file(GLOB input_SRC CONFIGURE_DEPENDS
+         *.cpp
+-        ${BUILD_DIR}/generated/rncli/src/main/jni/*.cpp)
++        ${BUILD_DIR}/generated/autolinking/src/main/jni/*.cpp)
+ 
+ add_library(${CMAKE_PROJECT_NAME} SHARED ${input_SRC})
+ 
+ target_include_directories(${CMAKE_PROJECT_NAME}
+         PUBLIC
+                 ${CMAKE_CURRENT_SOURCE_DIR}
+-                ${PROJECT_BUILD_DIR}/generated/rncli/src/main/jni)
++                ${PROJECT_BUILD_DIR}/generated/autolinking/src/main/jni)
+ 
+ target_compile_options(${CMAKE_PROJECT_NAME}
+         PRIVATE
+@@ -126,8 +126,8 @@ target_compile_options(common_flags INTERFACE ${folly_FLAGS})
+ target_link_libraries(ReactAndroid::react_codegen_rncore INTERFACE common_flags)
+ 
+ # If project is on RN CLI v9, then we can use the following lines to link against the autolinked 3rd party libraries.
+-if(EXISTS ${PROJECT_BUILD_DIR}/generated/rncli/src/main/jni/Android-rncli.cmake)
+-        include(${PROJECT_BUILD_DIR}/generated/rncli/src/main/jni/Android-rncli.cmake)
++if(EXISTS ${PROJECT_BUILD_DIR}/generated/autolinking/src/main/jni/Android-autolinking.cmake)
++        include(${PROJECT_BUILD_DIR}/generated/autolinking/src/main/jni/Android-autolinking.cmake)
+         target_link_libraries(${CMAKE_PROJECT_NAME} ${AUTOLINKED_LIBRARIES})
+         foreach(autolinked_library ${AUTOLINKED_LIBRARIES})
+             target_link_libraries(${autolinked_library} common_flags)
+diff --git a/packages/react-native/template/android/app/build.gradle b/packages/react-native/template/android/app/build.gradle
+index d57c2176fbb..4fd5d93f9e3 100644
+--- a/packages/react-native/template/android/app/build.gradle
++++ b/packages/react-native/template/android/app/build.gradle
+@@ -49,6 +49,9 @@ react {
+     //
+     //   The list of flags to pass to the Hermes compiler. By default is "-O", "-output-source-map"
+     // hermesFlags = ["-O", "-output-source-map"]
++
++    /* Autolinking */
++    autolinkLibrariesWithApp()
+ }
+ 
+ /**
+@@ -114,5 +117,3 @@ dependencies {
+         implementation jscFlavor
+     }
+ }
+-
+-apply from: file("../../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesAppBuildGradle(project)
+diff --git a/packages/react-native/template/android/app/src/main/java/com/helloworld/MainApplication.kt b/packages/react-native/template/android/app/src/main/java/com/helloworld/MainApplication.kt
+index cdcd0d33218..11b7105dbc7 100644
+--- a/packages/react-native/template/android/app/src/main/java/com/helloworld/MainApplication.kt
++++ b/packages/react-native/template/android/app/src/main/java/com/helloworld/MainApplication.kt
+@@ -1,7 +1,7 @@
+ package com.helloworld
+ 
+ import android.app.Application
+-import com.facebook.react.PackageList
++import com.facebook.react.PackageList2
+ import com.facebook.react.ReactApplication
+ import com.facebook.react.ReactHost
+ import com.facebook.react.ReactNativeHost
+@@ -16,7 +16,7 @@ class MainApplication : Application(), ReactApplication {
+   override val reactNativeHost: ReactNativeHost =
+       object : DefaultReactNativeHost(this) {
+         override fun getPackages(): List<ReactPackage> =
+-            PackageList(this).packages.apply {
++            PackageList2(this).packages.apply {
+               // Packages that cannot be autolinked yet can be added manually here, for example:
+               // add(MyReactNativePackage())
+             }
+diff --git a/packages/react-native/template/android/settings.gradle b/packages/react-native/template/android/settings.gradle
+index c2c0717d0b7..175ced1adbd 100644
+--- a/packages/react-native/template/android/settings.gradle
++++ b/packages/react-native/template/android/settings.gradle
+@@ -1,4 +1,7 @@
++import com.facebook.react.ReactSettingsExtension
++pluginManagement { includeBuild("../node_modules/@react-native/gradle-plugin") }
++plugins { id("com.facebook.react.settings") }
++extensions.configure(ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
+ rootProject.name = 'HelloWorld'
+-apply from: file("../node_modules/@react-native-community/cli-platform-android/native_modules.gradle"); applyNativeModulesSettingsGradle(settings)
+ include ':app'
+ includeBuild('../node_modules/@react-native/gradle-plugin')
+diff --git a/packages/rn-tester/android/app/build.gradle.kts b/packages/rn-tester/android/app/build.gradle.kts
+index 65323bf84bf..3ca14012bbd 100644
+--- a/packages/rn-tester/android/app/build.gradle.kts
++++ b/packages/rn-tester/android/app/build.gradle.kts
+@@ -62,9 +62,7 @@ react {
+   hermesCommand = "$reactNativeDirPath/ReactAndroid/hermes-engine/build/hermes/bin/hermesc"
+   enableHermesOnlyInVariants = listOf("hermesDebug", "hermesRelease")
+ 
+-  /* Autolinking */
+-  //   The location of the monorepo lockfiles to `config` is cached correctly.
+-  autolinkLockFiles = files("$rootDir/yarn.lock")
++  autolinkLibrariesWithApp()
+ }
+ 
+ /** Run Proguard to shrink the Java bytecode in release builds. */
+@@ -155,8 +153,6 @@ android {
+ dependencies {
+   // Build React Native from source
+   implementation(project(":packages:react-native:ReactAndroid"))
+-  implementation(project(":packages:react-native-popup-menu-android:android"))
+-  implementation(project(":packages:react-native-test-library:android"))
+ 
+   // Consume Hermes as built from source only for the Hermes variant.
+   "hermesImplementation"(project(":packages:react-native:ReactAndroid:hermes-engine"))
+diff --git a/settings.gradle.kts b/settings.gradle.kts
+index 26e99d3ccee..7e8e500fbd7 100644
+--- a/settings.gradle.kts
++++ b/settings.gradle.kts
+@@ -5,20 +5,21 @@
+  * LICENSE file in the root directory of this source tree.
+  */
+ 
++import com.facebook.react.ReactSettingsExtension
++
+ pluginManagement {
+   repositories {
+     mavenCentral()
+     google()
+     gradlePluginPortal()
+   }
++  includeBuild("packages/react-native-gradle-plugin/")
+ }
+ 
+ include(
+     ":packages:react-native:ReactAndroid",
+     ":packages:react-native:ReactAndroid:hermes-engine",
+     ":packages:react-native:ReactAndroid:external-artifacts",
+-    ":packages:react-native-popup-menu-android:android",
+-    ":packages:react-native-test-library:android",
+     ":packages:rn-tester:android:app")
+ 
+ includeBuild("packages/react-native-gradle-plugin/")
+@@ -34,6 +35,12 @@ rootProject.name = "react-native-github"
+ plugins {
+   id("com.gradle.enterprise").version("3.7.1")
+   id("org.gradle.toolchains.foojay-resolver-convention").version("0.5.0")
++  id("com.facebook.react.settings")
++}
++
++configure<ReactSettingsExtension> {
++  autolinkLibrariesFromCommand(
++      workingDirectory = file("packages/rn-tester/"), lockFiles = files("yarn.lock"))
+ }
+ 
+ // If you specify a file inside gradle/gradle-enterprise.gradle.kts

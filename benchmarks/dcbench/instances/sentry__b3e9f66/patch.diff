@@ -1,0 +1,5158 @@
+From b3e9f6698fc77b14dd7a55ac2f839d6a58cefb31 Mon Sep 17 00:00:00 2001
+From: Ryan Albrecht <ryan.albrecht@sentry.io>
+Date: Mon, 9 Jun 2025 15:50:11 -0700
+Subject: [PATCH] feat(toolbar): Import the public @sentry/toolbar to replace
+ the internal version (#91027)
+
+The public toolbar on sentry itself, for employees only
+
+So you can debug sentry while looking at sentry in sentry.
+
+
+![SCR-20250506-jmld](https://github.com/user-attachments/assets/aefb8688-eea7-4cc6-8d07-fbd6543cd96e)
+---
+ eslint.config.mjs                             |  69 +---
+ jest.config.ts                                |   4 +
+ package.json                                  |   1 +
+ pnpm-lock.yaml                                |  12 +
+ static/app/components/devtoolbar/README.md    |  11 -
+ .../components/alerts/alertBadge.tsx          |  12 -
+ .../components/alerts/alertsPanel.tsx         | 161 ---------
+ .../components/alerts/useAlertsCount.tsx      |  30 --
+ .../alerts/useInfiniteAlertsList.tsx          |  29 --
+ .../components/analyticsProvider.tsx          |  25 --
+ .../components/devtoolbar/components/app.tsx  |  69 ----
+ .../featureFlags/customOverride.tsx           |  76 ----
+ .../featureFlags/featureFlagItem.tsx          | 118 -------
+ .../featureFlags/featureFlagsContext.tsx      |  72 ----
+ .../featureFlags/featureFlagsPanel.tsx        | 279 ---------------
+ .../featureFlags/flagOverridesBadge.tsx       |  12 -
+ .../useHasCustomFlagOverrides.tsx             |  10 -
+ .../components/feedback/feedbackPanel.tsx     | 237 -------------
+ .../feedback/useInfiniteFeedbackList.tsx      |  46 ---
+ .../devtoolbar/components/indicatorBadge.tsx  |  36 --
+ .../components/infiniteListItems.tsx          | 105 ------
+ .../components/infiniteListState.tsx          |  56 ---
+ .../devtoolbar/components/issueListItem.tsx   |  92 -----
+ .../components/issues/issuesPanel.tsx         |  80 -----
+ .../issues/useInfiniteIssuesList.tsx          |  37 --
+ .../devtoolbar/components/navigation.tsx      | 103 ------
+ .../components/navigation/iconButton.tsx      |  57 ---
+ .../devtoolbar/components/panelLayout.tsx     | 111 ------
+ .../devtoolbar/components/panelRouter.tsx     |  56 ---
+ .../devtoolbar/components/providers.tsx       |  52 ---
+ .../components/releases/releaseIssues.tsx     |  99 ------
+ .../components/releases/releasesPanel.tsx     | 330 ------------------
+ .../releases/sessionStatusBadge.tsx           |  23 --
+ .../releases/useInfiniteReleaseIssuesList.tsx |  35 --
+ .../releases/useReleaseSessions.tsx           |  34 --
+ .../components/releases/useSessionStatus.tsx  |  30 --
+ .../components/releases/useToolbarRelease.tsx |  27 --
+ .../components/replay/replayPanel.tsx         | 131 -------
+ .../devtoolbar/components/sentryAppLink.tsx   |  42 ---
+ .../devtoolbar/components/teams/useTeams.tsx  |  31 --
+ .../transactionToSearchTerm.spec.tsx          |  46 ---
+ .../components/transactionToSearchTerm.tsx    |  21 --
+ .../devtoolbar/hooks/useApiEndpoint.tsx       |  80 -----
+ .../devtoolbar/hooks/useConfiguration.tsx     |  28 --
+ .../devtoolbar/hooks/useFetchApiData.tsx      |  22 --
+ .../hooks/useFetchInfiniteApiData.tsx         |  42 ---
+ .../devtoolbar/hooks/usePlacementCss.tsx      |  36 --
+ .../devtoolbar/hooks/useReplayRecorder.tsx    | 114 ------
+ .../devtoolbar/hooks/useSDKFeedbackButton.tsx |  24 --
+ .../hooks/useSentryClientAndScope.tsx         |  97 -----
+ .../devtoolbar/hooks/useToolbarRoute.tsx      |  41 ---
+ .../devtoolbar/hooks/useVisibility.tsx        |  18 -
+ static/app/components/devtoolbar/index.tsx    |  13 -
+ static/app/components/devtoolbar/mount.tsx    |  32 --
+ .../devtoolbar/styles/fixedContainer.ts       |  27 --
+ .../components/devtoolbar/styles/global.ts    | 253 --------------
+ .../devtoolbar/styles/infiniteList.ts         |  34 --
+ .../app/components/devtoolbar/styles/link.ts  |  12 -
+ .../components/devtoolbar/styles/listItem.ts  |  40 ---
+ .../devtoolbar/styles/navigation.ts           |  35 --
+ .../app/components/devtoolbar/styles/panel.ts |  60 ----
+ .../devtoolbar/styles/releasesPanel.ts        |  21 --
+ .../app/components/devtoolbar/styles/reset.ts |  40 ---
+ .../devtoolbar/styles/typography.ts           |  32 --
+ static/app/components/devtoolbar/types.ts     |  58 ---
+ static/app/utils/featureFlagOverrides.spec.ts |  93 ++---
+ static/app/utils/featureFlagOverrides.ts      |  73 +---
+ static/app/utils/useDevToolbar.tsx            |  57 ---
+ static/app/utils/useInitSentryToolbar.tsx     |  59 ++++
+ static/app/views/organizationLayout/index.tsx |  15 +-
+ .../views/releases/list/releaseCard/index.tsx |   6 +-
+ .../js/sentry-test/mocks/sentryToolbarMock.js |   2 +
+ 72 files changed, 153 insertions(+), 4218 deletions(-)
+ delete mode 100644 static/app/components/devtoolbar/README.md
+ delete mode 100644 static/app/components/devtoolbar/components/alerts/alertBadge.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/alerts/alertsPanel.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/alerts/useAlertsCount.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/alerts/useInfiniteAlertsList.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/analyticsProvider.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/app.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/featureFlags/customOverride.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/featureFlags/featureFlagItem.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/featureFlags/featureFlagsContext.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/featureFlags/featureFlagsPanel.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/featureFlags/flagOverridesBadge.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/featureFlags/useHasCustomFlagOverrides.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/feedback/feedbackPanel.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/feedback/useInfiniteFeedbackList.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/indicatorBadge.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/infiniteListItems.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/infiniteListState.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/issueListItem.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/issues/issuesPanel.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/issues/useInfiniteIssuesList.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/navigation.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/navigation/iconButton.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/panelLayout.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/panelRouter.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/providers.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/releases/releaseIssues.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/releases/releasesPanel.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/releases/sessionStatusBadge.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/releases/useInfiniteReleaseIssuesList.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/releases/useReleaseSessions.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/releases/useSessionStatus.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/releases/useToolbarRelease.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/replay/replayPanel.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/sentryAppLink.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/teams/useTeams.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/transactionToSearchTerm.spec.tsx
+ delete mode 100644 static/app/components/devtoolbar/components/transactionToSearchTerm.tsx
+ delete mode 100644 static/app/components/devtoolbar/hooks/useApiEndpoint.tsx
+ delete mode 100644 static/app/components/devtoolbar/hooks/useConfiguration.tsx
+ delete mode 100644 static/app/components/devtoolbar/hooks/useFetchApiData.tsx
+ delete mode 100644 static/app/components/devtoolbar/hooks/useFetchInfiniteApiData.tsx
+ delete mode 100644 static/app/components/devtoolbar/hooks/usePlacementCss.tsx
+ delete mode 100644 static/app/components/devtoolbar/hooks/useReplayRecorder.tsx
+ delete mode 100644 static/app/components/devtoolbar/hooks/useSDKFeedbackButton.tsx
+ delete mode 100644 static/app/components/devtoolbar/hooks/useSentryClientAndScope.tsx
+ delete mode 100644 static/app/components/devtoolbar/hooks/useToolbarRoute.tsx
+ delete mode 100644 static/app/components/devtoolbar/hooks/useVisibility.tsx
+ delete mode 100644 static/app/components/devtoolbar/index.tsx
+ delete mode 100644 static/app/components/devtoolbar/mount.tsx
+ delete mode 100644 static/app/components/devtoolbar/styles/fixedContainer.ts
+ delete mode 100644 static/app/components/devtoolbar/styles/global.ts
+ delete mode 100644 static/app/components/devtoolbar/styles/infiniteList.ts
+ delete mode 100644 static/app/components/devtoolbar/styles/link.ts
+ delete mode 100644 static/app/components/devtoolbar/styles/listItem.ts
+ delete mode 100644 static/app/components/devtoolbar/styles/navigation.ts
+ delete mode 100644 static/app/components/devtoolbar/styles/panel.ts
+ delete mode 100644 static/app/components/devtoolbar/styles/releasesPanel.ts
+ delete mode 100644 static/app/components/devtoolbar/styles/reset.ts
+ delete mode 100644 static/app/components/devtoolbar/styles/typography.ts
+ delete mode 100644 static/app/components/devtoolbar/types.ts
+ delete mode 100644 static/app/utils/useDevToolbar.tsx
+ create mode 100644 static/app/utils/useInitSentryToolbar.tsx
+ create mode 100644 tests/js/sentry-test/mocks/sentryToolbarMock.js
+
+diff --git a/eslint.config.mjs b/eslint.config.mjs
+index fe53bdeb942..f8db72287cb 100644
+--- a/eslint.config.mjs
++++ b/eslint.config.mjs
+@@ -309,10 +309,6 @@ export default typescript.config([
+               group: ['getsentry/*'],
+               message: 'Do not import gsApp into sentry',
+             },
+-            {
+-              group: ['sentry/components/devtoolbar/*'],
+-              message: 'Do not depend on toolbar internals',
+-            },
+             {
+               group: ['sentry/utils/theme*', 'sentry/utils/theme'],
+               importNames: ['lightTheme', 'darkTheme', 'default'],
+@@ -397,7 +393,10 @@ export default typescript.config([
+       'import/no-amd': 'error',
+       'import/no-anonymous-default-export': 'error',
+       'import/no-duplicates': 'error',
+-      'import/no-extraneous-dependencies': ['error', {includeTypes: true}],
++      'import/no-extraneous-dependencies': [
++        'error',
++        {includeTypes: true, devDependencies: ['!eslint.config.mjs']},
++      ],
+       'import/no-named-default': 'error',
+       'import/no-nodejs-modules': 'error',
+       'import/no-webpack-loader-syntax': 'error',
+@@ -805,46 +804,6 @@ export default typescript.config([
+       'import/no-nodejs-modules': 'off',
+     },
+   },
+-  {
+-    name: 'files/devtoolbar',
+-    files: ['static/app/components/devtoolbar/**/*.{ts,tsx}'],
+-    rules: {
+-      'no-restricted-imports': [
+-        'error',
+-        {
+-          patterns: [
+-            {
+-              group: ['admin/*'],
+-              message: 'Do not import gsAdmin into sentry',
+-            },
+-            {
+-              group: ['getsentry/*'],
+-              message: 'Do not import gsApp into sentry',
+-            },
+-            {
+-              group: ['sentry/utils/theme*', 'sentry/utils/theme'],
+-              importNames: ['lightTheme', 'darkTheme', 'default'],
+-              message:
+-                "Use 'useTheme' hook of withTheme HOC instead of importing theme directly. For tests, use ThemeFixture.",
+-            },
+-          ],
+-          paths: [
+-            ...restrictedImportPaths,
+-            {
+-              name: 'sentry/components/button',
+-              message:
+-                "Cannot depend on Button from inside the toolbar. Button depends on analytics tracking which isn't avaialble in the toolbar context",
+-            },
+-            {
+-              name: 'sentry/utils/queryClient',
+-              message:
+-                'Import from `@tanstack/react-query` and `./hooks/useFetchApiData` or `./hooks/useFetchInfiniteApiData` instead.',
+-            },
+-          ],
+-        },
+-      ],
+-    },
+-  },
+   {
+     name: 'files/insights-chart-widgets',
+     files: ['static/app/views/insights/common/components/widgets/*.tsx'],
+@@ -882,10 +841,6 @@ export default typescript.config([
+               group: ['getsentry/*'],
+               message: 'Do not import gsApp into sentry',
+             },
+-            {
+-              group: ['sentry/components/devtoolbar/*'],
+-              message: 'Do not depend on toolbar internals',
+-            },
+             {
+               group: ['sentry/utils/theme*', 'sentry/utils/theme'],
+               importNames: ['lightTheme', 'darkTheme', 'default'],
+@@ -941,10 +896,6 @@ export default typescript.config([
+               group: ['admin/*'],
+               message: 'Do not import gsAdmin into gsApp',
+             },
+-            {
+-              group: ['sentry/components/devtoolbar/*'],
+-              message: 'Do not depend on toolbar internals',
+-            },
+             {
+               group: ['sentry/utils/theme*', 'sentry/utils/theme'],
+               importNames: ['lightTheme', 'darkTheme', 'default'],
+@@ -973,10 +924,6 @@ export default typescript.config([
+         'error',
+         {
+           patterns: [
+-            {
+-              group: ['sentry/components/devtoolbar/*'],
+-              message: 'Do not depend on toolbar internals',
+-            },
+             {
+               group: ['sentry/utils/theme*', 'sentry/utils/theme'],
+               importNames: ['lightTheme', 'darkTheme', 'default'],
+@@ -1053,10 +1000,6 @@ export default typescript.config([
+           pattern: 'tests/js',
+         },
+         // --- specifics ---
+-        {
+-          type: 'devtoolbar',
+-          pattern: 'sentry/components/devtoolbar',
+-        },
+         {
+           type: 'core-button',
+           pattern: 'static/app/components/core/button',
+@@ -1140,10 +1083,6 @@ export default typescript.config([
+               disallow: ['sentry-locale'],
+               allow: ['core*', 'gsAdmin*', 'sentry*', 'getsentry*'],
+             },
+-            {
+-              from: ['devtoolbar'],
+-              allow: ['devtoolbar', 'sentry*'],
+-            },
+             {
+               from: ['test-sentry'],
+               allow: ['test-sentry', 'test', 'core*', 'sentry*'],
+diff --git a/jest.config.ts b/jest.config.ts
+index a871aff1b85..2506bb52c5c 100644
+--- a/jest.config.ts
++++ b/jest.config.ts
+@@ -246,6 +246,10 @@ const config: Config.InitialOptions = {
+     // transform
+     '^echarts/(.*)': '<rootDir>/tests/js/sentry-test/mocks/echartsMock.js',
+     '^zrender/(.*)': '<rootDir>/tests/js/sentry-test/mocks/echartsMock.js',
++
++    // Disabled @sentry/toolbar in tests. It depends on iframes and global
++    // window/cookies state.
++    '@sentry/toolbar': '<rootDir>/tests/js/sentry-test/mocks/sentryToolbarMock.js',
+   },
+   setupFiles: [
+     '<rootDir>/static/app/utils/silence-react-unsafe-warnings.ts',
+diff --git a/package.json b/package.json
+index 5f577b52c95..a3ed6baf2cf 100644
+--- a/package.json
++++ b/package.json
+@@ -72,6 +72,7 @@
+     "@sentry/react": "9.24.0",
+     "@sentry/release-parser": "^1.3.1",
+     "@sentry/status-page-list": "^0.6.0",
++    "@sentry/toolbar": "1.0.0-beta.16",
+     "@sentry/webpack-plugin": "^3.4.0",
+     "@swc/plugin-emotion": "9.0.4",
+     "@tanstack/query-async-storage-persister": "^5.72.1",
+diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml
+index 5e0c7bea33f..cac9e2d17fc 100644
+--- a/pnpm-lock.yaml
++++ b/pnpm-lock.yaml
+@@ -204,6 +204,9 @@ importers:
+       '@sentry/status-page-list':
+         specifier: ^0.6.0
+         version: 0.6.0
++      '@sentry/toolbar':
++        specifier: 1.0.0-beta.16
++        version: 1.0.0-beta.16(react@19.1.0)
+       '@sentry/webpack-plugin':
+         specifier: ^3.4.0
+         version: 3.4.0(encoding@0.1.13)(webpack@5.99.6(esbuild@0.25.3))
+@@ -2854,6 +2857,11 @@ packages:
+     resolution: {integrity: sha512-umFIGPsFo8wjT5xLSraUd69GDJhBv8a8YgpAt8zE23SlkFNiWZcDP+Wr6yif2EQvB6Z6i3TmnQcz3mBN1j1kNA==}
+     engines: {node: '>=14'}
+ 
++  '@sentry/toolbar@1.0.0-beta.16':
++    resolution: {integrity: sha512-5ca29J9dzBkXShe2pHcNX32XpetxH8eAIgPRLvN9REDK8rMZpyQW08tP1S3Y+c8VLNAbJXONaiS6RR+3Cs8BUQ==}
++    peerDependencies:
++      react: '>=18'
++
+   '@sentry/webpack-plugin@3.4.0':
+     resolution: {integrity: sha512-i+nAxxniJV5ovijojjTF5n+Yj08Xk8my+vm8+oo0C0I7xcnI2gOKft6B0sJOq01CNbo85X5m/3/edL0PKoWE9w==}
+     engines: {node: '>= 14'}
+@@ -11071,6 +11079,10 @@ snapshots:
+ 
+   '@sentry/status-page-list@0.6.0': {}
+ 
++  '@sentry/toolbar@1.0.0-beta.16(react@19.1.0)':
++    dependencies:
++      react: 19.1.0
++
+   '@sentry/webpack-plugin@3.4.0(encoding@0.1.13)(webpack@5.99.6(esbuild@0.25.3))':
+     dependencies:
+       '@sentry/bundler-plugin-core': 3.4.0(encoding@0.1.13)
+diff --git a/static/app/components/devtoolbar/README.md b/static/app/components/devtoolbar/README.md
+deleted file mode 100644
+index 987c73d5bd0..00000000000
+--- a/static/app/components/devtoolbar/README.md
++++ /dev/null
+@@ -1,11 +0,0 @@
+-# Dev Toolbar
+-
+-This folder contains a PoC for what a Dev Toolbar product would look like and what features it could have.
+-
+-This is not production ready. Only Sentry employees should be able to see this code, while they're on sentry.io or running a development environment. In order for this to be production-ready for customers to install on their own website, it would need to be bundled similar to the SDK or Spotlight. There are many steps remaining to get there.
+-
+-Therefore, this is built with maximum portability in mind. It is a goal for this to have as few dependencies on sentry/getsentry as possible to make the majority of the code easy to port into a different repo when/if the PoC is successful. However, some code will not be portable, which is why we're leveraging sentry to host the PoC. For example:
+-
+-- The API calls themselves are not portable. We're using sentry/getsentry to explicitly avoid solving the API-Auth problem right now.
+-- Logo assets will need to be copied over, or inserted into platformicons
+-- Any complex CSS that cannot be inlined. This folder prefers to use inline `style={}` attributes which gives us maximum flexibility to choose a style library when this is extracted. `styled()` calls are used sparingly.
+diff --git a/static/app/components/devtoolbar/components/alerts/alertBadge.tsx b/static/app/components/devtoolbar/components/alerts/alertBadge.tsx
+deleted file mode 100644
+index a3d85ebfe5c..00000000000
+--- a/static/app/components/devtoolbar/components/alerts/alertBadge.tsx
++++ /dev/null
+@@ -1,12 +0,0 @@
+-import IndicatorBadge from 'sentry/components/devtoolbar/components/indicatorBadge';
+-
+-import useAlertsCount from './useAlertsCount';
+-
+-export default function AlertBadge() {
+-  const {data: count} = useAlertsCount();
+-
+-  if (count === undefined || count < 1) {
+-    return null;
+-  }
+-  return <IndicatorBadge variant="red" />;
+-}
+diff --git a/static/app/components/devtoolbar/components/alerts/alertsPanel.tsx b/static/app/components/devtoolbar/components/alerts/alertsPanel.tsx
+deleted file mode 100644
+index 55b6bbbf6ff..00000000000
+--- a/static/app/components/devtoolbar/components/alerts/alertsPanel.tsx
++++ /dev/null
+@@ -1,161 +0,0 @@
+-import {css} from '@emotion/react';
+-
+-import {ActorAvatar} from 'sentry/components/core/avatar/actorAvatar';
+-import {AlertBadge} from 'sentry/components/core/badge/alertBadge';
+-import AnalyticsProvider from 'sentry/components/devtoolbar/components/analyticsProvider';
+-import InfiniteListItems from 'sentry/components/devtoolbar/components/infiniteListItems';
+-import InfiniteListState from 'sentry/components/devtoolbar/components/infiniteListState';
+-import PanelLayout from 'sentry/components/devtoolbar/components/panelLayout';
+-import SentryAppLink from 'sentry/components/devtoolbar/components/sentryAppLink';
+-import useTeams from 'sentry/components/devtoolbar/components/teams/useTeams';
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import {
+-  badgeWithLabelCss,
+-  gridFlexEndCss,
+-  listItemGridCss,
+-  listItemPlaceholderWrapperCss,
+-} from 'sentry/components/devtoolbar/styles/listItem';
+-import {
+-  panelInsetContentCss,
+-  panelSectionCss,
+-} from 'sentry/components/devtoolbar/styles/panel';
+-import {resetFlexColumnCss} from 'sentry/components/devtoolbar/styles/reset';
+-import {smallCss, xSmallCss} from 'sentry/components/devtoolbar/styles/typography';
+-import Placeholder from 'sentry/components/placeholder';
+-import TextOverflow from 'sentry/components/textOverflow';
+-import TimeSince from 'sentry/components/timeSince';
+-import type {Actor} from 'sentry/types/core';
+-import type {Organization} from 'sentry/types/organization';
+-import type {Incident} from 'sentry/views/alerts/types';
+-import {alertDetailsLink} from 'sentry/views/alerts/utils';
+-
+-import useInfiniteAlertsList from './useInfiniteAlertsList';
+-
+-export default function AlertsPanel() {
+-  const queryResult = useInfiniteAlertsList();
+-
+-  const estimateSize = 84;
+-  const placeholderHeight = `${estimateSize - 8}px`; // The real height of the items, minus the padding-block value
+-
+-  return (
+-    <PanelLayout title="Alerts" showProjectBadge link={{url: '/alerts/'}}>
+-      <div css={resetFlexColumnCss}>
+-        <InfiniteListState
+-          queryResult={queryResult}
+-          backgroundUpdatingMessage={() => null}
+-          loadingMessage={() => (
+-            <div
+-              css={[
+-                resetFlexColumnCss,
+-                panelSectionCss,
+-                panelInsetContentCss,
+-                listItemPlaceholderWrapperCss,
+-              ]}
+-            >
+-              <Placeholder height={placeholderHeight} />
+-              <Placeholder height={placeholderHeight} />
+-              <Placeholder height={placeholderHeight} />
+-              <Placeholder height={placeholderHeight} />
+-            </div>
+-          )}
+-        >
+-          <InfiniteListItems
+-            estimateSize={() => estimateSize}
+-            queryResult={queryResult}
+-            itemRenderer={props => <AlertListItem {...props} />}
+-            emptyMessage={() => <p css={panelInsetContentCss}>No items to show</p>}
+-          />
+-        </InfiniteListState>
+-      </div>
+-    </PanelLayout>
+-  );
+-}
+-
+-function AlertListItem({item}: {item: Incident}) {
+-  const {organizationSlug} = useConfiguration();
+-
+-  const ownerId = item.alertRule.owner?.split(':').at(1);
+-
+-  const {data: teams} = useTeams(
+-    {idOrSlug: String(ownerId)},
+-    {enabled: Boolean(ownerId)}
+-  );
+-  const ownerTeam = teams?.json.at(0);
+-
+-  const teamActor = ownerId
+-    ? {type: 'team' as Actor['type'], id: ownerId, name: ownerTeam?.name ?? ''}
+-    : null;
+-
+-  return (
+-    <div
+-      css={[
+-        listItemGridCss,
+-        css`
+-          grid-template-areas:
+-            'badge name time'
+-            'badge message message'
+-            '. icons icons';
+-          grid-template-columns: max-content 1fr max-content;
+-          gap: var(--space25) var(--space100);
+-        `,
+-      ]}
+-    >
+-      <div
+-        css={css`
+-          grid-area: badge;
+-        `}
+-      >
+-        <AlertBadge status={item.status} isIssue={false} />
+-      </div>
+-
+-      <div
+-        css={[
+-          gridFlexEndCss,
+-          xSmallCss,
+-          css`
+-            grid-area: time;
+-            color: var(--gray300);
+-          `,
+-        ]}
+-      >
+-        <TimeSince date={item.dateStarted} unitStyle="extraShort" />
+-      </div>
+-
+-      <AnalyticsProvider nameVal="item" keyVal="item">
+-        <TextOverflow
+-          css={[
+-            smallCss,
+-            css`
+-              grid-area: name;
+-            `,
+-          ]}
+-        >
+-          <SentryAppLink
+-            to={{
+-              url: alertDetailsLink({slug: organizationSlug} as Organization, item),
+-              query: {alert: item.identifier},
+-            }}
+-          >
+-            <strong>{item.title}</strong>
+-          </SentryAppLink>
+-        </TextOverflow>
+-      </AnalyticsProvider>
+-
+-      {teamActor ? (
+-        <div
+-          css={[
+-            badgeWithLabelCss,
+-            xSmallCss,
+-            css`
+-              justify-self: flex-end;
+-              grid-area: icons;
+-            `,
+-          ]}
+-        >
+-          <ActorAvatar actor={teamActor} size={16} hasTooltip={false} />{' '}
+-          <TextOverflow>{teamActor.name}</TextOverflow>
+-        </div>
+-      ) : null}
+-    </div>
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/alerts/useAlertsCount.tsx b/static/app/components/devtoolbar/components/alerts/useAlertsCount.tsx
+deleted file mode 100644
+index 8dea097ff6e..00000000000
+--- a/static/app/components/devtoolbar/components/alerts/useAlertsCount.tsx
++++ /dev/null
+@@ -1,30 +0,0 @@
+-import {useMemo} from 'react';
+-
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import useFetchApiData from 'sentry/components/devtoolbar/hooks/useFetchApiData';
+-import type {ApiEndpointQueryKey} from 'sentry/components/devtoolbar/types';
+-import type {Incident} from 'sentry/views/alerts/types';
+-
+-export default function useAlertsCount() {
+-  const {organizationSlug, projectId} = useConfiguration();
+-
+-  return useFetchApiData<Incident[], number>({
+-    queryKey: useMemo(
+-      (): ApiEndpointQueryKey => [
+-        'io.sentry.toolbar',
+-        `/organizations/${organizationSlug}/incidents/`,
+-        {
+-          query: {
+-            limit: 1,
+-            queryReferrer: 'devtoolbar',
+-            project: [projectId],
+-            statusPeriod: '14d',
+-            status: 'open',
+-          },
+-        },
+-      ],
+-      [organizationSlug, projectId]
+-    ),
+-    select: (data): number => data.json.length,
+-  });
+-}
+diff --git a/static/app/components/devtoolbar/components/alerts/useInfiniteAlertsList.tsx b/static/app/components/devtoolbar/components/alerts/useInfiniteAlertsList.tsx
+deleted file mode 100644
+index 13f2be6a942..00000000000
+--- a/static/app/components/devtoolbar/components/alerts/useInfiniteAlertsList.tsx
++++ /dev/null
+@@ -1,29 +0,0 @@
+-import {useMemo} from 'react';
+-
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import useFetchInfiniteApiData from 'sentry/components/devtoolbar/hooks/useFetchInfiniteApiData';
+-import type {ApiEndpointQueryKey} from 'sentry/components/devtoolbar/types';
+-import type {Incident} from 'sentry/views/alerts/types';
+-
+-export default function useInfiniteFeedbackList() {
+-  const {organizationSlug, projectId} = useConfiguration();
+-
+-  return useFetchInfiniteApiData<Incident[]>({
+-    queryKey: useMemo(
+-      (): ApiEndpointQueryKey => [
+-        'io.sentry.toolbar',
+-        `/organizations/${organizationSlug}/incidents/`,
+-        {
+-          query: {
+-            limit: 25,
+-            queryReferrer: 'devtoolbar',
+-            project: [projectId],
+-            statsPeriod: '14d',
+-            status: 'open',
+-          },
+-        },
+-      ],
+-      [organizationSlug, projectId]
+-    ),
+-  });
+-}
+diff --git a/static/app/components/devtoolbar/components/analyticsProvider.tsx b/static/app/components/devtoolbar/components/analyticsProvider.tsx
+deleted file mode 100644
+index 5c75c30f5b0..00000000000
+--- a/static/app/components/devtoolbar/components/analyticsProvider.tsx
++++ /dev/null
+@@ -1,25 +0,0 @@
+-import {createContext, type ReactNode, useContext} from 'react';
+-
+-export const AnalyticsContext = createContext<{eventKey: string; eventName: string}>({
+-  eventName: 'devtoolbar',
+-  eventKey: 'devtoolbar',
+-});
+-
+-export default function AnalyticsProvider({
+-  children,
+-  keyVal,
+-  nameVal,
+-}: {
+-  children: ReactNode;
+-  keyVal: string;
+-  nameVal: string;
+-}) {
+-  const {eventKey, eventName} = useContext(AnalyticsContext);
+-  return (
+-    <AnalyticsContext
+-      value={{eventName: eventName + ' ' + nameVal, eventKey: eventKey + '.' + keyVal}}
+-    >
+-      {children}
+-    </AnalyticsContext>
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/app.tsx b/static/app/components/devtoolbar/components/app.tsx
+deleted file mode 100644
+index b10e61c270f..00000000000
+--- a/static/app/components/devtoolbar/components/app.tsx
++++ /dev/null
+@@ -1,69 +0,0 @@
+-import {Fragment, Suspense} from 'react';
+-import {css, Global} from '@emotion/react';
+-
+-import AnalyticsProvider from 'sentry/components/devtoolbar/components/analyticsProvider';
+-import usePlacementCss from 'sentry/components/devtoolbar/hooks/usePlacementCss';
+-import useVisibility from 'sentry/components/devtoolbar/hooks/useVisibility';
+-import {fixedContainerBaseCss} from 'sentry/components/devtoolbar/styles/fixedContainer';
+-import {
+-  avatarCss,
+-  globalCss,
+-  loadingIndicatorCss,
+-} from 'sentry/components/devtoolbar/styles/global';
+-import {resetFlexColumnCss} from 'sentry/components/devtoolbar/styles/reset';
+-import LoadingTriangle from 'sentry/components/loadingTriangle';
+-import {useSessionStorage} from 'sentry/utils/useSessionStorage';
+-
+-import Navigation from './navigation';
+-import PanelLayout from './panelLayout';
+-import PanelRouter from './panelRouter';
+-
+-export default function App() {
+-  const placement = usePlacementCss();
+-  const [visibility] = useVisibility();
+-  const [isDisabled, setIsDisabled] = useSessionStorage(
+-    'hide_employee_devtoolbar',
+-    false
+-  );
+-  if (isDisabled) {
+-    return null;
+-  }
+-
+-  return (
+-    <Fragment>
+-      <Global styles={globalCss} />
+-      <Global styles={loadingIndicatorCss} />
+-      <Global styles={avatarCss} />
+-      <div
+-        css={[
+-          fixedContainerBaseCss,
+-          placement.fixedContainer.css,
+-          css`
+-            visibility: ${visibility};
+-          `,
+-        ]}
+-      >
+-        {isDisabled ? null : (
+-          <Fragment>
+-            <AnalyticsProvider nameVal="nav" keyVal="nav">
+-              <Navigation setIsDisabled={setIsDisabled} />
+-            </AnalyticsProvider>
+-            <Suspense fallback={<LoadingPanel />}>
+-              <PanelRouter />
+-            </Suspense>
+-          </Fragment>
+-        )}
+-      </div>
+-    </Fragment>
+-  );
+-}
+-
+-function LoadingPanel() {
+-  return (
+-    <PanelLayout title="">
+-      <div css={resetFlexColumnCss} style={{overflow: 'hidden', contain: 'strict'}}>
+-        <LoadingTriangle />
+-      </div>
+-    </PanelLayout>
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/featureFlags/customOverride.tsx b/static/app/components/devtoolbar/components/featureFlags/customOverride.tsx
+deleted file mode 100644
+index da2fc56119b..00000000000
+--- a/static/app/components/devtoolbar/components/featureFlags/customOverride.tsx
++++ /dev/null
+@@ -1,76 +0,0 @@
+-import {useContext, useState} from 'react';
+-import {css} from '@emotion/react';
+-
+-import {Input} from 'sentry/components/core/input';
+-import {Switch} from 'sentry/components/core/switch';
+-import {AnalyticsContext} from 'sentry/components/devtoolbar/components/analyticsProvider';
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import {resetButtonCss} from 'sentry/components/devtoolbar/styles/reset';
+-import {IconAdd} from 'sentry/icons';
+-
+-import {useFeatureFlagsContext} from './featureFlagsContext';
+-
+-export default function CustomOverride({
+-  setComponentActive,
+-}: {
+-  setComponentActive: (value: boolean) => void;
+-}) {
+-  const {eventName, eventKey} = useContext(AnalyticsContext);
+-  const {trackAnalytics} = useConfiguration();
+-  const {setOverride} = useFeatureFlagsContext();
+-
+-  const [name, setName] = useState('');
+-  const [isActive, setIsActive] = useState(false);
+-
+-  return (
+-    <form
+-      css={css`
+-        display: grid;
+-        grid-template-columns: auto max-content max-content;
+-        align-items: center;
+-        justify-items: space-between;
+-        gap: var(--space100);
+-      `}
+-      onSubmit={e => {
+-        e.preventDefault();
+-        setOverride(name, isActive);
+-        setComponentActive(false);
+-        setName('');
+-        setIsActive(false);
+-        trackAnalytics?.({
+-          eventKey: eventKey + '.created',
+-          eventName: eventName + ' created',
+-        });
+-      }}
+-    >
+-      <Input
+-        size="xs"
+-        placeholder="Flag name to override"
+-        value={name}
+-        onChange={e => setName(e.target.value.toLowerCase())}
+-      />
+-      <Switch
+-        size="lg"
+-        checked={isActive}
+-        onChange={() => {
+-          setIsActive(!isActive);
+-        }}
+-        css={css`
+-          background: white;
+-        `}
+-      />
+-      <button
+-        type="submit"
+-        css={[
+-          resetButtonCss,
+-          css`
+-            width: 28px;
+-          `,
+-        ]}
+-        disabled={!name.length}
+-      >
+-        <IconAdd />
+-      </button>
+-    </form>
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/featureFlags/featureFlagItem.tsx b/static/app/components/devtoolbar/components/featureFlags/featureFlagItem.tsx
+deleted file mode 100644
+index 72782d9835f..00000000000
+--- a/static/app/components/devtoolbar/components/featureFlags/featureFlagItem.tsx
++++ /dev/null
+@@ -1,118 +0,0 @@
+-import {Fragment, useContext, useState} from 'react';
+-import {css} from '@emotion/react';
+-
+-import {Switch} from 'sentry/components/core/switch';
+-import AnalyticsProvider, {
+-  AnalyticsContext,
+-} from 'sentry/components/devtoolbar/components/analyticsProvider';
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import {inlineLinkCss} from 'sentry/components/devtoolbar/styles/link';
+-import {verticalPaddingCss} from 'sentry/components/devtoolbar/styles/panel';
+-import {smallCss} from 'sentry/components/devtoolbar/styles/typography';
+-import type {FlagValue} from 'sentry/components/devtoolbar/types';
+-import ExternalLink from 'sentry/components/links/externalLink';
+-import {Cell} from 'sentry/components/replays/virtualizedGrid/bodyCell';
+-
+-import {useFeatureFlagsContext} from './featureFlagsContext';
+-
+-type FeatureFlag = {name: string; override: FlagValue; value: FlagValue};
+-
+-export default function FeatureFlagItem({flag}: {flag: FeatureFlag}) {
+-  const {featureFlags, trackAnalytics} = useConfiguration();
+-  const {eventName, eventKey} = useContext(AnalyticsContext);
+-
+-  return (
+-    <Fragment>
+-      <Cell
+-        css={[
+-          verticalPaddingCss,
+-          css`
+-            align-items: flex-start;
+-            margin-left: var(--space200);
+-          `,
+-        ]}
+-      >
+-        {featureFlags?.urlTemplate?.(flag.name) ? (
+-          <ExternalLink
+-            css={[smallCss, inlineLinkCss]}
+-            href={featureFlags.urlTemplate(flag.name)}
+-            onClick={() => {
+-              trackAnalytics?.({
+-                eventKey: eventKey + '.click',
+-                eventName: eventName + ' clicked',
+-              });
+-            }}
+-          >
+-            {flag.name}
+-          </ExternalLink>
+-        ) : (
+-          <span>{flag.name}</span>
+-        )}
+-      </Cell>
+-      <Cell
+-        css={css`
+-          margin-right: var(--space200);
+-          justify-content: center;
+-        `}
+-      >
+-        <FlagValueInput flag={flag} />
+-      </Cell>
+-    </Fragment>
+-  );
+-}
+-
+-function FlagValueInput({flag}: {flag: FeatureFlag}) {
+-  if (
+-    typeof flag.value === 'boolean' ||
+-    flag.override === true ||
+-    flag.override === false
+-  ) {
+-    return (
+-      <AnalyticsProvider keyVal="bool-override" nameVal="Boolean Override">
+-        <FlagValueBooleanInput flag={flag} />
+-      </AnalyticsProvider>
+-    );
+-  }
+-
+-  return (
+-    <code>
+-      {flag.override === undefined ? String(flag.value) : String(flag.override)}
+-    </code>
+-  );
+-}
+-
+-function FlagValueBooleanInput({flag}: {flag: FeatureFlag}) {
+-  const {eventName, eventKey} = useContext(AnalyticsContext);
+-  const {trackAnalytics} = useConfiguration();
+-  const {setOverride} = useFeatureFlagsContext();
+-
+-  const [isActive, setIsActive] = useState(
+-    flag.override === undefined ? Boolean(flag.value) : Boolean(flag.override)
+-  );
+-
+-  return (
+-    <label
+-      htmlFor={`toggle-${flag.name}`}
+-      css={css`
+-        display: flex;
+-        align-items: flex-end;
+-        align-self: flex-end;
+-        gap: var(--space100);
+-      `}
+-    >
+-      <code>{String(isActive)}</code>
+-      <Switch
+-        id={`toggle-${flag.name}`}
+-        checked={isActive}
+-        onChange={() => {
+-          setOverride(flag.name, !isActive);
+-          setIsActive(!isActive);
+-          trackAnalytics?.({
+-            eventKey: eventKey + '.toggled',
+-            eventName: eventName + ' toggled',
+-          });
+-        }}
+-      />
+-    </label>
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/featureFlags/featureFlagsContext.tsx b/static/app/components/devtoolbar/components/featureFlags/featureFlagsContext.tsx
+deleted file mode 100644
+index 0399bde2f95..00000000000
+--- a/static/app/components/devtoolbar/components/featureFlags/featureFlagsContext.tsx
++++ /dev/null
+@@ -1,72 +0,0 @@
+-import type {ReactNode} from 'react';
+-import {createContext, useCallback, useContext, useState} from 'react';
+-
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import type {FeatureFlagMap, FlagValue} from 'sentry/components/devtoolbar/types';
+-
+-interface Context {
+-  /**
+-   * Call through to the user-supplied clearOverrides() function to reset override state.
+-   */
+-  clearOverrides: () => void;
+-
+-  /**
+-   * The map of effective feature flags.
+-   */
+-  featureFlagMap: FeatureFlagMap;
+-
+-  /**
+-   * Whether the state of overridden flags has changed in this session. After
+-   * state is changed you must reload the page to ensure that you're getting a
+-   * consistent experience.
+-   */
+-  isDirty: boolean;
+-
+-  /**
+-   * Set an override. Marks the state as dirty.
+-   *
+-   * Setting an override back to default will not un-mark the dirty flag.
+-   */
+-  setOverride: (name: string, value: FlagValue) => void;
+-}
+-
+-const FeatureFlagContext = createContext<Context>({
+-  clearOverrides: () => {},
+-  featureFlagMap: {},
+-  isDirty: false,
+-  setOverride: () => {},
+-});
+-
+-export function FeatureFlagsContextProvider({children}: {children: ReactNode}) {
+-  const {featureFlags} = useConfiguration();
+-
+-  const [isDirty, setIsDirty] = useState(false);
+-  const [featureFlagMap, setFeatureFlagMap] = useState(
+-    () => featureFlags?.getFeatureFlagMap?.() ?? {}
+-  );
+-
+-  const setOverride = useCallback(
+-    (name: string, value: FlagValue) => {
+-      featureFlags?.setOverrideValue?.(name, value);
+-      setIsDirty(true);
+-      setFeatureFlagMap(featureFlags?.getFeatureFlagMap?.() ?? {});
+-    },
+-    [featureFlags]
+-  );
+-
+-  const clearOverrides = useCallback(() => {
+-    featureFlags?.clearOverrides?.();
+-    setIsDirty(true);
+-    setFeatureFlagMap(featureFlags?.getFeatureFlagMap?.() ?? {});
+-  }, [featureFlags]);
+-
+-  return (
+-    <FeatureFlagContext value={{isDirty, featureFlagMap, setOverride, clearOverrides}}>
+-      {children}
+-    </FeatureFlagContext>
+-  );
+-}
+-
+-export function useFeatureFlagsContext() {
+-  return useContext(FeatureFlagContext);
+-}
+diff --git a/static/app/components/devtoolbar/components/featureFlags/featureFlagsPanel.tsx b/static/app/components/devtoolbar/components/featureFlags/featureFlagsPanel.tsx
+deleted file mode 100644
+index 64b1b1f411f..00000000000
+--- a/static/app/components/devtoolbar/components/featureFlags/featureFlagsPanel.tsx
++++ /dev/null
+@@ -1,279 +0,0 @@
+-import {type Dispatch, Fragment, type SetStateAction, useState} from 'react';
+-import {css} from '@emotion/react';
+-
+-import {Input} from 'sentry/components/core/input';
+-import {SegmentedControl} from 'sentry/components/core/segmentedControl';
+-import AnalyticsProvider from 'sentry/components/devtoolbar/components/analyticsProvider';
+-import PanelLayout from 'sentry/components/devtoolbar/components/panelLayout';
+-import {
+-  buttonRightCss,
+-  panelHeadingRightCss,
+-  panelInsetContentCss,
+-  panelSectionCss,
+-  panelSectionCssNoBorder,
+-} from 'sentry/components/devtoolbar/styles/panel';
+-import {resetButtonCss, resetFlexRowCss} from 'sentry/components/devtoolbar/styles/reset';
+-import {smallCss} from 'sentry/components/devtoolbar/styles/typography';
+-import {PanelTable} from 'sentry/components/panels/panelTable';
+-import {IconChevron, IconClose} from 'sentry/icons';
+-
+-import CustomOverride from './customOverride';
+-import FeatureFlagItem from './featureFlagItem';
+-import {useFeatureFlagsContext} from './featureFlagsContext';
+-import FlagOverridesBadge from './flagOverridesBadge';
+-
+-type Prefilter = 'all' | 'overrides';
+-
+-export default function FeatureFlagsPanel() {
+-  const [prefilter, setPrefilter] = useState<Prefilter>('all');
+-  const [searchTerm, setSearchTerm] = useState('');
+-  const [isAddFlagActive, setIsAddFlagActive] = useState(false);
+-
+-  return (
+-    <PanelLayout
+-      title="Feature Flags"
+-      titleRight={
+-        <button
+-          aria-label="Override Flag"
+-          css={[resetButtonCss, panelHeadingRightCss]}
+-          title="Override Flag"
+-          onClick={() => setIsAddFlagActive(!isAddFlagActive)}
+-        >
+-          <span css={buttonRightCss}>
+-            {isAddFlagActive ? (
+-              <IconChevron direction="up" size="xs" />
+-            ) : (
+-              <IconChevron direction="down" size="xs" />
+-            )}
+-            Override
+-          </span>
+-        </button>
+-      }
+-    >
+-      {isAddFlagActive && (
+-        <div
+-          css={[
+-            smallCss,
+-            panelSectionCss,
+-            panelInsetContentCss,
+-            css`
+-              background: var(--surface200);
+-              padding: var(--space150);
+-            `,
+-          ]}
+-        >
+-          <AnalyticsProvider keyVal="custom-override" nameVal="Custom Override">
+-            <CustomOverride setComponentActive={setIsAddFlagActive} />
+-          </AnalyticsProvider>
+-        </div>
+-      )}
+-      <div
+-        css={css`
+-          display: grid;
+-          grid-template-rows: auto auto 1fr auto;
+-          flex-grow: 1;
+-        `}
+-      >
+-        <IsDirtyMessage />
+-        <div
+-          css={[
+-            smallCss,
+-            panelSectionCssNoBorder,
+-            panelInsetContentCss,
+-            css`
+-              display: grid;
+-              grid-template-areas: 'search segments';
+-              gap: var(--space100);
+-            `,
+-          ]}
+-        >
+-          <Filters
+-            setPrefilter={setPrefilter}
+-            prefilter={prefilter}
+-            setSearchTerm={setSearchTerm}
+-          />
+-        </div>
+-        <div
+-          css={css`
+-            contain: strict;
+-            flex-direction: column;
+-            align-items: stretch;
+-          `}
+-        >
+-          <div
+-            css={css`
+-              overflow: auto;
+-            `}
+-          >
+-            <AnalyticsProvider keyVal="flag-table" nameVal="Flag Table">
+-              <FlagTable searchTerm={searchTerm} prefilter={prefilter} />
+-            </AnalyticsProvider>
+-          </div>
+-        </div>
+-      </div>
+-    </PanelLayout>
+-  );
+-}
+-
+-function IsDirtyMessage() {
+-  const {isDirty} = useFeatureFlagsContext();
+-
+-  return isDirty ? (
+-    <div
+-      css={[
+-        smallCss,
+-        panelSectionCss,
+-        panelInsetContentCss,
+-        css`
+-          color: var(--gray300);
+-        `,
+-      ]}
+-    >
+-      <span>Reload to see changes</span>
+-    </div>
+-  ) : (
+-    <div />
+-  );
+-}
+-
+-function Filters({
+-  setPrefilter,
+-  prefilter,
+-  setSearchTerm,
+-}: {
+-  prefilter: Prefilter;
+-  setPrefilter: Dispatch<SetStateAction<Prefilter>>;
+-  setSearchTerm: Dispatch<SetStateAction<string>>;
+-}) {
+-  return (
+-    <Fragment>
+-      <div
+-        css={css`
+-          grid-area: segments;
+-        `}
+-      >
+-        <div
+-          css={css`
+-            position: relative;
+-            display: grid;
+-          `}
+-        >
+-          <SegmentedControl<Prefilter>
+-            onChange={setPrefilter}
+-            size="xs"
+-            value={prefilter}
+-          >
+-            <SegmentedControl.Item key="all">All</SegmentedControl.Item>
+-            <SegmentedControl.Item key="overrides">Overrides</SegmentedControl.Item>
+-          </SegmentedControl>
+-          <FlagOverridesBadge />
+-        </div>
+-      </div>
+-      <Input
+-        css={css`
+-          grid-area: search;
+-        `}
+-        onChange={e => setSearchTerm(e.target.value.toLowerCase())}
+-        placeholder="Search"
+-        size="xs"
+-      />
+-    </Fragment>
+-  );
+-}
+-
+-function FlagTable({prefilter, searchTerm}: {prefilter: Prefilter; searchTerm: string}) {
+-  const {featureFlagMap, clearOverrides} = useFeatureFlagsContext();
+-
+-  const filtered = Object.fromEntries(
+-    Object.entries(featureFlagMap)?.filter(([name, {value, override}]) => {
+-      const overrideOnly = prefilter === 'overrides';
+-      const isOverridden = override !== undefined && value !== override;
+-      const matchesSearch = name
+-        .toLocaleLowerCase()
+-        .includes(searchTerm.toLocaleLowerCase());
+-      return overrideOnly ? isOverridden && matchesSearch : matchesSearch;
+-    })
+-  );
+-  const names = Object.keys(filtered).sort();
+-
+-  return (
+-    <span>
+-      <PanelTable
+-        disablePadding
+-        disableHeaders
+-        css={css`
+-          flex-grow: 1;
+-          margin: 0;
+-          border-radius: 0;
+-          border: none;
+-          padding: 0;
+-          & > :first-child {
+-            min-height: unset;
+-          }
+-        `}
+-        headers={[undefined, undefined]}
+-        stickyHeaders
+-      >
+-        {names?.map(name => (
+-          <AnalyticsProvider key={name} keyVal="flag-item" nameVal="Flag Item">
+-            <FeatureFlagItem flag={{name, ...filtered[name]!}} />
+-          </AnalyticsProvider>
+-        ))}
+-      </PanelTable>
+-      {!names.length && (
+-        <div
+-          css={[
+-            smallCss,
+-            panelSectionCssNoBorder,
+-            panelInsetContentCss,
+-            css`
+-              display: block;
+-              text-align: center;
+-              color: var(--gray300);
+-            `,
+-          ]}
+-        >
+-          No flags to display
+-        </div>
+-      )}
+-      {prefilter === 'overrides' && Boolean(names.length) && (
+-        <div
+-          css={[
+-            smallCss,
+-            panelSectionCssNoBorder,
+-            panelInsetContentCss,
+-            css`
+-              display: block;
+-              text-align: center;
+-            `,
+-          ]}
+-        >
+-          <button
+-            css={[
+-              resetButtonCss,
+-              css`
+-                width: 100%;
+-              `,
+-            ]}
+-            onClick={() => {
+-              clearOverrides();
+-            }}
+-          >
+-            <span
+-              css={[
+-                resetFlexRowCss,
+-                css`
+-                  gap: var(--space75);
+-                  align-items: center;
+-                  justify-content: center;
+-                `,
+-              ]}
+-            >
+-              <IconClose isCircled size="xs" /> Remove All
+-            </span>
+-          </button>
+-        </div>
+-      )}
+-    </span>
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/featureFlags/flagOverridesBadge.tsx b/static/app/components/devtoolbar/components/featureFlags/flagOverridesBadge.tsx
+deleted file mode 100644
+index 6c77c1a809c..00000000000
+--- a/static/app/components/devtoolbar/components/featureFlags/flagOverridesBadge.tsx
++++ /dev/null
+@@ -1,12 +0,0 @@
+-import IndicatorBadge from 'sentry/components/devtoolbar/components/indicatorBadge';
+-
+-import useHasCustomFlagOverrides from './useHasCustomFlagOverrides';
+-
+-export default function FlagOverridesBadge() {
+-  const hasOverrides = useHasCustomFlagOverrides();
+-
+-  if (hasOverrides) {
+-    return <IndicatorBadge variant="red" />;
+-  }
+-  return null;
+-}
+diff --git a/static/app/components/devtoolbar/components/featureFlags/useHasCustomFlagOverrides.tsx b/static/app/components/devtoolbar/components/featureFlags/useHasCustomFlagOverrides.tsx
+deleted file mode 100644
+index 3f11de9872d..00000000000
+--- a/static/app/components/devtoolbar/components/featureFlags/useHasCustomFlagOverrides.tsx
++++ /dev/null
+@@ -1,10 +0,0 @@
+-import {useFeatureFlagsContext} from 'sentry/components/devtoolbar/components/featureFlags/featureFlagsContext';
+-
+-export default function useHasCustomFlagOverrides(): boolean {
+-  const {featureFlagMap} = useFeatureFlagsContext();
+-  return (
+-    Object.entries(featureFlagMap)?.filter(
+-      ([_name, {value, override}]) => override !== undefined && value !== override
+-    ).length > 0
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/feedback/feedbackPanel.tsx b/static/app/components/devtoolbar/components/feedback/feedbackPanel.tsx
+deleted file mode 100644
+index bdb9add17f7..00000000000
+--- a/static/app/components/devtoolbar/components/feedback/feedbackPanel.tsx
++++ /dev/null
+@@ -1,237 +0,0 @@
+-import {useEffect, useMemo, useState} from 'react';
+-import {css} from '@emotion/react';
+-
+-import {ActorAvatar} from 'sentry/components/core/avatar/actorAvatar';
+-import AnalyticsProvider from 'sentry/components/devtoolbar/components/analyticsProvider';
+-import InfiniteListItems from 'sentry/components/devtoolbar/components/infiniteListItems';
+-import InfiniteListState from 'sentry/components/devtoolbar/components/infiniteListState';
+-import PanelLayout from 'sentry/components/devtoolbar/components/panelLayout';
+-import SentryAppLink from 'sentry/components/devtoolbar/components/sentryAppLink';
+-import transactionToSearchTerm from 'sentry/components/devtoolbar/components/transactionToSearchTerm';
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import {useSDKFeedbackButton} from 'sentry/components/devtoolbar/hooks/useSDKFeedbackButton';
+-import {useScopeAndClient} from 'sentry/components/devtoolbar/hooks/useSentryClientAndScope';
+-import useVisibility from 'sentry/components/devtoolbar/hooks/useVisibility';
+-import {
+-  badgeWithLabelCss,
+-  gridFlexEndCss,
+-  listItemGridCss,
+-  listItemPlaceholderWrapperCss,
+-} from 'sentry/components/devtoolbar/styles/listItem';
+-import {
+-  buttonRightCss,
+-  panelDescCss,
+-  panelHeadingRightCss,
+-  panelInsetContentCss,
+-  panelSectionCss,
+-} from 'sentry/components/devtoolbar/styles/panel';
+-import {
+-  resetButtonCss,
+-  resetFlexColumnCss,
+-} from 'sentry/components/devtoolbar/styles/reset';
+-import {
+-  smallCss,
+-  textOverflowTwoLinesCss,
+-  xSmallCss,
+-} from 'sentry/components/devtoolbar/styles/typography';
+-import type {FeedbackIssueListItem} from 'sentry/components/devtoolbar/types';
+-import ProjectBadge from 'sentry/components/idBadge/projectBadge';
+-import Placeholder from 'sentry/components/placeholder';
+-import TextOverflow from 'sentry/components/textOverflow';
+-import TimeSince from 'sentry/components/timeSince';
+-import {IconChat, IconFatal, IconImage, IconMegaphone, IconPlay} from 'sentry/icons';
+-import hasLinkedError from 'sentry/utils/feedback/hasLinkedError';
+-import useReplayCount from 'sentry/utils/replayCount/useReplayCount';
+-
+-import useInfiniteFeedbackList from './useInfiniteFeedbackList';
+-
+-export default function FeedbackPanel() {
+-  const [, setVisible] = useVisibility();
+-
+-  const buttonRef = useSDKFeedbackButton(
+-    useMemo(
+-      () => ({
+-        onFormOpen: () => setVisible('hidden'),
+-        onFormClose: () => setVisible('visible'),
+-      }),
+-      [setVisible]
+-    )
+-  );
+-
+-  const {scope, client} = useScopeAndClient();
+-  const [searchTerm, setSearchTerm] = useState(
+-    transactionToSearchTerm(scope?.getScopeData().transactionName)
+-  );
+-
+-  useEffect(() => {
+-    if (client) {
+-      return client.on('startNavigationSpan', options => {
+-        setSearchTerm(transactionToSearchTerm(options.name));
+-      });
+-    }
+-    return () => {};
+-  }, [client]);
+-
+-  // Fetch issues based on the updated transaction name
+-  const queryResult = useInfiniteFeedbackList({
+-    query: `url:*${searchTerm}`,
+-  });
+-
+-  const estimateSize = 108;
+-  const placeholderHeight = `${estimateSize - 8}px`; // The real height of the items, minus the padding-block value
+-
+-  return (
+-    <PanelLayout
+-      showProjectBadge
+-      link={{url: '/feedback/'}}
+-      title="User Feedback"
+-      titleRight={
+-        buttonRef ? (
+-          <button
+-            aria-label="Submit Feedback"
+-            css={[resetButtonCss, panelHeadingRightCss]}
+-            ref={buttonRef}
+-            title="Submit Feedback"
+-          >
+-            <span css={buttonRightCss}>
+-              <IconMegaphone size="xs" />
+-              Report Bug
+-            </span>
+-          </button>
+-        ) : null
+-      }
+-    >
+-      <div css={[smallCss, panelSectionCss, panelDescCss]}>
+-        <span>Unresolved feedback related to this page</span>
+-      </div>
+-
+-      <div css={resetFlexColumnCss}>
+-        <InfiniteListState
+-          queryResult={queryResult}
+-          backgroundUpdatingMessage={() => null}
+-          loadingMessage={() => (
+-            <div
+-              css={[
+-                resetFlexColumnCss,
+-                panelSectionCss,
+-                panelInsetContentCss,
+-                listItemPlaceholderWrapperCss,
+-              ]}
+-            >
+-              <Placeholder height={placeholderHeight} />
+-              <Placeholder height={placeholderHeight} />
+-              <Placeholder height={placeholderHeight} />
+-              <Placeholder height={placeholderHeight} />
+-            </div>
+-          )}
+-        >
+-          <InfiniteListItems
+-            estimateSize={() => estimateSize}
+-            queryResult={queryResult}
+-            itemRenderer={props => <FeedbackListItem {...props} />}
+-            emptyMessage={() => <p css={panelInsetContentCss}>No items to show</p>}
+-          />
+-        </InfiniteListState>
+-      </div>
+-    </PanelLayout>
+-  );
+-}
+-
+-function FeedbackListItem({item}: {item: FeedbackIssueListItem}) {
+-  const {projectSlug, projectId} = useConfiguration();
+-  const {feedbackHasReplay} = useReplayCountForFeedbacks();
+-
+-  const hasReplayId = feedbackHasReplay(item.id);
+-  const isFatal = hasLinkedError(item);
+-  const hasAttachments = item.latestEventHasAttachments;
+-  const hasComments = item.numComments > 0;
+-
+-  return (
+-    <AnalyticsProvider nameVal="item" keyVal="item">
+-      <div css={listItemGridCss}>
+-        <TextOverflow css={smallCss} style={{gridArea: 'name'}}>
+-          <SentryAppLink
+-            to={{
+-              url: '/feedback/',
+-              query: {project: projectId, feedbackSlug: `${projectSlug}:${item.id}`},
+-            }}
+-          >
+-            <strong>
+-              {item.metadata.name ?? item.metadata.contact_email ?? 'Anonymous User'}
+-            </strong>
+-          </SentryAppLink>
+-        </TextOverflow>
+-
+-        <div
+-          css={[gridFlexEndCss, xSmallCss]}
+-          style={{gridArea: 'time', color: 'var(--gray300)'}}
+-        >
+-          <TimeSince date={item.firstSeen} unitStyle="extraShort" />
+-        </div>
+-
+-        <div style={{gridArea: 'message'}}>
+-          <TextOverflow css={[smallCss, textOverflowTwoLinesCss]}>
+-            {item.metadata.message}
+-          </TextOverflow>
+-        </div>
+-
+-        <div css={[badgeWithLabelCss, xSmallCss]} style={{gridArea: 'owner'}}>
+-          {item.project ? (
+-            <ProjectBadge
+-              css={css`
+-                && img {
+-                  box-shadow: none;
+-                }
+-              `}
+-              project={item.project}
+-              avatarSize={16}
+-              hideName
+-              avatarProps={{hasTooltip: false}}
+-            />
+-          ) : null}
+-          <TextOverflow>{item.shortId}</TextOverflow>
+-        </div>
+-
+-        <div css={gridFlexEndCss} style={{gridArea: 'icons'}}>
+-          {/* IssueTrackingSignals could have some refactoring so it doesn't
+-            depend on useOrganization, and so the filenames match up better with
+-            the exported functions */}
+-          {/* <IssueTrackingSignals group={item as unknown as Group} /> */}
+-
+-          {hasComments ? <IconChat size="sm" /> : null}
+-          {isFatal ? <IconFatal size="xs" color="red400" /> : null}
+-          {hasReplayId ? <IconPlay size="xs" /> : null}
+-          {hasAttachments ? <IconImage size="xs" /> : null}
+-          {item.assignedTo ? (
+-            <ActorAvatar
+-              actor={item.assignedTo}
+-              size={16}
+-              tooltipOptions={{containerDisplayMode: 'flex'}}
+-            />
+-          ) : null}
+-        </div>
+-      </div>
+-    </AnalyticsProvider>
+-  );
+-}
+-
+-// Copied from sentry, but we're passing in a fake `organization` object here.
+-// TODO: refactor useReplayCountForFeedbacks to accept an org param
+-function useReplayCountForFeedbacks() {
+-  const {organizationSlug} = useConfiguration();
+-  const {hasOne, hasMany} = useReplayCount({
+-    bufferLimit: 25,
+-    dataSource: 'search_issues',
+-    fieldName: 'issue.id',
+-    organization: {slug: organizationSlug} as any,
+-    statsPeriod: '90d',
+-  });
+-
+-  return useMemo(
+-    () => ({
+-      feedbackHasReplay: hasOne,
+-      feedbacksHaveReplay: hasMany,
+-    }),
+-    [hasMany, hasOne]
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/feedback/useInfiniteFeedbackList.tsx b/static/app/components/devtoolbar/components/feedback/useInfiniteFeedbackList.tsx
+deleted file mode 100644
+index ac79d77c0dc..00000000000
+--- a/static/app/components/devtoolbar/components/feedback/useInfiniteFeedbackList.tsx
++++ /dev/null
+@@ -1,46 +0,0 @@
+-import {useMemo} from 'react';
+-
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import useFetchInfiniteApiData from 'sentry/components/devtoolbar/hooks/useFetchInfiniteApiData';
+-import type {
+-  ApiEndpointQueryKey,
+-  FeedbackIssueListItem,
+-} from 'sentry/components/devtoolbar/types';
+-
+-interface Props {
+-  query: string;
+-}
+-
+-export default function useInfiniteFeedbackList({query}: Props) {
+-  const {environment, organizationSlug, projectId} = useConfiguration();
+-  const mailbox = 'unresolved';
+-
+-  return useFetchInfiniteApiData<FeedbackIssueListItem[]>({
+-    queryKey: useMemo(
+-      (): ApiEndpointQueryKey => [
+-        'io.sentry.toolbar',
+-        `/organizations/${organizationSlug}/issues/`,
+-        {
+-          query: {
+-            limit: 25,
+-            queryReferrer: 'devtoolbar',
+-            environment: Array.isArray(environment) ? environment : [environment],
+-            project: projectId,
+-            statsPeriod: '14d',
+-            mailbox,
+-            expand: [
+-              // 'pluginActions', // Gives us plugin actions available
+-              // 'pluginIssues', // Gives us plugin issues available
+-              // 'integrationIssues', // Gives us integration issues available
+-              // 'sentryAppIssues', // Gives us Sentry app issues available
+-              'latestEventHasAttachments', // Gives us whether the feedback has screenshots
+-            ],
+-            shortIdLookup: 0,
+-            query: `issue.category:feedback status:${mailbox} ${query}`,
+-          },
+-        },
+-      ],
+-      [environment, mailbox, organizationSlug, projectId, query]
+-    ),
+-  });
+-}
+diff --git a/static/app/components/devtoolbar/components/indicatorBadge.tsx b/static/app/components/devtoolbar/components/indicatorBadge.tsx
+deleted file mode 100644
+index db7bf9e4544..00000000000
+--- a/static/app/components/devtoolbar/components/indicatorBadge.tsx
++++ /dev/null
+@@ -1,36 +0,0 @@
+-import {css} from '@emotion/react';
+-
+-import {smallCss} from 'sentry/components/devtoolbar/styles/typography';
+-
+-const variants = {
+-  red: css`
+-    background: var(--red400);
+-    color: var(--gray100);
+-    z-index: 1;
+-  `,
+-};
+-
+-interface Props {
+-  variant: keyof typeof variants;
+-}
+-
+-export default function IndicatorBadge({variant}: Props) {
+-  return <div css={[smallCss, badgeCss, variants[variant]]} />;
+-}
+-
+-const badgeCss = css`
+-  background: var(--red400);
+-  border-radius: 50%;
+-  border: 1px solid transparent;
+-  box-sizing: content-box;
+-  color: var(--gray100);
+-  height: 0.55rem;
+-  line-height: 1rem;
+-  position: absolute;
+-  right: 2px;
+-  bottom: 2px;
+-  width: 0.55rem;
+-  display: flex;
+-  align-items: center;
+-  justify-content: center;
+-`;
+diff --git a/static/app/components/devtoolbar/components/infiniteListItems.tsx b/static/app/components/devtoolbar/components/infiniteListItems.tsx
+deleted file mode 100644
+index c96f96fbee9..00000000000
+--- a/static/app/components/devtoolbar/components/infiniteListItems.tsx
++++ /dev/null
+@@ -1,105 +0,0 @@
+-import {useEffect, useRef} from 'react';
+-import type {InfiniteData, UseInfiniteQueryResult} from '@tanstack/react-query';
+-import {useVirtualizer} from '@tanstack/react-virtual';
+-
+-import {
+-  infiniteListFloatingMessageBottomCss,
+-  infiniteListParentContainerCss,
+-  infiniteListScollablePanelCss,
+-  infiniteListScrollableWindowCss,
+-} from 'sentry/components/devtoolbar/styles/infiniteList';
+-import type {ApiResult} from 'sentry/components/devtoolbar/types';
+-import LoadingIndicator from 'sentry/components/loadingIndicator';
+-
+-interface Props<Data> {
+-  itemRenderer: ({item}: {item: Data}) => React.ReactNode;
+-  queryResult: UseInfiniteQueryResult<InfiniteData<ApiResult<Data[]>>, Error>;
+-  emptyMessage?: () => React.ReactNode;
+-  estimateSize?: () => number;
+-  loadingCompleteMessage?: () => React.ReactNode;
+-  loadingMoreMessage?: () => React.ReactNode;
+-  overscan?: number;
+-}
+-
+-export default function InfiniteListItems<Data>({
+-  estimateSize,
+-  itemRenderer,
+-  emptyMessage = EmptyMessage,
+-  loadingCompleteMessage = LoadingCompleteMessage,
+-  loadingMoreMessage = LoadingMoreMessage,
+-  overscan,
+-  queryResult,
+-}: Props<Data>) {
+-  const {data, hasNextPage, isFetchingNextPage, fetchNextPage} = queryResult;
+-  const loadedRows = data ? data.pages.flatMap(d => d.json) : [];
+-  const parentRef = useRef<HTMLDivElement>(null);
+-
+-  const rowVirtualizer = useVirtualizer({
+-    count: hasNextPage ? loadedRows.length + 1 : loadedRows.length,
+-    getScrollElement: () => parentRef.current,
+-    estimateSize: estimateSize ?? (() => 100),
+-    overscan: overscan ?? 5,
+-  });
+-  const items = rowVirtualizer.getVirtualItems();
+-
+-  useEffect(() => {
+-    const lastItem = items.at(-1);
+-    if (!lastItem) {
+-      return;
+-    }
+-
+-    if (lastItem.index >= loadedRows.length - 1 && hasNextPage && !isFetchingNextPage) {
+-      fetchNextPage();
+-    }
+-  }, [hasNextPage, fetchNextPage, loadedRows.length, isFetchingNextPage, items]);
+-
+-  return (
+-    <div ref={parentRef} css={infiniteListParentContainerCss}>
+-      <div
+-        css={infiniteListScollablePanelCss}
+-        style={{height: rowVirtualizer.getTotalSize()}}
+-      >
+-        <ul
+-          css={infiniteListScrollableWindowCss}
+-          style={{transform: `translateY(${items[0]?.start ?? 0}px)`}}
+-        >
+-          {items.length ? null : emptyMessage()}
+-          {items.map(virtualRow => {
+-            const isLoaderRow = virtualRow.index > loadedRows.length - 1;
+-            const item = loadedRows[virtualRow.index];
+-
+-            return (
+-              <li
+-                data-index={virtualRow.index}
+-                key={virtualRow.index}
+-                ref={rowVirtualizer.measureElement}
+-              >
+-                {isLoaderRow
+-                  ? hasNextPage
+-                    ? loadingMoreMessage()
+-                    : loadingCompleteMessage()
+-                  : itemRenderer({item: item!})}
+-              </li>
+-            );
+-          })}
+-        </ul>
+-      </div>
+-    </div>
+-  );
+-}
+-
+-function EmptyMessage() {
+-  return <p>No items to show</p>;
+-}
+-
+-function LoadingMoreMessage() {
+-  return (
+-    <footer css={infiniteListFloatingMessageBottomCss} title="Loading more items...">
+-      <LoadingIndicator mini />
+-    </footer>
+-  );
+-}
+-
+-function LoadingCompleteMessage() {
+-  return <p>Nothing more to load</p>;
+-}
+diff --git a/static/app/components/devtoolbar/components/infiniteListState.tsx b/static/app/components/devtoolbar/components/infiniteListState.tsx
+deleted file mode 100644
+index 78a7b3e9984..00000000000
+--- a/static/app/components/devtoolbar/components/infiniteListState.tsx
++++ /dev/null
+@@ -1,56 +0,0 @@
+-import {Fragment} from 'react';
+-import type {UseInfiniteQueryResult, UseQueryResult} from '@tanstack/react-query';
+-
+-import type {ApiResult} from 'sentry/components/devtoolbar/types';
+-
+-interface Props<Data> {
+-  children: React.ReactNode;
+-  queryResult:
+-    | UseQueryResult<ApiResult<Data>, Error>
+-    | UseInfiniteQueryResult<Data, Error>;
+-  backgroundUpdatingMessage?: () => React.ReactNode;
+-  errorMessage?: (props: {error: Error}) => React.ReactNode;
+-  loadingMessage?: () => React.ReactNode;
+-}
+-
+-export default function InfiniteListState<Data>({
+-  backgroundUpdatingMessage = BackgroundUpdatingMessage,
+-  children,
+-  errorMessage = ErrorMessage,
+-  loadingMessage = LoadingMessage,
+-  queryResult,
+-}: Props<Data>) {
+-  const {status, error, isFetching} = queryResult;
+-  if (status === 'pending') {
+-    return loadingMessage();
+-  }
+-  if (status === 'error') {
+-    return errorMessage({error});
+-  }
+-
+-  // It's fetching in the background if:
+-  // - it's a regular QueryResult, and isFetching is true
+-  // - it's an InfiniteQueryResult, and itFetching is true, but we're not fetching the next page
+-  const isBackgroundUpdating =
+-    isFetching &&
+-    ('isFetchingNextPage' in queryResult ? !queryResult.isFetchingNextPage : true);
+-
+-  return (
+-    <Fragment>
+-      {children}
+-      {isBackgroundUpdating ? backgroundUpdatingMessage() : null}
+-    </Fragment>
+-  );
+-}
+-
+-function LoadingMessage() {
+-  return <p>Loading...</p>;
+-}
+-
+-function ErrorMessage({error}: {error: Error}) {
+-  return <p>Error: {error.message}</p>;
+-}
+-
+-function BackgroundUpdatingMessage() {
+-  return <footer>Background Updating...</footer>;
+-}
+diff --git a/static/app/components/devtoolbar/components/issueListItem.tsx b/static/app/components/devtoolbar/components/issueListItem.tsx
+deleted file mode 100644
+index ba0a5e8226c..00000000000
+--- a/static/app/components/devtoolbar/components/issueListItem.tsx
++++ /dev/null
+@@ -1,92 +0,0 @@
+-import {css} from '@emotion/react';
+-
+-import {ActorAvatar} from 'sentry/components/core/avatar/actorAvatar';
+-import AnalyticsProvider from 'sentry/components/devtoolbar/components/analyticsProvider';
+-import SentryAppLink from 'sentry/components/devtoolbar/components/sentryAppLink';
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import {
+-  badgeWithLabelCss,
+-  gridFlexEndCss,
+-  listItemGridCss,
+-} from 'sentry/components/devtoolbar/styles/listItem';
+-import {smallCss, xSmallCss} from 'sentry/components/devtoolbar/styles/typography';
+-import TimesTag from 'sentry/components/group/inboxBadges/timesTag';
+-import ProjectBadge from 'sentry/components/idBadge/projectBadge';
+-import TextOverflow from 'sentry/components/textOverflow';
+-import TimeSince from 'sentry/components/timeSince';
+-import type {Group} from 'sentry/types/group';
+-
+-export default function IssueListItem({item}: {item: Group}) {
+-  const {projectId} = useConfiguration();
+-
+-  return (
+-    <AnalyticsProvider keyVal="issue-list.item" nameVal="issue list item">
+-      <div css={listItemGridCss}>
+-        <TextOverflow
+-          css={[
+-            badgeWithLabelCss,
+-            smallCss,
+-            css`
+-              display: block;
+-            `,
+-          ]}
+-          style={{gridArea: 'name', fontWeight: item.hasSeen ? 'bold' : 400}}
+-        >
+-          <SentryAppLink
+-            to={{
+-              url: `/issues/${item.id}/`,
+-              query: {project: projectId},
+-            }}
+-          >
+-            <strong>{item.metadata.type ?? '<unknown>'}</strong>
+-          </SentryAppLink>
+-        </TextOverflow>
+-
+-        <div
+-          css={[gridFlexEndCss, xSmallCss]}
+-          style={{gridArea: 'time', color: 'var(--gray300)'}}
+-        >
+-          <TimeSince date={item.firstSeen} unitStyle="extraShort" />
+-        </div>
+-
+-        <div style={{gridArea: 'message'}}>
+-          <TextOverflow css={[smallCss]}>{item.metadata.value}</TextOverflow>
+-        </div>
+-
+-        <div css={[badgeWithLabelCss, xSmallCss]} style={{gridArea: 'owner'}}>
+-          <ProjectBadge
+-            css={css`
+-              && img {
+-                box-shadow: none;
+-              }
+-            `}
+-            project={item.project}
+-            avatarSize={16}
+-            hideName
+-            avatarProps={{hasTooltip: false}}
+-          />
+-          <TextOverflow>{item.shortId}</TextOverflow>
+-        </div>
+-
+-        <div css={gridFlexEndCss} style={{gridArea: 'icons'}}>
+-          {item.lifetime || item.firstSeen || item.lastSeen ? (
+-            <div className="flex-row">
+-              <TimesTag
+-                lastSeen={item.lifetime?.lastSeen || item.lastSeen}
+-                firstSeen={item.lifetime?.firstSeen || item.firstSeen}
+-              />
+-            </div>
+-          ) : null}
+-
+-          {item.assignedTo ? (
+-            <ActorAvatar
+-              actor={item.assignedTo}
+-              size={16}
+-              tooltipOptions={{containerDisplayMode: 'flex'}}
+-            />
+-          ) : null}
+-        </div>
+-      </div>
+-    </AnalyticsProvider>
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/issues/issuesPanel.tsx b/static/app/components/devtoolbar/components/issues/issuesPanel.tsx
+deleted file mode 100644
+index 524813d6524..00000000000
+--- a/static/app/components/devtoolbar/components/issues/issuesPanel.tsx
++++ /dev/null
+@@ -1,80 +0,0 @@
+-import {useEffect, useState} from 'react';
+-
+-import InfiniteListItems from 'sentry/components/devtoolbar/components/infiniteListItems';
+-import InfiniteListState from 'sentry/components/devtoolbar/components/infiniteListState';
+-import IssueListItem from 'sentry/components/devtoolbar/components/issueListItem';
+-import PanelLayout from 'sentry/components/devtoolbar/components/panelLayout';
+-import transactionToSearchTerm from 'sentry/components/devtoolbar/components/transactionToSearchTerm';
+-import {useScopeAndClient} from 'sentry/components/devtoolbar/hooks/useSentryClientAndScope';
+-import {listItemPlaceholderWrapperCss} from 'sentry/components/devtoolbar/styles/listItem';
+-import {
+-  panelDescCss,
+-  panelInsetContentCss,
+-  panelSectionCss,
+-} from 'sentry/components/devtoolbar/styles/panel';
+-import {resetFlexColumnCss} from 'sentry/components/devtoolbar/styles/reset';
+-import {smallCss} from 'sentry/components/devtoolbar/styles/typography';
+-import Placeholder from 'sentry/components/placeholder';
+-
+-import useInfiniteIssuesList from './useInfiniteIssuesList';
+-
+-export default function IssuesPanel() {
+-  const {scope, client} = useScopeAndClient();
+-  const [searchTerm, setSearchTerm] = useState(
+-    transactionToSearchTerm(scope?.getScopeData().transactionName)
+-  );
+-
+-  useEffect(() => {
+-    if (client) {
+-      return client.on('startNavigationSpan', options => {
+-        setSearchTerm(transactionToSearchTerm(options.name));
+-      });
+-    }
+-    return () => {};
+-  }, [client]);
+-
+-  // Fetch issues based on the updated transaction name
+-  const queryResult = useInfiniteIssuesList({
+-    query: `url:*${searchTerm}`,
+-  });
+-
+-  const estimateSize = 89;
+-  const placeholderHeight = `${estimateSize - 8}px`; // The real height of the items, minus the padding-block value
+-
+-  return (
+-    <PanelLayout title="Issues" showProjectBadge link={{url: '/issues/'}}>
+-      <div css={[smallCss, panelSectionCss, panelDescCss]}>
+-        <span>Unresolved issues related to this page</span>
+-      </div>
+-
+-      <div css={resetFlexColumnCss}>
+-        <InfiniteListState
+-          queryResult={queryResult}
+-          backgroundUpdatingMessage={() => null}
+-          loadingMessage={() => (
+-            <div
+-              css={[
+-                resetFlexColumnCss,
+-                panelSectionCss,
+-                panelInsetContentCss,
+-                listItemPlaceholderWrapperCss,
+-              ]}
+-            >
+-              <Placeholder height={placeholderHeight} />
+-              <Placeholder height={placeholderHeight} />
+-              <Placeholder height={placeholderHeight} />
+-              <Placeholder height={placeholderHeight} />
+-            </div>
+-          )}
+-        >
+-          <InfiniteListItems
+-            estimateSize={() => estimateSize}
+-            queryResult={queryResult}
+-            itemRenderer={props => <IssueListItem {...props} />}
+-            emptyMessage={() => <p css={panelInsetContentCss}>No items to show</p>}
+-          />
+-        </InfiniteListState>
+-      </div>
+-    </PanelLayout>
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/issues/useInfiniteIssuesList.tsx b/static/app/components/devtoolbar/components/issues/useInfiniteIssuesList.tsx
+deleted file mode 100644
+index 180e1ea051d..00000000000
+--- a/static/app/components/devtoolbar/components/issues/useInfiniteIssuesList.tsx
++++ /dev/null
+@@ -1,37 +0,0 @@
+-import {useMemo} from 'react';
+-
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import useFetchInfiniteApiData from 'sentry/components/devtoolbar/hooks/useFetchInfiniteApiData';
+-import type {ApiEndpointQueryKey} from 'sentry/components/devtoolbar/types';
+-import type {Group} from 'sentry/types/group';
+-import {IssueCategory} from 'sentry/types/group';
+-
+-interface Props {
+-  query: string;
+-}
+-
+-export default function useInfiniteIssuesList({query}: Props) {
+-  const {environment, organizationSlug, projectId} = useConfiguration();
+-  const mailbox = 'unresolved';
+-
+-  return useFetchInfiniteApiData<Group[]>({
+-    queryKey: useMemo(
+-      (): ApiEndpointQueryKey => [
+-        'io.sentry.toolbar',
+-        `/organizations/${organizationSlug}/issues/`,
+-        {
+-          query: {
+-            limit: 25,
+-            queryReferrer: 'devtoolbar',
+-            environment: Array.isArray(environment) ? environment : [environment],
+-            project: projectId,
+-            statsPeriod: '14d',
+-            shortIdLookup: 0,
+-            query: `issue.category:[${IssueCategory.ERROR},${IssueCategory.PERFORMANCE}] status:${mailbox} ${query}`,
+-          },
+-        },
+-      ],
+-      [environment, mailbox, organizationSlug, projectId, query]
+-    ),
+-  });
+-}
+diff --git a/static/app/components/devtoolbar/components/navigation.tsx b/static/app/components/devtoolbar/components/navigation.tsx
+deleted file mode 100644
+index 7964359bf78..00000000000
+--- a/static/app/components/devtoolbar/components/navigation.tsx
++++ /dev/null
+@@ -1,103 +0,0 @@
+-import {type ReactNode, useContext} from 'react';
+-
+-import {AnalyticsContext} from 'sentry/components/devtoolbar/components/analyticsProvider';
+-import SessionStatusBadge from 'sentry/components/devtoolbar/components/releases/sessionStatusBadge';
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import usePlacementCss from 'sentry/components/devtoolbar/hooks/usePlacementCss';
+-import useToolbarRoute from 'sentry/components/devtoolbar/hooks/useToolbarRoute';
+-import {navigationCss} from 'sentry/components/devtoolbar/styles/navigation';
+-import {resetDialogCss} from 'sentry/components/devtoolbar/styles/reset';
+-import {
+-  IconClose,
+-  IconFlag,
+-  IconIssues,
+-  IconMegaphone,
+-  IconPlay,
+-  IconReleases,
+-  IconSiren,
+-} from 'sentry/icons';
+-
+-import AlertBadge from './alerts/alertBadge';
+-import FlagOverridesBadge from './featureFlags/flagOverridesBadge';
+-import IconButton from './navigation/iconButton';
+-
+-export default function Navigation({
+-  setIsDisabled,
+-}: {
+-  setIsDisabled: (val: boolean) => void;
+-}) {
+-  const {trackAnalytics} = useConfiguration();
+-  const placement = usePlacementCss();
+-
+-  const {state: route} = useToolbarRoute();
+-  const {eventName, eventKey} = useContext(AnalyticsContext);
+-  const isRouteActive = !!route.activePanel;
+-
+-  return (
+-    <dialog
+-      css={[resetDialogCss, navigationCss, placement.navigation.css]}
+-      data-has-active={isRouteActive}
+-    >
+-      <IconButton
+-        onClick={() => {
+-          trackAnalytics?.({
+-            eventKey: eventKey + '.hide.click',
+-            eventName: eventName + ' hide devtoolbar clicked',
+-          });
+-          setIsDisabled(true);
+-        }}
+-        title="Hide for this session"
+-        icon={<IconClose />}
+-      />
+-
+-      <hr style={{margin: 0, width: '100%'}} />
+-
+-      <NavButton panelName="issues" label="Issues" icon={<IconIssues />} />
+-      <NavButton panelName="feedback" label="User Feedback" icon={<IconMegaphone />} />
+-      <NavButton panelName="alerts" label="Active Alerts" icon={<IconSiren />}>
+-        <AlertBadge />
+-      </NavButton>
+-      <NavButton panelName="featureFlags" label="Feature Flags" icon={<IconFlag />}>
+-        <FlagOverridesBadge />
+-      </NavButton>
+-      <NavButton panelName="releases" label="Releases" icon={<IconReleases />}>
+-        <SessionStatusBadge />
+-      </NavButton>
+-      <NavButton panelName="replay" label="Session Replay" icon={<IconPlay />} />
+-    </dialog>
+-  );
+-}
+-
+-function NavButton({
+-  children,
+-  icon,
+-  label,
+-  panelName,
+-}: {
+-  icon: ReactNode;
+-  label: string;
+-  panelName: ReturnType<typeof useToolbarRoute>['state']['activePanel'];
+-  children?: ReactNode;
+-}) {
+-  const {trackAnalytics} = useConfiguration();
+-  const {state, setActivePanel} = useToolbarRoute();
+-
+-  const isActive = state.activePanel === panelName;
+-
+-  return (
+-    <IconButton
+-      data-active-route={isActive}
+-      icon={icon}
+-      onClick={() => {
+-        setActivePanel(isActive ? null : panelName);
+-        trackAnalytics?.({
+-          eventKey: `devtoolbar.nav.button.${label.replace(' ', '-')}.click`,
+-          eventName: `devtoolbar: Toggle Nav Panel ${label} Click`,
+-        });
+-      }}
+-      title={label}
+-    >
+-      {children}
+-    </IconButton>
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/navigation/iconButton.tsx b/static/app/components/devtoolbar/components/navigation/iconButton.tsx
+deleted file mode 100644
+index d20af72486a..00000000000
+--- a/static/app/components/devtoolbar/components/navigation/iconButton.tsx
++++ /dev/null
+@@ -1,57 +0,0 @@
+-import type {ButtonHTMLAttributes, ReactNode} from 'react';
+-import {css, type Interpolation} from '@emotion/react';
+-
+-import {resetButtonCss} from 'sentry/components/devtoolbar/styles/reset';
+-import {buttonCss} from 'sentry/components/devtoolbar/styles/typography';
+-import InteractionStateLayer from 'sentry/components/interactionStateLayer';
+-
+-const iconButtonCss = css`
+-  border: 1px solid transparent;
+-  background: none;
+-  color: white;
+-  padding: var(--space100) var(--space100);
+-  border-radius: var(--space100);
+-  gap: var(--space50);
+-
+-  &:hover:not(:disabled) {
+-    border-color: white;
+-  }
+-
+-  &[data-active-route='true'] {
+-    background: white;
+-    color: var(--gray400);
+-  }
+-`;
+-
+-type BaseButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
+-  css?: Interpolation<any>;
+-};
+-
+-interface IconButtonProps extends BaseButtonProps {
+-  icon: ReactNode;
+-  title: string;
+-  children?: ReactNode;
+-  onClick?: () => void;
+-}
+-
+-export default function IconButton({
+-  children,
+-  icon,
+-  onClick,
+-  title,
+-  ...props
+-}: IconButtonProps) {
+-  return (
+-    <button
+-      aria-label={title}
+-      css={[resetButtonCss, buttonCss, iconButtonCss]}
+-      onClick={onClick}
+-      title={title}
+-      {...props}
+-    >
+-      <InteractionStateLayer />
+-      {icon}
+-      {children}
+-    </button>
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/panelLayout.tsx b/static/app/components/devtoolbar/components/panelLayout.tsx
+deleted file mode 100644
+index 6251dffca75..00000000000
+--- a/static/app/components/devtoolbar/components/panelLayout.tsx
++++ /dev/null
+@@ -1,111 +0,0 @@
+-import {css} from '@emotion/react';
+-import type {UrlObject} from 'query-string';
+-
+-import SentryAppLink from 'sentry/components/devtoolbar/components/sentryAppLink';
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import {
+-  panelCss,
+-  panelHeadingCss,
+-  panelSectionCss,
+-} from 'sentry/components/devtoolbar/styles/panel';
+-import {
+-  resetDialogCss,
+-  resetFlexColumnCss,
+-  resetFlexRowCss,
+-} from 'sentry/components/devtoolbar/styles/reset';
+-import {buttonCss} from 'sentry/components/devtoolbar/styles/typography';
+-import ProjectBadge from 'sentry/components/idBadge/projectBadge';
+-import type {PlatformKey} from 'sentry/types/project';
+-
+-interface Props {
+-  children?: React.ReactNode;
+-  link?: UrlObject;
+-  noBorder?: boolean;
+-  showProjectBadge?: boolean;
+-  title?: string;
+-  titleRight?: React.ReactNode;
+-}
+-
+-export default function PanelLayout({
+-  children,
+-  title,
+-  titleRight,
+-  showProjectBadge,
+-  noBorder,
+-  link,
+-}: Props) {
+-  const {projectId, projectSlug, projectPlatform} = useConfiguration();
+-  return (
+-    <dialog
+-      open
+-      css={[
+-        resetDialogCss,
+-        resetFlexColumnCss,
+-        panelCss,
+-        noBorder
+-          ? css`
+-              border-color: white;
+-            `
+-          : undefined,
+-      ]}
+-    >
+-      <span
+-        css={[
+-          panelHeadingCss,
+-          css`
+-            display: flex;
+-            align-items: center;
+-            gap: var(--space100);
+-          `,
+-          noBorder
+-            ? css`
+-                border-color: white;
+-              `
+-            : undefined,
+-        ]}
+-      >
+-        {showProjectBadge && (
+-          <ProjectBadge
+-            css={css`
+-              && img {
+-                box-shadow: none;
+-              }
+-            `}
+-            project={{
+-              slug: projectSlug,
+-              id: projectId,
+-              platform: projectPlatform as PlatformKey,
+-            }}
+-            avatarSize={16}
+-            hideName
+-            avatarProps={{hasTooltip: false}}
+-          />
+-        )}
+-        {title ? (
+-          <header
+-            css={[
+-              panelSectionCss,
+-              resetFlexRowCss,
+-              css`
+-                align-items: center;
+-                margin-right: var(--space100);
+-              `,
+-            ]}
+-          >
+-            {link ? (
+-              <SentryAppLink to={link}>
+-                <h1 css={[buttonCss]}>{title}</h1>
+-              </SentryAppLink>
+-            ) : (
+-              <h1 css={[buttonCss]}>{title}</h1>
+-            )}
+-            {titleRight}
+-          </header>
+-        ) : null}
+-      </span>
+-      <section css={resetFlexColumnCss} style={{contain: 'strict'}}>
+-        {children}
+-      </section>
+-    </dialog>
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/panelRouter.tsx b/static/app/components/devtoolbar/components/panelRouter.tsx
+deleted file mode 100644
+index 87b08ee4036..00000000000
+--- a/static/app/components/devtoolbar/components/panelRouter.tsx
++++ /dev/null
+@@ -1,56 +0,0 @@
+-import {lazy} from 'react';
+-
+-import AnalyticsProvider from 'sentry/components/devtoolbar/components/analyticsProvider';
+-import useToolbarRoute from 'sentry/components/devtoolbar/hooks/useToolbarRoute';
+-
+-const PanelAlerts = lazy(() => import('./alerts/alertsPanel'));
+-const PanelFeedback = lazy(() => import('./feedback/feedbackPanel'));
+-const PanelIssues = lazy(() => import('./issues/issuesPanel'));
+-const PanelFeatureFlags = lazy(() => import('./featureFlags/featureFlagsPanel'));
+-const PanelReleases = lazy(() => import('./releases/releasesPanel'));
+-const PanelReplay = lazy(() => import('./replay/replayPanel'));
+-
+-export default function PanelRouter() {
+-  const {state} = useToolbarRoute();
+-
+-  switch (state.activePanel) {
+-    case 'alerts':
+-      return (
+-        <AnalyticsProvider keyVal="alerts-panel" nameVal="Alerts panel">
+-          <PanelAlerts />
+-        </AnalyticsProvider>
+-      );
+-    case 'feedback':
+-      return (
+-        <AnalyticsProvider keyVal="feedback-panel" nameVal="Feedback panel">
+-          <PanelFeedback />
+-        </AnalyticsProvider>
+-      );
+-    case 'issues':
+-      return (
+-        <AnalyticsProvider keyVal="issues-panel" nameVal="Issues panel">
+-          <PanelIssues />
+-        </AnalyticsProvider>
+-      );
+-    case 'featureFlags':
+-      return (
+-        <AnalyticsProvider keyVal="feature-flags-panel" nameVal="Feature Flags panel">
+-          <PanelFeatureFlags />
+-        </AnalyticsProvider>
+-      );
+-    case 'releases':
+-      return (
+-        <AnalyticsProvider keyVal="releases-panel" nameVal="Releases panel">
+-          <PanelReleases />
+-        </AnalyticsProvider>
+-      );
+-    case 'replay':
+-      return (
+-        <AnalyticsProvider keyVal="replay-panel" nameVal="Replay panel">
+-          <PanelReplay />
+-        </AnalyticsProvider>
+-      );
+-    default:
+-      return null;
+-  }
+-}
+diff --git a/static/app/components/devtoolbar/components/providers.tsx b/static/app/components/devtoolbar/components/providers.tsx
+deleted file mode 100644
+index 1ed76e4efa5..00000000000
+--- a/static/app/components/devtoolbar/components/providers.tsx
++++ /dev/null
+@@ -1,52 +0,0 @@
+-import {useMemo} from 'react';
+-import createCache from '@emotion/cache';
+-import {CacheProvider, ThemeProvider} from '@emotion/react';
+-import {QueryClient, QueryClientProvider} from '@tanstack/react-query';
+-
+-import {ConfigurationContextProvider} from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import {ToolbarRouterContextProvider} from 'sentry/components/devtoolbar/hooks/useToolbarRoute';
+-import {VisibilityContextProvider} from 'sentry/components/devtoolbar/hooks/useVisibility';
+-import type {Configuration} from 'sentry/components/devtoolbar/types';
+-// eslint-disable-next-line no-restricted-imports -- @TODO(jonasbadalic): Remove theme import
+-import {lightTheme} from 'sentry/utils/theme';
+-
+-import {FeatureFlagsContextProvider} from './featureFlags/featureFlagsContext';
+-
+-interface Props {
+-  children: React.ReactNode;
+-  config: Configuration;
+-  container: ShadowRoot;
+-}
+-
+-export default function Providers({children, config, container}: Props) {
+-  const queryClient = useMemo(() => new QueryClient({}), []);
+-
+-  const myCache = useMemo(
+-    () =>
+-      createCache({
+-        key: 'sentry-devtools',
+-        stylisPlugins: [
+-          /* your plugins here */
+-        ],
+-        container,
+-        prepend: false,
+-      }),
+-    [container]
+-  );
+-
+-  return (
+-    <CacheProvider value={myCache}>
+-      <QueryClientProvider client={queryClient}>
+-        <ThemeProvider theme={lightTheme}>
+-          <ConfigurationContextProvider config={config}>
+-            <VisibilityContextProvider>
+-              <ToolbarRouterContextProvider>
+-                <FeatureFlagsContextProvider>{children}</FeatureFlagsContextProvider>
+-              </ToolbarRouterContextProvider>
+-            </VisibilityContextProvider>
+-          </ConfigurationContextProvider>
+-        </ThemeProvider>
+-      </QueryClientProvider>
+-    </CacheProvider>
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/releases/releaseIssues.tsx b/static/app/components/devtoolbar/components/releases/releaseIssues.tsx
+deleted file mode 100644
+index e895d637a70..00000000000
+--- a/static/app/components/devtoolbar/components/releases/releaseIssues.tsx
++++ /dev/null
+@@ -1,99 +0,0 @@
+-import {css} from '@emotion/react';
+-
+-import InfiniteListItems from 'sentry/components/devtoolbar/components/infiniteListItems';
+-import InfiniteListState from 'sentry/components/devtoolbar/components/infiniteListState';
+-import IssueListItem from 'sentry/components/devtoolbar/components/issueListItem';
+-import PanelLayout from 'sentry/components/devtoolbar/components/panelLayout';
+-import useInfiniteReleaseIssuesList from 'sentry/components/devtoolbar/components/releases/useInfiniteReleaseIssuesList';
+-import {listItemPlaceholderWrapperCss} from 'sentry/components/devtoolbar/styles/listItem';
+-import {
+-  panelDescCss,
+-  panelInsetContentCss,
+-  panelSectionCss,
+-  panelSectionCssNoBorder,
+-} from 'sentry/components/devtoolbar/styles/panel';
+-import {releaseBoxCss} from 'sentry/components/devtoolbar/styles/releasesPanel';
+-import {resetFlexColumnCss} from 'sentry/components/devtoolbar/styles/reset';
+-import {smallCss} from 'sentry/components/devtoolbar/styles/typography';
+-import Placeholder from 'sentry/components/placeholder';
+-import {IconSearch} from 'sentry/icons/iconSearch';
+-
+-const estimateSize = 89;
+-const placeholderHeight = `${estimateSize - 8}px`; // The real height of the items, minus the padding-block value
+-
+-export default function ReleaseIsssues({releaseVersion}: {releaseVersion: string}) {
+-  const queryResult = useInfiniteReleaseIssuesList({
+-    releaseVersion,
+-  });
+-
+-  return (
+-    <PanelLayout noBorder>
+-      <div
+-        css={css`
+-          display: grid;
+-          flex-grow: 1;
+-          grid-template-rows: auto 1fr;
+-        `}
+-      >
+-        <span
+-          css={[
+-            smallCss,
+-            panelDescCss,
+-            panelSectionCssNoBorder,
+-            css`
+-              padding-top: var(--space25);
+-              padding-bottom: 0;
+-            `,
+-          ]}
+-        >
+-          New Issues in This Release
+-        </span>
+-        <div css={resetFlexColumnCss}>
+-          <InfiniteListState
+-            queryResult={queryResult}
+-            backgroundUpdatingMessage={() => null}
+-            loadingMessage={() => (
+-              <div
+-                css={[
+-                  resetFlexColumnCss,
+-                  panelSectionCss,
+-                  panelInsetContentCss,
+-                  listItemPlaceholderWrapperCss,
+-                ]}
+-              >
+-                <Placeholder height={placeholderHeight} />
+-                <Placeholder height={placeholderHeight} />
+-                <Placeholder height={placeholderHeight} />
+-              </div>
+-            )}
+-          >
+-            <InfiniteListItems
+-              estimateSize={() => estimateSize}
+-              queryResult={queryResult}
+-              itemRenderer={props => <IssueListItem {...props} />}
+-              emptyMessage={() => (
+-                <div
+-                  css={[
+-                    panelInsetContentCss,
+-                    releaseBoxCss,
+-                    resetFlexColumnCss,
+-                    css`
+-                      padding: var(--space400);
+-                      align-items: center;
+-                      gap: var(--space150);
+-                      height: 212px;
+-                      justify-content: center;
+-                    `,
+-                  ]}
+-                >
+-                  <IconSearch size="lg" />
+-                  No new issues in this release.
+-                </div>
+-              )}
+-            />
+-          </InfiniteListState>
+-        </div>
+-      </div>
+-    </PanelLayout>
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/releases/releasesPanel.tsx b/static/app/components/devtoolbar/components/releases/releasesPanel.tsx
+deleted file mode 100644
+index e0c27a8be03..00000000000
+--- a/static/app/components/devtoolbar/components/releases/releasesPanel.tsx
++++ /dev/null
+@@ -1,330 +0,0 @@
+-import {Fragment} from 'react';
+-import {css} from '@emotion/react';
+-
+-import AnalyticsProvider from 'sentry/components/devtoolbar/components/analyticsProvider';
+-import PanelLayout from 'sentry/components/devtoolbar/components/panelLayout';
+-import ReleaseIsssues from 'sentry/components/devtoolbar/components/releases/releaseIssues';
+-import useReleaseSessions from 'sentry/components/devtoolbar/components/releases/useReleaseSessions';
+-import useToolbarRelease from 'sentry/components/devtoolbar/components/releases/useToolbarRelease';
+-import SentryAppLink from 'sentry/components/devtoolbar/components/sentryAppLink';
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import {listItemPlaceholderWrapperCss} from 'sentry/components/devtoolbar/styles/listItem';
+-import {
+-  panelDescCss,
+-  panelInsetContentCss,
+-  panelSectionCss,
+-  panelSectionCssNoBorder,
+-} from 'sentry/components/devtoolbar/styles/panel';
+-import {
+-  infoHeaderCss,
+-  releaseBoxCss,
+-  releaseNumbersCss,
+-  subtextCss,
+-} from 'sentry/components/devtoolbar/styles/releasesPanel';
+-import {
+-  resetFlexColumnCss,
+-  resetFlexRowCss,
+-} from 'sentry/components/devtoolbar/styles/reset';
+-import {smallCss} from 'sentry/components/devtoolbar/styles/typography';
+-import type {ApiResult} from 'sentry/components/devtoolbar/types';
+-import EmptyStateWarning from 'sentry/components/emptyStateWarning';
+-import PanelItem from 'sentry/components/panels/panelItem';
+-import Placeholder from 'sentry/components/placeholder';
+-import TimeSince from 'sentry/components/timeSince';
+-import {IconArrow} from 'sentry/icons/iconArrow';
+-import type {SessionApiResponse} from 'sentry/types/organization';
+-import type {Release} from 'sentry/types/release';
+-import {defined} from 'sentry/utils';
+-import {formatVersion} from 'sentry/utils/versions/formatVersion';
+-import {
+-  ReleaseInfoHeader,
+-  ReleaseInfoSubheader,
+-  VersionWrapper,
+-} from 'sentry/views/releases/list/releaseCard';
+-import ReleaseCardCommits from 'sentry/views/releases/list/releaseCard/releaseCardCommits';
+-
+-const summaryPlaceholderHeight = '65px';
+-const crashComparisonPlaceholderHeight = '61px';
+-const issueListPlaceholderHeight = '320px';
+-
+-function getCrashFreeRate(data: ApiResult<SessionApiResponse>): number {
+-  // if `crash_free_rate(session)` is undefined
+-  // (sometimes the case for brand new releases),
+-  // assume it is 100%.
+-  // round to 2 decimal points
+-  return parseFloat(
+-    ((data?.json.groups[0]!.totals['crash_free_rate(session)'] ?? 1) * 100).toFixed(2)
+-  );
+-}
+-
+-function getDiff(
+-  diff: string,
+-  diffColor: string[],
+-  diffDirection: 'up' | 'down' | undefined
+-) {
+-  return (
+-    <div
+-      css={[
+-        releaseBoxCss,
+-        releaseNumbersCss,
+-        css`
+-          background-color: ${diffColor[1]};
+-          border-color: ${diffColor[0]};
+-        `,
+-      ]}
+-    >
+-      <span
+-        css={[
+-          smallCss,
+-          css`
+-            color: ${diffColor[0]};
+-            font-weight: bold;
+-          `,
+-        ]}
+-      >
+-        Change
+-      </span>
+-      <span
+-        css={[
+-          resetFlexRowCss,
+-          css`
+-            align-items: center;
+-            gap: var(--space25);
+-            color: ${diffColor[0]};
+-          `,
+-        ]}
+-      >
+-        {diff}
+-        {defined(diffDirection) ? (
+-          <IconArrow direction={diffDirection} size="sm" />
+-        ) : null}
+-      </span>
+-    </div>
+-  );
+-}
+-
+-function ReleaseSummary({orgSlug, release}: {orgSlug: string; release: Release}) {
+-  return (
+-    <PanelItem
+-      css={[
+-        releaseBoxCss,
+-        css`
+-          width: 92%;
+-          align-items: flex-start;
+-        `,
+-      ]}
+-    >
+-      <ReleaseInfoHeader css={infoHeaderCss}>
+-        <AnalyticsProvider nameVal="latest release" keyVal="latest-release">
+-          <SentryAppLink
+-            to={{
+-              url: `/organizations/${orgSlug}/releases/${encodeURIComponent(release.version)}/`,
+-              query: {project: release.projects[0]!.id},
+-            }}
+-          >
+-            <VersionWrapper>{formatVersion(release.version)}</VersionWrapper>
+-          </SentryAppLink>
+-          {release.commitCount > 0 && (
+-            <ReleaseCardCommits release={release} withHeading={false} />
+-          )}
+-        </AnalyticsProvider>
+-      </ReleaseInfoHeader>
+-      <ReleaseInfoSubheader
+-        css={[
+-          resetFlexColumnCss,
+-          subtextCss,
+-          css`
+-            align-items: flex-start;
+-          `,
+-        ]}
+-      >
+-        <span
+-          css={[
+-            resetFlexRowCss,
+-            css`
+-              gap: var(--space25);
+-            `,
+-          ]}
+-        >
+-          <TimeSince date={release.lastDeploy?.dateFinished || release.dateCreated} />
+-          {release.lastDeploy?.dateFinished &&
+-            ` \u2022 ${release.lastDeploy.environment}`}
+-        </span>
+-      </ReleaseInfoSubheader>
+-    </PanelItem>
+-  );
+-}
+-
+-function CrashFreeRate({
+-  prevReleaseVersion,
+-  currReleaseVersion,
+-}: {
+-  currReleaseVersion: string;
+-  prevReleaseVersion: string | undefined;
+-}) {
+-  const {
+-    data: currSessionData,
+-    isPending: isCurrLoading,
+-    isError: isCurrError,
+-  } = useReleaseSessions({
+-    releaseVersion: currReleaseVersion,
+-  });
+-  const {
+-    data: prevSessionData,
+-    isPending: isPrevLoading,
+-    isError: isPrevError,
+-  } = useReleaseSessions({
+-    releaseVersion: prevReleaseVersion,
+-  });
+-
+-  if (isCurrError || isPrevError) {
+-    return null;
+-  }
+-
+-  if (isCurrLoading || isPrevLoading) {
+-    return (
+-      <PanelItem
+-        css={css`
+-          width: 100%;
+-          padding: var(--space150);
+-        `}
+-      >
+-        <Placeholder
+-          height={crashComparisonPlaceholderHeight}
+-          css={[
+-            resetFlexColumnCss,
+-            panelSectionCss,
+-            panelInsetContentCss,
+-            listItemPlaceholderWrapperCss,
+-          ]}
+-        />
+-      </PanelItem>
+-    );
+-  }
+-
+-  const currCrashFreeRate = getCrashFreeRate(currSessionData);
+-  const prevCrashFreeRate = getCrashFreeRate(prevSessionData);
+-  const diff = currCrashFreeRate - prevCrashFreeRate;
+-  const sign = Math.sign(diff);
+-
+-  return (
+-    <div>
+-      <span
+-        css={[
+-          smallCss,
+-          panelDescCss,
+-          panelSectionCssNoBorder,
+-          css`
+-            padding-bottom: 0;
+-          `,
+-        ]}
+-      >
+-        Crash Free Session Rate
+-      </span>
+-      <div
+-        css={css`
+-          display: grid;
+-          grid-template-columns: 1fr 1fr 1fr;
+-          gap: var(--space100);
+-          padding: var(--space75) var(--space150) var(--space150) var(--space150);
+-        `}
+-      >
+-        <div css={[releaseBoxCss, releaseNumbersCss]}>
+-          <span
+-            css={[
+-              smallCss,
+-              css`
+-                font-weight: bold;
+-              `,
+-            ]}
+-          >
+-            Latest
+-          </span>
+-          {currCrashFreeRate}%
+-        </div>
+-        <div css={[releaseBoxCss, releaseNumbersCss]}>
+-          <span
+-            css={[
+-              smallCss,
+-              css`
+-                font-weight: bold;
+-              `,
+-            ]}
+-          >
+-            Previous
+-          </span>
+-          {prevCrashFreeRate}%
+-        </div>
+-        {getDiff(
+-          Math.abs(diff).toFixed(2) + '%',
+-          sign === 0
+-            ? ['black', 'white']
+-            : sign === 1
+-              ? ['var(--green400)', 'var(--green100)']
+-              : ['var(--red400)', 'var(--red100)'],
+-          sign === 0 ? undefined : sign === 1 ? 'up' : 'down'
+-        )}
+-      </div>
+-    </div>
+-  );
+-}
+-
+-export default function ReleasesPanel() {
+-  const {
+-    data: releaseData,
+-    isPending: isReleaseDataLoading,
+-    isError: isReleaseDataError,
+-  } = useToolbarRelease();
+-
+-  const {organizationSlug} = useConfiguration();
+-
+-  if (isReleaseDataError) {
+-    return <EmptyStateWarning small>No data to show</EmptyStateWarning>;
+-  }
+-
+-  return (
+-    <PanelLayout title="Latest Release" showProjectBadge link={{url: '/releases/'}}>
+-      <AnalyticsProvider nameVal="header" keyVal="header">
+-        <span
+-          css={[
+-            smallCss,
+-            panelDescCss,
+-            panelSectionCssNoBorder,
+-            css`
+-              padding-bottom: 0;
+-            `,
+-          ]}
+-        >
+-          Latest Release
+-        </span>
+-      </AnalyticsProvider>
+-      {isReleaseDataLoading ? (
+-        <div
+-          css={[
+-            resetFlexColumnCss,
+-            panelSectionCss,
+-            panelInsetContentCss,
+-            listItemPlaceholderWrapperCss,
+-          ]}
+-        >
+-          <Placeholder height={summaryPlaceholderHeight} />
+-          <Placeholder height={crashComparisonPlaceholderHeight} />
+-          <Placeholder height={issueListPlaceholderHeight} />
+-        </div>
+-      ) : (
+-        <Fragment>
+-          <div style={{alignItems: 'start'}}>
+-            <ReleaseSummary release={releaseData.json[0]!} orgSlug={organizationSlug} />
+-            <CrashFreeRate
+-              currReleaseVersion={releaseData.json[0]!.version}
+-              prevReleaseVersion={
+-                releaseData.json.length > 1 ? releaseData.json[1]!.version : undefined
+-              }
+-            />
+-            <ReleaseIsssues releaseVersion={releaseData.json[0]!.version} />
+-          </div>
+-        </Fragment>
+-      )}
+-    </PanelLayout>
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/releases/sessionStatusBadge.tsx b/static/app/components/devtoolbar/components/releases/sessionStatusBadge.tsx
+deleted file mode 100644
+index 8d2fe9b85e9..00000000000
+--- a/static/app/components/devtoolbar/components/releases/sessionStatusBadge.tsx
++++ /dev/null
+@@ -1,23 +0,0 @@
+-import IndicatorBadge from 'sentry/components/devtoolbar/components/indicatorBadge';
+-import useSessionStatus from 'sentry/components/devtoolbar/components/releases/useSessionStatus';
+-
+-export default function CrashCountBadge() {
+-  const {data} = useSessionStatus();
+-  const healthySessions = data?.json.groups.find(
+-    g => g.by['session.status'] === 'healthy'
+-  )?.totals['sum(session)'];
+-  const crashSessions = data?.json.groups.find(g => g.by['session.status'] === 'crashed')
+-    ?.totals['sum(session)'];
+-
+-  if (!crashSessions || !healthySessions) {
+-    return null;
+-  }
+-
+-  const crashPercent = (crashSessions / (crashSessions + healthySessions)) * 100;
+-
+-  // over 10% of sessions were crashes
+-  if (crashPercent > 10) {
+-    return <IndicatorBadge variant="red" />;
+-  }
+-  return null;
+-}
+diff --git a/static/app/components/devtoolbar/components/releases/useInfiniteReleaseIssuesList.tsx b/static/app/components/devtoolbar/components/releases/useInfiniteReleaseIssuesList.tsx
+deleted file mode 100644
+index 4df5c731db6..00000000000
+--- a/static/app/components/devtoolbar/components/releases/useInfiniteReleaseIssuesList.tsx
++++ /dev/null
+@@ -1,35 +0,0 @@
+-import {useMemo} from 'react';
+-
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import useFetchInfiniteApiData from 'sentry/components/devtoolbar/hooks/useFetchInfiniteApiData';
+-import type {ApiEndpointQueryKey} from 'sentry/components/devtoolbar/types';
+-import type {Group} from 'sentry/types/group';
+-
+-interface Props {
+-  releaseVersion: string;
+-}
+-
+-export default function useInfiniteReleaseIssuesList({releaseVersion}: Props) {
+-  const {environment, organizationSlug, projectId} = useConfiguration();
+-
+-  return useFetchInfiniteApiData<Group[]>({
+-    queryKey: useMemo(
+-      (): ApiEndpointQueryKey => [
+-        'io.sentry.toolbar',
+-        `/organizations/${organizationSlug}/issues/`,
+-        {
+-          query: {
+-            limit: 6,
+-            queryReferrer: 'devtoolbar',
+-            environment: Array.isArray(environment) ? environment : [environment],
+-            project: projectId,
+-            statsPeriod: '14d',
+-            shortIdLookup: 0,
+-            query: `release:${releaseVersion} is:new`,
+-          },
+-        },
+-      ],
+-      [environment, organizationSlug, projectId, releaseVersion]
+-    ),
+-  });
+-}
+diff --git a/static/app/components/devtoolbar/components/releases/useReleaseSessions.tsx b/static/app/components/devtoolbar/components/releases/useReleaseSessions.tsx
+deleted file mode 100644
+index c96feb2a120..00000000000
+--- a/static/app/components/devtoolbar/components/releases/useReleaseSessions.tsx
++++ /dev/null
+@@ -1,34 +0,0 @@
+-import {useMemo} from 'react';
+-
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import useFetchApiData from 'sentry/components/devtoolbar/hooks/useFetchApiData';
+-import type {ApiEndpointQueryKey} from 'sentry/components/devtoolbar/types';
+-import type {SessionApiResponse} from 'sentry/types/organization';
+-
+-export default function useReleaseSessions({
+-  releaseVersion,
+-}: {
+-  releaseVersion: string | undefined;
+-}) {
+-  const {organizationSlug, projectId} = useConfiguration();
+-  return useFetchApiData<SessionApiResponse>({
+-    queryKey: useMemo(
+-      (): ApiEndpointQueryKey => [
+-        'io.sentry.toolbar',
+-        `/organizations/${organizationSlug}/sessions/`,
+-        {
+-          query: {
+-            queryReferrer: 'devtoolbar',
+-            project: [projectId],
+-            field: 'crash_free_rate(session)',
+-            interval: '10m',
+-            statsPeriod: '24h',
+-            query: `release:${releaseVersion}`,
+-          },
+-        },
+-      ],
+-      [organizationSlug, projectId, releaseVersion]
+-    ),
+-    gcTime: 5000,
+-  });
+-}
+diff --git a/static/app/components/devtoolbar/components/releases/useSessionStatus.tsx b/static/app/components/devtoolbar/components/releases/useSessionStatus.tsx
+deleted file mode 100644
+index 0cf6415f16e..00000000000
+--- a/static/app/components/devtoolbar/components/releases/useSessionStatus.tsx
++++ /dev/null
+@@ -1,30 +0,0 @@
+-import {useMemo} from 'react';
+-
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import useFetchApiData from 'sentry/components/devtoolbar/hooks/useFetchApiData';
+-import type {ApiEndpointQueryKey} from 'sentry/components/devtoolbar/types';
+-import type {SessionApiResponse} from 'sentry/types/organization';
+-
+-export default function useSessionStatus() {
+-  const {organizationSlug, projectId} = useConfiguration();
+-  return useFetchApiData<SessionApiResponse>({
+-    queryKey: useMemo(
+-      (): ApiEndpointQueryKey => [
+-        'io.sentry.toolbar',
+-        `/organizations/${organizationSlug}/sessions/`,
+-        {
+-          query: {
+-            queryReferrer: 'devtoolbar',
+-            project: [projectId],
+-            field: ['sum(session)'],
+-            interval: '10m',
+-            statsPeriod: '24h',
+-            groupBy: ['session.status'],
+-          },
+-        },
+-      ],
+-      [organizationSlug, projectId]
+-    ),
+-    gcTime: 5000,
+-  });
+-}
+diff --git a/static/app/components/devtoolbar/components/releases/useToolbarRelease.tsx b/static/app/components/devtoolbar/components/releases/useToolbarRelease.tsx
+deleted file mode 100644
+index c62640969ff..00000000000
+--- a/static/app/components/devtoolbar/components/releases/useToolbarRelease.tsx
++++ /dev/null
+@@ -1,27 +0,0 @@
+-import {useMemo} from 'react';
+-
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import useFetchApiData from 'sentry/components/devtoolbar/hooks/useFetchApiData';
+-import type {ApiEndpointQueryKey} from 'sentry/components/devtoolbar/types';
+-import type {Release} from 'sentry/types/release';
+-
+-export default function useToolbarRelease() {
+-  const {organizationSlug, projectSlug} = useConfiguration();
+-
+-  return useFetchApiData<Release[]>({
+-    queryKey: useMemo(
+-      (): ApiEndpointQueryKey => [
+-        'io.sentry.toolbar',
+-        `/organizations/${organizationSlug}/releases/`,
+-        {
+-          query: {
+-            queryReferrer: 'devtoolbar',
+-            projectSlug,
+-          },
+-        },
+-      ],
+-      [organizationSlug, projectSlug]
+-    ),
+-    gcTime: 5000,
+-  });
+-}
+diff --git a/static/app/components/devtoolbar/components/replay/replayPanel.tsx b/static/app/components/devtoolbar/components/replay/replayPanel.tsx
+deleted file mode 100644
+index 76bf470ab12..00000000000
+--- a/static/app/components/devtoolbar/components/replay/replayPanel.tsx
++++ /dev/null
+@@ -1,131 +0,0 @@
+-import {useContext, useState} from 'react';
+-import {css} from '@emotion/react';
+-
+-import AnalyticsProvider, {
+-  AnalyticsContext,
+-} from 'sentry/components/devtoolbar/components/analyticsProvider';
+-import PanelLayout from 'sentry/components/devtoolbar/components/panelLayout';
+-import SentryAppLink from 'sentry/components/devtoolbar/components/sentryAppLink';
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import useReplayRecorder from 'sentry/components/devtoolbar/hooks/useReplayRecorder';
+-import {
+-  panelInsetContentCss,
+-  panelSectionCss,
+-} from 'sentry/components/devtoolbar/styles/panel';
+-import {resetButtonCss, resetFlexRowCss} from 'sentry/components/devtoolbar/styles/reset';
+-import {smallCss} from 'sentry/components/devtoolbar/styles/typography';
+-import ProjectBadge from 'sentry/components/idBadge/projectBadge';
+-import {IconPause, IconPlay} from 'sentry/icons';
+-import type {PlatformKey} from 'sentry/types/project';
+-
+-const TRUNC_ID_LENGTH = 16;
+-
+-export default function ReplayPanel() {
+-  const {trackAnalytics} = useConfiguration();
+-
+-  const {
+-    disabledReason,
+-    isDisabled,
+-    isRecording,
+-    lastReplayId,
+-    recordingMode,
+-    startRecordingSession,
+-    stopRecording,
+-  } = useReplayRecorder();
+-  const isRecordingSession = isRecording && recordingMode === 'session';
+-
+-  const {eventName, eventKey} = useContext(AnalyticsContext);
+-  const [buttonLoading, setButtonLoading] = useState(false);
+-  return (
+-    <PanelLayout title="Session Replay" showProjectBadge link={{url: '/replays/'}}>
+-      {isDisabled ? (
+-        <p css={[panelInsetContentCss]}>{disabledReason}</p>
+-      ) : (
+-        <button
+-          css={[resetButtonCss]}
+-          disabled={isDisabled || buttonLoading}
+-          onClick={async () => {
+-            setButtonLoading(true);
+-            if (isRecordingSession) {
+-              await stopRecording();
+-            } else {
+-              await startRecordingSession();
+-            }
+-            setButtonLoading(false);
+-            const type = isRecordingSession ? 'stop' : 'start';
+-            trackAnalytics?.({
+-              eventKey: eventKey + `.${type}-button-click`,
+-              eventName: eventName + `${type} button clicked`,
+-            });
+-          }}
+-        >
+-          {isRecordingSession ? <IconPause /> : <IconPlay />}
+-          {isRecordingSession
+-            ? 'Recording in progress, click to stop'
+-            : isRecording
+-              ? 'Replay buffering, click to flush and record'
+-              : 'Start recording the current session'}
+-        </button>
+-      )}
+-      <div css={[smallCss, panelSectionCss, panelInsetContentCss]}>
+-        {lastReplayId ? (
+-          <span
+-            css={[
+-              resetFlexRowCss,
+-              css`
+-                gap: var(--space50);
+-              `,
+-            ]}
+-          >
+-            {isRecording ? 'Current replay: ' : 'Last recorded replay: '}
+-            <AnalyticsProvider keyVal="replay-details-link" nameVal="replay details link">
+-              <ReplayLink lastReplayId={lastReplayId} />
+-            </AnalyticsProvider>
+-          </span>
+-        ) : (
+-          'No replay is recording this session.'
+-        )}
+-      </div>
+-    </PanelLayout>
+-  );
+-}
+-
+-function ReplayLink({lastReplayId}: {lastReplayId: string}) {
+-  const {projectSlug, projectId, projectPlatform} = useConfiguration();
+-  return (
+-    <SentryAppLink
+-      to={{
+-        url: `/replays/${lastReplayId}/`,
+-        query: {project: projectId},
+-      }}
+-    >
+-      <div
+-        css={[
+-          resetFlexRowCss,
+-          css`
+-            display: inline-flex;
+-            gap: var(--space50);
+-            align-items: center;
+-          `,
+-        ]}
+-      >
+-        <ProjectBadge
+-          css={css`
+-            && img {
+-              box-shadow: none;
+-            }
+-          `}
+-          project={{
+-            slug: projectSlug,
+-            id: projectId,
+-            platform: projectPlatform as PlatformKey,
+-          }}
+-          avatarSize={16}
+-          hideName
+-          avatarProps={{hasTooltip: true}}
+-        />
+-        {lastReplayId.slice(0, TRUNC_ID_LENGTH)}
+-      </div>
+-    </SentryAppLink>
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/sentryAppLink.tsx b/static/app/components/devtoolbar/components/sentryAppLink.tsx
+deleted file mode 100644
+index a6e520eaef6..00000000000
+--- a/static/app/components/devtoolbar/components/sentryAppLink.tsx
++++ /dev/null
+@@ -1,42 +0,0 @@
+-import {type MouseEvent, useContext} from 'react';
+-import {stringifyUrl, type UrlObject} from 'query-string';
+-
+-import {AnalyticsContext} from 'sentry/components/devtoolbar/components/analyticsProvider';
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import {inlineLinkCss} from 'sentry/components/devtoolbar/styles/link';
+-
+-interface Props {
+-  children: React.ReactNode;
+-  to: UrlObject;
+-  onClick?: (event: MouseEvent) => void;
+-}
+-
+-/**
+- * Inline link to orgSlug.sentry.io/{to} with built-in click analytic.
+- */
+-export default function SentryAppLink({children, to}: Props) {
+-  const {organizationSlug, trackAnalytics} = useConfiguration();
+-  const {eventName, eventKey} = useContext(AnalyticsContext);
+-
+-  const url = stringifyUrl({
+-    url: `https://${organizationSlug}.sentry.io${to.url}`,
+-    query: to.query,
+-  });
+-
+-  return (
+-    <a
+-      css={inlineLinkCss}
+-      href={url}
+-      onClick={() => {
+-        trackAnalytics?.({
+-          eventKey: eventKey + '.click',
+-          eventName: eventName + ' clicked',
+-        });
+-      }}
+-      rel="noreferrer noopener"
+-      target="_blank"
+-    >
+-      {children}
+-    </a>
+-  );
+-}
+diff --git a/static/app/components/devtoolbar/components/teams/useTeams.tsx b/static/app/components/devtoolbar/components/teams/useTeams.tsx
+deleted file mode 100644
+index 234777882be..00000000000
+--- a/static/app/components/devtoolbar/components/teams/useTeams.tsx
++++ /dev/null
+@@ -1,31 +0,0 @@
+-import {useMemo} from 'react';
+-
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import useFetchApiData from 'sentry/components/devtoolbar/hooks/useFetchApiData';
+-import type {ApiEndpointQueryKey} from 'sentry/components/devtoolbar/types';
+-import type {Team} from 'sentry/types/organization';
+-
+-interface Props {
+-  idOrSlug?: string;
+-}
+-
+-export default function useTeams({idOrSlug}: Props, opts?: {enabled: boolean}) {
+-  const {organizationSlug} = useConfiguration();
+-
+-  return useFetchApiData<Team[]>({
+-    queryKey: useMemo(
+-      (): ApiEndpointQueryKey => [
+-        'io.sentry.toolbar',
+-        `/organizations/${organizationSlug}/teams/`,
+-        {
+-          query: {
+-            query: `id:${idOrSlug}`,
+-          },
+-        },
+-      ],
+-      [idOrSlug, organizationSlug]
+-    ),
+-    gcTime: Infinity,
+-    enabled: opts?.enabled ?? true,
+-  });
+-}
+diff --git a/static/app/components/devtoolbar/components/transactionToSearchTerm.spec.tsx b/static/app/components/devtoolbar/components/transactionToSearchTerm.spec.tsx
+deleted file mode 100644
+index 3bb1319255e..00000000000
+--- a/static/app/components/devtoolbar/components/transactionToSearchTerm.spec.tsx
++++ /dev/null
+@@ -1,46 +0,0 @@
+-import toSearchTerm from './transactionToSearchTerm';
+-
+-describe('getSearchTerm', () => {
+-  it.each([
+-    {
+-      transactionName: '//alerts/rules/details/:ruleId/',
+-      searchTerm: '/alerts/rules/details/*/',
+-    },
+-    {transactionName: '/pokemon/[pokemonName]', searchTerm: '/pokemon/*/'},
+-    {transactionName: '/replays/<id>/details/', searchTerm: '/replays/*/details/'},
+-    {
+-      transactionName: '/param/{id}/param2/key:value/',
+-      searchTerm: '/param/*/param2/key:value/',
+-    },
+-    {transactionName: '/issues/4489703641/', searchTerm: '/issues/*/'},
+-    {
+-      transactionName: 'v1.3/tutorial/event/123',
+-      searchTerm: '/v1.3/tutorial/event/*/',
+-    },
+-    {
+-      transactionName: '/all/:id1/:id2/param',
+-      searchTerm: '/all/*/*/param/',
+-    },
+-    {
+-      transactionName: '//settings/account/emails/',
+-      searchTerm: '/settings/account/emails/',
+-    },
+-    {
+-      transactionName: '//settings/account/api/auth-tokens/new-token/',
+-      searchTerm: '/settings/account/api/auth-tokens/new-token/',
+-    },
+-    {
+-      transactionName: '/about/ps5/',
+-      searchTerm: '/about/ps5/',
+-    },
+-    {
+-      transactionName: '/',
+-      searchTerm: '/',
+-    },
+-  ])(
+-    'should get the correct search term from the transaction name',
+-    ({transactionName, searchTerm}: any) => {
+-      expect(toSearchTerm(transactionName)).toStrictEqual(searchTerm);
+-    }
+-  );
+-});
+diff --git a/static/app/components/devtoolbar/components/transactionToSearchTerm.tsx b/static/app/components/devtoolbar/components/transactionToSearchTerm.tsx
+deleted file mode 100644
+index 07404e65e81..00000000000
+--- a/static/app/components/devtoolbar/components/transactionToSearchTerm.tsx
++++ /dev/null
+@@ -1,21 +0,0 @@
+-export default function transactionToSearchTerm(transaction: any) {
+-  // finds dynamic parts of transaction name to change into search term
+-  let modifiedTransaction = transaction;
+-
+-  // ([:]([^\/]*)) matches :param used by React, Vue, Angular, Express, Ruby on Rails, Phoenix, Solid
+-  // ([\[]([^\/]*)[\]]) matches [param] used by Next.js, Nuxt.js, Svelte
+-  // ([{]([^\/]*)[}]) matches {param} used by ASP.NET Core, Laravel, Symfony
+-  // ([<]([^\/]*)[>]) matches <param> used by Flask, Django
+-  const parameterizedRegex =
+-    /([\/])(([:]([^\/]*))|([\[]([^\/]*)[\]])|([{]([^\/]*)[}])|([<]([^\/]*)[>]))/g;
+-  modifiedTransaction = modifiedTransaction.replaceAll(parameterizedRegex, '/*');
+-
+-  // transaction name could contain the resolved URL instead of the route pattern (ie actual id instead of :id)
+-  // match any param that starts with a number eg. /12353
+-  const nonparameterizedRegex = /([\/])([0-9]+)/g;
+-  modifiedTransaction = modifiedTransaction.replaceAll(nonparameterizedRegex, '/*');
+-
+-  // Join the array back into a string with '/'
+-  const searchTerm = `/${modifiedTransaction}/`.replaceAll(/\/+/g, '/');
+-  return searchTerm;
+-}
+diff --git a/static/app/components/devtoolbar/hooks/useApiEndpoint.tsx b/static/app/components/devtoolbar/hooks/useApiEndpoint.tsx
+deleted file mode 100644
+index 27ef97aec37..00000000000
+--- a/static/app/components/devtoolbar/hooks/useApiEndpoint.tsx
++++ /dev/null
+@@ -1,80 +0,0 @@
+-import {useMemo} from 'react';
+-import type {QueryFunctionContext} from '@tanstack/react-query';
+-import {stringifyUrl} from 'query-string';
+-
+-import type {ApiEndpointQueryKey, ApiResult} from 'sentry/components/devtoolbar/types';
+-import parseLinkHeader, {type ParsedHeader} from 'sentry/utils/parseLinkHeader';
+-
+-import useConfiguration from './useConfiguration';
+-
+-function parsePageParam<Data>(dir: 'previous' | 'next') {
+-  return ({headers}: ApiResult<Data>) => {
+-    const parsed = parseLinkHeader(headers?.get('Link') ?? null);
+-    return parsed[dir]?.results ? parsed[dir] : null;
+-  };
+-}
+-
+-const getNextPageParam: any = parsePageParam('next');
+-const getPreviousPageParam: any = parsePageParam('previous');
+-
+-interface FetchParams {
+-  queryKey: ApiEndpointQueryKey;
+-}
+-
+-export type PageParam = ParsedHeader | undefined;
+-
+-export default function useApiEndpoint() {
+-  const {apiPrefix} = useConfiguration();
+-
+-  const fetchFn = useMemo(
+-    () =>
+-      async <Data,>({
+-        queryKey: [_ns, endpoint, options],
+-      }: FetchParams): Promise<ApiResult<Data>> => {
+-        const response = await fetch(
+-          stringifyUrl({url: apiPrefix + endpoint, query: options?.query}),
+-          {
+-            body: options?.payload ? JSON.stringify(options?.payload) : undefined,
+-            headers: options?.headers,
+-            method: options?.method ?? 'GET',
+-          }
+-        );
+-
+-        if (!response.ok) {
+-          throw new Error('Network response was not ok');
+-        }
+-
+-        return {
+-          json: await response.json(),
+-          headers: response.headers,
+-        };
+-      },
+-    [apiPrefix]
+-  );
+-
+-  const fetchInfiniteFn = useMemo(
+-    () =>
+-      <Data,>({
+-        queryKey: [ns, endpoint, options],
+-        pageParam,
+-      }: QueryFunctionContext<ApiEndpointQueryKey, PageParam>): Promise<
+-        ApiResult<Data>
+-      > => {
+-        const query = {
+-          ...options?.query,
+-          cursor: pageParam?.cursor,
+-        };
+-        return fetchFn<Data>({
+-          queryKey: [ns, endpoint, {...options, query}],
+-        });
+-      },
+-    [fetchFn]
+-  );
+-
+-  return {
+-    fetchFn,
+-    fetchInfiniteFn,
+-    getNextPageParam,
+-    getPreviousPageParam,
+-  };
+-}
+diff --git a/static/app/components/devtoolbar/hooks/useConfiguration.tsx b/static/app/components/devtoolbar/hooks/useConfiguration.tsx
+deleted file mode 100644
+index 1f5a20c6ec0..00000000000
+--- a/static/app/components/devtoolbar/hooks/useConfiguration.tsx
++++ /dev/null
+@@ -1,28 +0,0 @@
+-import {createContext, useContext} from 'react';
+-
+-import type {Configuration} from 'sentry/components/devtoolbar/types';
+-
+-const Context = createContext<Configuration>({
+-  apiPrefix: '',
+-  environment: ['production'],
+-  featureFlags: {},
+-  organizationSlug: '',
+-  placement: 'right-edge',
+-  projectId: 0,
+-  projectPlatform: '',
+-  projectSlug: '',
+-});
+-
+-export function ConfigurationContextProvider({
+-  children,
+-  config,
+-}: {
+-  children: React.ReactNode;
+-  config: Configuration;
+-}) {
+-  return <Context value={config}>{children}</Context>;
+-}
+-
+-export default function useConfiguration() {
+-  return useContext(Context);
+-}
+diff --git a/static/app/components/devtoolbar/hooks/useFetchApiData.tsx b/static/app/components/devtoolbar/hooks/useFetchApiData.tsx
+deleted file mode 100644
+index a1bcf6da360..00000000000
+--- a/static/app/components/devtoolbar/hooks/useFetchApiData.tsx
++++ /dev/null
+@@ -1,22 +0,0 @@
+-import type {UseQueryOptions} from '@tanstack/react-query';
+-import {useQuery} from '@tanstack/react-query';
+-
+-import type {ApiEndpointQueryKey, ApiResult} from 'sentry/components/devtoolbar/types';
+-
+-import useApiEndpoint from './useApiEndpoint';
+-
+-export default function useFetchApiData<
+-  QueryFnData,
+-  SelectFnData = ApiResult<QueryFnData>,
+->(
+-  props: UseQueryOptions<ApiResult<QueryFnData>, Error, SelectFnData, ApiEndpointQueryKey>
+-) {
+-  const {fetchFn} = useApiEndpoint();
+-
+-  const infiniteQueryResult = useQuery({
+-    queryFn: fetchFn<QueryFnData>,
+-    ...props,
+-  });
+-
+-  return infiniteQueryResult;
+-}
+diff --git a/static/app/components/devtoolbar/hooks/useFetchInfiniteApiData.tsx b/static/app/components/devtoolbar/hooks/useFetchInfiniteApiData.tsx
+deleted file mode 100644
+index 39d67b216c0..00000000000
+--- a/static/app/components/devtoolbar/hooks/useFetchInfiniteApiData.tsx
++++ /dev/null
+@@ -1,42 +0,0 @@
+-import {
+-  type InfiniteData,
+-  useInfiniteQuery,
+-  type UseInfiniteQueryOptions,
+-} from '@tanstack/react-query';
+-
+-import type {ApiEndpointQueryKey, ApiResult} from 'sentry/components/devtoolbar/types';
+-
+-import useApiEndpoint, {type PageParam} from './useApiEndpoint';
+-
+-export default function useFetchInfiniteApiData<Data>(
+-  props: Omit<
+-    UseInfiniteQueryOptions<
+-      ApiResult<Data>,
+-      Error,
+-      InfiniteData<ApiResult<Data>>,
+-      // TQueryData Not sure what this one should be
+-      any,
+-      ApiEndpointQueryKey,
+-      PageParam
+-    >,
+-    'getNextPageParam' | 'getPreviousPageParam' | 'queryFn' | 'initialPageParam' | 'query'
+-  >
+-) {
+-  const {fetchInfiniteFn, getNextPageParam, getPreviousPageParam} = useApiEndpoint();
+-
+-  const infiniteQueryResult = useInfiniteQuery<
+-    ApiResult<Data>,
+-    Error,
+-    InfiniteData<ApiResult<Data>>,
+-    ApiEndpointQueryKey,
+-    PageParam
+-  >({
+-    queryFn: fetchInfiniteFn<Data>,
+-    getNextPageParam,
+-    getPreviousPageParam,
+-    initialPageParam: undefined,
+-    ...props,
+-  });
+-
+-  return infiniteQueryResult;
+-}
+diff --git a/static/app/components/devtoolbar/hooks/usePlacementCss.tsx b/static/app/components/devtoolbar/hooks/usePlacementCss.tsx
+deleted file mode 100644
+index 58eeb775e1d..00000000000
+--- a/static/app/components/devtoolbar/hooks/usePlacementCss.tsx
++++ /dev/null
+@@ -1,36 +0,0 @@
+-import {
+-  fixedContainerBottomRightCornderCss,
+-  fixedContainerRightEdgeCss,
+-} from 'sentry/components/devtoolbar/styles/fixedContainer';
+-import {
+-  navigationBottomRightCornerCss,
+-  navigationRightEdgeCss,
+-} from 'sentry/components/devtoolbar/styles/navigation';
+-
+-import useConfiguration from './useConfiguration';
+-
+-export default function usePlacementCss() {
+-  const {placement} = useConfiguration();
+-
+-  switch (placement) {
+-    case 'right-edge':
+-      return {
+-        fixedContainer: {
+-          css: fixedContainerRightEdgeCss,
+-        },
+-        navigation: {
+-          css: navigationRightEdgeCss,
+-        },
+-      };
+-    case 'bottom-right-corner':
+-    default:
+-      return {
+-        fixedContainer: {
+-          css: fixedContainerBottomRightCornderCss,
+-        },
+-        navigation: {
+-          css: navigationBottomRightCornerCss,
+-        },
+-      };
+-  }
+-}
+diff --git a/static/app/components/devtoolbar/hooks/useReplayRecorder.tsx b/static/app/components/devtoolbar/hooks/useReplayRecorder.tsx
+deleted file mode 100644
+index a5e39ebae7d..00000000000
+--- a/static/app/components/devtoolbar/hooks/useReplayRecorder.tsx
++++ /dev/null
+@@ -1,114 +0,0 @@
+-import {useCallback, useEffect, useState} from 'react';
+-import type {ReplayRecordingMode} from '@sentry/core';
+-import type {replayIntegration} from '@sentry/react';
+-
+-import useConfiguration from 'sentry/components/devtoolbar/hooks/useConfiguration';
+-import {useSessionStorage} from 'sentry/utils/useSessionStorage';
+-
+-type ReplayRecorderState = {
+-  disabledReason: string | undefined;
+-  isDisabled: boolean;
+-  isRecording: boolean;
+-  lastReplayId: string | undefined;
+-  recordingMode: ReplayRecordingMode | undefined;
+-  startRecordingSession(): Promise<boolean>; // returns false if called in the wrong state
+-  stopRecording(): Promise<boolean>; // returns false if called in the wrong state
+-};
+-
+-interface ReplayInternalAPI {
+-  [other: string]: any;
+-  getSessionId(): string | undefined;
+-  isEnabled(): boolean;
+-  recordingMode: ReplayRecordingMode;
+-}
+-
+-function getReplayInternal(
+-  replay: ReturnType<typeof replayIntegration>
+-): ReplayInternalAPI {
+-  // While the toolbar is internal, we can use the private API for added functionality and reduced dependence on SDK release versions
+-  // @ts-expect-error TS(2341): Property '_replay' is private and only accessible ... Remove this comment to see the full error message
+-  return replay._replay;
+-}
+-
+-const LAST_REPLAY_STORAGE_KEY = 'devtoolbar.last_replay_id';
+-
+-export default function useReplayRecorder(): ReplayRecorderState {
+-  const {SentrySDK} = useConfiguration();
+-  const replay =
+-    SentrySDK && 'getReplay' in SentrySDK ? SentrySDK.getReplay() : undefined;
+-  const replayInternal = replay ? getReplayInternal(replay) : undefined;
+-
+-  // sessionId is defined if we are recording in session OR buffer mode.
+-  const [sessionId, setSessionId] = useState<string | undefined>(() =>
+-    replayInternal?.getSessionId()
+-  );
+-  const [recordingMode, setRecordingMode] = useState<ReplayRecordingMode | undefined>(
+-    () => replayInternal?.recordingMode
+-  );
+-
+-  const isDisabled = replay === undefined;
+-  const disabledReason = SentrySDK
+-    ? 'getReplay' in SentrySDK
+-      ? replay
+-        ? undefined
+-        : 'You need to install the SDK Replay integration.'
+-      : 'Your SDK version is too old to support Replays.'
+-    : 'Failed to load the Sentry SDK.';
+-
+-  const [isRecording, setIsRecording] = useState<boolean>(
+-    () => replayInternal?.isEnabled() ?? false
+-  );
+-  const [lastReplayId, setLastReplayId] = useSessionStorage<string | undefined>(
+-    LAST_REPLAY_STORAGE_KEY,
+-    undefined
+-  );
+-  useEffect(() => {
+-    if (isRecording && recordingMode === 'session' && sessionId) {
+-      setLastReplayId(sessionId);
+-    }
+-  }, [isRecording, recordingMode, sessionId, setLastReplayId]);
+-
+-  const refreshState = useCallback(() => {
+-    setIsRecording(replayInternal?.isEnabled() ?? false);
+-    setSessionId(replayInternal?.getSessionId());
+-    setRecordingMode(replayInternal?.recordingMode);
+-  }, [replayInternal]);
+-
+-  const startRecordingSession = useCallback(async () => {
+-    let success = false;
+-    if (replay) {
+-      // Note SDK v8.19 and older will throw if a replay is already started.
+-      // Details at https://github.com/getsentry/sentry-javascript/pull/13000
+-      if (!isRecording) {
+-        replay.start();
+-        success = true;
+-      } else if (recordingMode === 'buffer') {
+-        // For SDK v8.20+, flush() would work for both cases, but we're staying version-agnostic.
+-        await replay.flush();
+-        success = true;
+-      }
+-      refreshState();
+-    }
+-    return success;
+-  }, [replay, isRecording, recordingMode, refreshState]);
+-
+-  const stopRecording = useCallback(async () => {
+-    let success = false;
+-    if (replay && isRecording) {
+-      await replay.stop();
+-      success = true;
+-      refreshState();
+-    }
+-    return success;
+-  }, [isRecording, replay, refreshState]);
+-
+-  return {
+-    disabledReason,
+-    isDisabled,
+-    isRecording,
+-    lastReplayId,
+-    recordingMode,
+-    startRecordingSession,
+-    stopRecording,
+-  };
+-}
+diff --git a/static/app/components/devtoolbar/hooks/useSDKFeedbackButton.tsx b/static/app/components/devtoolbar/hooks/useSDKFeedbackButton.tsx
+deleted file mode 100644
+index 314e840e9cc..00000000000
+--- a/static/app/components/devtoolbar/hooks/useSDKFeedbackButton.tsx
++++ /dev/null
+@@ -1,24 +0,0 @@
+-import {useEffect, useRef} from 'react';
+-
+-import useConfiguration from './useConfiguration';
+-
+-export function useSDKFeedbackButton({
+-  onFormClose,
+-  onFormOpen,
+-}: {
+-  onFormClose?: () => void;
+-  onFormOpen?: () => void;
+-}) {
+-  const buttonRef = useRef<HTMLButtonElement>(null);
+-  const {SentrySDK} = useConfiguration();
+-  const feedback = SentrySDK && 'getFeedback' in SentrySDK && SentrySDK.getFeedback();
+-
+-  useEffect(() => {
+-    if (feedback && buttonRef.current) {
+-      return feedback.attachTo(buttonRef.current, {onFormOpen, onFormClose});
+-    }
+-    return () => {};
+-  }, [feedback, onFormOpen, onFormClose]);
+-
+-  return feedback ? buttonRef : undefined;
+-}
+diff --git a/static/app/components/devtoolbar/hooks/useSentryClientAndScope.tsx b/static/app/components/devtoolbar/hooks/useSentryClientAndScope.tsx
+deleted file mode 100644
+index 4566ff5aefa..00000000000
+--- a/static/app/components/devtoolbar/hooks/useSentryClientAndScope.tsx
++++ /dev/null
+@@ -1,97 +0,0 @@
+-import type {Client, Scope} from '@sentry/core';
+-
+-type V8Carrier = {
+-  stack: {
+-    getScope?: () => Scope;
+-  };
+-};
+-
+-type LegacyCarrier = {
+-  /** pre-v8 way of accessing scope (v7 and earlier) */
+-  hub?: {
+-    getClient?: () => Client;
+-    getScope?: () => Scope;
+-  };
+-};
+-
+-type VersionedCarrier = {version: string} & Record<Exclude<string, 'version'>, V8Carrier>;
+-
+-type WindowWithSentry = Window & {
+-  __SENTRY__?: LegacyCarrier & VersionedCarrier;
+-};
+-
+-export function useScopeAndClient() {
+-  const sentryCarrier = (window as WindowWithSentry).__SENTRY__;
+-  const sentryScope = sentryCarrier && getSentryScope(sentryCarrier);
+-  const sentryClient = sentryCarrier && getSentryClient(sentryCarrier);
+-
+-  if (!sentryScope || !sentryClient) {
+-    // using console log for now, will change this when moving to dev tool bar repo
+-    // eslint-disable-next-line no-console
+-    console.log(
+-      "Couldn't find a Sentry SDK scope or client. Make sure you're using a Sentry SDK with version 7.x or above"
+-    );
+-  }
+-
+-  return {scope: sentryScope, client: sentryClient};
+-}
+-
+-/**
+- * Accesses the `window.__SENTRY__` carrier object and tries to get the Sentry scope
+- * from it. This function supports all carrier object structures from v7 to all versions
+- * of v8.
+- */
+-function getSentryScope(
+-  sentryCarrier: LegacyCarrier & VersionedCarrier
+-): Scope | undefined {
+-  // 8.6.0+ way to get the scope
+-  if (sentryCarrier.version) {
+-    const versionedCarrier = sentryCarrier[sentryCarrier.version];
+-    const scope =
+-      typeof versionedCarrier?.stack?.getScope === 'function'
+-        ? versionedCarrier?.stack?.getScope?.()
+-        : undefined;
+-    return scope;
+-  }
+-
+-  // pre-8.6.0 (+v7) way to get the scope
+-  if (sentryCarrier.hub) {
+-    const hub = sentryCarrier.hub;
+-    if (typeof hub.getScope === 'function') {
+-      return hub.getScope();
+-    }
+-  }
+-
+-  return undefined;
+-}
+-
+-/**
+- * Accesses the `window.__SENTRY__` carrier object and tries to get the Sentry client
+- * from it. This function supports all carrier object structures from v7 to all versions
+- * of v8.
+- */
+-function getSentryClient(
+-  sentryCarrier: LegacyCarrier & VersionedCarrier
+-): Client | undefined {
+-  // 8.6.0+ way to get the client
+-  if (sentryCarrier.version) {
+-    const versionedCarrier = sentryCarrier[sentryCarrier.version];
+-    const scope =
+-      typeof versionedCarrier?.stack?.getScope === 'function'
+-        ? versionedCarrier?.stack?.getScope?.()
+-        : undefined;
+-    if (typeof scope?.getClient === 'function') {
+-      return scope.getClient();
+-    }
+-  }
+-
+-  // pre-8.6.0 (+v7) way to get the client
+-  if (sentryCarrier.hub) {
+-    const hub = sentryCarrier.hub;
+-    if (typeof hub.getClient === 'function') {
+-      return hub.getClient();
+-    }
+-  }
+-
+-  return undefined;
+-}
+diff --git a/static/app/components/devtoolbar/hooks/useToolbarRoute.tsx b/static/app/components/devtoolbar/hooks/useToolbarRoute.tsx
+deleted file mode 100644
+index d171564e33b..00000000000
+--- a/static/app/components/devtoolbar/hooks/useToolbarRoute.tsx
++++ /dev/null
+@@ -1,41 +0,0 @@
+-import {createContext, useCallback, useContext, useState} from 'react';
+-
+-type State = {
+-  activePanel:
+-    | null
+-    | 'alerts'
+-    | 'feedback'
+-    | 'issues'
+-    | 'featureFlags'
+-    | 'releases'
+-    | 'replay';
+-};
+-
+-const Context = createContext<{
+-  setActivePanel: (activePanel: State['activePanel']) => void;
+-  state: State;
+-}>({
+-  setActivePanel(_activePanel: State['activePanel']) {},
+-  state: {activePanel: null},
+-});
+-
+-export function ToolbarRouterContextProvider({children}: {children: React.ReactNode}) {
+-  // TODO: if state gets more complex, we can swtich to useReducer
+-  const [state, setState] = useState<State>({activePanel: null});
+-
+-  const setActivePanel = useCallback(
+-    (activePanel: State['activePanel']) => {
+-      setState(prev => ({
+-        ...prev,
+-        activePanel,
+-      }));
+-    },
+-    [setState]
+-  );
+-
+-  return <Context value={{setActivePanel, state}}>{children}</Context>;
+-}
+-
+-export default function useToolbarRoute() {
+-  return useContext(Context);
+-}
+diff --git a/static/app/components/devtoolbar/hooks/useVisibility.tsx b/static/app/components/devtoolbar/hooks/useVisibility.tsx
+deleted file mode 100644
+index 820a5ce7c13..00000000000
+--- a/static/app/components/devtoolbar/hooks/useVisibility.tsx
++++ /dev/null
+@@ -1,18 +0,0 @@
+-import type {CSSProperties, Dispatch, ReactNode, SetStateAction} from 'react';
+-import {createContext, useContext, useState} from 'react';
+-
+-type State = CSSProperties['visibility'];
+-
+-const VisibilityContext = createContext<[State, Dispatch<SetStateAction<State>>]>([
+-  'visible',
+-  () => {},
+-]);
+-
+-export function VisibilityContextProvider({children}: {children: ReactNode}) {
+-  const state = useState<State>('visible');
+-  return <VisibilityContext value={state}>{children}</VisibilityContext>;
+-}
+-
+-export default function useVisibility() {
+-  return useContext(VisibilityContext);
+-}
+diff --git a/static/app/components/devtoolbar/index.tsx b/static/app/components/devtoolbar/index.tsx
+deleted file mode 100644
+index 63837c78914..00000000000
+--- a/static/app/components/devtoolbar/index.tsx
++++ /dev/null
+@@ -1,13 +0,0 @@
+-import type {Configuration} from './types';
+-
+-interface InitProps extends Configuration {
+-  rootNode?: HTMLElement;
+-}
+-
+-const DevToolbar = {
+-  async init({rootNode, ...config}: InitProps) {
+-    const {default: mount} = await import('./mount');
+-    return mount(rootNode ?? document.body, config);
+-  },
+-};
+-export default DevToolbar;
+diff --git a/static/app/components/devtoolbar/mount.tsx b/static/app/components/devtoolbar/mount.tsx
+deleted file mode 100644
+index 2dfc3f56a1f..00000000000
+--- a/static/app/components/devtoolbar/mount.tsx
++++ /dev/null
+@@ -1,32 +0,0 @@
+-import {StrictMode} from 'react';
+-import {createRoot} from 'react-dom/client';
+-
+-import App from './components/app';
+-import Providers from './components/providers';
+-import type {Configuration} from './types';
+-
+-export default function mount(rootNode: HTMLElement, config: Configuration) {
+-  const host = document.createElement('div');
+-  host.id = config.domId ?? 'sentry-devtools';
+-  const shadow = host.attachShadow({mode: 'open'});
+-  const reactRoot = makeReactRoot(shadow, config);
+-
+-  rootNode.appendChild(host);
+-
+-  return () => {
+-    host.remove();
+-    reactRoot.unmount();
+-  };
+-}
+-
+-function makeReactRoot(shadow: ShadowRoot, config: Configuration) {
+-  const root = createRoot(shadow);
+-  root.render(
+-    <StrictMode>
+-      <Providers container={shadow} config={config}>
+-        <App />
+-      </Providers>
+-    </StrictMode>
+-  );
+-  return root;
+-}
+diff --git a/static/app/components/devtoolbar/styles/fixedContainer.ts b/static/app/components/devtoolbar/styles/fixedContainer.ts
+deleted file mode 100644
+index ffacb9a452a..00000000000
+--- a/static/app/components/devtoolbar/styles/fixedContainer.ts
++++ /dev/null
+@@ -1,27 +0,0 @@
+-import {css} from '@emotion/react';
+-
+-export const fixedContainerBaseCss = css`
+-  display: flex;
+-  gap: var(--space150);
+-  inset: 0;
+-  pointer-events: none;
+-  position: fixed;
+-  z-index: var(--z-index);
+-
+-  & > * {
+-    pointer-events: all;
+-  }
+-`;
+-
+-export const fixedContainerRightEdgeCss = css`
+-  flex-direction: row-reverse;
+-  justify-content: flex-start;
+-  place-items: center;
+-`;
+-
+-export const fixedContainerBottomRightCornderCss = css`
+-  flex-direction: column-reverse;
+-  justify-content: flex-start;
+-  padding: var(--space150);
+-  place-items: flex-end;
+-`;
+diff --git a/static/app/components/devtoolbar/styles/global.ts b/static/app/components/devtoolbar/styles/global.ts
+deleted file mode 100644
+index 9e31d51dff9..00000000000
+--- a/static/app/components/devtoolbar/styles/global.ts
++++ /dev/null
+@@ -1,253 +0,0 @@
+-import {css} from '@emotion/react';
+-
+-const SPACES = {
+-  0: '0',
+-  25: '2px',
+-  50: '4px',
+-  75: '6px',
+-  100: '8px',
+-  150: '12px',
+-  200: '16px',
+-  300: '20px',
+-  400: '30px',
+-} as const;
+-
+-export const globalCss = css`
+-  :host {
+-    ${Object.entries(SPACES)
+-      .map(([size, px]) => `--space${size}: ${px};`)
+-      .join('\n')}
+-
+-    --gray500: #2b2233;
+-    --gray400: #3e3446;
+-    --gray300: #80708f;
+-    --gray200: #e0dce5;
+-    --gray100: #f0ecf3;
+-
+-    --purple400: #6559c5;
+-    --purple300: #6c5fc7;
+-    --purple200: rgba(108, 95, 199, 0.5);
+-    --purple100: rgba(108, 95, 199, 0.09);
+-
+-    --blue400: #2562d4;
+-    --blue300: #3c74dd;
+-    --blue200: rgba(60, 116, 221, 0.5);
+-    --blue100: rgba(60, 116, 221, 0.09);
+-
+-    --green400: #207964;
+-    --green300: #2ba185;
+-    --green200: rgba(43, 161, 133, 0.55);
+-    --green100: rgba(43, 161, 133, 0.11);
+-
+-    --yellow400: #856c00;
+-    --yellow300: #ebc000;
+-    --yellow200: rgba(235, 192, 0, 0.7);
+-    --yellow100: rgba(235, 192, 0, 0.14);
+-
+-    --red400: #cf2126;
+-    --red300: #f55459;
+-    --red200: rgba(245, 84, 89, 0.5);
+-    --red100: rgba(245, 84, 89, 0.1);
+-
+-    --pink400: #d1056b;
+-    --pink300: #f14499;
+-    --pink200: rgba(249, 26, 138, 0.5);
+-    --pink100: rgba(249, 26, 138, 0.09);
+-
+-    --surface200: #faf9fb;
+-
+-    --z-index: 100000;
+-
+-    color: var(--gray400);
+-    font-family: system-ui, 'Helvetica Neue', Arial, sans-serif;
+-    font-size: 16px;
+-    line-height: 1.4;
+-
+-    *::selection {
+-      background: var(--blue200);
+-    }
+-
+-    dialog {
+-      color: inherit;
+-    }
+-  }
+-
+-  @media (prefers-reduced-motion) {
+-    *,
+-    *::before,
+-    *::after {
+-      animation-duration: 0s !important;
+-      transition: none !important;
+-      scroll-behavior: auto !important;
+-    }
+-  }
+-
+-  *,
+-  *::before,
+-  *::after {
+-    box-sizing: border-box;
+-  }
+-
+-  div {
+-    display: flex;
+-    flex-direction: column;
+-  }
+-
+-  div.flex-row div {
+-    flex-direction: row;
+-  }
+-
+-  .ReactQueryDevtools,
+-  .ReactQueryDevtools div {
+-    display: initial;
+-    flex-direction: initial;
+-  }
+-`;
+-
+-export const avatarCss = css`
+-  .avatar {
+-    width: 20px;
+-    height: 20px;
+-    vertical-align: middle;
+-    position: relative;
+-    display: inline-block;
+-  }
+-
+-  .avatar img {
+-    vertical-align: middle;
+-    max-width: 100%;
+-  }
+-`;
+-
+-export const loadingIndicatorCss = css`
+-  .loading {
+-    --loader-size-big: 64px;
+-
+-    margin: 6em auto;
+-    position: relative;
+-
+-    &.overlay {
+-      position: absolute;
+-      top: 0;
+-      bottom: 0;
+-      left: 0;
+-      right: 0;
+-      background-color: rgba(255, 255, 255, 0.8);
+-      display: flex;
+-      align-items: center;
+-      justify-content: center;
+-      margin: 0;
+-
+-      &.dark {
+-        background-color: rgba(0, 0, 0, 0.6);
+-      }
+-    }
+-
+-    .loading-indicator {
+-      position: relative;
+-      border: 6px solid var(--gray100);
+-      border-left-color: var(--purple300);
+-      -webkit-animation: loading 0.5s infinite linear;
+-      animation: loading 0.55s infinite linear;
+-      margin: 0 auto;
+-    }
+-
+-    .loading-indicator,
+-    .loading-indicator:after {
+-      border-radius: 50%;
+-      width: var(--loader-size-big);
+-      height: var(--loader-size-big);
+-    }
+-
+-    .loading-message {
+-      margin-top: 20px;
+-      text-align: center;
+-    }
+-  }
+-
+-  @-webkit-keyframes loading {
+-    0% {
+-      -webkit-transform: rotate(0deg);
+-      transform: rotate(0deg);
+-    }
+-
+-    100% {
+-      -webkit-transform: rotate(360deg);
+-      transform: rotate(360deg);
+-    }
+-  }
+-
+-  @keyframes loading {
+-    0% {
+-      -webkit-transform: rotate(0deg);
+-      transform: rotate(0deg);
+-    }
+-
+-    100% {
+-      -webkit-transform: rotate(360deg);
+-      transform: rotate(360deg);
+-    }
+-  }
+-
+-  /**
+-   * mini
+-   */
+-
+-  .loading.mini {
+-    --loader-size-mini: 24px;
+-
+-    margin: 4px 0;
+-    font-size: 13px;
+-    height: var(--loader-size-mini);
+-    width: var(--loader-size-mini);
+-
+-    .loading-indicator {
+-      margin: 0;
+-      border-radius: 50%;
+-      width: var(--loader-size-mini);
+-      height: var(--loader-size-mini);
+-      border-width: 2px;
+-      position: absolute;
+-      left: 0;
+-      top: 0;
+-
+-      &.relative {
+-        position: relative;
+-        left: auto;
+-        top: auto;
+-      }
+-    }
+-
+-    .loading-message {
+-      padding-left: 30px;
+-      margin-top: 1px;
+-      display: inline-block;
+-    }
+-  }
+-
+-  /* Spinning logo icon loader */
+-  .loading.triangle {
+-    position: absolute;
+-    top: 50%;
+-    left: 50%;
+-    width: 500px;
+-    margin-top: -200px;
+-    margin-left: -250px;
+-
+-    /* Nerf the styles of other loading indicators */
+-    .loading-indicator {
+-      height: 150px;
+-      width: 150px;
+-      display: flex;
+-      align-items: center;
+-      justify-content: center;
+-      background: #fff;
+-
+-      animation: none;
+-      -webkit-animation: none;
+-      border: 0;
+-      overflow: hidden;
+-      border-radius: 50%;
+-    }
+-  }
+-`;
+diff --git a/static/app/components/devtoolbar/styles/infiniteList.ts b/static/app/components/devtoolbar/styles/infiniteList.ts
+deleted file mode 100644
+index f1027939fe6..00000000000
+--- a/static/app/components/devtoolbar/styles/infiniteList.ts
++++ /dev/null
+@@ -1,34 +0,0 @@
+-import {css} from '@emotion/react';
+-
+-import {resetUlCss} from './reset';
+-
+-export const infiniteListParentContainerCss = css`
+-  contain: strict;
+-  height: 100%;
+-  overflow: auto;
+-  overscroll-behavior: contain;
+-  width: 100%;
+-`;
+-
+-export const infiniteListScollablePanelCss = css`
+-  width: 100%;
+-  position: relative;
+-`;
+-
+-export const infiniteListScrollableWindowCss = css`
+-  ${resetUlCss}
+-  position: absolute;
+-  top: 0;
+-  left: 0;
+-  width: 100%;
+-`;
+-export const infiniteListFloatingMessageBottomCss = css`
+-  align-items: center;
+-  bottom: 0;
+-  display: flex;
+-  flex-grow: 1;
+-  justify-content: center;
+-  position: absolute;
+-  width: 100%;
+-  z-index: 1;
+-`;
+diff --git a/static/app/components/devtoolbar/styles/link.ts b/static/app/components/devtoolbar/styles/link.ts
+deleted file mode 100644
+index 1e54ca6ea15..00000000000
+--- a/static/app/components/devtoolbar/styles/link.ts
++++ /dev/null
+@@ -1,12 +0,0 @@
+-import {css} from '@emotion/react';
+-
+-export const inlineLinkCss = css`
+-  color: var(--blue300);
+-  text-decoration: underline;
+-  text-decoration-color: var(--blue100);
+-  cursor: pointer;
+-
+-  &:hover {
+-    text-decoration-color: var(--blue200);
+-  }
+-`;
+diff --git a/static/app/components/devtoolbar/styles/listItem.ts b/static/app/components/devtoolbar/styles/listItem.ts
+deleted file mode 100644
+index 0684ed082e6..00000000000
+--- a/static/app/components/devtoolbar/styles/listItem.ts
++++ /dev/null
+@@ -1,40 +0,0 @@
+-import {css} from '@emotion/react';
+-
+-export const listItemPlaceholderWrapperCss = css`
+-  display: flex;
+-  gap: var(--space100);
+-  margin: 0;
+-  overflow: hidden;
+-`;
+-
+-export const listItemGridCss = css`
+-  contain: inline-size;
+-  display: grid;
+-  grid-template-areas:
+-    'name time'
+-    'message message'
+-    'owner icons';
+-  grid-template-columns: 1fr max-content;
+-
+-  gap: var(--space50);
+-  margin: 0 var(--space150);
+-  padding-block: var(--space150);
+-  padding-inline: 0;
+-  border-bottom: 1px solid var(--gray100);
+-`;
+-
+-export const badgeWithLabelCss = css`
+-  align-items: center;
+-  display: grid;
+-  gap: var(--space50);
+-  grid-auto-flow: column;
+-  grid-template-columns: max-content 1fr;
+-`;
+-
+-export const gridFlexEndCss = css`
+-  align-items: center;
+-  display: flex;
+-  flex-direction: row;
+-  gap: var(--space50);
+-  justify-content: flex-end;
+-`;
+diff --git a/static/app/components/devtoolbar/styles/navigation.ts b/static/app/components/devtoolbar/styles/navigation.ts
+deleted file mode 100644
+index b450854e7ca..00000000000
+--- a/static/app/components/devtoolbar/styles/navigation.ts
++++ /dev/null
+@@ -1,35 +0,0 @@
+-import {css} from '@emotion/react';
+-
+-export const navigationCss = css`
+-  align-items: center;
+-  display: flex;
+-  gap: var(--space50);
+-  padding: var(--space50);
+-
+-  background: rgb(58, 46, 93);
+-  background: linear-gradient(41deg, rgba(58, 46, 93, 1) 61%, rgba(136, 81, 145, 1) 100%);
+-  border-radius: var(--space150);
+-  border: 1px solid var(--gray200);
+-  color: white;
+-
+-  transition: opacity 2s ease-out 3s;
+-
+-  &[data-has-active='false'] {
+-    opacity: 0.15;
+-  }
+-
+-  &:hover {
+-    transition: opacity 0.1s ease-in 0s;
+-    opacity: 1;
+-  }
+-`;
+-
+-export const navigationRightEdgeCss = css`
+-  border-end-end-radius: 0;
+-  border-start-end-radius: 0;
+-  flex-direction: column;
+-`;
+-
+-export const navigationBottomRightCornerCss = css`
+-  flex-direction: row;
+-`;
+diff --git a/static/app/components/devtoolbar/styles/panel.ts b/static/app/components/devtoolbar/styles/panel.ts
+deleted file mode 100644
+index 11add3f91ed..00000000000
+--- a/static/app/components/devtoolbar/styles/panel.ts
++++ /dev/null
+@@ -1,60 +0,0 @@
+-import {css} from '@emotion/react';
+-
+-export const panelCss = css`
+-  background: white;
+-  border-radius: 12px;
+-  border: 1px solid var(--gray100);
+-  height: 90vh;
+-  max-height: 560px;
+-  width: 320px;
+-  max-width: 320px;
+-  box-shadow: 0px 10px 15px -3px rgba(0, 0, 0, 0.1);
+-`;
+-
+-export const panelHeadingCss = css`
+-  padding: 0 0 0 var(--space200);
+-  text-align: left;
+-  border-bottom: 1px solid var(--gray200);
+-`;
+-
+-export const panelHeadingRightCss = css`
+-  position: absolute;
+-  right: 0;
+-`;
+-
+-export const panelSectionCss = css`
+-  position: relative;
+-  padding-block: var(--space75);
+-  &:not(:last-child) {
+-    border-bottom: 1px solid var(--gray200);
+-  }
+-`;
+-
+-export const panelSectionCssNoBorder = css`
+-  position: relative;
+-  padding-block: var(--space150);
+-`;
+-
+-export const panelInsetContentCss = css`
+-  padding-inline: var(--space150);
+-`;
+-
+-export const verticalPaddingCss = css`
+-  padding: var(--space150) 0;
+-`;
+-
+-export const panelDescCss = css`
+-  color: var(--gray300);
+-  font-weight: bold;
+-  margin: 0 var(--space150);
+-  text-align: left;
+-  padding-top: var(--space200);
+-`;
+-
+-export const buttonRightCss = css`
+-  display: flex;
+-  gap: var(--space75);
+-  align-items: center;
+-  color: var(--purple300);
+-  font-weight: bold;
+-`;
+diff --git a/static/app/components/devtoolbar/styles/releasesPanel.ts b/static/app/components/devtoolbar/styles/releasesPanel.ts
+deleted file mode 100644
+index a358d68655a..00000000000
+--- a/static/app/components/devtoolbar/styles/releasesPanel.ts
++++ /dev/null
+@@ -1,21 +0,0 @@
+-import {css} from '@emotion/react';
+-
+-export const infoHeaderCss = css`
+-  font-size: 16px;
+-`;
+-
+-export const subtextCss = css`
+-  font-size: 14px;
+-`;
+-
+-export const releaseBoxCss = css`
+-  border: 1px solid var(--gray100);
+-  border-radius: 12px;
+-  margin: var(--space75) var(--space150);
+-`;
+-
+-export const releaseNumbersCss = css`
+-  align-items: flex-start;
+-  margin: 0;
+-  padding: var(--space200);
+-`;
+diff --git a/static/app/components/devtoolbar/styles/reset.ts b/static/app/components/devtoolbar/styles/reset.ts
+deleted file mode 100644
+index a329b265753..00000000000
+--- a/static/app/components/devtoolbar/styles/reset.ts
++++ /dev/null
+@@ -1,40 +0,0 @@
+-import {css} from '@emotion/react';
+-
+-export const resetDialogCss = css`
+-  background: transparent;
+-  height: auto;
+-  margin: 0;
+-  padding: 0;
+-  position: relative;
+-  width: auto;
+-`;
+-
+-export const resetFlexColumnCss = css`
+-  display: flex;
+-  flex-direction: column;
+-  flex-grow: 1;
+-`;
+-
+-export const resetFlexRowCss = css`
+-  display: flex;
+-  flex-direction: row;
+-  flex-grow: 1;
+-`;
+-
+-export const resetUlCss = css`
+-  padding: 0;
+-  margin: 0;
+-  list-style: none;
+-`;
+-
+-export const resetButtonCss = css`
+-  align-items: center;
+-  background: none;
+-  border: none;
+-  display: flex;
+-  &:not(:disabled) {
+-    cursor: pointer;
+-  }
+-  line-height: 1em;
+-  position: relative;
+-`;
+diff --git a/static/app/components/devtoolbar/styles/typography.ts b/static/app/components/devtoolbar/styles/typography.ts
+deleted file mode 100644
+index bc8283439e6..00000000000
+--- a/static/app/components/devtoolbar/styles/typography.ts
++++ /dev/null
+@@ -1,32 +0,0 @@
+-import {css} from '@emotion/react';
+-
+-export const buttonCss = css`
+-  font-weight: 600;
+-  font-size: 1rem;
+-  line-height: 1;
+-  letter-spacing: normal;
+-`;
+-
+-export const smallCss = css`
+-  font-weight: 400;
+-  font-size: 0.875rem;
+-  line-height: 1.4;
+-  letter-spacing: +0.01rem;
+-`;
+-
+-export const xSmallCss = css`
+-  font-weight: 400;
+-  font-size: 0.75rem;
+-  line-height: 1.4;
+-  letter-spacing: +0.02rem;
+-`;
+-
+-export const textOverflowTwoLinesCss = css`
+-  margin: 0;
+-  white-space: initial;
+-  height: 2.8em;
+-  -webkit-line-clamp: 2;
+-  display: -webkit-box;
+-  -webkit-box-orient: vertical;
+-  line-height: 1.2rem;
+-`;
+diff --git a/static/app/components/devtoolbar/types.ts b/static/app/components/devtoolbar/types.ts
+deleted file mode 100644
+index 05391bb4d9c..00000000000
+--- a/static/app/components/devtoolbar/types.ts
++++ /dev/null
+@@ -1,58 +0,0 @@
+-import type SentrySDK from '@sentry/react'; // TODO: change to `@sentry/browser` when we have our own package.json
+-
+-export type {FeedbackIssueListItem} from 'sentry/utils/feedback/types';
+-
+-export type FlagValue = boolean | string | number | undefined;
+-export type FeatureFlagMap = Record<string, {override: FlagValue; value: FlagValue}>;
+-
+-export type Configuration = {
+-  apiPrefix: string;
+-  environment: string | string[];
+-  organizationSlug: string;
+-  placement: 'right-edge' | 'bottom-right-corner';
+-  projectId: number;
+-  projectPlatform: string;
+-  projectSlug: string;
+-  SentrySDK?: typeof SentrySDK;
+-  domId?: string;
+-  featureFlags?: {
+-    clearOverrides?: () => void;
+-    getFeatureFlagMap?: () => FeatureFlagMap;
+-    setOverrideValue?: (name: string, override: FlagValue) => void;
+-    urlTemplate?: (name: string) => string | undefined;
+-  };
+-
+-  trackAnalytics?: (props: {eventKey: string; eventName: string}) => void;
+-};
+-
+-type APIRequestMethod = 'POST' | 'GET' | 'DELETE' | 'PUT';
+-
+-type QueryKeyEndpointOptions<
+-  Headers = Record<string, string>,
+-  Query = Record<string, any>,
+-  Payload = Record<string, any>,
+-> = {
+-  headers?: Headers;
+-  method?: APIRequestMethod;
+-  payload?: Payload;
+-  query?: Query;
+-};
+-
+-// Prefix the key with a namespace, to avoid key collisions with other tanstack/query
+-// cache requests that imported sentry modules make within the toolbar scope.
+-export type ApiEndpointQueryKey =
+-  | readonly ['io.sentry.toolbar', url: string]
+-  | readonly [
+-      'io.sentry.toolbar',
+-      url: string,
+-      options: QueryKeyEndpointOptions<
+-        Record<string, string>,
+-        Record<string, any>,
+-        Record<string, any>
+-      >,
+-    ];
+-
+-export type ApiResult<Data = unknown> = {
+-  headers: Headers;
+-  json: Data;
+-};
+diff --git a/static/app/utils/featureFlagOverrides.spec.ts b/static/app/utils/featureFlagOverrides.spec.ts
+index 33782ded498..0995c6ee8fc 100644
+--- a/static/app/utils/featureFlagOverrides.spec.ts
++++ b/static/app/utils/featureFlagOverrides.spec.ts
+@@ -15,6 +15,43 @@ describe('FeatureFlagOverrides', () => {
+     });
+   });
+ 
++  describe('getFlagMap', () => {
++    it('should convert `organization.features` into the shape of FlagMap', () => {
++      localStorageWrapper.setItem(
++        LOCALSTORAGE_KEY,
++        '{"enable-issues":false,"enable-profiling":true}'
++      );
++      const inst = new FeatureFlagOverrides();
++
++      expect(organization.features).toEqual([
++        'enable-issues',
++        'enable-profiling',
++        'enable-replay',
++      ]);
++
++      expect(inst.getFlagMap(organization)).toEqual({
++        'enable-issues': true,
++        'enable-profiling': true,
++        'enable-replay': true,
++      });
++    });
++  });
++
++  describe('getOverrides', () => {
++    it('should return the FlapMap of everything that is manually overridden', () => {
++      localStorageWrapper.setItem(
++        LOCALSTORAGE_KEY,
++        '{"enable-issues":false,"enable-profiling":true}'
++      );
++      const inst = new FeatureFlagOverrides();
++
++      expect(inst.getStoredOverrides()).toEqual({
++        'enable-issues': false,
++        'enable-profiling': true,
++      });
++    });
++  });
++
+   describe('setStoredOverride', () => {
+     it('should insert new flag names into localstorage', () => {
+       expect(localStorageWrapper.getItem(LOCALSTORAGE_KEY)).toBeNull();
+@@ -60,7 +97,7 @@ describe('FeatureFlagOverrides', () => {
+     });
+   });
+ 
+-  describe('getFeatureFlagMap', () => {
++  describe('getEnabledFeatureFlagList', () => {
+     it('should combine & remove features that are disabled locally', () => {
+       localStorageWrapper.setItem(
+         LOCALSTORAGE_KEY,
+@@ -68,38 +105,20 @@ describe('FeatureFlagOverrides', () => {
+       );
+       const inst = new FeatureFlagOverrides();
+ 
+-      expect(inst.getFeatureFlagMap(organization)).toEqual({
+-        'enable-issues': {value: true, override: false},
+-        'enable-profiling': {value: true, override: true},
+-        'enable-replay': {value: true, override: undefined},
+-      });
+-    });
+-
+-    it('should combine & add features that are listed locally, but not in the org', () => {
+-      localStorageWrapper.setItem(
+-        LOCALSTORAGE_KEY,
+-        '{"enable-issues":false,"secret-new-feature":true,"local-only-feature":false}'
+-      );
+-      const inst = new FeatureFlagOverrides();
++      // The original values
++      expect(organization.features).toEqual([
++        'enable-issues',
++        'enable-profiling',
++        'enable-replay',
++      ]);
+ 
+-      expect(inst.getFeatureFlagMap(organization)).toEqual({
+-        'enable-issues': {value: true, override: false},
+-        'enable-profiling': {value: true, override: undefined},
+-        'enable-replay': {value: true, override: undefined},
+-        'secret-new-feature': {value: undefined, override: true},
+-        'local-only-feature': {value: undefined, override: false},
++      // The overridden values
++      expect(inst.getStoredOverrides()).toEqual({
++        'enable-issues': false,
++        'enable-profiling': true,
+       });
+-    });
+-  });
+-
+-  describe('getEnabledFeatureFlagList', () => {
+-    it('should combine & remove features that are disabled locally', () => {
+-      localStorageWrapper.setItem(
+-        LOCALSTORAGE_KEY,
+-        '{"enable-issues":false,"enable-profiling":true}'
+-      );
+-      const inst = new FeatureFlagOverrides();
+ 
++      // The combined values
+       expect(inst.getEnabledFeatureFlagList(organization)).toEqual([
+         'enable-profiling',
+         'enable-replay',
+@@ -142,20 +161,6 @@ describe('FeatureFlagOverrides', () => {
+         'enable-replay',
+         'secret-new-feature',
+       ]);
+-
+-      expect(inst.getFeatureFlagMap(organization)).toEqual({
+-        'enable-issues': {value: true, override: false},
+-        'enable-profiling': {value: true, override: undefined},
+-        'enable-replay': {value: true, override: undefined},
+-        'secret-new-feature': {value: undefined, override: true},
+-        'local-only-feature': {value: undefined, override: false},
+-      });
+-
+-      expect(inst.getEnabledFeatureFlagList(organization)).toEqual([
+-        'enable-profiling',
+-        'enable-replay',
+-        'secret-new-feature',
+-      ]);
+     });
+   });
+ });
+diff --git a/static/app/utils/featureFlagOverrides.ts b/static/app/utils/featureFlagOverrides.ts
+index a23438979e2..b34de423da7 100644
+--- a/static/app/utils/featureFlagOverrides.ts
++++ b/static/app/utils/featureFlagOverrides.ts
+@@ -1,12 +1,10 @@
++import type {FlagMap} from '@sentry/toolbar';
++
+ import type {Organization} from 'sentry/types/organization';
+ import localStorageWrapper from 'sentry/utils/localStorage';
+ 
+ type OverrideState = Record<string, boolean>;
+ 
+-// TODO(ryan953): this should import from the devtoolbar definition
+-type FlagValue = boolean | string | number | undefined;
+-type FeatureFlagMap = Record<string, {override: FlagValue; value: FlagValue}>;
+-
+ const LOCALSTORAGE_KEY = 'feature-flag-overrides';
+ 
+ let __SINGLETON: FeatureFlagOverrides | null = null;
+@@ -24,12 +22,9 @@ export default class FeatureFlagOverrides {
+     return __SINGLETON;
+   }
+ 
+-  /**
+-   * Instead of storing the original & overridden values on the org itself we're
+-   * using this cache instead. Having the cache on the side means we don't need
+-   * to change the Organization type to add a pr
+-   */
+-  private _originalValues = new WeakMap<Organization, FeatureFlagMap>();
++  public getFlagMap(organization: Organization): FlagMap {
++    return Object.fromEntries(organization.features.map(name => [name, true]));
++  }
+ 
+   /**
+    * Set an override value into localStorage, so that the next time the page
+@@ -37,7 +32,7 @@ export default class FeatureFlagOverrides {
+    */
+   public setStoredOverride(name: string, value: boolean): void {
+     try {
+-      const prev = this._getStoredOverrides();
++      const prev = this.getStoredOverrides();
+       const updated: OverrideState = {...prev, [name]: value};
+       localStorageWrapper.setItem(LOCALSTORAGE_KEY, JSON.stringify(updated));
+     } catch {
+@@ -49,7 +44,7 @@ export default class FeatureFlagOverrides {
+     localStorageWrapper.setItem(LOCALSTORAGE_KEY, '{}');
+   }
+ 
+-  private _getStoredOverrides(): OverrideState {
++  public getStoredOverrides(): OverrideState {
+     try {
+       return JSON.parse(localStorageWrapper.getItem(LOCALSTORAGE_KEY) ?? '{}');
+     } catch {
+@@ -57,56 +52,20 @@ export default class FeatureFlagOverrides {
+     }
+   }
+ 
+-  /**
+-   * Convert the list of enabled org-features into a FeatureFlapMap and cache it
+-   * This cached list is only the original values that the server told us, but
+-   * in a format we can add overrides to later.
+-   */
+-  private _getNonOverriddenFeatures(organization: Organization): FeatureFlagMap {
+-    if (this._originalValues.has(organization)) {
+-      // @ts-expect-error TS(2322): Type 'FeatureFlagMap | undefined' is not assignabl... Remove this comment to see the full error message
+-      return this._originalValues.get(organization);
+-    }
+-
+-    const nonOverriddenFeatures = Object.fromEntries(
+-      organization.features.map(name => [name, {value: true, override: undefined}])
+-    );
+-    this._originalValues.set(organization, nonOverriddenFeatures);
+-    return nonOverriddenFeatures;
+-  }
+-
+-  /**
+-   * Return the effective featureFlags as a map, for the toolbar
+-   */
+-  public getFeatureFlagMap(organization: Organization): FeatureFlagMap {
+-    const nonOverriddenFeatures = this._getNonOverriddenFeatures(organization);
+-    const overrides = this._getStoredOverrides();
+-
+-    const clone: FeatureFlagMap = {...nonOverriddenFeatures};
+-
+-    for (const [name, override] of Object.entries(overrides)) {
+-      clone[name] = {value: clone[name]?.value, override};
+-    }
+-    return clone;
+-  }
+-
+   /**
+    * Return the effective featureFlags as an array, for `organization.features`
+    */
+   public getEnabledFeatureFlagList(organization: Organization): string[] {
+-    const nonOverriddenFeatures = this._getNonOverriddenFeatures(organization);
+-    const overrides = this._getStoredOverrides();
+-
+-    const names = new Set(Object.keys(nonOverriddenFeatures));
+-
+-    for (const [name, override] of Object.entries(overrides)) {
+-      if (override) {
+-        names.add(name);
+-      } else {
+-        names.delete(name);
++    const enabled = new Set(Object.keys(this.getFlagMap(organization)));
++    Object.entries(this.getStoredOverrides()).forEach(([override, value]) => {
++      // TODO(ryan953): we're only dealing with booleans to start, but other types could be supported
++      if (value === true) {
++        enabled.add(override);
++      } else if (value === false) {
++        enabled.delete(override);
+       }
+-    }
+-    return Array.from(names);
++    });
++    return Array.from(enabled);
+   }
+ 
+   /**
+diff --git a/static/app/utils/useDevToolbar.tsx b/static/app/utils/useDevToolbar.tsx
+deleted file mode 100644
+index beb2c345a3f..00000000000
+--- a/static/app/utils/useDevToolbar.tsx
++++ /dev/null
+@@ -1,57 +0,0 @@
+-import {useEffect} from 'react';
+-import * as Sentry from '@sentry/react';
+-
+-import DevToolbar from 'sentry/components/devtoolbar';
+-import {rawTrackAnalyticsEvent} from 'sentry/utils/analytics';
+-import FeatureFlagOverrides from 'sentry/utils/featureFlagOverrides';
+-import useOrganization from 'sentry/utils/useOrganization';
+-import {useUser} from 'sentry/utils/useUser';
+-
+-export default function useDevToolbar({enabled}: {enabled: boolean}) {
+-  const organization = useOrganization();
+-  const {email} = useUser();
+-
+-  useEffect(() => {
+-    if (enabled) {
+-      // TODO: this is insufficient and doesn't take into account control/silo endpoints
+-      const apiPrefix = window.__SENTRY_DEV_UI ? '/region/us/api/0' : '/api/0';
+-
+-      const promise = DevToolbar.init({
+-        rootNode: document.body,
+-        placement: 'right-edge', // Could also be 'bottom-right-corner'
+-
+-        // The Settings we need to talk to the Sentry API
+-        // What org/project/env should we read from?
+-        SentrySDK: Sentry,
+-        apiPrefix,
+-        environment: ['prod'],
+-        organizationSlug: 'sentry',
+-        projectId: 11276,
+-        projectPlatform: 'javascript',
+-        projectSlug: 'javascript',
+-        featureFlags: {
+-          getFeatureFlagMap: () =>
+-            FeatureFlagOverrides.singleton().getFeatureFlagMap(organization),
+-          urlTemplate: flag =>
+-            `https://github.com/search?q=repo%3Agetsentry%2Fsentry-options-automator+OR+repo%3Agetsentry%2Fsentry+${flag}&type=code`,
+-          setOverrideValue: (name, value) => {
+-            // only boolean flags in sentry
+-            if (typeof value === 'boolean') {
+-              FeatureFlagOverrides.singleton().setStoredOverride(name, value);
+-            }
+-          },
+-          clearOverrides: () => {
+-            FeatureFlagOverrides.singleton().clear();
+-          },
+-        },
+-        trackAnalytics: (props: {eventKey: string; eventName: string}) =>
+-          rawTrackAnalyticsEvent({...props, email, organization}),
+-      });
+-
+-      return () => {
+-        promise.then(cleanup => cleanup());
+-      };
+-    }
+-    return () => {};
+-  }, [email, enabled, organization]);
+-}
+diff --git a/static/app/utils/useInitSentryToolbar.tsx b/static/app/utils/useInitSentryToolbar.tsx
+new file mode 100644
+index 00000000000..ad8c8775c41
+--- /dev/null
++++ b/static/app/utils/useInitSentryToolbar.tsx
+@@ -0,0 +1,59 @@
++import type {FeatureFlagAdapter} from '@sentry/toolbar';
++import {useSentryToolbar} from '@sentry/toolbar';
++
++import ConfigStore from 'sentry/stores/configStore';
++import {useLegacyStore} from 'sentry/stores/useLegacyStore';
++import type {Organization} from 'sentry/types/organization';
++import FeatureFlagOverrides from 'sentry/utils/featureFlagOverrides';
++import {useIsSentryEmployee} from 'sentry/utils/useIsSentryEmployee';
++
++export default function useInitSentryToolbar(organization: null | Organization) {
++  const showDevToolbar = Boolean(organization?.features.includes('devtoolbar'));
++  const isEmployee = useIsSentryEmployee();
++  const config = useLegacyStore(ConfigStore);
++
++  useSentryToolbar({
++    enabled: showDevToolbar && isEmployee,
++    initProps: {
++      organizationSlug: 'sentry',
++      projectIdOrSlug: 'javascript',
++      environment: 'prod',
++      theme: config.theme,
++      featureFlags: organization ? getFlagpoleAdapter(organization) : undefined,
++    },
++  });
++}
++
++const getFlagpoleAdapter = (organization: Organization): FeatureFlagAdapter => ({
++  /**
++   * All known flag names and their evaluated values.
++   */
++  getFlagMap: () => FeatureFlagOverrides.singleton().getFlagMap(organization),
++
++  /**
++   * Any overridden or manually set flags and values.
++   */
++  getOverrides: () => FeatureFlagOverrides.singleton().getStoredOverrides(),
++
++  /**
++   * Manually set a flag to be a specific value, overriding the evaluated value.
++   */
++  setOverride: (name, value) => {
++    // only boolean flags in sentry
++    if (typeof value === 'boolean') {
++      FeatureFlagOverrides.singleton().setStoredOverride(name, value);
++    }
++  },
++
++  /**
++   * A callback to clear all overrides from this browser.
++   */
++  clearOverrides: () => FeatureFlagOverrides.singleton().clear(),
++
++  /**
++   * Deeplink into your external feature-flag provider and find out more about
++   * this specific flag.
++   */
++  urlTemplate: flag =>
++    `https://github.com/search?q=repo%3Agetsentry%2Fsentry-options-automator+OR+repo%3Agetsentry%2Fsentry+${flag}&type=code`,
++});
+diff --git a/static/app/views/organizationLayout/index.tsx b/static/app/views/organizationLayout/index.tsx
+index 43063863c1d..6174ab293ad 100644
+--- a/static/app/views/organizationLayout/index.tsx
++++ b/static/app/views/organizationLayout/index.tsx
+@@ -15,8 +15,7 @@ import Sidebar from 'sentry/components/sidebar';
+ import type {Organization} from 'sentry/types/organization';
+ import useRouteAnalyticsHookSetup from 'sentry/utils/routeAnalytics/useRouteAnalyticsHookSetup';
+ import useRouteAnalyticsParams from 'sentry/utils/routeAnalytics/useRouteAnalyticsParams';
+-import useDevToolbar from 'sentry/utils/useDevToolbar';
+-import {useIsSentryEmployee} from 'sentry/utils/useIsSentryEmployee';
++import useInitSentryToolbar from 'sentry/utils/useInitSentryToolbar';
+ import useOrganization from 'sentry/utils/useOrganization';
+ import {AppBodyContent} from 'sentry/views/app/appBodyContent';
+ import Nav from 'sentry/views/nav';
+@@ -35,14 +34,6 @@ const OrganizationHeader = HookOrDefault({
+   hookName: 'component:organization-header',
+ });
+ 
+-function DevToolInit() {
+-  const isEmployee = useIsSentryEmployee();
+-  const organization = useOrganization();
+-  const showDevToolbar = organization.features.includes('devtoolbar');
+-  useDevToolbar({enabled: showDevToolbar && isEmployee});
+-  return null;
+-}
+-
+ function OrganizationLayout({children}: Props) {
+   useRouteAnalyticsHookSetup();
+ 
+@@ -57,6 +48,8 @@ function OrganizationLayout({children}: Props) {
+     prefers_stacked_navigation: prefersStackedNav,
+   });
+ 
++  useInitSentryToolbar(organization);
++
+   return (
+     <SentryDocumentTitle noSuffix title={organization?.name ?? 'Sentry'}>
+       <OrganizationContainer>
+@@ -93,7 +86,6 @@ function AppLayout({children, organization}: LayoutProps) {
+         <BodyContainer id="main">
+           <AppBodyContent>
+             {organization && <OrganizationHeader organization={organization} />}
+-            {organization && <DevToolInit />}
+             <OrganizationDetailsBody>{children}</OrganizationDetailsBody>
+           </AppBodyContent>
+           <Footer />
+@@ -111,7 +103,6 @@ function LegacyAppLayout({children, organization}: LayoutProps) {
+     <div className="app">
+       <DemoHeader />
+       {organization && <OrganizationHeader organization={organization} />}
+-      {organization && <DevToolInit />}
+       <Sidebar />
+       <AppBodyContent>
+         <OrganizationDetailsBody>{children}</OrganizationDetailsBody>
+diff --git a/static/app/views/releases/list/releaseCard/index.tsx b/static/app/views/releases/list/releaseCard/index.tsx
+index 2d281b33811..3fd3147c9b0 100644
+--- a/static/app/views/releases/list/releaseCard/index.tsx
++++ b/static/app/views/releases/list/releaseCard/index.tsx
+@@ -291,7 +291,7 @@ function ReleaseCard({
+   );
+ }
+ 
+-export const VersionWrapper = styled('div')`
++const VersionWrapper = styled('div')`
+   display: flex;
+   align-items: center;
+ `;
+@@ -324,7 +324,7 @@ const ReleaseInfo = styled('div')`
+   }
+ `;
+ 
+-export const ReleaseInfoSubheader = styled('div')`
++const ReleaseInfoSubheader = styled('div')`
+   font-size: ${p => p.theme.fontSizeSmall};
+   color: ${p => p.theme.gray400};
+   flex-grow: 1;
+@@ -379,7 +379,7 @@ const ReleaseProjects = styled('div')`
+   }
+ `;
+ 
+-export const ReleaseInfoHeader = styled('div')`
++const ReleaseInfoHeader = styled('div')`
+   font-size: ${p => p.theme.fontSizeExtraLarge};
+   display: grid;
+   grid-template-columns: minmax(0, 1fr) max-content;
+diff --git a/tests/js/sentry-test/mocks/sentryToolbarMock.js b/tests/js/sentry-test/mocks/sentryToolbarMock.js
+new file mode 100644
+index 00000000000..009fa58ec42
+--- /dev/null
++++ b/tests/js/sentry-test/mocks/sentryToolbarMock.js
+@@ -0,0 +1,2 @@
++'use strict';
++module.exports = {useSentryToolbar: () => {}};

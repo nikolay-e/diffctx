@@ -1,0 +1,81 @@
+repo: react-native
+base_commit: c24f963330e779ac843ec69e9b12f08888b00c85
+commit: 6ba8b65e9f8d113c268e71eb6141896723ec6eae
+patch_stored: true
+gold:
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/defaults/DefaultReactHostDelegate.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/defaults/DefaultReactNativeHost.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/EmptyReactNativeConfig.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManagerBinding.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManagerProviderImpl.java
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/ReactNativeConfig.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/ReactHostDelegate.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/runtime/hermes/HermesInstance.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/runtime/hermes/HermesInstance.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHermesInstance.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/runtime/platform/ios/ReactCommon/RCTHermesInstance.mm
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/react-native/Libraries/Blob/RCTBlobManager.mm
+- path: packages/react-native/Libraries/Network/RCTNetworking.mm
+- path: packages/react-native/React/Base/RCTAssert.h
+- path: packages/react-native/React/Base/RCTBridge.mm
+- path: packages/react-native/React/Views/RCTView.m
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/BaseViewManager.java
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: The truth.diff totals only 122 insertions/505 deletions across 53 files (a plumbing-only removal
+  of the legacy ReactNativeConfig parameter), yet ctx.md is 48582 tokens and pulls in 113 ctx_files vs
+  53 actually touched — roughly 18 extra unrelated files by unique path (RCTBlobManager.mm, RCTNetworking.mm,
+  RCTView.m, BaseViewManager.java's unrelated setBoxShadow, etc.) surfaced only as single-line 'class_signature'
+  stubs that add tokens without adding understanding. Worse, for files that WERE touched, diffctx frequently
+  dumps large fixed-window chunks (e.g. ReactAndroid/src/main/jni/CMakeLists.txt:1-400, build.gradle.kts:1-200)
+  around a 1-3 line deletion instead of a tight hunk, which is the dominant source of the 48k-token bloat.
+  Markdown is clearly more readable than YAML here given the sheer file count; YAML would only add ~2450
+  more tokens with no comprehension benefit.

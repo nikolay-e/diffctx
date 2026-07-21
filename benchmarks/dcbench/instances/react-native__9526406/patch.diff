@@ -1,0 +1,1485 @@
+From 9526406fc24ed0df10c63c54869814a26d69ece0 Mon Sep 17 00:00:00 2001
+From: Jorge Cabiedes Acosta <jorgecab@meta.com>
+Date: Fri, 25 Apr 2025 13:01:31 -0700
+Subject: [PATCH] Fix crash with nested FlatLists and fix edge case with nested
+ views (#50855)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/50855
+
+This diff addresses a crash caused by view duplication in React Native Android. The issue occurred when a view was not already clipped and was laid out again, resulting in duplicated views.
+
+This problem was particularly noticeable when using nested FlatLists, which triggered a custom focus search with an incomplete and buggy duplicated FlatList container view.
+
+The fix involves preventing the duplication of views by checking if a view is clipped already before laying it out again. Additionally, this diff includes two other improvements:
+- Preventing clipping issues: When a view is nested within a non-ReactClippingViewGroup ancestor, focus searching would fail due to the needUpdateClippingRecursive logic only running on instances of ReactClippingViewGroup. By excluding these ancestors, we ensure that the next focusable view can be properly excluded from being clipped.
+- Minor fix: A minor fix was made to prevent potential issues in deeply nested cases.
+- Add a Kill switch with a feature flag and mobile config combo.
+
+Reviewed By: joevilches
+
+Differential Revision: D73471780
+
+fbshipit-source-id: efbb968600f21b24ab1fa32222d555f346fb336e
+---
+ .../ReactAndroid/api/ReactAndroid.api         | 10 +++
+ .../react/fabric/FabricUIManager.java         | 47 +++++++++++
+ .../react/fabric/FabricUIManagerBinding.kt    |  2 +-
+ .../featureflags/ReactNativeFeatureFlags.kt   |  8 +-
+ .../ReactNativeFeatureFlagsCxxAccessor.kt     | 12 ++-
+ .../ReactNativeFeatureFlagsCxxInterop.kt      |  4 +-
+ .../ReactNativeFeatureFlagsDefaults.kt        |  4 +-
+ .../ReactNativeFeatureFlagsLocalAccessor.kt   | 13 ++-
+ .../ReactNativeFeatureFlagsProvider.kt        |  4 +-
+ .../react/uimanager/ReactClippingViewGroup.kt |  2 +
+ .../scroll/ReactHorizontalScrollView.java     | 24 +++++-
+ .../react/views/scroll/ReactScrollView.java   | 24 +++++-
+ .../views/scroll/ReactScrollViewHelper.kt     | 68 +++++++++++++++
+ .../react/views/view/ReactViewGroup.java      | 32 +++++--
+ .../react/fabric/FabricUIManagerBinding.cpp   | 22 +++--
+ .../jni/react/fabric/FabricUIManagerBinding.h |  2 +-
+ .../JReactNativeFeatureFlagsCxxInterop.cpp    | 16 +++-
+ .../JReactNativeFeatureFlagsCxxInterop.h      |  5 +-
+ .../featureflags/ReactNativeFeatureFlags.cpp  |  6 +-
+ .../featureflags/ReactNativeFeatureFlags.h    |  7 +-
+ .../ReactNativeFeatureFlagsAccessor.cpp       | 84 +++++++++++--------
+ .../ReactNativeFeatureFlagsAccessor.h         |  6 +-
+ .../ReactNativeFeatureFlagsDefaults.h         |  6 +-
+ .../ReactNativeFeatureFlagsDynamicProvider.h  | 11 ++-
+ .../ReactNativeFeatureFlagsProvider.h         |  3 +-
+ .../NativeReactNativeFeatureFlags.cpp         |  7 +-
+ .../NativeReactNativeFeatureFlags.h           |  4 +-
+ .../ReactNativeFeatureFlags.config.js         | 10 +++
+ .../featureflags/ReactNativeFeatureFlags.js   |  7 +-
+ .../specs/NativeReactNativeFeatureFlags.js    |  3 +-
+ 30 files changed, 385 insertions(+), 68 deletions(-)
+
+diff --git a/packages/react-native/ReactAndroid/api/ReactAndroid.api b/packages/react-native/ReactAndroid/api/ReactAndroid.api
+index 057554ef748..2dad9b8865e 100644
+--- a/packages/react-native/ReactAndroid/api/ReactAndroid.api
++++ b/packages/react-native/ReactAndroid/api/ReactAndroid.api
+@@ -2354,9 +2354,11 @@ public class com/facebook/react/fabric/FabricUIManager : com/facebook/react/brid
+ 	public fun dispatchCommand (IILcom/facebook/react/bridge/ReadableArray;)V
+ 	public fun dispatchCommand (IILjava/lang/String;Lcom/facebook/react/bridge/ReadableArray;)V
+ 	public fun dispatchCommand (ILjava/lang/String;Lcom/facebook/react/bridge/ReadableArray;)V
++	public fun findNextFocusableElement (III)Ljava/lang/Integer;
+ 	public fun getColor (I[Ljava/lang/String;)I
+ 	public fun getEventDispatcher ()Lcom/facebook/react/uimanager/events/EventDispatcher;
+ 	public fun getPerformanceCounters ()Ljava/util/Map;
++	public fun getRelativeAncestorList (II)[I
+ 	public fun getThemeData (I[F)Z
+ 	public fun initialize ()V
+ 	public fun invalidate ()V
+@@ -3969,6 +3971,7 @@ public abstract interface class com/facebook/react/uimanager/ReactClippingViewGr
+ 	public abstract fun getRemoveClippedSubviews ()Z
+ 	public abstract fun setRemoveClippedSubviews (Z)V
+ 	public abstract fun updateClippingRect ()V
++	public abstract fun updateClippingRect (Ljava/util/Set;)V
+ }
+ 
+ public final class com/facebook/react/uimanager/ReactClippingViewGroupHelper {
+@@ -5832,6 +5835,7 @@ public class com/facebook/react/views/scroll/ReactHorizontalScrollView : android
+ 	public fun executeKeyEvent (Landroid/view/KeyEvent;)Z
+ 	public fun flashScrollIndicators ()V
+ 	public fun fling (I)V
++	public fun focusSearch (Landroid/view/View;I)Landroid/view/View;
+ 	public fun getChildVisibleRect (Landroid/view/View;Landroid/graphics/Rect;Landroid/graphics/Point;)Z
+ 	public fun getClippingRect (Landroid/graphics/Rect;)V
+ 	public fun getFlingAnimator ()Landroid/animation/ValueAnimator;
+@@ -5894,6 +5898,7 @@ public class com/facebook/react/views/scroll/ReactHorizontalScrollView : android
+ 	public fun setStateWrapper (Lcom/facebook/react/uimanager/StateWrapper;)V
+ 	public fun startFlingAnimator (II)V
+ 	public fun updateClippingRect ()V
++	public fun updateClippingRect (Ljava/util/Set;)V
+ }
+ 
+ public class com/facebook/react/views/scroll/ReactHorizontalScrollViewManager : com/facebook/react/uimanager/ViewGroupManager, com/facebook/react/views/scroll/ReactScrollViewCommandHelper$ScrollCommandHandler {
+@@ -5959,6 +5964,7 @@ public class com/facebook/react/views/scroll/ReactScrollView : android/widget/Sc
+ 	public fun executeKeyEvent (Landroid/view/KeyEvent;)Z
+ 	public fun flashScrollIndicators ()V
+ 	public fun fling (I)V
++	public fun focusSearch (Landroid/view/View;I)Landroid/view/View;
+ 	public fun getChildVisibleRect (Landroid/view/View;Landroid/graphics/Rect;Landroid/graphics/Point;)Z
+ 	public fun getClippingRect (Landroid/graphics/Rect;)V
+ 	public fun getFlingAnimator ()Landroid/animation/ValueAnimator;
+@@ -6022,6 +6028,7 @@ public class com/facebook/react/views/scroll/ReactScrollView : android/widget/Sc
+ 	public fun setStateWrapper (Lcom/facebook/react/uimanager/StateWrapper;)V
+ 	public fun startFlingAnimator (II)V
+ 	public fun updateClippingRect ()V
++	public fun updateClippingRect (Ljava/util/Set;)V
+ }
+ 
+ public final class com/facebook/react/views/scroll/ReactScrollViewCommandHelper {
+@@ -6079,6 +6086,7 @@ public final class com/facebook/react/views/scroll/ReactScrollViewHelper {
+ 	public static final fun emitScrollEvent (Landroid/view/ViewGroup;FF)V
+ 	public static final fun emitScrollMomentumBeginEvent (Landroid/view/ViewGroup;II)V
+ 	public static final fun emitScrollMomentumEndEvent (Landroid/view/ViewGroup;)V
++	public static final fun findNextFocusableView (Landroid/view/ViewGroup;Landroid/view/View;IZ)Landroid/view/View;
+ 	public static final fun forceUpdateState (Landroid/view/ViewGroup;)V
+ 	public static final fun getDefaultScrollAnimationDuration (Landroid/content/Context;)I
+ 	public static final fun getNextFlingStartValue (Landroid/view/ViewGroup;III)I
+@@ -6088,6 +6096,7 @@ public final class com/facebook/react/views/scroll/ReactScrollViewHelper {
+ 	public final fun registerFlingAnimator (Landroid/view/ViewGroup;)V
+ 	public static final fun removeLayoutChangeListener (Lcom/facebook/react/views/scroll/ReactScrollViewHelper$LayoutChangeListener;)V
+ 	public static final fun removeScrollListener (Lcom/facebook/react/views/scroll/ReactScrollViewHelper$ScrollListener;)V
++	public static final fun resolveAbsoluteDirection (IZI)I
+ 	public static final fun smoothScrollTo (Landroid/view/ViewGroup;II)V
+ 	public static final fun updateFabricScrollState (Landroid/view/ViewGroup;)V
+ 	public final fun updateFabricScrollState (Landroid/view/ViewGroup;II)V
+@@ -6865,6 +6874,7 @@ public class com/facebook/react/views/view/ReactViewGroup : android/view/ViewGro
+ 	public fun setRemoveClippedSubviews (Z)V
+ 	public fun setTranslucentBackgroundDrawable (Landroid/graphics/drawable/Drawable;)V
+ 	public fun updateClippingRect ()V
++	public fun updateClippingRect (Ljava/util/Set;)V
+ 	public fun updateDrawingOrder ()V
+ }
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManager.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManager.java
+index 8e0c683e158..14b4439b6ca 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManager.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManager.java
+@@ -27,6 +27,7 @@ import android.view.accessibility.AccessibilityEvent;
+ import androidx.annotation.AnyThread;
+ import androidx.annotation.Nullable;
+ import androidx.annotation.UiThread;
++import androidx.core.view.ViewCompat.FocusRealDirection;
+ import com.facebook.common.logging.FLog;
+ import com.facebook.infer.annotation.Assertions;
+ import com.facebook.infer.annotation.Nullsafe;
+@@ -262,6 +263,52 @@ public class FabricUIManager
+     return rootTag;
+   }
+ 
++  /**
++   * Find the next focusable element's id and position relative to the parent from the shadow tree
++   * based on the current focusable element and the direction.
++   *
++   * @return A NextFocusableNode object where the 'id' is the reactId/Tag of the next focusable
++   *     view, returns null if no view could be found
++   */
++  public @Nullable Integer findNextFocusableElement(
++      int parentTag, int focusedTag, @FocusRealDirection int direction) {
++    if (mBinding == null) {
++      return null;
++    }
++
++    int generalizedDirection;
++
++    switch (direction) {
++      case View.FOCUS_DOWN:
++        generalizedDirection = 0;
++        break;
++      case View.FOCUS_UP:
++        generalizedDirection = 1;
++        break;
++      case View.FOCUS_RIGHT:
++        generalizedDirection = 2;
++        break;
++      case View.FOCUS_LEFT:
++        generalizedDirection = 3;
++        break;
++      default:
++        return null;
++    }
++
++    int serializedNextFocusableNodeMetrics =
++        mBinding.findNextFocusableElement(parentTag, focusedTag, generalizedDirection);
++
++    if (serializedNextFocusableNodeMetrics == -1) {
++      return null;
++    }
++
++    return serializedNextFocusableNodeMetrics;
++  }
++
++  public @Nullable int[] getRelativeAncestorList(int rootTag, int childTag) {
++    return mBinding != null ? mBinding.getRelativeAncestorList(rootTag, childTag) : null;
++  }
++
+   @Override
+   @AnyThread
+   @ThreadConfined(ANY)
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManagerBinding.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManagerBinding.kt
+index f76c676af87..f22661f1d7e 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManagerBinding.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManagerBinding.kt
+@@ -57,7 +57,7 @@ internal class FabricUIManagerBinding : HybridClassBase() {
+ 
+   external fun findNextFocusableElement(parentTag: Int, focusedTag: Int, direction: Int): Int
+ 
+-  external fun findRelativeTopMostParent(rootTag: Int, childTag: Int): Int
++  external fun getRelativeAncestorList(rootTag: Int, childTag: Int): IntArray
+ 
+   external fun stopSurface(surfaceId: Int)
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+index fd5dcfee33b..7cd879283b9 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<48d7086046009130361c8878bded54d0>>
++ * @generated SignedSource<<3043c6e2fd674eaf2c1d6c3a064083b2>>
+  */
+ 
+ /**
+@@ -84,6 +84,12 @@ public object ReactNativeFeatureFlags {
+   @JvmStatic
+   public fun enableCppPropsIteratorSetter(): Boolean = accessor.enableCppPropsIteratorSetter()
+ 
++  /**
++   * This enables the fabric implementation of focus search so that we can focus clipped elements
++   */
++  @JvmStatic
++  public fun enableCustomFocusSearchOnClippedElementsAndroid(): Boolean = accessor.enableCustomFocusSearchOnClippedElementsAndroid()
++
+   /**
+    * Feature flag to configure eager attachment of the root view/initialisation of the JS code.
+    */
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+index c6ceca67f12..e28f27386fe 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<2657b39d8c9d8c0020139c267f3c7b2b>>
++ * @generated SignedSource<<090ff0c403728370f2c88a2434c9ae12>>
+  */
+ 
+ /**
+@@ -29,6 +29,7 @@ internal class ReactNativeFeatureFlagsCxxAccessor : ReactNativeFeatureFlagsAcces
+   private var enableAccumulatedUpdatesInRawPropsAndroidCache: Boolean? = null
+   private var enableBridgelessArchitectureCache: Boolean? = null
+   private var enableCppPropsIteratorSetterCache: Boolean? = null
++  private var enableCustomFocusSearchOnClippedElementsAndroidCache: Boolean? = null
+   private var enableEagerRootViewAttachmentCache: Boolean? = null
+   private var enableFabricLogsCache: Boolean? = null
+   private var enableFabricRendererCache: Boolean? = null
+@@ -143,6 +144,15 @@ internal class ReactNativeFeatureFlagsCxxAccessor : ReactNativeFeatureFlagsAcces
+     return cached
+   }
+ 
++  override fun enableCustomFocusSearchOnClippedElementsAndroid(): Boolean {
++    var cached = enableCustomFocusSearchOnClippedElementsAndroidCache
++    if (cached == null) {
++      cached = ReactNativeFeatureFlagsCxxInterop.enableCustomFocusSearchOnClippedElementsAndroid()
++      enableCustomFocusSearchOnClippedElementsAndroidCache = cached
++    }
++    return cached
++  }
++
+   override fun enableEagerRootViewAttachment(): Boolean {
+     var cached = enableEagerRootViewAttachmentCache
+     if (cached == null) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+index 47b5e08e52d..30f836d3182 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<67fd03886fec1f6874bf3ef07878bdc7>>
++ * @generated SignedSource<<1d7b3dd1a1e40eb7802834c22eb01256>>
+  */
+ 
+ /**
+@@ -46,6 +46,8 @@ public object ReactNativeFeatureFlagsCxxInterop {
+ 
+   @DoNotStrip @JvmStatic public external fun enableCppPropsIteratorSetter(): Boolean
+ 
++  @DoNotStrip @JvmStatic public external fun enableCustomFocusSearchOnClippedElementsAndroid(): Boolean
++
+   @DoNotStrip @JvmStatic public external fun enableEagerRootViewAttachment(): Boolean
+ 
+   @DoNotStrip @JvmStatic public external fun enableFabricLogs(): Boolean
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+index 7db5ea5b609..658514aaae8 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<4aa66c9504fb46e2a6b052d708fdc4b0>>
++ * @generated SignedSource<<bf8b0d4c128a040853d2b12f74597d46>>
+  */
+ 
+ /**
+@@ -41,6 +41,8 @@ public open class ReactNativeFeatureFlagsDefaults : ReactNativeFeatureFlagsProvi
+ 
+   override fun enableCppPropsIteratorSetter(): Boolean = false
+ 
++  override fun enableCustomFocusSearchOnClippedElementsAndroid(): Boolean = true
++
+   override fun enableEagerRootViewAttachment(): Boolean = false
+ 
+   override fun enableFabricLogs(): Boolean = false
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+index ac7052cec2e..e713cff8840 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<259f5f37683db64fd63ffb92e4fbae54>>
++ * @generated SignedSource<<4c8f6a3a41aebb8c9e81c26cd7973f90>>
+  */
+ 
+ /**
+@@ -33,6 +33,7 @@ internal class ReactNativeFeatureFlagsLocalAccessor : ReactNativeFeatureFlagsAcc
+   private var enableAccumulatedUpdatesInRawPropsAndroidCache: Boolean? = null
+   private var enableBridgelessArchitectureCache: Boolean? = null
+   private var enableCppPropsIteratorSetterCache: Boolean? = null
++  private var enableCustomFocusSearchOnClippedElementsAndroidCache: Boolean? = null
+   private var enableEagerRootViewAttachmentCache: Boolean? = null
+   private var enableFabricLogsCache: Boolean? = null
+   private var enableFabricRendererCache: Boolean? = null
+@@ -156,6 +157,16 @@ internal class ReactNativeFeatureFlagsLocalAccessor : ReactNativeFeatureFlagsAcc
+     return cached
+   }
+ 
++  override fun enableCustomFocusSearchOnClippedElementsAndroid(): Boolean {
++    var cached = enableCustomFocusSearchOnClippedElementsAndroidCache
++    if (cached == null) {
++      cached = currentProvider.enableCustomFocusSearchOnClippedElementsAndroid()
++      accessedFeatureFlags.add("enableCustomFocusSearchOnClippedElementsAndroid")
++      enableCustomFocusSearchOnClippedElementsAndroidCache = cached
++    }
++    return cached
++  }
++
+   override fun enableEagerRootViewAttachment(): Boolean {
+     var cached = enableEagerRootViewAttachmentCache
+     if (cached == null) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+index 8a4812f6667..e88f387e132 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<3082bb1b859031b09fd70de878722016>>
++ * @generated SignedSource<<5a02fc6cd183f41724b3599fad1fd507>>
+  */
+ 
+ /**
+@@ -41,6 +41,8 @@ public interface ReactNativeFeatureFlagsProvider {
+ 
+   @DoNotStrip public fun enableCppPropsIteratorSetter(): Boolean
+ 
++  @DoNotStrip public fun enableCustomFocusSearchOnClippedElementsAndroid(): Boolean
++
+   @DoNotStrip public fun enableEagerRootViewAttachment(): Boolean
+ 
+   @DoNotStrip public fun enableFabricLogs(): Boolean
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/ReactClippingViewGroup.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/ReactClippingViewGroup.kt
+index dbd63a29541..b62626efe7c 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/ReactClippingViewGroup.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/ReactClippingViewGroup.kt
+@@ -32,6 +32,8 @@ public interface ReactClippingViewGroup {
+    */
+   public fun updateClippingRect()
+ 
++  public fun updateClippingRect(excludedView: Set<Int>?)
++
+   /**
+    * Get rectangular bounds to which view is currently clipped to. Called only on views that has set
+    * `removeCLippedSubviews` property value to `true`.
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactHorizontalScrollView.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactHorizontalScrollView.java
+index a3aa393ecf1..82c60e7b8fc 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactHorizontalScrollView.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactHorizontalScrollView.java
+@@ -11,6 +11,7 @@ import static com.facebook.react.views.scroll.ReactScrollViewHelper.SNAP_ALIGNME
+ import static com.facebook.react.views.scroll.ReactScrollViewHelper.SNAP_ALIGNMENT_DISABLED;
+ import static com.facebook.react.views.scroll.ReactScrollViewHelper.SNAP_ALIGNMENT_END;
+ import static com.facebook.react.views.scroll.ReactScrollViewHelper.SNAP_ALIGNMENT_START;
++import static com.facebook.react.views.scroll.ReactScrollViewHelper.findNextFocusableView;
+ 
+ import android.animation.ObjectAnimator;
+ import android.animation.ValueAnimator;
+@@ -31,6 +32,7 @@ import android.widget.HorizontalScrollView;
+ import android.widget.OverScroller;
+ import androidx.annotation.Nullable;
+ import androidx.core.view.ViewCompat;
++import androidx.core.view.ViewCompat.FocusRealDirection;
+ import com.facebook.common.logging.FLog;
+ import com.facebook.infer.annotation.Assertions;
+ import com.facebook.infer.annotation.Nullsafe;
+@@ -39,6 +41,7 @@ import com.facebook.react.animated.NativeAnimatedModule;
+ import com.facebook.react.bridge.ReactContext;
+ import com.facebook.react.common.ReactConstants;
+ import com.facebook.react.common.build.ReactBuildConfig;
++import com.facebook.react.internal.featureflags.ReactNativeFeatureFlags;
+ import com.facebook.react.uimanager.BackgroundStyleApplicator;
+ import com.facebook.react.uimanager.LengthPercentage;
+ import com.facebook.react.uimanager.LengthPercentageType;
+@@ -64,6 +67,7 @@ import com.facebook.systrace.Systrace;
+ import java.lang.reflect.Field;
+ import java.util.ArrayList;
+ import java.util.List;
++import java.util.Set;
+ 
+ /** Similar to {@link ReactScrollView} but only supports horizontal scrolling. */
+ @Nullsafe(Nullsafe.Mode.LOCAL)
+@@ -771,8 +775,26 @@ public class ReactHorizontalScrollView extends HorizontalScrollView
+     }
+   }
+ 
++  @Override
++  public @Nullable View focusSearch(View focused, @FocusRealDirection int direction) {
++    if (ReactNativeFeatureFlags.enableCustomFocusSearchOnClippedElementsAndroid()) {
++      @Nullable View nextfocusableView = findNextFocusableView(this, focused, direction, true);
++
++      if (nextfocusableView != null) {
++        return nextfocusableView;
++      }
++    }
++
++    return super.focusSearch(focused, direction);
++  }
++
+   @Override
+   public void updateClippingRect() {
++    updateClippingRect(null);
++  }
++
++  @Override
++  public void updateClippingRect(@Nullable Set<Integer> excludedViewId) {
+     if (!mRemoveClippedSubviews) {
+       return;
+     }
+@@ -784,7 +806,7 @@ public class ReactHorizontalScrollView extends HorizontalScrollView
+       ReactClippingViewGroupHelper.calculateClippingRect(this, mClippingRect);
+       View contentView = getContentView();
+       if (contentView instanceof ReactClippingViewGroup) {
+-        ((ReactClippingViewGroup) contentView).updateClippingRect();
++        ((ReactClippingViewGroup) contentView).updateClippingRect(excludedViewId);
+       }
+     } finally {
+       Systrace.endSection(Systrace.TRACE_TAG_REACT);
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactScrollView.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactScrollView.java
+index 5967ea0e818..2e0c20dfa0d 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactScrollView.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactScrollView.java
+@@ -11,6 +11,7 @@ import static com.facebook.react.views.scroll.ReactScrollViewHelper.SNAP_ALIGNME
+ import static com.facebook.react.views.scroll.ReactScrollViewHelper.SNAP_ALIGNMENT_DISABLED;
+ import static com.facebook.react.views.scroll.ReactScrollViewHelper.SNAP_ALIGNMENT_END;
+ import static com.facebook.react.views.scroll.ReactScrollViewHelper.SNAP_ALIGNMENT_START;
++import static com.facebook.react.views.scroll.ReactScrollViewHelper.findNextFocusableView;
+ 
+ import android.animation.ObjectAnimator;
+ import android.animation.ValueAnimator;
+@@ -31,6 +32,7 @@ import android.widget.ScrollView;
+ import androidx.annotation.NonNull;
+ import androidx.annotation.Nullable;
+ import androidx.core.view.ViewCompat;
++import androidx.core.view.ViewCompat.FocusRealDirection;
+ import com.facebook.common.logging.FLog;
+ import com.facebook.infer.annotation.Assertions;
+ import com.facebook.infer.annotation.Nullsafe;
+@@ -39,6 +41,7 @@ import com.facebook.react.animated.NativeAnimatedModule;
+ import com.facebook.react.bridge.ReactContext;
+ import com.facebook.react.bridge.ReadableMap;
+ import com.facebook.react.common.ReactConstants;
++import com.facebook.react.internal.featureflags.ReactNativeFeatureFlags;
+ import com.facebook.react.uimanager.BackgroundStyleApplicator;
+ import com.facebook.react.uimanager.LengthPercentage;
+ import com.facebook.react.uimanager.LengthPercentageType;
+@@ -63,6 +66,7 @@ import com.facebook.react.views.scroll.ReactScrollViewHelper.ReactScrollViewScro
+ import com.facebook.systrace.Systrace;
+ import java.lang.reflect.Field;
+ import java.util.List;
++import java.util.Set;
+ 
+ /**
+  * A simple subclass of ScrollView that doesn't dispatch measure and layout to its children and has
+@@ -359,6 +363,19 @@ public class ReactScrollView extends ScrollView
+     }
+   }
+ 
++  @Override
++  public @Nullable View focusSearch(View focused, @FocusRealDirection int direction) {
++    if (ReactNativeFeatureFlags.enableCustomFocusSearchOnClippedElementsAndroid()) {
++      @Nullable View nextfocusableView = findNextFocusableView(this, focused, direction, false);
++
++      if (nextfocusableView != null) {
++        return nextfocusableView;
++      }
++    }
++
++    return super.focusSearch(focused, direction);
++  }
++
+   /**
+    * Since ReactScrollView handles layout changes on JS side, it does not call super.onlayout due to
+    * which mIsLayoutDirty flag in ScrollView remains true and prevents scrolling to child when
+@@ -528,6 +545,11 @@ public class ReactScrollView extends ScrollView
+ 
+   @Override
+   public void updateClippingRect() {
++    updateClippingRect(null);
++  }
++
++  @Override
++  public void updateClippingRect(@Nullable Set<Integer> excludedViewsSet) {
+     if (!mRemoveClippedSubviews) {
+       return;
+     }
+@@ -539,7 +561,7 @@ public class ReactScrollView extends ScrollView
+       ReactClippingViewGroupHelper.calculateClippingRect(this, mClippingRect);
+       View contentView = getContentView();
+       if (contentView instanceof ReactClippingViewGroup) {
+-        ((ReactClippingViewGroup) contentView).updateClippingRect();
++        ((ReactClippingViewGroup) contentView).updateClippingRect(excludedViewsSet);
+       }
+     } finally {
+       Systrace.endSection(Systrace.TRACE_TAG_REACT);
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactScrollViewHelper.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactScrollViewHelper.kt
+index 1e920bc36c1..9714d323aa2 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactScrollViewHelper.kt
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/scroll/ReactScrollViewHelper.kt
+@@ -11,15 +11,19 @@ import android.animation.Animator
+ import android.animation.ValueAnimator
+ import android.content.Context
+ import android.graphics.Point
++import android.view.FocusFinder
+ import android.view.View
+ import android.view.ViewGroup
+ import android.widget.OverScroller
++import androidx.core.view.ViewCompat.FocusRealDirection
+ import com.facebook.common.logging.FLog
+ import com.facebook.react.bridge.ReactContext
+ import com.facebook.react.bridge.WritableMap
+ import com.facebook.react.bridge.WritableNativeMap
+ import com.facebook.react.common.ReactConstants
++import com.facebook.react.fabric.FabricUIManager
+ import com.facebook.react.uimanager.PixelUtil.toDIPFromPixel
++import com.facebook.react.uimanager.ReactClippingViewGroup
+ import com.facebook.react.uimanager.StateWrapper
+ import com.facebook.react.uimanager.UIManagerHelper
+ import com.facebook.react.uimanager.common.UIManagerType
+@@ -462,6 +466,70 @@ public object ReactScrollViewHelper {
+     return Point(scroller.finalX, scroller.finalY)
+   }
+ 
++  @JvmStatic
++  public fun findNextFocusableView(
++      host: ViewGroup,
++      focused: View,
++      @FocusRealDirection direction: Int,
++      horizontal: Boolean
++  ): View? {
++    val absDir = resolveAbsoluteDirection(direction, horizontal, host.getLayoutDirection())
++
++    /*
++     * Check if we can focus the next element in the absolute direction within the ScrollView this
++     * would mean the view is not clipped, if we can't, look into the shadow tree to find the next
++     * focusable element
++     */
++    val ff = FocusFinder.getInstance()
++    val result = ff.findNextFocus(host, focused, absDir)
++
++    if (result != null) {
++      return result
++    }
++
++    if (host !is ReactClippingViewGroup) {
++      return null
++    }
++
++    val uimanager =
++        UIManagerHelper.getUIManager(host.context as ReactContext, UIManagerType.FABRIC)
++            ?: return null
++
++    val nextFocusableViewId =
++        (uimanager as FabricUIManager).findNextFocusableElement(
++            host.getChildAt(0).id, focused.id, absDir) ?: return null
++
++    val ancestorIdList =
++        uimanager
++            .getRelativeAncestorList(host.getChildAt(0).id, nextFocusableViewId)
++            ?.toMutableSet() ?: return null
++
++    ancestorIdList.add(nextFocusableViewId)
++
++    host.updateClippingRect(ancestorIdList)
++
++    return host.findViewById(nextFocusableViewId)
++  }
++
++  @JvmStatic
++  public fun resolveAbsoluteDirection(
++      @FocusRealDirection direction: Int,
++      horizontal: Boolean,
++      layoutDirection: Int
++  ): Int {
++    val rtl: Boolean = layoutDirection == View.LAYOUT_DIRECTION_RTL
++
++    return if (direction == View.FOCUS_FORWARD || direction == View.FOCUS_BACKWARD) {
++      if (horizontal) {
++        if ((direction == View.FOCUS_FORWARD) != rtl) View.FOCUS_RIGHT else View.FOCUS_LEFT
++      } else {
++        if (direction == View.FOCUS_FORWARD) View.FOCUS_DOWN else View.FOCUS_UP
++      }
++    } else {
++      direction
++    }
++  }
++
+   public interface ScrollListener {
+     public fun onScroll(
+         scrollView: ViewGroup?,
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/ReactViewGroup.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/ReactViewGroup.java
+index b465cc908b4..0f67ab22f56 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/ReactViewGroup.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/view/ReactViewGroup.java
+@@ -406,6 +406,11 @@ public class ReactViewGroup extends ViewGroup
+ 
+   @Override
+   public void updateClippingRect() {
++    updateClippingRect(null);
++  }
++
++  @Override
++  public void updateClippingRect(@Nullable Set<Integer> excludedViewsSet) {
+     if (!mRemoveClippedSubviews) {
+       return;
+     }
+@@ -414,7 +419,7 @@ public class ReactViewGroup extends ViewGroup
+     Assertions.assertNotNull(mAllChildren);
+ 
+     ReactClippingViewGroupHelper.calculateClippingRect(this, mClippingRect);
+-    updateClippingToRect(mClippingRect);
++    updateClippingToRect(mClippingRect, excludedViewsSet);
+   }
+ 
+   @Override
+@@ -438,12 +443,16 @@ public class ReactViewGroup extends ViewGroup
+   }
+ 
+   private void updateClippingToRect(Rect clippingRect) {
++    updateClippingToRect(clippingRect, null);
++  }
++
++  private void updateClippingToRect(Rect clippingRect, @Nullable Set<Integer> excludedViewsSet) {
+     Assertions.assertNotNull(mAllChildren);
+     mInSubviewClippingLoop = true;
+     int clippedSoFar = 0;
+     for (int i = 0; i < mAllChildrenCount; i++) {
+       try {
+-        updateSubviewClipStatus(clippingRect, i, clippedSoFar);
++        updateSubviewClipStatus(clippingRect, i, clippedSoFar, excludedViewsSet);
+       } catch (IndexOutOfBoundsException e) {
+         int realClippedSoFar = 0;
+         Set<View> uniqueViews = new HashSet<>();
+@@ -477,6 +486,11 @@ public class ReactViewGroup extends ViewGroup
+   }
+ 
+   private void updateSubviewClipStatus(Rect clippingRect, int idx, int clippedSoFar) {
++    updateSubviewClipStatus(clippingRect, idx, clippedSoFar, null);
++  }
++
++  private void updateSubviewClipStatus(
++      Rect clippingRect, int idx, int clippedSoFar, @Nullable Set<Integer> excludedViewsSet) {
+     UiThreadUtil.assertOnUiThread();
+ 
+     View child = Assertions.assertNotNull(mAllChildren)[idx];
+@@ -492,14 +506,22 @@ public class ReactViewGroup extends ViewGroup
+     // it won't be size and located properly.
+     Animation animation = child.getAnimation();
+     boolean isAnimating = animation != null && !animation.hasEnded();
++    boolean shouldSkipView = excludedViewsSet != null && excludedViewsSet.contains(child.getId());
++    if (excludedViewsSet != null) {
++      needUpdateClippingRecursive = true;
++    }
+     // We don't want to clip a view that is currently focused at that might break focus navigation
+-    if (!intersects && !isViewClipped(child, idx) && !isAnimating && child != getFocusedChild()) {
++    if (!intersects
++        && !isViewClipped(child, idx)
++        && !isAnimating
++        && child != getFocusedChild()
++        && !shouldSkipView) {
+       setViewClipped(child, true);
+       // We can try saving on invalidate call here as the view that we remove is out of visible area
+       // therefore invalidation is not necessary.
+       removeViewInLayout(child);
+       needUpdateClippingRecursive = true;
+-    } else if (intersects && isViewClipped(child, idx)) {
++    } else if (shouldSkipView || (intersects && isViewClipped(child, idx))) {
+       int adjustedIdx = idx - clippedSoFar;
+       Assertions.assertCondition(adjustedIdx >= 0);
+       setViewClipped(child, false);
+@@ -514,7 +536,7 @@ public class ReactViewGroup extends ViewGroup
+       if (child instanceof ReactClippingViewGroup) {
+         ReactClippingViewGroup clippingChild = (ReactClippingViewGroup) child;
+         if (clippingChild.getRemoveClippedSubviews()) {
+-          clippingChild.updateClippingRect();
++          clippingChild.updateClippingRect(excludedViewsSet);
+         }
+       }
+     }
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.cpp
+index 50f20e19aa3..2abaa0a06b7 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.cpp
+@@ -253,9 +253,11 @@ jint FabricUIManagerBinding::findNextFocusableElement(
+   return nextNode->getTag();
+ }
+ 
+-jint FabricUIManagerBinding::findRelativeTopMostParent(
++jintArray FabricUIManagerBinding::getRelativeAncestorList(
+     jint rootTag,
+     jint childTag) {
++  JNIEnv* env = jni::Environment::current();
++
+   std::shared_ptr<UIManager> uimanager = getScheduler()->getUIManager();
+ 
+   ShadowNode::Shared childShadowNode =
+@@ -264,27 +266,33 @@ jint FabricUIManagerBinding::findRelativeTopMostParent(
+       uimanager->findShadowNodeByTag_DEPRECATED(rootTag);
+ 
+   if (childShadowNode == nullptr || rootShadowNode == nullptr) {
+-    return -1;
++    return nullptr;
+   }
+ 
+   ShadowNode::AncestorList ancestorList =
+       childShadowNode->getFamily().getAncestors(*rootShadowNode);
+ 
+   if (ancestorList.empty() || ancestorList.size() < 2) {
+-    return -1;
++    return nullptr;
+   }
+ 
+   // ignore the first ancestor as it is the rootShadowNode itself
++  std::vector<int> ancestorTags;
+   for (auto it = std::next(ancestorList.begin()); it != ancestorList.end();
+        ++it) {
+     auto& ancestor = *it;
+     if (ancestor.first.get().getTraits().check(
+             ShadowNodeTraits::Trait::FormsStackingContext)) {
+-      return ancestor.first.get().getTag();
++      ancestorTags.push_back(ancestor.first.get().getTag());
+     }
+   }
+ 
+-  return -1;
++  jintArray result = env->NewIntArray(static_cast<jint>(ancestorTags.size()));
++
++  env->SetIntArrayRegion(
++      result, 0, static_cast<jint>(ancestorTags.size()), ancestorTags.data());
++
++  return result;
+ }
+ 
+ // Used by non-bridgeless+Fabric
+@@ -763,8 +771,8 @@ void FabricUIManagerBinding::registerNatives() {
+           "findNextFocusableElement",
+           FabricUIManagerBinding::findNextFocusableElement),
+       makeNativeMethod(
+-          "findRelativeTopMostParent",
+-          FabricUIManagerBinding::findRelativeTopMostParent),
++          "getRelativeAncestorList",
++          FabricUIManagerBinding::getRelativeAncestorList),
+   });
+ }
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.h b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.h
+index e045425269d..4cd9f26cd05 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.h
+@@ -135,7 +135,7 @@ class FabricUIManagerBinding : public jni::HybridClass<FabricUIManagerBinding>,
+   jint
+   findNextFocusableElement(jint parentTag, jint focusedTag, jint direction);
+ 
+-  jint findRelativeTopMostParent(jint rootTag, jint childTag);
++  jintArray getRelativeAncestorList(jint rootTag, jint childTag);
+ 
+   void uninstallFabricUIManager();
+ 
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+index 22ec7e1ce05..4b36c07b3cd 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<d6ad64e99d507c7c51e5c938b2092bfb>>
++ * @generated SignedSource<<77e8728a964ccb7227f1020b5cca3663>>
+  */
+ 
+ /**
+@@ -93,6 +93,12 @@ class ReactNativeFeatureFlagsJavaProvider
+     return method(javaProvider_);
+   }
+ 
++  bool enableCustomFocusSearchOnClippedElementsAndroid() override {
++    static const auto method =
++        getReactNativeFeatureFlagsProviderJavaClass()->getMethod<jboolean()>("enableCustomFocusSearchOnClippedElementsAndroid");
++    return method(javaProvider_);
++  }
++
+   bool enableEagerRootViewAttachment() override {
+     static const auto method =
+         getReactNativeFeatureFlagsProviderJavaClass()->getMethod<jboolean()>("enableEagerRootViewAttachment");
+@@ -334,6 +340,11 @@ bool JReactNativeFeatureFlagsCxxInterop::enableCppPropsIteratorSetter(
+   return ReactNativeFeatureFlags::enableCppPropsIteratorSetter();
+ }
+ 
++bool JReactNativeFeatureFlagsCxxInterop::enableCustomFocusSearchOnClippedElementsAndroid(
++    facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop> /*unused*/) {
++  return ReactNativeFeatureFlags::enableCustomFocusSearchOnClippedElementsAndroid();
++}
++
+ bool JReactNativeFeatureFlagsCxxInterop::enableEagerRootViewAttachment(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop> /*unused*/) {
+   return ReactNativeFeatureFlags::enableEagerRootViewAttachment();
+@@ -552,6 +563,9 @@ void JReactNativeFeatureFlagsCxxInterop::registerNatives() {
+       makeNativeMethod(
+         "enableCppPropsIteratorSetter",
+         JReactNativeFeatureFlagsCxxInterop::enableCppPropsIteratorSetter),
++      makeNativeMethod(
++        "enableCustomFocusSearchOnClippedElementsAndroid",
++        JReactNativeFeatureFlagsCxxInterop::enableCustomFocusSearchOnClippedElementsAndroid),
+       makeNativeMethod(
+         "enableEagerRootViewAttachment",
+         JReactNativeFeatureFlagsCxxInterop::enableEagerRootViewAttachment),
+diff --git a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+index 8b436386c32..41fe3055d26 100644
+--- a/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
++++ b/packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<b17ca08aeefffe7d55983cca427769e5>>
++ * @generated SignedSource<<c97e1762ba0482b784915c13785f0949>>
+  */
+ 
+ /**
+@@ -57,6 +57,9 @@ class JReactNativeFeatureFlagsCxxInterop
+   static bool enableCppPropsIteratorSetter(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
+ 
++  static bool enableCustomFocusSearchOnClippedElementsAndroid(
++    facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
++
+   static bool enableEagerRootViewAttachment(
+     facebook::jni::alias_ref<JReactNativeFeatureFlagsCxxInterop>);
+ 
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+index 6472ce63c06..5e495346d57 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<e53f5772e4813a4084752c9d60766b53>>
++ * @generated SignedSource<<f1a0488306a1cbe4cc892eba27a3b7c5>>
+  */
+ 
+ /**
+@@ -62,6 +62,10 @@ bool ReactNativeFeatureFlags::enableCppPropsIteratorSetter() {
+   return getAccessor().enableCppPropsIteratorSetter();
+ }
+ 
++bool ReactNativeFeatureFlags::enableCustomFocusSearchOnClippedElementsAndroid() {
++  return getAccessor().enableCustomFocusSearchOnClippedElementsAndroid();
++}
++
+ bool ReactNativeFeatureFlags::enableEagerRootViewAttachment() {
+   return getAccessor().enableEagerRootViewAttachment();
+ }
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+index 70f1a1ceedf..4678577a678 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<7db312ec3cf0991e95572baeba2a140e>>
++ * @generated SignedSource<<8c259acc61fa1b132df222cf16a2f29f>>
+  */
+ 
+ /**
+@@ -84,6 +84,11 @@ class ReactNativeFeatureFlags {
+    */
+   RN_EXPORT static bool enableCppPropsIteratorSetter();
+ 
++  /**
++   * This enables the fabric implementation of focus search so that we can focus clipped elements
++   */
++  RN_EXPORT static bool enableCustomFocusSearchOnClippedElementsAndroid();
++
+   /**
+    * Feature flag to configure eager attachment of the root view/initialisation of the JS code.
+    */
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+index 68d4688c30f..98cccd93a85 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<4d75e9c876181bc1ccff9668eb74399b>>
++ * @generated SignedSource<<e2b385bd50d3b4ba69920459035dedf0>>
+  */
+ 
+ /**
+@@ -191,6 +191,24 @@ bool ReactNativeFeatureFlagsAccessor::enableCppPropsIteratorSetter() {
+   return flagValue.value();
+ }
+ 
++bool ReactNativeFeatureFlagsAccessor::enableCustomFocusSearchOnClippedElementsAndroid() {
++  auto flagValue = enableCustomFocusSearchOnClippedElementsAndroid_.load();
++
++  if (!flagValue.has_value()) {
++    // This block is not exclusive but it is not necessary.
++    // If multiple threads try to initialize the feature flag, we would only
++    // be accessing the provider multiple times but the end state of this
++    // instance and the returned flag value would be the same.
++
++    markFlagAsAccessed(9, "enableCustomFocusSearchOnClippedElementsAndroid");
++
++    flagValue = currentProvider_->enableCustomFocusSearchOnClippedElementsAndroid();
++    enableCustomFocusSearchOnClippedElementsAndroid_ = flagValue;
++  }
++
++  return flagValue.value();
++}
++
+ bool ReactNativeFeatureFlagsAccessor::enableEagerRootViewAttachment() {
+   auto flagValue = enableEagerRootViewAttachment_.load();
+ 
+@@ -200,7 +218,7 @@ bool ReactNativeFeatureFlagsAccessor::enableEagerRootViewAttachment() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(9, "enableEagerRootViewAttachment");
++    markFlagAsAccessed(10, "enableEagerRootViewAttachment");
+ 
+     flagValue = currentProvider_->enableEagerRootViewAttachment();
+     enableEagerRootViewAttachment_ = flagValue;
+@@ -218,7 +236,7 @@ bool ReactNativeFeatureFlagsAccessor::enableFabricLogs() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(10, "enableFabricLogs");
++    markFlagAsAccessed(11, "enableFabricLogs");
+ 
+     flagValue = currentProvider_->enableFabricLogs();
+     enableFabricLogs_ = flagValue;
+@@ -236,7 +254,7 @@ bool ReactNativeFeatureFlagsAccessor::enableFabricRenderer() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(11, "enableFabricRenderer");
++    markFlagAsAccessed(12, "enableFabricRenderer");
+ 
+     flagValue = currentProvider_->enableFabricRenderer();
+     enableFabricRenderer_ = flagValue;
+@@ -254,7 +272,7 @@ bool ReactNativeFeatureFlagsAccessor::enableFixForParentTagDuringReparenting() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(12, "enableFixForParentTagDuringReparenting");
++    markFlagAsAccessed(13, "enableFixForParentTagDuringReparenting");
+ 
+     flagValue = currentProvider_->enableFixForParentTagDuringReparenting();
+     enableFixForParentTagDuringReparenting_ = flagValue;
+@@ -272,7 +290,7 @@ bool ReactNativeFeatureFlagsAccessor::enableFontScaleChangesUpdatingLayout() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(13, "enableFontScaleChangesUpdatingLayout");
++    markFlagAsAccessed(14, "enableFontScaleChangesUpdatingLayout");
+ 
+     flagValue = currentProvider_->enableFontScaleChangesUpdatingLayout();
+     enableFontScaleChangesUpdatingLayout_ = flagValue;
+@@ -290,7 +308,7 @@ bool ReactNativeFeatureFlagsAccessor::enableIOSViewClipToPaddingBox() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(14, "enableIOSViewClipToPaddingBox");
++    markFlagAsAccessed(15, "enableIOSViewClipToPaddingBox");
+ 
+     flagValue = currentProvider_->enableIOSViewClipToPaddingBox();
+     enableIOSViewClipToPaddingBox_ = flagValue;
+@@ -308,7 +326,7 @@ bool ReactNativeFeatureFlagsAccessor::enableJSRuntimeGCOnMemoryPressureOnIOS() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(15, "enableJSRuntimeGCOnMemoryPressureOnIOS");
++    markFlagAsAccessed(16, "enableJSRuntimeGCOnMemoryPressureOnIOS");
+ 
+     flagValue = currentProvider_->enableJSRuntimeGCOnMemoryPressureOnIOS();
+     enableJSRuntimeGCOnMemoryPressureOnIOS_ = flagValue;
+@@ -326,7 +344,7 @@ bool ReactNativeFeatureFlagsAccessor::enableLayoutAnimationsOnAndroid() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(16, "enableLayoutAnimationsOnAndroid");
++    markFlagAsAccessed(17, "enableLayoutAnimationsOnAndroid");
+ 
+     flagValue = currentProvider_->enableLayoutAnimationsOnAndroid();
+     enableLayoutAnimationsOnAndroid_ = flagValue;
+@@ -344,7 +362,7 @@ bool ReactNativeFeatureFlagsAccessor::enableLayoutAnimationsOnIOS() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(17, "enableLayoutAnimationsOnIOS");
++    markFlagAsAccessed(18, "enableLayoutAnimationsOnIOS");
+ 
+     flagValue = currentProvider_->enableLayoutAnimationsOnIOS();
+     enableLayoutAnimationsOnIOS_ = flagValue;
+@@ -362,7 +380,7 @@ bool ReactNativeFeatureFlagsAccessor::enableMainQueueModulesOnIOS() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(18, "enableMainQueueModulesOnIOS");
++    markFlagAsAccessed(19, "enableMainQueueModulesOnIOS");
+ 
+     flagValue = currentProvider_->enableMainQueueModulesOnIOS();
+     enableMainQueueModulesOnIOS_ = flagValue;
+@@ -380,7 +398,7 @@ bool ReactNativeFeatureFlagsAccessor::enableNativeCSSParsing() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(19, "enableNativeCSSParsing");
++    markFlagAsAccessed(20, "enableNativeCSSParsing");
+ 
+     flagValue = currentProvider_->enableNativeCSSParsing();
+     enableNativeCSSParsing_ = flagValue;
+@@ -398,7 +416,7 @@ bool ReactNativeFeatureFlagsAccessor::enableNewBackgroundAndBorderDrawables() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(20, "enableNewBackgroundAndBorderDrawables");
++    markFlagAsAccessed(21, "enableNewBackgroundAndBorderDrawables");
+ 
+     flagValue = currentProvider_->enableNewBackgroundAndBorderDrawables();
+     enableNewBackgroundAndBorderDrawables_ = flagValue;
+@@ -416,7 +434,7 @@ bool ReactNativeFeatureFlagsAccessor::enablePropsUpdateReconciliationAndroid() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(21, "enablePropsUpdateReconciliationAndroid");
++    markFlagAsAccessed(22, "enablePropsUpdateReconciliationAndroid");
+ 
+     flagValue = currentProvider_->enablePropsUpdateReconciliationAndroid();
+     enablePropsUpdateReconciliationAndroid_ = flagValue;
+@@ -434,7 +452,7 @@ bool ReactNativeFeatureFlagsAccessor::enableSynchronousStateUpdates() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(22, "enableSynchronousStateUpdates");
++    markFlagAsAccessed(23, "enableSynchronousStateUpdates");
+ 
+     flagValue = currentProvider_->enableSynchronousStateUpdates();
+     enableSynchronousStateUpdates_ = flagValue;
+@@ -452,7 +470,7 @@ bool ReactNativeFeatureFlagsAccessor::enableViewCulling() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(23, "enableViewCulling");
++    markFlagAsAccessed(24, "enableViewCulling");
+ 
+     flagValue = currentProvider_->enableViewCulling();
+     enableViewCulling_ = flagValue;
+@@ -470,7 +488,7 @@ bool ReactNativeFeatureFlagsAccessor::enableViewRecycling() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(24, "enableViewRecycling");
++    markFlagAsAccessed(25, "enableViewRecycling");
+ 
+     flagValue = currentProvider_->enableViewRecycling();
+     enableViewRecycling_ = flagValue;
+@@ -488,7 +506,7 @@ bool ReactNativeFeatureFlagsAccessor::enableViewRecyclingForText() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(25, "enableViewRecyclingForText");
++    markFlagAsAccessed(26, "enableViewRecyclingForText");
+ 
+     flagValue = currentProvider_->enableViewRecyclingForText();
+     enableViewRecyclingForText_ = flagValue;
+@@ -506,7 +524,7 @@ bool ReactNativeFeatureFlagsAccessor::enableViewRecyclingForView() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(26, "enableViewRecyclingForView");
++    markFlagAsAccessed(27, "enableViewRecyclingForView");
+ 
+     flagValue = currentProvider_->enableViewRecyclingForView();
+     enableViewRecyclingForView_ = flagValue;
+@@ -524,7 +542,7 @@ bool ReactNativeFeatureFlagsAccessor::fixMappingOfEventPrioritiesBetweenFabricAn
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(27, "fixMappingOfEventPrioritiesBetweenFabricAndReact");
++    markFlagAsAccessed(28, "fixMappingOfEventPrioritiesBetweenFabricAndReact");
+ 
+     flagValue = currentProvider_->fixMappingOfEventPrioritiesBetweenFabricAndReact();
+     fixMappingOfEventPrioritiesBetweenFabricAndReact_ = flagValue;
+@@ -542,7 +560,7 @@ bool ReactNativeFeatureFlagsAccessor::fuseboxEnabledRelease() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(28, "fuseboxEnabledRelease");
++    markFlagAsAccessed(29, "fuseboxEnabledRelease");
+ 
+     flagValue = currentProvider_->fuseboxEnabledRelease();
+     fuseboxEnabledRelease_ = flagValue;
+@@ -560,7 +578,7 @@ bool ReactNativeFeatureFlagsAccessor::fuseboxNetworkInspectionEnabled() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(29, "fuseboxNetworkInspectionEnabled");
++    markFlagAsAccessed(30, "fuseboxNetworkInspectionEnabled");
+ 
+     flagValue = currentProvider_->fuseboxNetworkInspectionEnabled();
+     fuseboxNetworkInspectionEnabled_ = flagValue;
+@@ -578,7 +596,7 @@ bool ReactNativeFeatureFlagsAccessor::traceTurboModulePromiseRejectionsOnAndroid
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(30, "traceTurboModulePromiseRejectionsOnAndroid");
++    markFlagAsAccessed(31, "traceTurboModulePromiseRejectionsOnAndroid");
+ 
+     flagValue = currentProvider_->traceTurboModulePromiseRejectionsOnAndroid();
+     traceTurboModulePromiseRejectionsOnAndroid_ = flagValue;
+@@ -596,7 +614,7 @@ bool ReactNativeFeatureFlagsAccessor::updateRuntimeShadowNodeReferencesOnCommit(
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(31, "updateRuntimeShadowNodeReferencesOnCommit");
++    markFlagAsAccessed(32, "updateRuntimeShadowNodeReferencesOnCommit");
+ 
+     flagValue = currentProvider_->updateRuntimeShadowNodeReferencesOnCommit();
+     updateRuntimeShadowNodeReferencesOnCommit_ = flagValue;
+@@ -614,7 +632,7 @@ bool ReactNativeFeatureFlagsAccessor::useAlwaysAvailableJSErrorHandling() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(32, "useAlwaysAvailableJSErrorHandling");
++    markFlagAsAccessed(33, "useAlwaysAvailableJSErrorHandling");
+ 
+     flagValue = currentProvider_->useAlwaysAvailableJSErrorHandling();
+     useAlwaysAvailableJSErrorHandling_ = flagValue;
+@@ -632,7 +650,7 @@ bool ReactNativeFeatureFlagsAccessor::useEditTextStockAndroidFocusBehavior() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(33, "useEditTextStockAndroidFocusBehavior");
++    markFlagAsAccessed(34, "useEditTextStockAndroidFocusBehavior");
+ 
+     flagValue = currentProvider_->useEditTextStockAndroidFocusBehavior();
+     useEditTextStockAndroidFocusBehavior_ = flagValue;
+@@ -650,7 +668,7 @@ bool ReactNativeFeatureFlagsAccessor::useFabricInterop() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(34, "useFabricInterop");
++    markFlagAsAccessed(35, "useFabricInterop");
+ 
+     flagValue = currentProvider_->useFabricInterop();
+     useFabricInterop_ = flagValue;
+@@ -668,7 +686,7 @@ bool ReactNativeFeatureFlagsAccessor::useNativeViewConfigsInBridgelessMode() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(35, "useNativeViewConfigsInBridgelessMode");
++    markFlagAsAccessed(36, "useNativeViewConfigsInBridgelessMode");
+ 
+     flagValue = currentProvider_->useNativeViewConfigsInBridgelessMode();
+     useNativeViewConfigsInBridgelessMode_ = flagValue;
+@@ -686,7 +704,7 @@ bool ReactNativeFeatureFlagsAccessor::useOptimizedEventBatchingOnAndroid() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(36, "useOptimizedEventBatchingOnAndroid");
++    markFlagAsAccessed(37, "useOptimizedEventBatchingOnAndroid");
+ 
+     flagValue = currentProvider_->useOptimizedEventBatchingOnAndroid();
+     useOptimizedEventBatchingOnAndroid_ = flagValue;
+@@ -704,7 +722,7 @@ bool ReactNativeFeatureFlagsAccessor::useRawPropsJsiValue() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(37, "useRawPropsJsiValue");
++    markFlagAsAccessed(38, "useRawPropsJsiValue");
+ 
+     flagValue = currentProvider_->useRawPropsJsiValue();
+     useRawPropsJsiValue_ = flagValue;
+@@ -722,7 +740,7 @@ bool ReactNativeFeatureFlagsAccessor::useShadowNodeStateOnClone() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(38, "useShadowNodeStateOnClone");
++    markFlagAsAccessed(39, "useShadowNodeStateOnClone");
+ 
+     flagValue = currentProvider_->useShadowNodeStateOnClone();
+     useShadowNodeStateOnClone_ = flagValue;
+@@ -740,7 +758,7 @@ bool ReactNativeFeatureFlagsAccessor::useTurboModuleInterop() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(39, "useTurboModuleInterop");
++    markFlagAsAccessed(40, "useTurboModuleInterop");
+ 
+     flagValue = currentProvider_->useTurboModuleInterop();
+     useTurboModuleInterop_ = flagValue;
+@@ -758,7 +776,7 @@ bool ReactNativeFeatureFlagsAccessor::useTurboModules() {
+     // be accessing the provider multiple times but the end state of this
+     // instance and the returned flag value would be the same.
+ 
+-    markFlagAsAccessed(40, "useTurboModules");
++    markFlagAsAccessed(41, "useTurboModules");
+ 
+     flagValue = currentProvider_->useTurboModules();
+     useTurboModules_ = flagValue;
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+index 4da92ad659b..d63bfcb2af0 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<7f4bbe548120b2e917cb461bebc9e618>>
++ * @generated SignedSource<<2f0e94ce6ef3ef774416738df820b966>>
+  */
+ 
+ /**
+@@ -41,6 +41,7 @@ class ReactNativeFeatureFlagsAccessor {
+   bool enableAccumulatedUpdatesInRawPropsAndroid();
+   bool enableBridgelessArchitecture();
+   bool enableCppPropsIteratorSetter();
++  bool enableCustomFocusSearchOnClippedElementsAndroid();
+   bool enableEagerRootViewAttachment();
+   bool enableFabricLogs();
+   bool enableFabricRenderer();
+@@ -84,7 +85,7 @@ class ReactNativeFeatureFlagsAccessor {
+   std::unique_ptr<ReactNativeFeatureFlagsProvider> currentProvider_;
+   bool wasOverridden_;
+ 
+-  std::array<std::atomic<const char*>, 41> accessedFeatureFlags_;
++  std::array<std::atomic<const char*>, 42> accessedFeatureFlags_;
+ 
+   std::atomic<std::optional<bool>> commonTestFlag_;
+   std::atomic<std::optional<bool>> animatedShouldSignalBatch_;
+@@ -95,6 +96,7 @@ class ReactNativeFeatureFlagsAccessor {
+   std::atomic<std::optional<bool>> enableAccumulatedUpdatesInRawPropsAndroid_;
+   std::atomic<std::optional<bool>> enableBridgelessArchitecture_;
+   std::atomic<std::optional<bool>> enableCppPropsIteratorSetter_;
++  std::atomic<std::optional<bool>> enableCustomFocusSearchOnClippedElementsAndroid_;
+   std::atomic<std::optional<bool>> enableEagerRootViewAttachment_;
+   std::atomic<std::optional<bool>> enableFabricLogs_;
+   std::atomic<std::optional<bool>> enableFabricRenderer_;
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+index 13e4eb34bbc..c80da8523cb 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<66f9e7efff940d44d6e0155c217a58fa>>
++ * @generated SignedSource<<675bd9dfcc6ae896f5b61588104bba04>>
+  */
+ 
+ /**
+@@ -63,6 +63,10 @@ class ReactNativeFeatureFlagsDefaults : public ReactNativeFeatureFlagsProvider {
+     return false;
+   }
+ 
++  bool enableCustomFocusSearchOnClippedElementsAndroid() override {
++    return true;
++  }
++
+   bool enableEagerRootViewAttachment() override {
+     return false;
+   }
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDynamicProvider.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDynamicProvider.h
+index 9627502e485..bda8569d8b2 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDynamicProvider.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDynamicProvider.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<e6ac6ad8ad5f9ccca5b0ae6542351e4b>>
++ * @generated SignedSource<<d6fb8497d42a8f88130e485df85645d5>>
+  */
+ 
+ /**
+@@ -126,6 +126,15 @@ class ReactNativeFeatureFlagsDynamicProvider : public ReactNativeFeatureFlagsDef
+     return ReactNativeFeatureFlagsDefaults::enableCppPropsIteratorSetter();
+   }
+ 
++  bool enableCustomFocusSearchOnClippedElementsAndroid() override {
++    auto value = values_["enableCustomFocusSearchOnClippedElementsAndroid"];
++    if (!value.isNull()) {
++      return value.getBool();
++    }
++
++    return ReactNativeFeatureFlagsDefaults::enableCustomFocusSearchOnClippedElementsAndroid();
++  }
++
+   bool enableEagerRootViewAttachment() override {
+     auto value = values_["enableEagerRootViewAttachment"];
+     if (!value.isNull()) {
+diff --git a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+index 949dc1ce418..943a349b682 100644
+--- a/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
++++ b/packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<ac6770e48879436585097f5a52daf1a9>>
++ * @generated SignedSource<<6dd044995f1aa8fd98e7ce14d0d75610>>
+  */
+ 
+ /**
+@@ -34,6 +34,7 @@ class ReactNativeFeatureFlagsProvider {
+   virtual bool enableAccumulatedUpdatesInRawPropsAndroid() = 0;
+   virtual bool enableBridgelessArchitecture() = 0;
+   virtual bool enableCppPropsIteratorSetter() = 0;
++  virtual bool enableCustomFocusSearchOnClippedElementsAndroid() = 0;
+   virtual bool enableEagerRootViewAttachment() = 0;
+   virtual bool enableFabricLogs() = 0;
+   virtual bool enableFabricRenderer() = 0;
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+index be8e531a12d..456a7083f6c 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<9fe893ed03ed7e5e7311e0f2a42665fa>>
++ * @generated SignedSource<<29f7c553e89ba72e57040c9d63fc4fe8>>
+  */
+ 
+ /**
+@@ -89,6 +89,11 @@ bool NativeReactNativeFeatureFlags::enableCppPropsIteratorSetter(
+   return ReactNativeFeatureFlags::enableCppPropsIteratorSetter();
+ }
+ 
++bool NativeReactNativeFeatureFlags::enableCustomFocusSearchOnClippedElementsAndroid(
++    jsi::Runtime& /*runtime*/) {
++  return ReactNativeFeatureFlags::enableCustomFocusSearchOnClippedElementsAndroid();
++}
++
+ bool NativeReactNativeFeatureFlags::enableEagerRootViewAttachment(
+     jsi::Runtime& /*runtime*/) {
+   return ReactNativeFeatureFlags::enableEagerRootViewAttachment();
+diff --git a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+index 9a044539d14..7dbdecef443 100644
+--- a/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
++++ b/packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<946133c5d7558ff45e1a30ba67d4e170>>
++ * @generated SignedSource<<25a5240280f85e296197d78a23aa1d5b>>
+  */
+ 
+ /**
+@@ -55,6 +55,8 @@ class NativeReactNativeFeatureFlags
+ 
+   bool enableCppPropsIteratorSetter(jsi::Runtime& runtime);
+ 
++  bool enableCustomFocusSearchOnClippedElementsAndroid(jsi::Runtime& runtime);
++
+   bool enableEagerRootViewAttachment(jsi::Runtime& runtime);
+ 
+   bool enableFabricLogs(jsi::Runtime& runtime);
+diff --git a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+index d457fd5f1de..900fd126c8b 100644
+--- a/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
++++ b/packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+@@ -145,6 +145,16 @@ const definitions: FeatureFlagDefinitions = {
+       },
+       ossReleaseStage: 'none',
+     },
++    enableCustomFocusSearchOnClippedElementsAndroid: {
++      defaultValue: true,
++      metadata: {
++        description:
++          'This enables the fabric implementation of focus search so that we can focus clipped elements',
++        expectedReleaseValue: true,
++        purpose: 'operational',
++      },
++      ossReleaseStage: 'none',
++    },
+     enableEagerRootViewAttachment: {
+       defaultValue: false,
+       metadata: {
+diff --git a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+index 6aee475ed1a..a1c35ca6b78 100644
+--- a/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<4114c831605f7c3fc4ff620dbe62a1a6>>
++ * @generated SignedSource<<074f41df4d09a9053b71cf4255b144a5>>
+  * @flow strict
+  */
+ 
+@@ -55,6 +55,7 @@ export type ReactNativeFeatureFlags = $ReadOnly<{
+   enableAccumulatedUpdatesInRawPropsAndroid: Getter<boolean>,
+   enableBridgelessArchitecture: Getter<boolean>,
+   enableCppPropsIteratorSetter: Getter<boolean>,
++  enableCustomFocusSearchOnClippedElementsAndroid: Getter<boolean>,
+   enableEagerRootViewAttachment: Getter<boolean>,
+   enableFabricLogs: Getter<boolean>,
+   enableFabricRenderer: Getter<boolean>,
+@@ -189,6 +190,10 @@ export const enableBridgelessArchitecture: Getter<boolean> = createNativeFlagGet
+  * Enable prop iterator setter-style construction of Props in C++ (this flag is not used in Java).
+  */
+ export const enableCppPropsIteratorSetter: Getter<boolean> = createNativeFlagGetter('enableCppPropsIteratorSetter', false);
++/**
++ * This enables the fabric implementation of focus search so that we can focus clipped elements
++ */
++export const enableCustomFocusSearchOnClippedElementsAndroid: Getter<boolean> = createNativeFlagGetter('enableCustomFocusSearchOnClippedElementsAndroid', true);
+ /**
+  * Feature flag to configure eager attachment of the root view/initialisation of the JS code.
+  */
+diff --git a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+index 73e557e6ca2..023d36ecd63 100644
+--- a/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
++++ b/packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+@@ -4,7 +4,7 @@
+  * This source code is licensed under the MIT license found in the
+  * LICENSE file in the root directory of this source tree.
+  *
+- * @generated SignedSource<<10cdac8c3b5be3166412b34593286bd1>>
++ * @generated SignedSource<<e0337d40c3467e2e65e4c2bd27519f9a>>
+  * @flow strict
+  */
+ 
+@@ -33,6 +33,7 @@ export interface Spec extends TurboModule {
+   +enableAccumulatedUpdatesInRawPropsAndroid?: () => boolean;
+   +enableBridgelessArchitecture?: () => boolean;
+   +enableCppPropsIteratorSetter?: () => boolean;
++  +enableCustomFocusSearchOnClippedElementsAndroid?: () => boolean;
+   +enableEagerRootViewAttachment?: () => boolean;
+   +enableFabricLogs?: () => boolean;
+   +enableFabricRenderer?: () => boolean;

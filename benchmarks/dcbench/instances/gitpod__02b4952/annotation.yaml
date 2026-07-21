@@ -1,0 +1,48 @@
+repo: gitpod
+base_commit: c489f17fc97b5ae34656a5961235d40550bf0d90
+commit: 02b49524eb502819717e656f8c24af0310fca5b4
+patch_stored: true
+gold:
+- path: components/content-service-api/initializer.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/content-service/pkg/git/git.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/content-service/pkg/initializer/git.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/repositories/detail/prebuilds/PrebuildSettingsForm.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/typescript-common/src/public-api-converter.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/workspace/workspace-starter.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/supervisor/pkg/supervisor/supervisor.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: components/content-service-api/go/initializer.pb.go
+- path: components/content-service-api/typescript/src/initializer_pb.js
+- path: components/public-api/go/v1/configuration.pb.go
+- path: components/public-api/java/src/main/java/io/gitpod/publicapi/v1/ConfigurationOuterClass.java
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: Adds a full_clone boolean threaded from initializer.proto through content-service's git initializer,
+  a dashboard prebuild-settings form, workspace-starter.ts, and supervisor.go. Over half the diff's raw
+  size is generated protobuf/Java churn (configuration.pb.go 717 lines, ConfigurationOuterClass.java 1249
+  lines) that contributes near-zero comprehension value standalone — exactly the kind of noise a good
+  selector should suppress in favor of the ~7 handwritten files. The tool never got that far; it hung
+  with zero output.

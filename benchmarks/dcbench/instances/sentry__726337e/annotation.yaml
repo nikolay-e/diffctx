@@ -1,0 +1,46 @@
+repo: sentry
+base_commit: ef0104e33056bd90d5298783f2c2e74e255b34b2
+commit: 726337e06a9a3b13a9ecbf846de57da8d79a5b26
+patch_stored: true
+gold:
+- path: .github/CODEOWNERS
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: bin/benchmark_detectors
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: pyproject.toml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/event_manager.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/issue_detection/base.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/issue_detection/detectors/utils.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/issue_detection/performance_detection.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: '0-byte ctx.md/md.err, rc_md=142. This is a pure package rename (src/sentry/performance_issues
+  -> src/sentry/issue_detection, 51 file renames touching 74 files) where nearly every file''s diff is
+  identical in shape: update a handful of ''from sentry.performance_issues...'' imports to ''from sentry.issue_detection...''
+  plus reorder. A correct tool ideally recognizes this repetitive pattern and represents it compactly
+  (rename-map + 2-3 representative examples + the handful of files with real non-import changes like pyproject.toml''s
+  mypy module list and CODEOWNERS) rather than fragmenting all 74 similarly-shaped diffs — but since nothing
+  was produced, that design question is untested here. Nothing in this commit''s content looks large or
+  unusual (234 net changed lines across 74 small files), reinforcing that the hang is not obviously diff-content-driven.'

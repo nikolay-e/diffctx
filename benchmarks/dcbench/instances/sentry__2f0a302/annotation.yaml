@@ -1,0 +1,67 @@
+repo: sentry
+base_commit: 2676acd161eca008d9cf2d182bfdf59bbfce6621
+commit: 2f0a302caa36dac708536d99dcd595d101eb419d
+patch_stored: true
+gold:
+- path: .agents/.gitignore
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .agents/skills/warden/SKILL.md
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .agents/skills/warden/references/cli-reference.md
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .agents/skills/warden/references/config-schema.md
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .agents/skills/warden/references/configuration.md
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .agents/skills/warden/references/creating-skills.md
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .claude/skills
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .envrc
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: agents.lock
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: agents.toml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: devenv/sync.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: warden.toml
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: .agents/skills/design-system/SKILL.md
+- path: .agents/skills/hybrid-cloud-rpc/references/deprecation.md
+- path: .agents/skills/sentry-security/SKILL.md
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: Small diff (29 files, 952-line truth.diff, all-additive, no deletions) hangs completely — this
+  is the least defensible hang in the batch given its trivial size. 17 of the 29 files are pure 100%-similarity
+  renames (.claude/skills/* -> .agents/skills/*, zero content diff) that a correct tool should recognize
+  as renames and skip re-rendering; the remaining ~12 are genuinely new files (warden skill + its 4 reference
+  docs, agents.toml/lock, warden.toml, devenv/sync.py) that constitute the actual change and should have
+  been trivial to surface.

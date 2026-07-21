@@ -1,0 +1,36 @@
+repo: sentry
+base_commit: 4c0ded066c29d74ab82f353d86570d5e2b8d70c9
+commit: 0e503e163b93e95069c72ec1ea867b7e899f1cf7
+patch_stored: true
+gold:
+- path: src/sentry/api/serializers/models/alert_rule.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/deletions/__init__.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/incidents/logic.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/incidents/models/__init__.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/incidents/models/alert_rule.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: Hang on a 118-file refactor that splits a monolithic src/sentry/incidents/models.py (renamed, -380
+  lines from the old file) into src/sentry/incidents/models/alert_rule.py plus a new __init__.py re-export
+  shim, with every consumer's import path touched by a single line each. This is exactly the kind of rename+re-export-driven
+  refactor diffctx's symbol tracking should shine on, but it produces nothing. A correct context would
+  centre on the models/__init__.py and models/alert_rule.py split plus a couple of representative import-path
+  updates, not all 118 files verbatim.

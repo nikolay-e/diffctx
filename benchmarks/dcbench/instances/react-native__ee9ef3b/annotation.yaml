@@ -1,0 +1,58 @@
+repo: react-native
+base_commit: 6d68cdf5c30fb1d2f70a04a2bf88c211f758e5b2
+commit: ee9ef3bf2d97aae529172fd484c4c7c6c29acb61
+patch_stored: true
+gold:
+- path: packages/react-native/ReactCommon/react/performance/cdpmetrics/CdpMetricsReporter.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/performance/cdpmetrics/CdpPerfIssuesReporter.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/performance/cdpmetrics/CdpPerfIssuesReporter.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporterListeners.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Same shape as RN-018: file selection is reasonable (the 11 extra ctx_files beyond the 29 diff
+  files -- CdpMetricsReporter.cpp, PerformanceEntry.h, PerformanceObserver.cpp, feature-flag test files,
+  primitives.h -- are legitimately related companions/definitions for the new perf-issue reporting path),
+  so recall is decent. But 47,533 md_tokens for a 322-insertion/74-deletion diff is a ~100x blow-up driven
+  by full or near-full dumps of the generated cross-platform feature-flag files (Kt/C++/JS accessor, provider,
+  interop layers) that this repo regenerates for every new flag. The single new flag (enable perf-issue
+  reporting) touches one line in each of a dozen boilerplate files, but diffctx renders large surrounding
+  stretches of each as ''changed''.'

@@ -1,0 +1,65 @@
+repo: gitpod
+base_commit: 6d93dd8348129dc112e2f219cc4059a19224a0cc
+commit: 7172d822c7f3ee660bef632cbbcba7f7d8daa40c
+patch_stored: true
+gold:
+- path: .werft/build.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: chart/templates/server-deployment.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: chart/templates/ws-daemon-clusterrole.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: chart/templates/ws-daemon-configmap.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: chart/templates/ws-daemon-daemonset.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/supervisor/pkg/iwh/iwh.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-daemon-api/workspace.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-daemon/cmd/run.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-daemon/pkg/resources/controller.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-daemon/pkg/resources/dispatch.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager/pkg/manager/config.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager/pkg/manager/manager.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'ctx.md and md.err are both 0 bytes; meta.tsv shows changed_frags=0/total_frags=0/ctx_files=0 and
+  rc_md=142 (128+14, i.e. the process was killed by SIGALRM) — a real timeout, not a graceful empty result
+  (issue #70). The diff itself is a large but ordinary rename/restructure (119 files, folding ws-manager-node''s
+  daemon logic into ws-daemon, plus regenerated protobuf/grpc stubs). Nothing about the diff content looks
+  pathological on its own, which suggests the hang is triggered by something upstream of diff-selection
+  (e.g. full-repo indexing of the large gitpod monorepo) rather than by this specific patch. Zero comprehension
+  delivered for a genuinely complex multi-package refactor a reader would need real help understanding.'

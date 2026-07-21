@@ -1,0 +1,86 @@
+repo: sentry
+base_commit: 637d43455a58a13a1d15033d3c28a17f282efc99
+commit: 680d622829a22130403dc16e492a583e4c30c3cb
+patch_stored: true
+gold:
+- path: .github/workflows/sandbox-images.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: sandbox/PLAN.md
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: sandbox/harness/sentry_sandbox/cli.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: sandbox/harness/sentry_sandbox/sandbox.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: sandbox/harness/sentry_sandbox/testmap.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: sandbox/images/Dockerfile.agent
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: sandbox/images/Dockerfile.postgres
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: sandbox/runtime/docker-compose.sandbox.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: sandbox/runtime/sentry.sandbox.conf.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: sandbox/scripts/build-postgres-image.sh
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: sandbox/scripts/compute-cache-key.sh
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: sandbox/scripts/fast-setup.sh
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: .agents/skills/notification-platform/SKILL.md
+- path: .agents/skills/sentry-javascript-bugs/SKILL.md
+- path: .vscode/launch.json
+- path: .vscode/settings.json
+- path: devservices/config.yml
+- path: fixtures/stubs-for-mypy/petname/__init__.pyi
+- path: fixtures/stubs-for-mypy/rediscluster/client.pyi
+- path: pyproject.toml
+- path: src/sentry/cache/redis.py
+- path: src/sentry/db/router.py
+- path: src/sentry/deletions/__init__.py
+- path: src/sentry/features/temporary.py
+- path: src/sentry/mail/__init__.py
+- path: src/sentry/runner/main.py
+- path: src/sentry/spans/buffer.py
+- path: src/sentry/utils/redis.py
+- path: src/sentry/web/forms/__init__.py
+- path: src/sentry/web/frontend/base.py
+- path: tests/sentry/web/frontend/test_cli.py
+- path: tests/sentry/web/frontend/test_oauth_token.py
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'diff.stat is 2430 insertions across exactly 19 brand-new files (all content is genuinely new,
+  so per-line token density of ~17.6 tokens/line is not unreasonable on its own -- 42910 tokens is defensible
+  for showing 19 new files in full). The real defect is selection breadth: cross-checked the full ctx_files
+  list against truth.diff''s 19 changed paths and found 53 additional files pulled in with zero connection
+  to the sandbox/AI-agent-harness change -- .vscode/launch.json, src/sentry/mail/__init__.py, src/sentry/spans/buffer.py,
+  mypy stub fixtures, unrelated SKILL.md docs, and existing test files. That is a classic whole-tree/co-located
+  over-selection (#65): ~74% of the extra (non-new) files included are unrelated noise, which explains
+  the over_dump status despite otherwise-reasonable core content.'

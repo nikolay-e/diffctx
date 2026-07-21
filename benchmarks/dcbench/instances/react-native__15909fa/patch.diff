@@ -1,0 +1,735 @@
+From 15909fab9532f7dc32c320ebc98fa3b67679b79e Mon Sep 17 00:00:00 2001
+From: Nicola Corti <ncor@meta.com>
+Date: Fri, 21 Jun 2024 01:08:00 -0700
+Subject: [PATCH] packages/react-native-gradle-plugin/ ->
+ packages/gradle-plugin/ (#44832)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/44832
+
+I'm renaming this folder as now we have 2 gradle plugins + we currently have
+`package/react-native-gradle-plugin/react-native-gradle-plugin/` which is confusing so we can just call this folder `packages/gradle-plugin/`
+to be consistent with the NPM package name
+
+Changelog:
+[Internal] [Changed] - packages/react-native-gradle-plugin/ -> packages/gradle-plugin/
+
+Reviewed By: blakef
+
+Differential Revision: D58284883
+
+fbshipit-source-id: 5a7bb40a5d80f6fbab4ffb29e44107453f1013ec
+---
+ .circleci/configurations/jobs.yml                   |  11 +++++++----
+ .github/workflows/nightly.yml                       |   5 +++--
+ .github/workflows/publish-release.yml               |   4 ++--
+ .github/workflows/test-all.yml                      |   4 ++--
+ build.gradle.kts                                    |   4 ++--
+ .../.gitignore                                      |   2 +-
+ .../README.md                                       |   2 +-
+ .../build.gradle.kts                                |   0
+ .../gradle.properties                               |   0
+ .../gradle/libs.versions.toml                       |   0
+ .../gradle/wrapper/gradle-wrapper.jar               | Bin
+ .../gradle/wrapper/gradle-wrapper.properties        |   0
+ .../gradlew                                         |   0
+ .../gradlew.bat                                     |   5 +++++
+ .../package.json                                    |   4 ++--
+ .../react-native-gradle-plugin/README.md            |   0
+ .../react-native-gradle-plugin/build.gradle.kts     |   0
+ .../kotlin/com/facebook/react/ReactExtension.kt     |   0
+ .../main/kotlin/com/facebook/react/ReactPlugin.kt   |   0
+ .../com/facebook/react/ReactRootProjectPlugin.kt    |   0
+ .../kotlin/com/facebook/react/TaskConfiguration.kt  |   0
+ .../react/internal/PrivateReactExtension.kt         |   0
+ .../com/facebook/react/tasks/BundleHermesCTask.kt   |   0
+ .../GenerateAutolinkingNewArchitecturesFileTask.kt  |   0
+ .../react/tasks/GenerateCodegenArtifactsTask.kt     |   0
+ .../react/tasks/GenerateCodegenSchemaTask.kt        |   0
+ .../facebook/react/tasks/GeneratePackageListTask.kt |   0
+ .../react/tasks/internal/BuildCodegenCLITask.kt     |   0
+ .../react/tasks/internal/PrepareBoostTask.kt        |   0
+ .../react/tasks/internal/PrepareGlogTask.kt         |   0
+ .../facebook/react/tasks/internal/PrepareJSCTask.kt |   0
+ .../tasks/internal/PreparePrefabHeadersTask.kt      |   0
+ .../internal/utils/PrefabPreprocessingEntry.kt      |   0
+ .../facebook/react/utils/AgpConfiguratorUtils.kt    |   0
+ .../com/facebook/react/utils/BackwardCompatUtils.kt |   0
+ .../com/facebook/react/utils/DependencyUtils.kt     |   0
+ .../kotlin/com/facebook/react/utils/FileUtils.kt    |   0
+ .../facebook/react/utils/JdkConfiguratorUtils.kt    |   0
+ .../facebook/react/utils/KotlinStdlibCompatUtils.kt |   0
+ .../facebook/react/utils/NdkConfiguratorUtils.kt    |   0
+ .../src/main/kotlin/com/facebook/react/utils/Os.kt  |   0
+ .../kotlin/com/facebook/react/utils/PathUtils.kt    |   0
+ .../kotlin/com/facebook/react/utils/ProjectUtils.kt |   0
+ .../com/facebook/react/utils/PropertyUtils.kt       |   0
+ .../kotlin/com/facebook/react/utils/TaskUtils.kt    |   0
+ .../kotlin/com/facebook/react/ReactExtensionTest.kt |   0
+ .../kotlin/com/facebook/react/TestReactExtension.kt |   0
+ .../model/ModelAutolinkingDependenciesJsonTest.kt   |   0
+ .../facebook/react/tasks/BundleHermesCTaskTest.kt   |   0
+ ...nerateAutolinkingNewArchitecturesFileTaskTest.kt |   0
+ .../react/tasks/GenerateCodegenArtifactsTaskTest.kt |   0
+ .../react/tasks/GenerateCodegenSchemaTaskTest.kt    |   0
+ .../react/tasks/GeneratePackageListTaskTest.kt      |   0
+ .../react/tasks/internal/BuildCodegenCLITaskTest.kt |   0
+ .../react/tasks/internal/PrepareBoostTaskTest.kt    |   0
+ .../react/tasks/internal/PrepareGlogTaskTest.kt     |   0
+ .../react/tasks/internal/PrepareJSCTaskTest.kt      |   0
+ .../tasks/internal/PreparePrefabHeadersTaskTest.kt  |   0
+ .../internal/utils/PrefabPreprocessingEntryTest.kt  |   0
+ .../test/kotlin/com/facebook/react/tests/OsRule.kt  |   0
+ .../com/facebook/react/tests/TaskTestUtils.kt       |   0
+ .../test/kotlin/com/facebook/react/tests/WithOs.kt  |   0
+ .../react/utils/AgpConfiguratorUtilsTest.kt         |   0
+ .../facebook/react/utils/BackwardCompatUtilsTest.kt |   0
+ .../com/facebook/react/utils/DependencyUtilsTest.kt |   0
+ .../com/facebook/react/utils/FileUtilsTest.kt       |   0
+ .../react/utils/KotlinStdlibCompatUtilsTest.kt      |   0
+ .../react/utils/NdkConfiguratorUtilsTest.kt         |   0
+ .../test/kotlin/com/facebook/react/utils/OsTest.kt  |   0
+ .../com/facebook/react/utils/PathUtilsTest.kt       |   0
+ .../com/facebook/react/utils/ProjectUtilsTest.kt    |   0
+ .../com/facebook/react/utils/TaskUtilsTest.kt       |   0
+ .../settings-plugin/build.gradle.kts                |   0
+ .../com/facebook/react/ReactSettingsExtension.kt    |   0
+ .../com/facebook/react/ReactSettingsPlugin.kt       |   0
+ .../facebook/react/ReactSettingsExtensionTest.kt    |   0
+ .../settings.gradle.kts                             |   2 +-
+ .../shared/build.gradle.kts                         |   0
+ .../model/ModelAutolinkingAndroidProjectJson.kt     |   0
+ .../react/model/ModelAutolinkingConfigJson.kt       |   0
+ .../react/model/ModelAutolinkingDependenciesJson.kt |   0
+ ...delAutolinkingDependenciesPlatformAndroidJson.kt |   0
+ .../ModelAutolinkingDependenciesPlatformJson.kt     |   0
+ .../react/model/ModelAutolinkingProjectJson.kt      |   0
+ .../com/facebook/react/model/ModelCodegenConfig.kt  |   0
+ .../react/model/ModelCodegenConfigAndroid.kt        |   0
+ .../com/facebook/react/model/ModelPackageJson.kt    |   0
+ .../kotlin/com/facebook/react/utils/JsonUtils.kt    |   0
+ .../com/facebook/react/utils/JsonUtilsTest.kt       |   0
+ packages/helloworld/android/settings.gradle         |   4 ++--
+ settings.gradle.kts                                 |   4 ++--
+ 91 files changed, 30 insertions(+), 21 deletions(-)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/.gitignore (56%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/README.md (92%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/build.gradle.kts (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/gradle.properties (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/gradle/libs.versions.toml (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/gradle/wrapper/gradle-wrapper.jar (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/gradle/wrapper/gradle-wrapper.properties (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/gradlew (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/gradlew.bat (90%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/package.json (88%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/README.md (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/build.gradle.kts (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactExtension.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactPlugin.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactRootProjectPlugin.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/TaskConfiguration.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/internal/PrivateReactExtension.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTask.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTask.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTask.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GeneratePackageListTask.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITask.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareBoostTask.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareGlogTask.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareJSCTask.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTask.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntry.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/AgpConfiguratorUtils.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/BackwardCompatUtils.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/DependencyUtils.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/FileUtils.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/JdkConfiguratorUtils.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtils.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/NdkConfiguratorUtils.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/Os.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PathUtils.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/ProjectUtils.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PropertyUtils.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/TaskUtils.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/ReactExtensionTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/TestReactExtension.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJsonTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/BundleHermesCTaskTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTaskTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTaskTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTaskTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GeneratePackageListTaskTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITaskTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareBoostTaskTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareGlogTaskTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareJSCTaskTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTaskTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntryTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/OsRule.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/TaskTestUtils.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/WithOs.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/AgpConfiguratorUtilsTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/BackwardCompatUtilsTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/DependencyUtilsTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/FileUtilsTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtilsTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/NdkConfiguratorUtilsTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/OsTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/PathUtilsTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/ProjectUtilsTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/TaskUtilsTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/settings-plugin/build.gradle.kts (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsExtension.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsPlugin.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/settings-plugin/src/test/kotlin/com/facebook/react/ReactSettingsExtensionTest.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/settings.gradle.kts (91%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/shared/build.gradle.kts (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingAndroidProjectJson.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingConfigJson.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJson.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformAndroidJson.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformJson.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingProjectJson.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/shared/src/main/kotlin/com/facebook/react/model/ModelCodegenConfig.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/shared/src/main/kotlin/com/facebook/react/model/ModelCodegenConfigAndroid.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/shared/src/main/kotlin/com/facebook/react/model/ModelPackageJson.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/shared/src/main/kotlin/com/facebook/react/utils/JsonUtils.kt (100%)
+ rename packages/{react-native-gradle-plugin => gradle-plugin}/shared/src/test/kotlin/com/facebook/react/utils/JsonUtilsTest.kt (100%)
+
+diff --git a/.circleci/configurations/jobs.yml b/.circleci/configurations/jobs.yml
+index 3a1e0da816f..328e5e8bb89 100644
+--- a/.circleci/configurations/jobs.yml
++++ b/.circleci/configurations/jobs.yml
+@@ -151,8 +151,10 @@ jobs:
+             - packages/react-native/ReactAndroid/hermes-engine/.cxx/
+             - packages/react-native/ReactAndroid/hermes-engine/build/
+             - packages/react-native/ReactAndroid/src/main/jni/prebuilt/
+-            - packages/react-native-gradle-plugin/.gradle/
+-            - packages/react-native-gradle-plugin/build/
++            - packages/gradle-plugin/.gradle/
++            - packages/gradle-plugin/react-native-gradle-plugin/build/
++            - packages/gradle-plugin/settings-plugin/build/
++            - packages/gradle-plugin/shared/build/
+             - packages/react-native-codegen/lib/
+ 
+   # -------------------------
+@@ -181,8 +183,9 @@ jobs:
+           platform: android
+ 
+       - store_test_results:
+-          path: ~/react-native/packages/react-native-gradle-plugin/build/test-results
+-
++          path: ~/react-native/packages/gradle-plugin/react-native-gradle-plugin/build/test-results
++      - store_test_results:
++          path: ~/react-native/packages/gradle-plugin/settings-plugin/build/test-results
+       - store_test_results:
+           path: ~/react-native/packages/react-native/ReactAndroid/build/test-results
+ 
+diff --git a/.github/workflows/nightly.yml b/.github/workflows/nightly.yml
+index 8ea77bb1243..110257858d8 100644
+--- a/.github/workflows/nightly.yml
++++ b/.github/workflows/nightly.yml
+@@ -493,8 +493,8 @@ jobs:
+           name: build-android-results
+           compression-level: 1
+           path: |
+-            packages/react-native-gradle-plugin/react-native-gradle-plugin/build/reports
+-            packages/react-native-gradle-plugin/settings-plugin/build/reports
++            packages/gradle-plugin/settings-plugin/build/reports
++            packages/gradle-plugin/react-native-gradle-plugin/build/reports
+             packages/react-native/ReactAndroid/build/reports
+       - name: Upload RNTester APK
+         if: ${{ always() }}
+@@ -503,6 +503,7 @@ jobs:
+           name: rntester-apk
+           path: packages/rn-tester/android/app/build/outputs/apk/
+           compression-level: 0
++
+   build_npm_package:
+     runs-on: 8-core-ubuntu
+     needs: [set_release_type, prepare_hermes_workspace, build_hermes_macos, build_hermesc_linux, build_hermesc_windows,build_android]
+diff --git a/.github/workflows/publish-release.yml b/.github/workflows/publish-release.yml
+index fc3c5c8b8dd..874ee9ae54c 100644
+--- a/.github/workflows/publish-release.yml
++++ b/.github/workflows/publish-release.yml
+@@ -492,8 +492,8 @@ jobs:
+           name: build-android-results
+           compression-level: 1
+           path: |
+-            packages/react-native-gradle-plugin/react-native-gradle-plugin/build/reports
+-            packages/react-native-gradle-plugin/settings-plugin/build/reports
++            packages/gradle-plugin/react-native-gradle-plugin/build/reports
++            packages/gradle-plugin/settings-plugin/build/reports
+             packages/react-native/ReactAndroid/build/reports
+       - name: Upload RNTester APK
+         if: ${{ always() }}
+diff --git a/.github/workflows/test-all.yml b/.github/workflows/test-all.yml
+index 46d0d8b7858..ee458b5c8d4 100644
+--- a/.github/workflows/test-all.yml
++++ b/.github/workflows/test-all.yml
+@@ -565,8 +565,8 @@ jobs:
+           name: build-android-results
+           compression-level: 1
+           path: |
+-            packages/react-native-gradle-plugin/react-native-gradle-plugin/build/reports
+-            packages/react-native-gradle-plugin/settings-plugin/build/reports
++            packages/gradle-plugin/react-native-gradle-plugin/build/reports
++            packages/gradle-plugin/settings-plugin/build/reports
+             packages/react-native/ReactAndroid/build/reports
+       - name: Upload RNTester APK
+         if: ${{ always() }}
+diff --git a/build.gradle.kts b/build.gradle.kts
+index e24bf646732..b967428d102 100644
+--- a/build.gradle.kts
++++ b/build.gradle.kts
+@@ -60,7 +60,7 @@ nexusPublishing {
+ 
+ tasks.register("clean", Delete::class.java) {
+   description = "Remove all the build files and intermediate build outputs"
+-  dependsOn(gradle.includedBuild("react-native-gradle-plugin").task(":clean"))
++  dependsOn(gradle.includedBuild("gradle-plugin").task(":clean"))
+   subprojects.forEach {
+     if (it.project.plugins.hasPlugin("com.android.library") ||
+         it.project.plugins.hasPlugin("com.android.application")) {
+@@ -86,7 +86,7 @@ tasks.register("clean", Delete::class.java) {
+ 
+ tasks.register("build") {
+   description = "Build and test all the React Native relevant projects."
+-  dependsOn(gradle.includedBuild("react-native-gradle-plugin").task(":build"))
++  dependsOn(gradle.includedBuild("gradle-plugin").task(":build"))
+ }
+ 
+ tasks.register("publishAllToMavenTempLocal") {
+diff --git a/packages/react-native-gradle-plugin/.gitignore b/packages/gradle-plugin/.gitignore
+similarity index 56%
+rename from packages/react-native-gradle-plugin/.gitignore
+rename to packages/gradle-plugin/.gitignore
+index 7b987dbf0c9..ffd4ff5e125 100644
+--- a/packages/react-native-gradle-plugin/.gitignore
++++ b/packages/gradle-plugin/.gitignore
+@@ -1,4 +1,4 @@
+ build/
+-app-plugin/build/
++react-native-gradle-plugin/build/
+ settings-plugin/build/
+ shared/build/
+diff --git a/packages/react-native-gradle-plugin/README.md b/packages/gradle-plugin/README.md
+similarity index 92%
+rename from packages/react-native-gradle-plugin/README.md
+rename to packages/gradle-plugin/README.md
+index 7233d33cbd3..bb9f0a3a87b 100644
+--- a/packages/react-native-gradle-plugin/README.md
++++ b/packages/gradle-plugin/README.md
+@@ -20,4 +20,4 @@ yarn add @react-native/gradle-plugin
+ To run the tests in this package, run the following commands from the React Native root folder:
+ 
+ 1. `yarn` to install the dependencies. You just need to run this once
+-2. `yarn jest packages/react-native-gradle-plugin`.
++2. `./gradlew -p packages/gradle-plugin test`.
+diff --git a/packages/react-native-gradle-plugin/build.gradle.kts b/packages/gradle-plugin/build.gradle.kts
+similarity index 100%
+rename from packages/react-native-gradle-plugin/build.gradle.kts
+rename to packages/gradle-plugin/build.gradle.kts
+diff --git a/packages/react-native-gradle-plugin/gradle.properties b/packages/gradle-plugin/gradle.properties
+similarity index 100%
+rename from packages/react-native-gradle-plugin/gradle.properties
+rename to packages/gradle-plugin/gradle.properties
+diff --git a/packages/react-native-gradle-plugin/gradle/libs.versions.toml b/packages/gradle-plugin/gradle/libs.versions.toml
+similarity index 100%
+rename from packages/react-native-gradle-plugin/gradle/libs.versions.toml
+rename to packages/gradle-plugin/gradle/libs.versions.toml
+diff --git a/packages/react-native-gradle-plugin/gradle/wrapper/gradle-wrapper.jar b/packages/gradle-plugin/gradle/wrapper/gradle-wrapper.jar
+similarity index 100%
+rename from packages/react-native-gradle-plugin/gradle/wrapper/gradle-wrapper.jar
+rename to packages/gradle-plugin/gradle/wrapper/gradle-wrapper.jar
+diff --git a/packages/react-native-gradle-plugin/gradle/wrapper/gradle-wrapper.properties b/packages/gradle-plugin/gradle/wrapper/gradle-wrapper.properties
+similarity index 100%
+rename from packages/react-native-gradle-plugin/gradle/wrapper/gradle-wrapper.properties
+rename to packages/gradle-plugin/gradle/wrapper/gradle-wrapper.properties
+diff --git a/packages/react-native-gradle-plugin/gradlew b/packages/gradle-plugin/gradlew
+similarity index 100%
+rename from packages/react-native-gradle-plugin/gradlew
+rename to packages/gradle-plugin/gradlew
+diff --git a/packages/react-native-gradle-plugin/gradlew.bat b/packages/gradle-plugin/gradlew.bat
+similarity index 90%
+rename from packages/react-native-gradle-plugin/gradlew.bat
+rename to packages/gradle-plugin/gradlew.bat
+index 7101f8e4676..f84fe1edba4 100644
+--- a/packages/react-native-gradle-plugin/gradlew.bat
++++ b/packages/gradle-plugin/gradlew.bat
+@@ -1,3 +1,8 @@
++@REM Copyright (c) Meta Platforms, Inc. and affiliates.
++@REM
++@REM This source code is licensed under the MIT license found in the
++@REM LICENSE file in the root directory of this source tree.
++
+ @rem
+ @rem Copyright 2015 the original author or authors.
+ @rem
+diff --git a/packages/react-native-gradle-plugin/package.json b/packages/gradle-plugin/package.json
+similarity index 88%
+rename from packages/react-native-gradle-plugin/package.json
+rename to packages/gradle-plugin/package.json
+index 81c6915f3f5..99f3487c1d7 100644
+--- a/packages/react-native-gradle-plugin/package.json
++++ b/packages/gradle-plugin/package.json
+@@ -6,9 +6,9 @@
+   "repository": {
+     "type": "git",
+     "url": "git+https://github.com/facebook/react-native.git",
+-    "directory": "packages/react-native-gradle-plugin"
++    "directory": "packages/gradle-plugin"
+   },
+-  "homepage": "https://github.com/facebook/react-native/tree/HEAD/packages/react-native-gradle-plugin#readme",
++  "homepage": "https://github.com/facebook/react-native/tree/HEAD/packages/gradle-plugin#readme",
+   "keywords": [
+     "gradle",
+     "plugin",
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/README.md b/packages/gradle-plugin/react-native-gradle-plugin/README.md
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/README.md
+rename to packages/gradle-plugin/react-native-gradle-plugin/README.md
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/build.gradle.kts b/packages/gradle-plugin/react-native-gradle-plugin/build.gradle.kts
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/build.gradle.kts
+rename to packages/gradle-plugin/react-native-gradle-plugin/build.gradle.kts
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactExtension.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactExtension.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactExtension.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactExtension.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactPlugin.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactPlugin.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactPlugin.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactPlugin.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactRootProjectPlugin.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactRootProjectPlugin.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactRootProjectPlugin.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/ReactRootProjectPlugin.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/TaskConfiguration.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/TaskConfiguration.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/TaskConfiguration.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/TaskConfiguration.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/internal/PrivateReactExtension.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/internal/PrivateReactExtension.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/internal/PrivateReactExtension.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/internal/PrivateReactExtension.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/BundleHermesCTask.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTask.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTask.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTask.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTask.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTask.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTask.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTask.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTask.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTask.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GeneratePackageListTask.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GeneratePackageListTask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GeneratePackageListTask.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/GeneratePackageListTask.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITask.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITask.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITask.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareBoostTask.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareBoostTask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareBoostTask.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareBoostTask.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareGlogTask.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareGlogTask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareGlogTask.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareGlogTask.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareJSCTask.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareJSCTask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareJSCTask.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PrepareJSCTask.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTask.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTask.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTask.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTask.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntry.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntry.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntry.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntry.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/AgpConfiguratorUtils.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/AgpConfiguratorUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/AgpConfiguratorUtils.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/AgpConfiguratorUtils.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/BackwardCompatUtils.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/BackwardCompatUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/BackwardCompatUtils.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/BackwardCompatUtils.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/DependencyUtils.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/DependencyUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/DependencyUtils.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/DependencyUtils.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/FileUtils.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/FileUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/FileUtils.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/FileUtils.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/JdkConfiguratorUtils.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/JdkConfiguratorUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/JdkConfiguratorUtils.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/JdkConfiguratorUtils.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtils.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtils.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtils.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/NdkConfiguratorUtils.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/NdkConfiguratorUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/NdkConfiguratorUtils.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/NdkConfiguratorUtils.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/Os.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/Os.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/Os.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/Os.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PathUtils.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PathUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PathUtils.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PathUtils.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/ProjectUtils.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/ProjectUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/ProjectUtils.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/ProjectUtils.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PropertyUtils.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PropertyUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PropertyUtils.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/PropertyUtils.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/TaskUtils.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/TaskUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/TaskUtils.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/TaskUtils.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/ReactExtensionTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/ReactExtensionTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/ReactExtensionTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/ReactExtensionTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/TestReactExtension.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/TestReactExtension.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/TestReactExtension.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/TestReactExtension.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJsonTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJsonTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJsonTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJsonTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/BundleHermesCTaskTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/BundleHermesCTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/BundleHermesCTaskTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/BundleHermesCTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTaskTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTaskTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateAutolinkingNewArchitecturesFileTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTaskTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTaskTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenArtifactsTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTaskTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTaskTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GenerateCodegenSchemaTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GeneratePackageListTaskTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GeneratePackageListTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GeneratePackageListTaskTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/GeneratePackageListTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITaskTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITaskTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/BuildCodegenCLITaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareBoostTaskTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareBoostTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareBoostTaskTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareBoostTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareGlogTaskTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareGlogTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareGlogTaskTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareGlogTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareJSCTaskTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareJSCTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareJSCTaskTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PrepareJSCTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTaskTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTaskTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTaskTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/PreparePrefabHeadersTaskTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntryTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntryTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntryTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tasks/internal/utils/PrefabPreprocessingEntryTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/OsRule.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/OsRule.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/OsRule.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/OsRule.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/TaskTestUtils.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/TaskTestUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/TaskTestUtils.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/TaskTestUtils.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/WithOs.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/WithOs.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/WithOs.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/tests/WithOs.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/AgpConfiguratorUtilsTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/AgpConfiguratorUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/AgpConfiguratorUtilsTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/AgpConfiguratorUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/BackwardCompatUtilsTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/BackwardCompatUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/BackwardCompatUtilsTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/BackwardCompatUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/DependencyUtilsTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/DependencyUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/DependencyUtilsTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/DependencyUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/FileUtilsTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/FileUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/FileUtilsTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/FileUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtilsTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtilsTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/KotlinStdlibCompatUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/NdkConfiguratorUtilsTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/NdkConfiguratorUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/NdkConfiguratorUtilsTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/NdkConfiguratorUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/OsTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/OsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/OsTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/OsTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/PathUtilsTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/PathUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/PathUtilsTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/PathUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/ProjectUtilsTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/ProjectUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/ProjectUtilsTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/ProjectUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/TaskUtilsTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/TaskUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/TaskUtilsTest.kt
+rename to packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/TaskUtilsTest.kt
+diff --git a/packages/react-native-gradle-plugin/settings-plugin/build.gradle.kts b/packages/gradle-plugin/settings-plugin/build.gradle.kts
+similarity index 100%
+rename from packages/react-native-gradle-plugin/settings-plugin/build.gradle.kts
+rename to packages/gradle-plugin/settings-plugin/build.gradle.kts
+diff --git a/packages/react-native-gradle-plugin/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsExtension.kt b/packages/gradle-plugin/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsExtension.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsExtension.kt
+rename to packages/gradle-plugin/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsExtension.kt
+diff --git a/packages/react-native-gradle-plugin/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsPlugin.kt b/packages/gradle-plugin/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsPlugin.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsPlugin.kt
+rename to packages/gradle-plugin/settings-plugin/src/main/kotlin/com/facebook/react/ReactSettingsPlugin.kt
+diff --git a/packages/react-native-gradle-plugin/settings-plugin/src/test/kotlin/com/facebook/react/ReactSettingsExtensionTest.kt b/packages/gradle-plugin/settings-plugin/src/test/kotlin/com/facebook/react/ReactSettingsExtensionTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/settings-plugin/src/test/kotlin/com/facebook/react/ReactSettingsExtensionTest.kt
+rename to packages/gradle-plugin/settings-plugin/src/test/kotlin/com/facebook/react/ReactSettingsExtensionTest.kt
+diff --git a/packages/react-native-gradle-plugin/settings.gradle.kts b/packages/gradle-plugin/settings.gradle.kts
+similarity index 91%
+rename from packages/react-native-gradle-plugin/settings.gradle.kts
+rename to packages/gradle-plugin/settings.gradle.kts
+index f342618821e..bce34ba3a8b 100644
+--- a/packages/react-native-gradle-plugin/settings.gradle.kts
++++ b/packages/gradle-plugin/settings.gradle.kts
+@@ -21,4 +21,4 @@ include(
+     ":shared",
+ )
+ 
+-rootProject.name = "gradle-plugins-root"
++rootProject.name = "gradle-plugin-root"
+diff --git a/packages/react-native-gradle-plugin/shared/build.gradle.kts b/packages/gradle-plugin/shared/build.gradle.kts
+similarity index 100%
+rename from packages/react-native-gradle-plugin/shared/build.gradle.kts
+rename to packages/gradle-plugin/shared/build.gradle.kts
+diff --git a/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingAndroidProjectJson.kt b/packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingAndroidProjectJson.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingAndroidProjectJson.kt
+rename to packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingAndroidProjectJson.kt
+diff --git a/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingConfigJson.kt b/packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingConfigJson.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingConfigJson.kt
+rename to packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingConfigJson.kt
+diff --git a/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJson.kt b/packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJson.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJson.kt
+rename to packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesJson.kt
+diff --git a/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformAndroidJson.kt b/packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformAndroidJson.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformAndroidJson.kt
+rename to packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformAndroidJson.kt
+diff --git a/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformJson.kt b/packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformJson.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformJson.kt
+rename to packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingDependenciesPlatformJson.kt
+diff --git a/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingProjectJson.kt b/packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingProjectJson.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingProjectJson.kt
+rename to packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelAutolinkingProjectJson.kt
+diff --git a/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelCodegenConfig.kt b/packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelCodegenConfig.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelCodegenConfig.kt
+rename to packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelCodegenConfig.kt
+diff --git a/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelCodegenConfigAndroid.kt b/packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelCodegenConfigAndroid.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelCodegenConfigAndroid.kt
+rename to packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelCodegenConfigAndroid.kt
+diff --git a/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelPackageJson.kt b/packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelPackageJson.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelPackageJson.kt
+rename to packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/model/ModelPackageJson.kt
+diff --git a/packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/utils/JsonUtils.kt b/packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/utils/JsonUtils.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/shared/src/main/kotlin/com/facebook/react/utils/JsonUtils.kt
+rename to packages/gradle-plugin/shared/src/main/kotlin/com/facebook/react/utils/JsonUtils.kt
+diff --git a/packages/react-native-gradle-plugin/shared/src/test/kotlin/com/facebook/react/utils/JsonUtilsTest.kt b/packages/gradle-plugin/shared/src/test/kotlin/com/facebook/react/utils/JsonUtilsTest.kt
+similarity index 100%
+rename from packages/react-native-gradle-plugin/shared/src/test/kotlin/com/facebook/react/utils/JsonUtilsTest.kt
+rename to packages/gradle-plugin/shared/src/test/kotlin/com/facebook/react/utils/JsonUtilsTest.kt
+diff --git a/packages/helloworld/android/settings.gradle b/packages/helloworld/android/settings.gradle
+index 6da9a43763d..248883a85f2 100644
+--- a/packages/helloworld/android/settings.gradle
++++ b/packages/helloworld/android/settings.gradle
+@@ -6,13 +6,13 @@
+  */
+ 
+ // Autolinking has now moved into the React Native Gradle Plugin
+-pluginManagement { includeBuild("../../react-native-gradle-plugin") }
++pluginManagement { includeBuild("../../gradle-plugin") }
+ plugins { id("com.facebook.react.settings") }
+ extensions.configure(com.facebook.react.ReactSettingsExtension){ ex -> ex.autolinkLibrariesFromCommand() }
+ 
+ rootProject.name = 'HelloWorld'
+ include ':app'
+-includeBuild('../../react-native-gradle-plugin')
++includeBuild('../../gradle-plugin')
+ includeBuild('../../react-native') {
+      dependencySubstitution {
+          substitute(module("com.facebook.react:react-android")).using(project(":packages:react-native:ReactAndroid"))
+diff --git a/settings.gradle.kts b/settings.gradle.kts
+index 0b877b180f6..4a6e16a5aea 100644
+--- a/settings.gradle.kts
++++ b/settings.gradle.kts
+@@ -11,7 +11,7 @@ pluginManagement {
+     google()
+     gradlePluginPortal()
+   }
+-  includeBuild("packages/react-native-gradle-plugin/")
++  includeBuild("packages/gradle-plugin/")
+ }
+ 
+ include(
+@@ -20,7 +20,7 @@ include(
+     ":packages:react-native:ReactAndroid:external-artifacts",
+     ":packages:rn-tester:android:app")
+ 
+-includeBuild("packages/react-native-gradle-plugin/")
++includeBuild("packages/gradle-plugin/")
+ 
+ dependencyResolutionManagement {
+   versionCatalogs {

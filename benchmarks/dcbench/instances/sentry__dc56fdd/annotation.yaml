@@ -1,0 +1,57 @@
+repo: sentry
+base_commit: 0e78ab202f62f5efed1b09214a8b07a6a7877b16
+commit: dc56fdd54ed840aa8efbc73533897afaf9e2aae8
+patch_stored: true
+gold:
+- path: src/sentry/api/urls.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/conf/types/uptime.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/features/temporary.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/uptime/checker_api.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/uptime/endpoints/organization_uptime_alert_preview_check.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/uptime/endpoints/project_uptime_alert_details.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/uptime/endpoints/project_uptime_alert_index.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/uptime/endpoints/validators.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/uptime/types.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: tests/sentry/uptime/endpoints/test_organization_uptime_alert_preview.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'status=hang on the SMALLEST commit in the entire assigned batch: 13 files, 370 insertions/28 deletions,
+  a clean self-contained feature (new uptime ''preview check'' endpoint + validator + feature flag). Every
+  file is small, human-written, and directly relevant -- there is no generated-code bulk, no rename, no
+  unusual file count. This is the strongest evidence in the sample that the hang is not explained by diff
+  size or generated-file volume alone; something in diffctx''s pipeline fails even on a textbook-easy,
+  well-scoped diff, which should be the top priority repro case for debugging issue #70 since it''s minimal
+  and fast to iterate on.'

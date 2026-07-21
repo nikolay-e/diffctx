@@ -1,0 +1,1438 @@
+From 98a38cc1a71249a816546b3474beaffd5c6ec705 Mon Sep 17 00:00:00 2001
+From: Nicola Corti <ncor@meta.com>
+Date: Fri, 5 Apr 2024 13:59:21 -0700
+Subject: [PATCH] Convert the whole
+ `com.facebook.react.views.text.internal.span` package to Kotlin (#43923)
+
+Summary:
+Pull Request resolved: https://github.com/facebook/react-native/pull/43923
+
+Another round of Kotlin migration.
+This time I'm doing `com.facebook.react.views.text.internal.span` which has been recently been annotated as `Nullsafe`
+
+Changelog:
+[Internal] [Changed] - Convert the whole `com.facebook.react.views.text.internal.span` package to Kotlin
+
+Reviewed By: tdn120
+
+Differential Revision: D55802155
+
+fbshipit-source-id: 4bed023557f45a43d921df73dfc685e547788fd4
+---
+ .../views/text/ReactBaseTextShadowNode.java   |  2 +-
+ .../span/CustomLetterSpacingSpan.java         | 48 ----------
+ .../internal/span/CustomLetterSpacingSpan.kt  | 33 +++++++
+ .../internal/span/CustomLineHeightSpan.java   | 68 --------------
+ .../internal/span/CustomLineHeightSpan.kt     | 69 ++++++++++++++
+ .../text/internal/span/CustomStyleSpan.java   | 93 -------------------
+ .../text/internal/span/CustomStyleSpan.kt     | 79 ++++++++++++++++
+ .../internal/span/ReactAbsoluteSizeSpan.java  | 21 -----
+ .../internal/span/ReactAbsoluteSizeSpan.kt    | 13 +++
+ .../span/ReactBackgroundColorSpan.java        | 21 -----
+ .../internal/span/ReactBackgroundColorSpan.kt | 13 +++
+ .../internal/span/ReactClickableSpan.java     | 71 --------------
+ .../text/internal/span/ReactClickableSpan.kt  | 49 ++++++++++
+ .../span/ReactForegroundColorSpan.java        | 21 -----
+ .../internal/span/ReactForegroundColorSpan.kt | 13 +++
+ .../views/text/internal/span/ReactSpan.java   | 17 ----
+ .../views/text/internal/span/ReactSpan.kt     | 14 +++
+ .../internal/span/ReactStrikethroughSpan.java | 17 ----
+ .../internal/span/ReactStrikethroughSpan.kt   | 13 +++
+ .../text/internal/span/ReactTagSpan.java      | 28 ------
+ .../views/text/internal/span/ReactTagSpan.kt  | 14 +++
+ .../internal/span/ReactUnderlineSpan.java     | 17 ----
+ .../text/internal/span/ReactUnderlineSpan.kt  | 13 +++
+ .../text/internal/span/SetSpanOperation.java  | 66 -------------
+ .../text/internal/span/SetSpanOperation.kt    | 58 ++++++++++++
+ .../text/internal/span/ShadowStyleSpan.java   | 30 ------
+ .../text/internal/span/ShadowStyleSpan.kt     | 22 +++++
+ .../internal/span/TextInlineImageSpan.java    | 61 ------------
+ .../text/internal/span/TextInlineImageSpan.kt | 58 ++++++++++++
+ .../span/TextInlineViewPlaceholderSpan.java   | 69 --------------
+ .../span/TextInlineViewPlaceholderSpan.kt     | 52 +++++++++++
+ 31 files changed, 514 insertions(+), 649 deletions(-)
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLetterSpacingSpan.java
+ create mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLetterSpacingSpan.kt
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLineHeightSpan.java
+ create mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLineHeightSpan.kt
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomStyleSpan.java
+ create mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomStyleSpan.kt
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactAbsoluteSizeSpan.java
+ create mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactAbsoluteSizeSpan.kt
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactBackgroundColorSpan.java
+ create mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactBackgroundColorSpan.kt
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactClickableSpan.java
+ create mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactClickableSpan.kt
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactForegroundColorSpan.java
+ create mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactForegroundColorSpan.kt
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactSpan.java
+ create mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactSpan.kt
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactStrikethroughSpan.java
+ create mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactStrikethroughSpan.kt
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactTagSpan.java
+ create mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactTagSpan.kt
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactUnderlineSpan.java
+ create mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactUnderlineSpan.kt
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/SetSpanOperation.java
+ create mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/SetSpanOperation.kt
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ShadowStyleSpan.java
+ create mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ShadowStyleSpan.kt
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineImageSpan.java
+ create mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineImageSpan.kt
+ delete mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineViewPlaceholderSpan.java
+ create mode 100644 packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineViewPlaceholderSpan.kt
+
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/ReactBaseTextShadowNode.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/ReactBaseTextShadowNode.java
+index bb1a82bdd50..1da3e2f7b9f 100644
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/ReactBaseTextShadowNode.java
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/ReactBaseTextShadowNode.java
+@@ -382,7 +382,7 @@ public abstract class ReactBaseTextShadowNode extends LayoutShadowNode
+     // or images.
+     for (int priorityIndex = 0; priorityIndex < ops.size(); priorityIndex++) {
+       final SetSpanOperation op = ops.get(ops.size() - priorityIndex - 1);
+-      final ReactSpan what = op.getWhat();
++      final ReactSpan what = op.what;
+ 
+       boolean isInlineImage = what instanceof TextInlineImageSpan;
+       if (isInlineImage || what instanceof TextInlineViewPlaceholderSpan) {
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLetterSpacingSpan.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLetterSpacingSpan.java
+deleted file mode 100644
+index c62df01777b..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLetterSpacingSpan.java
++++ /dev/null
+@@ -1,48 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.views.text.internal.span;
+-
+-import android.text.TextPaint;
+-import android.text.style.MetricAffectingSpan;
+-import com.facebook.infer.annotation.Nullsafe;
+-
+-/**
+- * A {@link MetricAffectingSpan} that allows to set the letter spacing on the selected text span.
+- *
+- * <p>The letter spacing is specified in pixels, which are converted to ems at paint time; this span
+- * must therefore be applied after any spans affecting font size.
+- */
+-@Nullsafe(Nullsafe.Mode.LOCAL)
+-public class CustomLetterSpacingSpan extends MetricAffectingSpan implements ReactSpan {
+-
+-  private final float mLetterSpacing;
+-
+-  public CustomLetterSpacingSpan(float letterSpacing) {
+-    mLetterSpacing = letterSpacing;
+-  }
+-
+-  @Override
+-  public void updateDrawState(TextPaint paint) {
+-    apply(paint);
+-  }
+-
+-  @Override
+-  public void updateMeasureState(TextPaint paint) {
+-    apply(paint);
+-  }
+-
+-  public float getSpacing() {
+-    return mLetterSpacing;
+-  }
+-
+-  private void apply(TextPaint paint) {
+-    if (!Float.isNaN(mLetterSpacing)) {
+-      paint.setLetterSpacing(mLetterSpacing);
+-    }
+-  }
+-}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLetterSpacingSpan.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLetterSpacingSpan.kt
+new file mode 100644
+index 00000000000..4e81aea3e38
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLetterSpacingSpan.kt
+@@ -0,0 +1,33 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react.views.text.internal.span
++
++import android.text.TextPaint
++import android.text.style.MetricAffectingSpan
++
++/**
++ * A [MetricAffectingSpan] that allows to set the letter spacing on the selected text span.
++ *
++ * The letter spacing is specified in pixels, which are converted to ems at paint time; this span
++ * must therefore be applied after any spans affecting font size.
++ */
++public class CustomLetterSpacingSpan(public val spacing: Float) : MetricAffectingSpan(), ReactSpan {
++  public override fun updateDrawState(paint: TextPaint) {
++    apply(paint)
++  }
++
++  public override fun updateMeasureState(paint: TextPaint) {
++    apply(paint)
++  }
++
++  private fun apply(paint: TextPaint) {
++    if (!spacing.isNaN()) {
++      paint.letterSpacing = spacing
++    }
++  }
++}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLineHeightSpan.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLineHeightSpan.java
+deleted file mode 100644
+index f9b63f0f461..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLineHeightSpan.java
++++ /dev/null
+@@ -1,68 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.views.text.internal.span;
+-
+-import android.graphics.Paint;
+-import android.text.style.LineHeightSpan;
+-import com.facebook.infer.annotation.Nullsafe;
+-
+-/**
+- * We use a custom {@link LineHeightSpan}, because `lineSpacingExtra` is broken. Details here:
+- * https://github.com/facebook/react-native/issues/7546
+- */
+-@Nullsafe(Nullsafe.Mode.LOCAL)
+-public class CustomLineHeightSpan implements LineHeightSpan, ReactSpan {
+-  private final int mHeight;
+-
+-  public CustomLineHeightSpan(float height) {
+-    mHeight = (int) Math.ceil(height);
+-  }
+-
+-  public int getLineHeight() {
+-    return mHeight;
+-  }
+-
+-  @Override
+-  public void chooseHeight(
+-      CharSequence text, int start, int end, int spanstartv, int v, Paint.FontMetricsInt fm) {
+-    // This is more complicated that I wanted it to be. You can find a good explanation of what the
+-    // FontMetrics mean here: http://stackoverflow.com/questions/27631736.
+-    // The general solution is that if there's not enough height to show the full line height, we
+-    // will prioritize in this order: descent, ascent, bottom, top
+-
+-    if (fm.descent > mHeight) {
+-      // Show as much descent as possible
+-      fm.bottom = fm.descent = Math.min(mHeight, fm.descent);
+-      fm.top = fm.ascent = 0;
+-    } else if (-fm.ascent + fm.descent > mHeight) {
+-      // Show all descent, and as much ascent as possible
+-      fm.bottom = fm.descent;
+-      fm.top = fm.ascent = -mHeight + fm.descent;
+-    } else if (-fm.ascent + fm.bottom > mHeight) {
+-      // Show all ascent, descent, as much bottom as possible
+-      fm.top = fm.ascent;
+-      fm.bottom = fm.ascent + mHeight;
+-    } else if (-fm.top + fm.bottom > mHeight) {
+-      // Show all ascent, descent, bottom, as much top as possible
+-      fm.top = fm.bottom - mHeight;
+-    } else {
+-      // Show proportionally additional ascent / top & descent / bottom
+-      final int additional = mHeight - (-fm.top + fm.bottom);
+-
+-      // Round up for the negative values and down for the positive values  (arbitrary choice)
+-      // So that bottom - top equals additional even if it's an odd number.
+-      final int top = (int) (fm.top - Math.ceil(additional / 2.0f));
+-      final int bottom = (int) (fm.bottom + Math.floor(additional / 2.0f));
+-
+-      fm.top = top;
+-      fm.ascent = top;
+-      fm.descent = bottom;
+-      fm.bottom = bottom;
+-    }
+-  }
+-}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLineHeightSpan.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLineHeightSpan.kt
+new file mode 100644
+index 00000000000..830d987439c
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomLineHeightSpan.kt
+@@ -0,0 +1,69 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react.views.text.internal.span
++
++import android.graphics.Paint.FontMetricsInt
++import android.text.style.LineHeightSpan
++import kotlin.math.ceil
++import kotlin.math.floor
++import kotlin.math.min
++
++/**
++ * We use a custom [LineHeightSpan], because `lineSpacingExtra` is broken. Details here:
++ * https://github.com/facebook/react-native/issues/7546
++ */
++public class CustomLineHeightSpan(height: Float) : LineHeightSpan, ReactSpan {
++  public val lineHeight: Int = ceil(height.toDouble()).toInt()
++
++  public override fun chooseHeight(
++      text: CharSequence?,
++      start: Int,
++      end: Int,
++      spanstartv: Int,
++      v: Int,
++      fm: FontMetricsInt
++  ) {
++    // This is more complicated that I wanted it to be. You can find a good explanation of what the
++    // FontMetrics mean here: http://stackoverflow.com/questions/27631736.
++    // The general solution is that if there's not enough height to show the full line height, we
++    // will prioritize in this order: descent, ascent, bottom, top
++
++    if (fm.descent > lineHeight) {
++      // Show as much descent as possible
++      fm.descent = min(lineHeight.toDouble(), fm.descent.toDouble()).toInt()
++      fm.bottom = fm.descent
++      fm.ascent = 0
++      fm.top = fm.ascent
++    } else if (-fm.ascent + fm.descent > lineHeight) {
++      // Show all descent, and as much ascent as possible
++      fm.bottom = fm.descent
++      fm.ascent = -lineHeight + fm.descent
++      fm.top = fm.ascent
++    } else if (-fm.ascent + fm.bottom > lineHeight) {
++      // Show all ascent, descent, as much bottom as possible
++      fm.top = fm.ascent
++      fm.bottom = fm.ascent + lineHeight
++    } else if (-fm.top + fm.bottom > lineHeight) {
++      // Show all ascent, descent, bottom, as much top as possible
++      fm.top = fm.bottom - lineHeight
++    } else {
++      // Show proportionally additional ascent / top & descent / bottom
++      val additional = lineHeight - (-fm.top + fm.bottom)
++
++      // Round up for the negative values and down for the positive values  (arbitrary choice)
++      // So that bottom - top equals additional even if it's an odd number.
++      val top = (fm.top - ceil(additional / 2.0f)).toInt()
++      val bottom = (fm.bottom + floor(additional / 2.0f)).toInt()
++
++      fm.top = top
++      fm.ascent = top
++      fm.descent = bottom
++      fm.bottom = bottom
++    }
++  }
++}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomStyleSpan.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomStyleSpan.java
+deleted file mode 100644
+index 7fa67a06b62..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomStyleSpan.java
++++ /dev/null
+@@ -1,93 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.views.text.internal.span;
+-
+-import android.content.res.AssetManager;
+-import android.graphics.Paint;
+-import android.graphics.Typeface;
+-import android.text.TextPaint;
+-import android.text.style.MetricAffectingSpan;
+-import androidx.annotation.Nullable;
+-import com.facebook.infer.annotation.Nullsafe;
+-import com.facebook.react.common.ReactConstants;
+-import com.facebook.react.common.assets.ReactFontManager;
+-import com.facebook.react.views.text.ReactTypefaceUtils;
+-
+-/**
+- * A {@link MetricAffectingSpan} that allows to change the style of the displayed font.
+- * CustomStyleSpan will try to load the fontFamily with the right style and weight from the assets.
+- * The custom fonts will have to be located in the res/assets folder of the application. The
+- * supported custom fonts extensions are .ttf and .otf. For each font family the bold, italic and
+- * bold_italic variants are supported. Given a "family" font family the files in the assets/fonts
+- * folder need to be family.ttf(.otf) family_bold.ttf(.otf) family_italic.ttf(.otf) and
+- * family_bold_italic.ttf(.otf). If the right font is not found in the assets folder CustomStyleSpan
+- * will fallback on the most appropriate default typeface depending on the style. Fonts are
+- * retrieved and cached using the {@link ReactFontManager}
+- */
+-@Nullsafe(Nullsafe.Mode.LOCAL)
+-public class CustomStyleSpan extends MetricAffectingSpan implements ReactSpan {
+-  private final AssetManager mAssetManager;
+-
+-  private final int mStyle;
+-  private final int mWeight;
+-  private final @Nullable String mFeatureSettings;
+-  private final @Nullable String mFontFamily;
+-
+-  public CustomStyleSpan(
+-      int fontStyle,
+-      int fontWeight,
+-      @Nullable String fontFeatureSettings,
+-      @Nullable String fontFamily,
+-      AssetManager assetManager) {
+-    mStyle = fontStyle;
+-    mWeight = fontWeight;
+-    mFeatureSettings = fontFeatureSettings;
+-    mFontFamily = fontFamily;
+-    mAssetManager = assetManager;
+-  }
+-
+-  @Override
+-  public void updateDrawState(TextPaint ds) {
+-    apply(ds, mStyle, mWeight, mFeatureSettings, mFontFamily, mAssetManager);
+-  }
+-
+-  @Override
+-  public void updateMeasureState(TextPaint paint) {
+-    apply(paint, mStyle, mWeight, mFeatureSettings, mFontFamily, mAssetManager);
+-  }
+-
+-  public int getStyle() {
+-    return mStyle == ReactConstants.UNSET ? Typeface.NORMAL : mStyle;
+-  }
+-
+-  public int getWeight() {
+-    return mWeight == ReactConstants.UNSET ? ReactFontManager.TypefaceStyle.NORMAL : mWeight;
+-  }
+-
+-  public @Nullable String getFontFamily() {
+-    return mFontFamily;
+-  }
+-
+-  public @Nullable String getFontFeatureSettings() {
+-    return mFeatureSettings;
+-  }
+-
+-  private static void apply(
+-      Paint paint,
+-      int style,
+-      int weight,
+-      @Nullable String fontFeatureSettings,
+-      @Nullable String family,
+-      AssetManager assetManager) {
+-    Typeface typeface =
+-        ReactTypefaceUtils.applyStyles(paint.getTypeface(), style, weight, family, assetManager);
+-    paint.setFontFeatureSettings(fontFeatureSettings);
+-    paint.setTypeface(typeface);
+-    paint.setSubpixelText(true);
+-  }
+-}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomStyleSpan.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomStyleSpan.kt
+new file mode 100644
+index 00000000000..81bb303e6a3
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/CustomStyleSpan.kt
+@@ -0,0 +1,79 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react.views.text.internal.span
++
++import android.content.res.AssetManager
++import android.graphics.Paint
++import android.graphics.Typeface
++import android.text.TextPaint
++import android.text.style.MetricAffectingSpan
++import com.facebook.react.common.ReactConstants
++import com.facebook.react.common.assets.ReactFontManager
++import com.facebook.react.views.text.ReactTypefaceUtils
++
++/**
++ * A [MetricAffectingSpan] that allows to change the style of the displayed font. CustomStyleSpan
++ * will try to load the fontFamily with the right style and weight from the assets. The custom fonts
++ * will have to be located in the res/assets folder of the application. The supported custom fonts
++ * extensions are .ttf and .otf. For each font family the bold, italic and bold_italic variants are
++ * supported. Given a "family" font family the files in the assets/fonts folder need to be
++ * family.ttf(.otf) family_bold.ttf(.otf) family_italic.ttf(.otf) and family_bold_italic.ttf(.otf).
++ * If the right font is not found in the assets folder CustomStyleSpan will fallback on the most
++ * appropriate default typeface depending on the style. Fonts are retrieved and cached using the
++ * [ReactFontManager]
++ */
++public class CustomStyleSpan(
++    private val privateStyle: Int,
++    private val privateWeight: Int,
++    public val fontFeatureSettings: String?,
++    public val fontFamily: String?,
++    private val assetManager: AssetManager
++) : MetricAffectingSpan(), ReactSpan {
++  public override fun updateDrawState(ds: TextPaint) {
++    apply(ds, privateStyle, privateWeight, fontFeatureSettings, fontFamily, assetManager)
++  }
++
++  public override fun updateMeasureState(paint: TextPaint) {
++    apply(paint, privateStyle, privateWeight, fontFeatureSettings, fontFamily, assetManager)
++  }
++
++  public val style: Int
++    get() =
++        if (privateStyle == ReactConstants.UNSET) {
++          Typeface.NORMAL
++        } else {
++          privateStyle
++        }
++
++  public val weight: Int
++    get() =
++        if (privateWeight == ReactConstants.UNSET) {
++          ReactFontManager.TypefaceStyle.NORMAL
++        } else {
++          privateWeight
++        }
++
++  public companion object {
++    private fun apply(
++        paint: Paint,
++        style: Int,
++        weight: Int,
++        fontFeatureSettingsParam: String?,
++        family: String?,
++        assetManager: AssetManager
++    ) {
++      val typeface =
++          ReactTypefaceUtils.applyStyles(paint.typeface, style, weight, family, assetManager)
++      paint.apply {
++        fontFeatureSettings = fontFeatureSettingsParam
++        setTypeface(typeface)
++        isSubpixelText = true
++      }
++    }
++  }
++}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactAbsoluteSizeSpan.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactAbsoluteSizeSpan.java
+deleted file mode 100644
+index b39e89dda92..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactAbsoluteSizeSpan.java
++++ /dev/null
+@@ -1,21 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.views.text.internal.span;
+-
+-import android.text.style.AbsoluteSizeSpan;
+-import com.facebook.infer.annotation.Nullsafe;
+-
+-/*
+- * Wraps {@link AbsoluteSizeSpan} as a {@link ReactSpan}.
+- */
+-@Nullsafe(Nullsafe.Mode.LOCAL)
+-public class ReactAbsoluteSizeSpan extends AbsoluteSizeSpan implements ReactSpan {
+-  public ReactAbsoluteSizeSpan(int size) {
+-    super(size);
+-  }
+-}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactAbsoluteSizeSpan.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactAbsoluteSizeSpan.kt
+new file mode 100644
+index 00000000000..575513e23a8
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactAbsoluteSizeSpan.kt
+@@ -0,0 +1,13 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react.views.text.internal.span
++
++import android.text.style.AbsoluteSizeSpan
++
++/** Wraps [AbsoluteSizeSpan] as a [ReactSpan]. */
++public class ReactAbsoluteSizeSpan(size: Int) : AbsoluteSizeSpan(size), ReactSpan
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactBackgroundColorSpan.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactBackgroundColorSpan.java
+deleted file mode 100644
+index 9eb94d3df76..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactBackgroundColorSpan.java
++++ /dev/null
+@@ -1,21 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.views.text.internal.span;
+-
+-import android.text.style.BackgroundColorSpan;
+-import com.facebook.infer.annotation.Nullsafe;
+-
+-/*
+- * Wraps {@link BackgroundColorSpan} as a {@link ReactSpan}.
+- */
+-@Nullsafe(Nullsafe.Mode.LOCAL)
+-public class ReactBackgroundColorSpan extends BackgroundColorSpan implements ReactSpan {
+-  public ReactBackgroundColorSpan(int color) {
+-    super(color);
+-  }
+-}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactBackgroundColorSpan.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactBackgroundColorSpan.kt
+new file mode 100644
+index 00000000000..3814bd1acf9
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactBackgroundColorSpan.kt
+@@ -0,0 +1,13 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react.views.text.internal.span
++
++import android.text.style.BackgroundColorSpan
++
++/** Wraps [BackgroundColorSpan] as a [ReactSpan]. */
++public class ReactBackgroundColorSpan(color: Int) : BackgroundColorSpan(color), ReactSpan
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactClickableSpan.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactClickableSpan.java
+deleted file mode 100644
+index 17bb4dd4308..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactClickableSpan.java
++++ /dev/null
+@@ -1,71 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.views.text.internal.span;
+-
+-import android.text.TextPaint;
+-import android.text.style.ClickableSpan;
+-import android.view.View;
+-import androidx.annotation.NonNull;
+-import com.facebook.infer.annotation.Nullsafe;
+-import com.facebook.react.bridge.ReactContext;
+-import com.facebook.react.uimanager.UIManagerHelper;
+-import com.facebook.react.uimanager.events.EventDispatcher;
+-import com.facebook.react.views.text.ReactTextView;
+-import com.facebook.react.views.text.TextLayoutManager;
+-import com.facebook.react.views.view.ViewGroupClickEvent;
+-
+-/**
+- * This class is used in {@link TextLayoutManager} to linkify and style a span of text with
+- * accessibilityRole="link". This is needed to make nested Text components accessible.
+- *
+- * <p>For example, if your React component looks like this:
+- *
+- * <pre>{@code
+- * <Text>
+- *   Some text with
+- *   <Text onPress={onPress} accessible={true} accessibilityRole="link">a link</Text>
+- *   in the middle.
+- * </Text>
+- * }</pre>
+- *
+- * then only one {@link ReactTextView} will be created, for the parent. The child Text component
+- * does not exist as a native view, and therefore has no accessibility properties. Instead, we have
+- * to use spans on the parent's {@link ReactTextView} to properly style the child, and to make it
+- * accessible (TalkBack announces that the text has links available, and the links are exposed in
+- * the context menu).
+- */
+-@Nullsafe(Nullsafe.Mode.LOCAL)
+-public class ReactClickableSpan extends ClickableSpan implements ReactSpan {
+-
+-  private final int mReactTag;
+-
+-  public ReactClickableSpan(int reactTag) {
+-    mReactTag = reactTag;
+-  }
+-
+-  @Override
+-  public void onClick(@NonNull View view) {
+-    ReactContext context = (ReactContext) view.getContext();
+-    EventDispatcher eventDispatcher =
+-        UIManagerHelper.getEventDispatcherForReactTag(context, mReactTag);
+-    if (eventDispatcher != null) {
+-      eventDispatcher.dispatchEvent(
+-          new ViewGroupClickEvent(UIManagerHelper.getSurfaceId(context), mReactTag));
+-    }
+-  }
+-
+-  @Override
+-  public void updateDrawState(@NonNull TextPaint ds) {
+-    // no-op to make sure we don't change the link color or add an underline by default, as the
+-    // superclass does.
+-  }
+-
+-  public int getReactTag() {
+-    return mReactTag;
+-  }
+-}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactClickableSpan.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactClickableSpan.kt
+new file mode 100644
+index 00000000000..21211a586a7
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactClickableSpan.kt
+@@ -0,0 +1,49 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react.views.text.internal.span
++
++import android.text.TextPaint
++import android.text.style.ClickableSpan
++import android.view.View
++import com.facebook.react.bridge.ReactContext
++import com.facebook.react.uimanager.UIManagerHelper
++import com.facebook.react.views.text.ReactTextView
++import com.facebook.react.views.view.ViewGroupClickEvent
++
++/**
++ * This class is used in [TextLayoutManager] to linkify and style a span of text with
++ * accessibilityRole="link". This is needed to make nested Text components accessible.
++ *
++ * For example, if your React component looks like this:
++ * ```js
++ * <Text>
++ * Some text with
++ * <Text onPress={onPress} accessible={true} accessibilityRole="link">a link</Text>
++ * in the middle.
++ * </Text>
++ * ```
++ *
++ * then only one [ReactTextView] will be created, for the parent. The child Text component does not
++ * exist as a native view, and therefore has no accessibility properties. Instead, we have to use
++ * spans on the parent's [ReactTextView] to properly style the child, and to make it accessible
++ * (TalkBack announces that the text has links available, and the links are exposed in the context
++ * menu).
++ */
++public class ReactClickableSpan(public val reactTag: Int) : ClickableSpan(), ReactSpan {
++  public override fun onClick(view: View) {
++    val context = view.context as ReactContext
++    val eventDispatcher = UIManagerHelper.getEventDispatcherForReactTag(context, reactTag)
++    eventDispatcher?.dispatchEvent(
++        ViewGroupClickEvent(UIManagerHelper.getSurfaceId(context), reactTag))
++  }
++
++  public override fun updateDrawState(ds: TextPaint) {
++    // no-op to make sure we don't change the link color or add an underline by default, as the
++    // superclass does.
++  }
++}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactForegroundColorSpan.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactForegroundColorSpan.java
+deleted file mode 100644
+index b348f1af3e6..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactForegroundColorSpan.java
++++ /dev/null
+@@ -1,21 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.views.text.internal.span;
+-
+-import android.text.style.ForegroundColorSpan;
+-import com.facebook.infer.annotation.Nullsafe;
+-
+-/*
+- * Wraps {@link ForegroundColorSpan} as a {@link ReactSpan}.
+- */
+-@Nullsafe(Nullsafe.Mode.LOCAL)
+-public class ReactForegroundColorSpan extends ForegroundColorSpan implements ReactSpan {
+-  public ReactForegroundColorSpan(int color) {
+-    super(color);
+-  }
+-}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactForegroundColorSpan.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactForegroundColorSpan.kt
+new file mode 100644
+index 00000000000..66e7aadc099
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactForegroundColorSpan.kt
+@@ -0,0 +1,13 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react.views.text.internal.span
++
++import android.text.style.ForegroundColorSpan
++
++/** Wraps [ForegroundColorSpan] as a [ReactSpan]. */
++public class ReactForegroundColorSpan(color: Int) : ForegroundColorSpan(color), ReactSpan
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactSpan.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactSpan.java
+deleted file mode 100644
+index 4d0bdc212d0..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactSpan.java
++++ /dev/null
+@@ -1,17 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.views.text.internal.span;
+-
+-import com.facebook.infer.annotation.Nullsafe;
+-
+-/*
+- * Enables us to distinguish between spans that were added by React Native and spans that were
+- * added by something else. All spans that React Native adds should implement this interface.
+- */
+-@Nullsafe(Nullsafe.Mode.LOCAL)
+-public interface ReactSpan {}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactSpan.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactSpan.kt
+new file mode 100644
+index 00000000000..264aaf95486
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactSpan.kt
+@@ -0,0 +1,14 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react.views.text.internal.span
++
++/**
++ * Enables us to distinguish between spans that were added by React Native and spans that were added
++ * by something else. All spans that React Native adds should implement this interface.
++ */
++public interface ReactSpan
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactStrikethroughSpan.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactStrikethroughSpan.java
+deleted file mode 100644
+index 1263f679dd7..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactStrikethroughSpan.java
++++ /dev/null
+@@ -1,17 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.views.text.internal.span;
+-
+-import android.text.style.StrikethroughSpan;
+-import com.facebook.infer.annotation.Nullsafe;
+-
+-/*
+- * Wraps {@link StrikethroughSpan} as a {@link ReactSpan}.
+- */
+-@Nullsafe(Nullsafe.Mode.LOCAL)
+-public class ReactStrikethroughSpan extends StrikethroughSpan implements ReactSpan {}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactStrikethroughSpan.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactStrikethroughSpan.kt
+new file mode 100644
+index 00000000000..c1b49c3407f
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactStrikethroughSpan.kt
+@@ -0,0 +1,13 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react.views.text.internal.span
++
++import android.text.style.StrikethroughSpan
++
++/** Wraps [StrikethroughSpan] as a [ReactSpan]. */
++public class ReactStrikethroughSpan : StrikethroughSpan(), ReactSpan
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactTagSpan.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactTagSpan.java
+deleted file mode 100644
+index 965035f98b2..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactTagSpan.java
++++ /dev/null
+@@ -1,28 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.views.text.internal.span;
+-
+-import com.facebook.infer.annotation.Nullsafe;
+-
+-/**
+- * Instances of this class are used to place reactTag information of nested text react nodes into
+- * spannable text rendered by single {@link TextView}
+- */
+-@Nullsafe(Nullsafe.Mode.LOCAL)
+-public class ReactTagSpan implements ReactSpan {
+-
+-  private final int mReactTag;
+-
+-  public ReactTagSpan(int reactTag) {
+-    mReactTag = reactTag;
+-  }
+-
+-  public int getReactTag() {
+-    return mReactTag;
+-  }
+-}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactTagSpan.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactTagSpan.kt
+new file mode 100644
+index 00000000000..1e1c8a17877
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactTagSpan.kt
+@@ -0,0 +1,14 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react.views.text.internal.span
++
++/**
++ * Instances of this class are used to place reactTag information of nested text react nodes into
++ * spannable text rendered by single [TextView]
++ */
++public class ReactTagSpan(public val reactTag: Int) : ReactSpan
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactUnderlineSpan.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactUnderlineSpan.java
+deleted file mode 100644
+index 4b40239aeed..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactUnderlineSpan.java
++++ /dev/null
+@@ -1,17 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.views.text.internal.span;
+-
+-import android.text.style.UnderlineSpan;
+-import com.facebook.infer.annotation.Nullsafe;
+-
+-/*
+- * Wraps {@link UnderlineSpan} as a {@link ReactSpan}.
+- */
+-@Nullsafe(Nullsafe.Mode.LOCAL)
+-public class ReactUnderlineSpan extends UnderlineSpan implements ReactSpan {}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactUnderlineSpan.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactUnderlineSpan.kt
+new file mode 100644
+index 00000000000..a1daa1fea65
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ReactUnderlineSpan.kt
+@@ -0,0 +1,13 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react.views.text.internal.span
++
++import android.text.style.UnderlineSpan
++
++/** Wraps [UnderlineSpan] as a [ReactSpan]. */
++public class ReactUnderlineSpan : UnderlineSpan(), ReactSpan
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/SetSpanOperation.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/SetSpanOperation.java
+deleted file mode 100644
+index 03a84fa11a3..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/SetSpanOperation.java
++++ /dev/null
+@@ -1,66 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.views.text.internal.span;
+-
+-import android.text.Spannable;
+-import android.text.SpannableStringBuilder;
+-import android.text.Spanned;
+-import com.facebook.common.logging.FLog;
+-import com.facebook.infer.annotation.Nullsafe;
+-
+-@Nullsafe(Nullsafe.Mode.LOCAL)
+-public class SetSpanOperation {
+-  private static final String TAG = "SetSpanOperation";
+-  static final int SPAN_MAX_PRIORITY = Spanned.SPAN_PRIORITY >> Spanned.SPAN_PRIORITY_SHIFT;
+-
+-  protected int start, end;
+-
+-  private final ReactSpan what;
+-
+-  public SetSpanOperation(int start, int end, ReactSpan what) {
+-    this.start = start;
+-    this.end = end;
+-    this.what = what;
+-  }
+-
+-  /**
+-   * @param sb builder
+-   * @param priorityIndex index of this operation in the topological sorting which puts operations
+-   *     with higher priority before operations with lower priority.
+-   */
+-  public void execute(SpannableStringBuilder sb, int priorityIndex) {
+-    assert priorityIndex >= 0;
+-
+-    // All spans will automatically extend to the right of the text, but not the left - except
+-    // for spans that start at the beginning of the text.
+-    int spanFlags = Spannable.SPAN_EXCLUSIVE_INCLUSIVE;
+-    if (start == 0) {
+-      spanFlags = Spannable.SPAN_INCLUSIVE_INCLUSIVE;
+-    }
+-
+-    // Calculate priority, assigning the highest values to operations with the highest priority
+-    final int priority = SPAN_MAX_PRIORITY - priorityIndex;
+-
+-    if (priority < 0) {
+-      FLog.w(TAG, "Text tree size exceeded the limit, styling may become unpredictable");
+-    }
+-
+-    // If the computed priority doesn't fit in the flags, clamp it. The effect might not be correct
+-    // in 100% of cases, but doing nothing (as we did in the past) leads to totally random results.
+-    final int effectivePriority = Math.max(priority, 0);
+-
+-    spanFlags &= ~Spannable.SPAN_PRIORITY;
+-    spanFlags |= (effectivePriority << Spannable.SPAN_PRIORITY_SHIFT) & Spannable.SPAN_PRIORITY;
+-
+-    sb.setSpan(what, start, end, spanFlags);
+-  }
+-
+-  public ReactSpan getWhat() {
+-    return what;
+-  }
+-}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/SetSpanOperation.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/SetSpanOperation.kt
+new file mode 100644
+index 00000000000..3b48749f2b5
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/SetSpanOperation.kt
+@@ -0,0 +1,58 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react.views.text.internal.span
++
++import android.text.Spannable
++import android.text.SpannableStringBuilder
++import android.text.Spanned
++import com.facebook.common.logging.FLog
++import kotlin.math.max
++
++public class SetSpanOperation(
++    private val start: Int,
++    private val end: Int,
++    @JvmField public val what: ReactSpan
++) {
++  /**
++   * @param builder Spannable string builder
++   * @param priorityIndex index of this operation in the topological sorting which puts operations
++   *   with higher priority before operations with lower priority.
++   */
++  public fun execute(builder: SpannableStringBuilder, priorityIndex: Int) {
++    check(priorityIndex >= 0)
++    // All spans will automatically extend to the right of the text, but not the left - except
++    // for spans that start at the beginning of the text.
++    var spanFlags = Spannable.SPAN_EXCLUSIVE_INCLUSIVE
++    if (start == 0) {
++      spanFlags = Spannable.SPAN_INCLUSIVE_INCLUSIVE
++    }
++
++    // Calculate priority, assigning the highest values to operations with the highest priority
++    val priority = SPAN_MAX_PRIORITY - priorityIndex
++
++    if (priority < 0) {
++      FLog.w(TAG, "Text tree size exceeded the limit, styling may become unpredictable")
++    }
++
++    // If the computed priority doesn't fit in the flags, clamp it. The effect might not be correct
++    // in 100% of cases, but doing nothing (as we did in the past) leads to totally random results.
++    val effectivePriority = max(priority, 0)
++
++    spanFlags = spanFlags and Spannable.SPAN_PRIORITY.inv()
++    spanFlags =
++        spanFlags or
++            ((effectivePriority shl Spannable.SPAN_PRIORITY_SHIFT) and Spannable.SPAN_PRIORITY)
++
++    builder.setSpan(what, start, end, spanFlags)
++  }
++
++  public companion object {
++    private const val TAG = "SetSpanOperation"
++    public const val SPAN_MAX_PRIORITY: Int = Spanned.SPAN_PRIORITY shr Spanned.SPAN_PRIORITY_SHIFT
++  }
++}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ShadowStyleSpan.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ShadowStyleSpan.java
+deleted file mode 100644
+index 2e0eb235308..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ShadowStyleSpan.java
++++ /dev/null
+@@ -1,30 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.views.text.internal.span;
+-
+-import android.text.TextPaint;
+-import android.text.style.CharacterStyle;
+-import com.facebook.infer.annotation.Nullsafe;
+-
+-@Nullsafe(Nullsafe.Mode.LOCAL)
+-public class ShadowStyleSpan extends CharacterStyle implements ReactSpan {
+-  private final float mDx, mDy, mRadius;
+-  private final int mColor;
+-
+-  public ShadowStyleSpan(float dx, float dy, float radius, int color) {
+-    mDx = dx;
+-    mDy = dy;
+-    mRadius = radius;
+-    mColor = color;
+-  }
+-
+-  @Override
+-  public void updateDrawState(TextPaint textPaint) {
+-    textPaint.setShadowLayer(mRadius, mDx, mDy, mColor);
+-  }
+-}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ShadowStyleSpan.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ShadowStyleSpan.kt
+new file mode 100644
+index 00000000000..392dd518f93
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/ShadowStyleSpan.kt
+@@ -0,0 +1,22 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react.views.text.internal.span
++
++import android.text.TextPaint
++import android.text.style.CharacterStyle
++
++public class ShadowStyleSpan(
++    private val dx: Float,
++    private val dy: Float,
++    private val radius: Float,
++    private val color: Int
++) : CharacterStyle(), ReactSpan {
++  public override fun updateDrawState(textPaint: TextPaint) {
++    textPaint.setShadowLayer(radius, dx, dy, color)
++  }
++}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineImageSpan.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineImageSpan.java
+deleted file mode 100644
+index 8bdc0e9e020..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineImageSpan.java
++++ /dev/null
+@@ -1,61 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.views.text.internal.span;
+-
+-import android.graphics.drawable.Drawable;
+-import android.text.Spannable;
+-import android.text.style.ReplacementSpan;
+-import android.view.View;
+-import android.widget.TextView;
+-import androidx.annotation.Nullable;
+-import com.facebook.infer.annotation.Nullsafe;
+-
+-/** Base class for inline image spans. */
+-@Nullsafe(Nullsafe.Mode.LOCAL)
+-public abstract class TextInlineImageSpan extends ReplacementSpan implements ReactSpan {
+-
+-  /**
+-   * For TextInlineImageSpan we need to update the Span to know that the window is attached and the
+-   * TextView that we will set as the callback on the Drawable.
+-   *
+-   * @param spannable The spannable that may contain TextInlineImageSpans
+-   * @param view The view which will be set as the callback for the Drawable
+-   */
+-  public static void possiblyUpdateInlineImageSpans(Spannable spannable, TextView view) {
+-    TextInlineImageSpan[] spans =
+-        spannable.getSpans(0, spannable.length(), TextInlineImageSpan.class);
+-    for (TextInlineImageSpan span : spans) {
+-      span.onAttachedToWindow();
+-      span.setTextView(view);
+-    }
+-  }
+-
+-  /** Get the drawable that is span represents. */
+-  public abstract @Nullable Drawable getDrawable();
+-
+-  /** Called by the text view from {@link View#onDetachedFromWindow()}, */
+-  public abstract void onDetachedFromWindow();
+-
+-  /** Called by the text view from {@link View#onStartTemporaryDetach()}. */
+-  public abstract void onStartTemporaryDetach();
+-
+-  /** Called by the text view from {@link View#onAttachedToWindow()}. */
+-  public abstract void onAttachedToWindow();
+-
+-  /** Called by the text view from {@link View#onFinishTemporaryDetach()}. */
+-  public abstract void onFinishTemporaryDetach();
+-
+-  /** Set the textview that will contain this span. */
+-  public abstract void setTextView(TextView textView);
+-
+-  /** Get the width of the span. */
+-  public abstract int getWidth();
+-
+-  /** Get the height of the span. */
+-  public abstract int getHeight();
+-}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineImageSpan.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineImageSpan.kt
+new file mode 100644
+index 00000000000..63772089a2b
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineImageSpan.kt
+@@ -0,0 +1,58 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react.views.text.internal.span
++
++import android.graphics.drawable.Drawable
++import android.text.Spannable
++import android.text.style.ReplacementSpan
++import android.view.View
++import android.widget.TextView
++
++/** Base class for inline image spans. */
++public abstract class TextInlineImageSpan : ReplacementSpan(), ReactSpan {
++  /** Get the drawable that is span represents. */
++  public abstract val drawable: Drawable?
++
++  /** Called by the text view from [View.onDetachedFromWindow], */
++  public abstract fun onDetachedFromWindow()
++
++  /** Called by the text view from [View.onStartTemporaryDetach]. */
++  public abstract fun onStartTemporaryDetach()
++
++  /** Called by the text view from [View.onAttachedToWindow]. */
++  public abstract fun onAttachedToWindow()
++
++  /** Called by the text view from [View.onFinishTemporaryDetach]. */
++  public abstract fun onFinishTemporaryDetach()
++
++  /** Set the textview that will contain this span. */
++  public abstract fun setTextView(textView: TextView?)
++
++  /** Get the width of the span. */
++  public abstract val width: Int
++
++  /** Get the height of the span. */
++  public abstract val height: Int
++
++  public companion object {
++    /**
++     * For TextInlineImageSpan we need to update the Span to know that the window is attached and
++     * the TextView that we will set as the callback on the Drawable.
++     *
++     * @param spannable The spannable that may contain TextInlineImageSpans
++     * @param view The view which will be set as the callback for the Drawable
++     */
++    @JvmStatic
++    public fun possiblyUpdateInlineImageSpans(spannable: Spannable, view: TextView?) {
++      spannable.getSpans(0, spannable.length, TextInlineImageSpan::class.java).forEach { s ->
++        s.onAttachedToWindow()
++        s.setTextView(view)
++      }
++    }
++  }
++}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineViewPlaceholderSpan.java b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineViewPlaceholderSpan.java
+deleted file mode 100644
+index 5ecfc969854..00000000000
+--- a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineViewPlaceholderSpan.java
++++ /dev/null
+@@ -1,69 +0,0 @@
+-/*
+- * Copyright (c) Meta Platforms, Inc. and affiliates.
+- *
+- * This source code is licensed under the MIT license found in the
+- * LICENSE file in the root directory of this source tree.
+- */
+-
+-package com.facebook.react.views.text.internal.span;
+-
+-import android.graphics.Canvas;
+-import android.graphics.Paint;
+-import android.text.style.ReplacementSpan;
+-import com.facebook.infer.annotation.Nullsafe;
+-
+-/**
+- * TextInlineViewPlaceholderSpan is a span for inlined views that are inside <Text/>. It computes
+- * its size based on the input size. It contains no draw logic, just positioning logic.
+- */
+-@Nullsafe(Nullsafe.Mode.LOCAL)
+-public class TextInlineViewPlaceholderSpan extends ReplacementSpan implements ReactSpan {
+-  private int mReactTag;
+-  private int mWidth;
+-  private int mHeight;
+-
+-  public TextInlineViewPlaceholderSpan(int reactTag, int width, int height) {
+-    mReactTag = reactTag;
+-    mWidth = width;
+-    mHeight = height;
+-  }
+-
+-  public int getReactTag() {
+-    return mReactTag;
+-  }
+-
+-  public int getWidth() {
+-    return mWidth;
+-  }
+-
+-  public int getHeight() {
+-    return mHeight;
+-  }
+-
+-  @Override
+-  public int getSize(Paint paint, CharSequence text, int start, int end, Paint.FontMetricsInt fm) {
+-    // NOTE: This getSize code is copied from DynamicDrawableSpan and modified to not use a Drawable
+-
+-    if (fm != null) {
+-      fm.ascent = -mHeight;
+-      fm.descent = 0;
+-
+-      fm.top = fm.ascent;
+-      fm.bottom = 0;
+-    }
+-
+-    return mWidth;
+-  }
+-
+-  @Override
+-  public void draw(
+-      Canvas canvas,
+-      CharSequence text,
+-      int start,
+-      int end,
+-      float x,
+-      int top,
+-      int y,
+-      int bottom,
+-      Paint paint) {}
+-}
+diff --git a/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineViewPlaceholderSpan.kt b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineViewPlaceholderSpan.kt
+new file mode 100644
+index 00000000000..e1a960be0b5
+--- /dev/null
++++ b/packages/react-native/ReactAndroid/src/main/java/com/facebook/react/views/text/internal/span/TextInlineViewPlaceholderSpan.kt
+@@ -0,0 +1,52 @@
++/*
++ * Copyright (c) Meta Platforms, Inc. and affiliates.
++ *
++ * This source code is licensed under the MIT license found in the
++ * LICENSE file in the root directory of this source tree.
++ */
++
++package com.facebook.react.views.text.internal.span
++
++import android.graphics.Canvas
++import android.graphics.Paint
++import android.graphics.Paint.FontMetricsInt
++import android.text.style.ReplacementSpan
++
++/**
++ * TextInlineViewPlaceholderSpan is a span for inlined views that are inside <Text></Text>. It
++ * computes its size based on the input size. It contains no draw logic, just positioning logic.
++ */
++public class TextInlineViewPlaceholderSpan(
++    public val reactTag: Int,
++    public val width: Int,
++    public val height: Int
++) : ReplacementSpan(), ReactSpan {
++  public override fun getSize(
++      paint: Paint,
++      text: CharSequence?,
++      start: Int,
++      end: Int,
++      fm: FontMetricsInt?
++  ): Int {
++    // NOTE: This getSize code is copied from DynamicDrawableSpan and modified to not use a Drawable
++    if (fm != null) {
++      fm.ascent = -height
++      fm.descent = 0
++      fm.top = fm.ascent
++      fm.bottom = 0
++    }
++    return width
++  }
++
++  public override fun draw(
++      canvas: Canvas,
++      text: CharSequence?,
++      start: Int,
++      end: Int,
++      x: Float,
++      top: Int,
++      y: Int,
++      bottom: Int,
++      paint: Paint
++  ): Unit = Unit
++}

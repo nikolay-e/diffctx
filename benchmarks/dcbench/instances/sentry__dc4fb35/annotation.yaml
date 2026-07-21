@@ -1,0 +1,68 @@
+repo: sentry
+base_commit: ec83ee62f0bf4da76770234054e83a291a7d1630
+commit: dc4fb35aff0ceebecee769af2d88891d59915a5f
+patch_stored: true
+gold:
+- path: .github/CODEOWNERS
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: pyproject.toml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/api/urls.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/conf/server.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/deletions/defaults/organization.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/middleware/integrations/parsers/github.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/options/defaults.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/seer/code_review/billing.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/seer/code_review/utils.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/seer/code_review/webhooks/config.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/seer/code_review/webhooks/issue_comment.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: src/sentry/seer/code_review/webhooks/pull_request.py
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: tests/sentry/overwatch/endpoints/test_overwatch_rpc.py
+- path: tests/sentry/overwatch_webhooks/test_webhook_forwarder.py
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: status=hang on a deletion-dominated commit (35 files, 50 insertions/3,416 deletions) removing the
+  Overwatch subsystem wholesale. Per the task's own carve-out, pure deletions should surface cleanly as
+  deleted_files with no fragments -- but this commit isn't pure deletion, it has ~9 files with real modifications
+  (url routing cleanup, settings cleanup, seer/code_review webhook changes referencing the removed module)
+  that a reader needs to see. diffctx produced nothing at all, failing even the easy 'just list the deleted
+  tree + show the 9 real edits' bar. Given the moderate size (35 files, most of it in already-known-deleted
+  whole files), this hang is harder to attribute purely to scale, echoing the gitpod/035 concern that
+  something structural about mixed delete+edit diffs may be triggering it.

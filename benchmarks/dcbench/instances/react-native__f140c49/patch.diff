@@ -1,0 +1,504 @@
+From f140c4906b286a85772d0b7d97eecd0798805fcd Mon Sep 17 00:00:00 2001
+From: Riccardo Cipolleschi <cipolleschi@meta.com>
+Date: Wed, 7 Jan 2026 05:34:12 -0800
+Subject: [PATCH] Use Hermes V1 as default engine (#54989)
+
+Summary:
+This change makes Hermes V1 the default engine for React Native for both platforms. This change needs to land before the branch cut of react native 0.84
+
+bypass-github-export-checks
+
+## Changelog:
+[iOS][Changed] - Make Hermes V1 the default engine for iOS
+
+Pull Request resolved: https://github.com/facebook/react-native/pull/54989
+
+Test Plan:
+1. Run `bundle exec pod install` and verified that Hermes V1 is used when building from source
+<img height="480" alt="Simulator Screenshot - iPhone 17 Pro - 2025-12-29 at 11 28 44" src="https://github.com/user-attachments/assets/0889f16c-f2ee-4a0e-9a4d-529dd82c8283" />
+2. Run `prebuild-ios -s` and verified that the scripts downloads the Hermes V1 tarball
+<img width="831" height="324" alt="Screenshot 2025-12-29 at 10 37 53" src="https://github.com/user-attachments/assets/9a60565e-1e13-4967-a4a4-dd079e6b040f" />
+3. GHA and nightlies
+
+Reviewed By: vzaidman, cortinico, huntie
+
+Differential Revision: D89881943
+
+Pulled By: cipolleschi
+
+fbshipit-source-id: 958b6d31bd4230ba4a5c7fee2bffc19e03dcbc89
+---
+ .github/workflows/prebuild-ios-core.yml       |  6 ++-
+ gradle.properties                             |  2 +-
+ .../react/internal/PrivateReactExtension.kt   |  2 +-
+ .../facebook/react/utils/DependencyUtils.kt   |  4 +-
+ .../com/facebook/react/utils/ProjectUtils.kt  | 24 ++++++++----
+ .../react/utils/DependencyUtilsTest.kt        | 38 +++++++++++++------
+ .../facebook/react/utils/ProjectUtilsTest.kt  |  4 +-
+ packages/react-native/Package.swift           |  1 +
+ .../hermes/executor/HermesExecutorFactory.cpp |  2 +
+ .../scripts/ios-prebuild/hermes.js            | 27 +++++++++++--
+ .../react-native/scripts/react_native_pods.rb |  5 +++
+ .../sdks/hermes-engine/hermes-engine.podspec  | 21 +++++++---
+ .../sdks/hermes-engine/hermes-utils.rb        |  2 +-
+ scripts/releases/utils/hermes-utils.js        |  4 +-
+ 14 files changed, 103 insertions(+), 39 deletions(-)
+
+diff --git a/.github/workflows/prebuild-ios-core.yml b/.github/workflows/prebuild-ios-core.yml
+index aff263a75bd..b3fa449e442 100644
+--- a/.github/workflows/prebuild-ios-core.yml
++++ b/.github/workflows/prebuild-ios-core.yml
+@@ -50,9 +50,11 @@ jobs:
+         shell: bash
+         run: |
+           if [ "${{ inputs.use-hermes-nightly }}" == "true" ]; then
+-            HERMES_VERSION="nightly"
++            # We are not publishing nightly versions of Hermes V1 yet.
++            # For now, we can use the latest version of Hermes V1 published on maven and npm.
++            HERMES_VERSION="latest-v1"
+           else
+-            HERMES_VERSION=$(sed -n 's/^HERMES_VERSION_NAME=//p' packages/react-native/sdks/hermes-engine/version.properties)
++            HERMES_VERSION=$(sed -n 's/^HERMES_V1_VERSION_NAME=//p' packages/react-native/sdks/hermes-engine/version.properties)
+           fi
+           echo "Using Hermes version: $HERMES_VERSION"
+           echo "HERMES_VERSION=$HERMES_VERSION" >> $GITHUB_ENV
+diff --git a/gradle.properties b/gradle.properties
+index f494dd4fe8c..d7c39175371 100644
+--- a/gradle.properties
++++ b/gradle.properties
+@@ -26,4 +26,4 @@ react.internal.useHermesStable=false
+ react.internal.useHermesNightly=true
+ 
+ # Controls whether to use Hermes 1.0. Clean and rebuild when changing.
+-hermesV1Enabled=false
++hermesV1Enabled=true
+diff --git a/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/internal/PrivateReactExtension.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/internal/PrivateReactExtension.kt
+index 2285d3fac00..26174c0ce0d 100644
+--- a/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/internal/PrivateReactExtension.kt
++++ b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/internal/PrivateReactExtension.kt
+@@ -59,5 +59,5 @@ abstract class PrivateReactExtension @Inject constructor(project: Project) {
+   val codegenDir: DirectoryProperty =
+       objects.directoryProperty().convention(root.dir("node_modules/@react-native/codegen"))
+ 
+-  val hermesV1Enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(false)
++  val hermesV1Enabled: Property<Boolean> = objects.property(Boolean::class.java).convention(true)
+ }
+diff --git a/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/DependencyUtils.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/DependencyUtils.kt
+index f93ef2c9c14..756e6f3f29c 100644
+--- a/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/DependencyUtils.kt
++++ b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/DependencyUtils.kt
+@@ -113,7 +113,7 @@ internal object DependencyUtils {
+   fun configureDependencies(
+       project: Project,
+       coordinates: Coordinates,
+-      hermesV1Enabled: Boolean = false,
++      hermesV1Enabled: Boolean = true,
+   ) {
+     if (
+         coordinates.versionString.isBlank() ||
+@@ -149,7 +149,7 @@ internal object DependencyUtils {
+ 
+   internal fun getDependencySubstitutions(
+       coordinates: Coordinates,
+-      hermesV1Enabled: Boolean = false,
++      hermesV1Enabled: Boolean = true,
+   ): List<Triple<String, String, String>> {
+     val dependencySubstitution = mutableListOf<Triple<String, String, String>>()
+     val hermesVersion =
+diff --git a/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/ProjectUtils.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/ProjectUtils.kt
+index f6a147426f1..805b9f92dd5 100644
+--- a/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/ProjectUtils.kt
++++ b/packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/ProjectUtils.kt
+@@ -29,6 +29,8 @@ internal object ProjectUtils {
+ 
+   const val HERMES_FALLBACK = true
+ 
++  const val HERMES_V1_ENABLED_FALLBACK = true
++
+   internal fun Project.isNewArchEnabled(): Boolean = true
+ 
+   internal val Project.isHermesEnabled: Boolean
+@@ -73,14 +75,20 @@ internal object ProjectUtils {
+ 
+   internal val Project.isHermesV1Enabled: Boolean
+     get() =
+-        (project.hasProperty(HERMES_V1_ENABLED) &&
+-            project.property(HERMES_V1_ENABLED).toString().toBoolean()) ||
+-            (project.hasProperty(SCOPED_HERMES_V1_ENABLED) &&
+-                project.property(SCOPED_HERMES_V1_ENABLED).toString().toBoolean()) ||
+-            (project.extraProperties.has(HERMES_V1_ENABLED) &&
+-                project.extraProperties.get(HERMES_V1_ENABLED).toString().toBoolean()) ||
+-            (project.extraProperties.has(SCOPED_HERMES_V1_ENABLED) &&
+-                project.extraProperties.get(SCOPED_HERMES_V1_ENABLED).toString().toBoolean())
++        if (
++            project.hasProperty(HERMES_V1_ENABLED) || project.hasProperty(SCOPED_HERMES_V1_ENABLED)
++        ) {
++          (project.hasProperty(HERMES_V1_ENABLED) &&
++              project.property(HERMES_V1_ENABLED).toString().toBoolean()) ||
++              (project.hasProperty(SCOPED_HERMES_V1_ENABLED) &&
++                  project.property(SCOPED_HERMES_V1_ENABLED).toString().toBoolean()) ||
++              (project.extraProperties.has(HERMES_V1_ENABLED) &&
++                  project.extraProperties.get(HERMES_V1_ENABLED).toString().toBoolean()) ||
++              (project.extraProperties.has(SCOPED_HERMES_V1_ENABLED) &&
++                  project.extraProperties.get(SCOPED_HERMES_V1_ENABLED).toString().toBoolean())
++        } else {
++          HERMES_V1_ENABLED_FALLBACK
++        }
+ 
+   internal fun Project.needsCodegenFromPackageJson(rootProperty: DirectoryProperty): Boolean {
+     val parsedPackageJson = readPackageJsonFile(this, rootProperty)
+diff --git a/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/DependencyUtilsTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/DependencyUtilsTest.kt
+index b48ea798463..7544522d4c0 100644
+--- a/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/DependencyUtilsTest.kt
++++ b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/DependencyUtilsTest.kt
+@@ -290,6 +290,8 @@ class DependencyUtilsTest {
+     assertThat(forcedModules.any { it.toString() == "com.facebook.react:react-android:1.2.3" })
+         .isTrue()
+     assertThat(forcedModules.any { it.toString() == "com.facebook.hermes:hermes-android:4.5.6" })
++        .isFalse()
++    assertThat(forcedModules.any { it.toString() == "com.facebook.hermes:hermes-android:7.8.9" })
+         .isTrue()
+   }
+ 
+@@ -325,10 +327,14 @@ class DependencyUtilsTest {
+     assertThat(appForcedModules.any { it.toString() == "com.facebook.react:react-android:1.2.3" })
+         .isTrue()
+     assertThat(appForcedModules.any { it.toString() == "com.facebook.hermes:hermes-android:4.5.6" })
++        .isFalse()
++    assertThat(appForcedModules.any { it.toString() == "com.facebook.hermes:hermes-android:7.8.9" })
+         .isTrue()
+     assertThat(libForcedModules.any { it.toString() == "com.facebook.react:react-android:1.2.3" })
+         .isTrue()
+     assertThat(libForcedModules.any { it.toString() == "com.facebook.hermes:hermes-android:4.5.6" })
++        .isFalse()
++    assertThat(libForcedModules.any { it.toString() == "com.facebook.hermes:hermes-android:7.8.9" })
+         .isTrue()
+   }
+ 
+@@ -384,12 +390,20 @@ class DependencyUtilsTest {
+     assertThat(
+             appForcedModules.any { it.toString() == "io.github.test.hermes:hermes-android:4.5.6" }
+         )
++        .isFalse()
++    assertThat(
++            appForcedModules.any { it.toString() == "io.github.test.hermes:hermes-android:7.8.9" }
++        )
+         .isTrue()
+     assertThat(libForcedModules.any { it.toString() == "io.github.test:react-android:1.2.3" })
+         .isTrue()
+     assertThat(
+             libForcedModules.any { it.toString() == "io.github.test.hermes:hermes-android:4.5.6" }
+         )
++        .isFalse()
++    assertThat(
++            libForcedModules.any { it.toString() == "io.github.test.hermes:hermes-android:7.8.9" }
++        )
+         .isTrue()
+   }
+ 
+@@ -430,7 +444,7 @@ class DependencyUtilsTest {
+   }
+ 
+   @Test
+-  fun getDependencySubstitutions_withDefaultGroup_substitutesCorrectly_withClassicHermes() {
++  fun getDependencySubstitutions_withDefaultGroup_substitutesCorrectly_withHermesV1() {
+     val dependencySubstitutions =
+         getDependencySubstitutions(DependencyUtils.Coordinates("0.42.0", "0.42.0", "0.43.0"))
+ 
+@@ -442,7 +456,7 @@ class DependencyUtilsTest {
+         )
+         .isEqualTo(dependencySubstitutions[0].third)
+     assertThat("com.facebook.react:hermes-engine").isEqualTo(dependencySubstitutions[1].first)
+-    assertThat("com.facebook.hermes:hermes-android:0.42.0")
++    assertThat("com.facebook.hermes:hermes-android:0.43.0")
+         .isEqualTo(dependencySubstitutions[1].second)
+     assertThat(
+             "The hermes-engine artifact was deprecated in favor of hermes-android due to https://github.com/facebook/react-native/issues/35210."
+@@ -451,7 +465,7 @@ class DependencyUtilsTest {
+   }
+ 
+   @Test
+-  fun getDependencySubstitutions_withDefaultGroup_substitutesCorrectly_withHermesV1() {
++  fun getDependencySubstitutions_withDefaultGroupAndFallback_substitutesCorrectly_withClassicHermes() {
+     val dependencySubstitutions =
+         getDependencySubstitutions(
+             DependencyUtils.Coordinates("0.42.0", "0.42.0", "0.43.0"),
+@@ -475,7 +489,7 @@ class DependencyUtilsTest {
+   }
+ 
+   @Test
+-  fun getDependencySubstitutions_withCustomGroup_substitutesCorrectly_withClassicHermes() {
++  fun getDependencySubstitutions_withCustomGroup_substitutesCorrectly_withHermesV1() {
+     val dependencySubstitutions =
+         getDependencySubstitutions(
+             DependencyUtils.Coordinates(
+@@ -494,14 +508,14 @@ class DependencyUtilsTest {
+         )
+         .isEqualTo(dependencySubstitutions[0].third)
+     assertThat("com.facebook.react:hermes-engine").isEqualTo(dependencySubstitutions[1].first)
+-    assertThat("io.github.test.hermes:hermes-android:0.42.0")
++    assertThat("io.github.test.hermes:hermes-android:0.43.0")
+         .isEqualTo(dependencySubstitutions[1].second)
+     assertThat(
+             "The hermes-engine artifact was deprecated in favor of hermes-android due to https://github.com/facebook/react-native/issues/35210."
+         )
+         .isEqualTo(dependencySubstitutions[1].third)
+     assertThat("com.facebook.react:hermes-android").isEqualTo(dependencySubstitutions[2].first)
+-    assertThat("io.github.test.hermes:hermes-android:0.42.0")
++    assertThat("io.github.test.hermes:hermes-android:0.43.0")
+         .isEqualTo(dependencySubstitutions[2].second)
+     assertThat("The hermes-android artifact was moved to com.facebook.hermes publishing group.")
+         .isEqualTo(dependencySubstitutions[2].third)
+@@ -510,14 +524,14 @@ class DependencyUtilsTest {
+     assertThat("The react-android dependency was modified to use the correct Maven group.")
+         .isEqualTo(dependencySubstitutions[3].third)
+     assertThat("com.facebook.react:hermes-android").isEqualTo(dependencySubstitutions[4].first)
+-    assertThat("io.github.test.hermes:hermes-android:0.42.0")
++    assertThat("io.github.test.hermes:hermes-android:0.43.0")
+         .isEqualTo(dependencySubstitutions[4].second)
+     assertThat("The hermes-android dependency was modified to use the correct Maven group.")
+         .isEqualTo(dependencySubstitutions[4].third)
+   }
+ 
+   @Test
+-  fun getDependencySubstitutions_withCustomGroup_substitutesCorrectly_withHermesV1() {
++  fun getDependencySubstitutions_withCustomGroupAndFallbackToClassicHermes_substitutesCorrectly_withClassicHermes() {
+     val dependencySubstitutions =
+         getDependencySubstitutions(
+             DependencyUtils.Coordinates(
+@@ -527,7 +541,7 @@ class DependencyUtilsTest {
+                 "io.github.test",
+                 "io.github.test.hermes",
+             ),
+-            hermesV1Enabled = true,
++            hermesV1Enabled = false,
+         )
+ 
+     assertThat("com.facebook.react:react-native").isEqualTo(dependencySubstitutions[0].first)
+@@ -537,14 +551,14 @@ class DependencyUtilsTest {
+         )
+         .isEqualTo(dependencySubstitutions[0].third)
+     assertThat("com.facebook.react:hermes-engine").isEqualTo(dependencySubstitutions[1].first)
+-    assertThat("io.github.test.hermes:hermes-android:0.43.0")
++    assertThat("io.github.test.hermes:hermes-android:0.42.0")
+         .isEqualTo(dependencySubstitutions[1].second)
+     assertThat(
+             "The hermes-engine artifact was deprecated in favor of hermes-android due to https://github.com/facebook/react-native/issues/35210."
+         )
+         .isEqualTo(dependencySubstitutions[1].third)
+     assertThat("com.facebook.react:hermes-android").isEqualTo(dependencySubstitutions[2].first)
+-    assertThat("io.github.test.hermes:hermes-android:0.43.0")
++    assertThat("io.github.test.hermes:hermes-android:0.42.0")
+         .isEqualTo(dependencySubstitutions[2].second)
+     assertThat("The hermes-android artifact was moved to com.facebook.hermes publishing group.")
+         .isEqualTo(dependencySubstitutions[2].third)
+@@ -553,7 +567,7 @@ class DependencyUtilsTest {
+     assertThat("The react-android dependency was modified to use the correct Maven group.")
+         .isEqualTo(dependencySubstitutions[3].third)
+     assertThat("com.facebook.react:hermes-android").isEqualTo(dependencySubstitutions[4].first)
+-    assertThat("io.github.test.hermes:hermes-android:0.43.0")
++    assertThat("io.github.test.hermes:hermes-android:0.42.0")
+         .isEqualTo(dependencySubstitutions[4].second)
+     assertThat("The hermes-android dependency was modified to use the correct Maven group.")
+         .isEqualTo(dependencySubstitutions[4].third)
+diff --git a/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/ProjectUtilsTest.kt b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/ProjectUtilsTest.kt
+index a22933e6aac..f4ec2a40acf 100644
+--- a/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/ProjectUtilsTest.kt
++++ b/packages/gradle-plugin/react-native-gradle-plugin/src/test/kotlin/com/facebook/react/utils/ProjectUtilsTest.kt
+@@ -117,8 +117,8 @@ class ProjectUtilsTest {
+   }
+ 
+   @Test
+-  fun isHermesV1Enabled_returnsFalseByDefault() {
+-    assertThat(createProject().isHermesV1Enabled).isFalse()
++  fun isHermesV1Enabled_returnsTrueByDefault() {
++    assertThat(createProject().isHermesV1Enabled).isTrue()
+   }
+ 
+   @Test
+diff --git a/packages/react-native/Package.swift b/packages/react-native/Package.swift
+index 8a358806be1..0b2ec65ab2b 100644
+--- a/packages/react-native/Package.swift
++++ b/packages/react-native/Package.swift
+@@ -924,6 +924,7 @@ extension Target {
+         .define("NDEBUG", .when(configuration: .release)),
+         .define("USE_HERMES", to: "1"),
+         .define("RCT_REMOVE_LEGACY_ARCH", to: "1"),
++        .define("HERMES_V1_ENABLED", to: "1"),
+       ] + defines + cxxCommonHeaderPaths
+ 
+     return .target(
+diff --git a/packages/react-native/ReactCommon/hermes/executor/HermesExecutorFactory.cpp b/packages/react-native/ReactCommon/hermes/executor/HermesExecutorFactory.cpp
+index 8d58bb3774a..95197949942 100644
+--- a/packages/react-native/ReactCommon/hermes/executor/HermesExecutorFactory.cpp
++++ b/packages/react-native/ReactCommon/hermes/executor/HermesExecutorFactory.cpp
+@@ -13,6 +13,8 @@
+ #include <jsi/decorator.h>
+ #include <jsinspector-modern/InspectorFlags.h>
+ 
++#include <thread>
++
+ #include <hermes/inspector-modern/chrome/HermesRuntimeTargetDelegate.h>
+ 
+ #if defined(HERMES_ENABLE_DEBUGGER) && !defined(HERMES_V1_ENABLED)
+diff --git a/packages/react-native/scripts/ios-prebuild/hermes.js b/packages/react-native/scripts/ios-prebuild/hermes.js
+index fef7e0f44b2..7e8a7600606 100644
+--- a/packages/react-native/scripts/ios-prebuild/hermes.js
++++ b/packages/react-native/scripts/ios-prebuild/hermes.js
+@@ -54,9 +54,13 @@ async function prepareHermesArtifactsAsync(
+   // Only check if the artifacts folder exists if we are not using a local tarball
+   if (!localPath) {
+     // Resolve the version from the environment variable or use the default version
+-    let resolvedVersion = process.env.HERMES_VERSION ?? 'nightly';
++    let resolvedVersion = process.env.HERMES_VERSION ?? 'latest-v1';
+ 
+-    if (resolvedVersion === 'nightly') {
++    if (resolvedVersion === 'latest-v1') {
++      hermesLog('Using latest-v1 tarball');
++      const hermesVersion = await getLatestV1VersionFromNPM();
++      resolvedVersion = hermesVersion;
++    } else if (resolvedVersion === 'nightly') {
+       hermesLog('Using latest nightly tarball');
+       const hermesVersion = await getNightlyVersionFromNPM();
+       resolvedVersion = hermesVersion;
+@@ -102,6 +106,23 @@ async function prepareHermesArtifactsAsync(
+   return artifactsPath;
+ }
+ 
++async function getLatestV1VersionFromNPM() /*: Promise<string> */ {
++  const npmResponse /*: Response */ = await fetch(
++    'https://registry.npmjs.org/hermes-compiler/latest-v1',
++  );
++
++  if (!npmResponse.ok) {
++    throw new Error(
++      `Couldn't get a response from NPM: ${npmResponse.status} ${npmResponse.statusText}`,
++    );
++  }
++
++  const json = await npmResponse.json();
++  const latestV1 = json.version;
++  hermesLog(`Using version ${latestV1}`);
++  return latestV1;
++}
++
+ async function getNightlyVersionFromNPM() /*: Promise<string> */ {
+   const npmResponse /*: Response */ = await fetch(
+     'https://registry.npmjs.org/hermes-compiler/nightly',
+@@ -109,7 +130,7 @@ async function getNightlyVersionFromNPM() /*: Promise<string> */ {
+ 
+   if (!npmResponse.ok) {
+     throw new Error(
+-      `Couldn't get an answer from NPM: ${npmResponse.status} ${npmResponse.statusText}`,
++      `Couldn't get a response from NPM: ${npmResponse.status} ${npmResponse.statusText}`,
+     );
+   }
+ 
+diff --git a/packages/react-native/scripts/react_native_pods.rb b/packages/react-native/scripts/react_native_pods.rb
+index 44dbd2e83fc..231f42025bd 100644
+--- a/packages/react-native/scripts/react_native_pods.rb
++++ b/packages/react-native/scripts/react_native_pods.rb
+@@ -92,6 +92,11 @@ def use_react_native! (
+   # excluding the legacy arch unless the user turns this flag off explicitly.
+   ENV['RCT_REMOVE_LEGACY_ARCH'] = ENV['RCT_REMOVE_LEGACY_ARCH'] == '0' ? '0' : '1'
+ 
++  # Enable Hermes V1 by default.
++  # Users can still turn it off and use legacy hermes by setting the RCT_HERMES_V1_ENABLED
++  # environment variable to '0'.
++  ENV['RCT_HERMES_V1_ENABLED']= ENV['RCT_HERMES_V1_ENABLED'] == '0' ? '0' : '1'
++
+   ReactNativePodsUtils.check_minimum_required_xcode()
+ 
+   # Current target definition is provided by Cocoapods and it refers to the target
+diff --git a/packages/react-native/sdks/hermes-engine/hermes-engine.podspec b/packages/react-native/sdks/hermes-engine/hermes-engine.podspec
+index 05ea840726f..58e003985c6 100644
+--- a/packages/react-native/sdks/hermes-engine/hermes-engine.podspec
++++ b/packages/react-native/sdks/hermes-engine/hermes-engine.podspec
+@@ -22,14 +22,15 @@ end
+ package = JSON.parse(File.read(File.join(react_native_path, "package.json")))
+ versionProperties = Hash[*File.read("version.properties").split(/[=\n]+/)]
+ 
+-if ENV['RCT_HERMES_V1_ENABLED'] == "1"
+-  version = versionProperties['HERMES_V1_VERSION_NAME']
+-else
++if ENV['RCT_HERMES_V1_ENABLED'] == "0"
+   version = versionProperties['HERMES_VERSION_NAME']
++else
++  version = versionProperties['HERMES_V1_VERSION_NAME']
+ end
+ 
+ # Local monorepo build
+-if package['version'] == "1000.0.0" then
++# We don't want to build Hermes V1 from source
++if ENV['RCT_HERMES_V1_ENABLED'] == "0" && package['version'] == "1000.0.0" then
+   hermesCompilerVersion = package['dependencies']['hermes-compiler']
+   if hermesCompilerVersion != "0.0.0" then
+     version = hermesCompilerVersion
+@@ -68,7 +69,15 @@ Pod::Spec.new do |spec|
+ 
+     spec.subspec 'Pre-built' do |ss|
+       ss.preserve_paths = ["destroot/bin/*"].concat(["**/*.{h,c,cpp}"])
+-      ss.source_files = "destroot/include/hermes/**/*.h"
++      if ENV["RCT_HERMES_V1_ENABLED"] == "0"
++        ss.source_files = "destroot/include/hermes/**/*.h"
++      else
++        # Hermes v1 is shipping a jsi/hermes.h header which is imported by the hermes.h header
++        # and that file is not present in React Native's JSI
++        # (see https://github.com/facebook/react-native/tree/main/packages/react-native/ReactCommon/jsi/jsi/ where there is
++        # hermes-interface.h but not hermes.h)
++        ss.source_files = ["destroot/include/hermes/**/*.h", "destroot/include/jsi/hermes.h"]
++      end
+       ss.header_mappings_dir = "destroot/include"
+       ss.ios.vendored_frameworks = "destroot/Library/Frameworks/universal/hermesvm.xcframework"
+       ss.visionos.vendored_frameworks = "destroot/Library/Frameworks/universal/hermesvm.xcframework"
+@@ -131,7 +140,7 @@ Pod::Spec.new do |spec|
+       ss.header_dir = 'hermes/Public'
+     end
+ 
+-    if ENV['RCT_HERMES_V1_ENABLED'] != "1"
++    if ENV['RCT_HERMES_V1_ENABLED'] == "0"
+       spec.subspec 'inspector' do |ss|
+         ss.source_files = ''
+         ss.public_header_files = 'API/hermes/inspector/*.h'
+diff --git a/packages/react-native/sdks/hermes-engine/hermes-utils.rb b/packages/react-native/sdks/hermes-engine/hermes-utils.rb
+index c116c93adc5..65e7e450b28 100644
+--- a/packages/react-native/sdks/hermes-engine/hermes-utils.rb
++++ b/packages/react-native/sdks/hermes-engine/hermes-utils.rb
+@@ -86,7 +86,7 @@ def hermes_commit_envvar_defined()
+ end
+ 
+ def hermes_v1_enabled()
+-    return ENV['RCT_HERMES_V1_ENABLED'] == "1"
++    return ENV['RCT_HERMES_V1_ENABLED'] != "0"
+ end
+ 
+ def force_build_from_tag(react_native_path)
+diff --git a/scripts/releases/utils/hermes-utils.js b/scripts/releases/utils/hermes-utils.js
+index 37b57893663..dd067788afb 100644
+--- a/scripts/releases/utils/hermes-utils.js
++++ b/scripts/releases/utils/hermes-utils.js
+@@ -27,6 +27,7 @@ const MAVEN_VERSIONS_FILE_PATH = path.join(
+ 
+ async function getLatestHermesNightlyVersion() /*: Promise<{
+   compilerVersion: string,
++  compilerV1Version: string,
+   runtimeVersion: string,
+   runtimeV1Version: string,
+ }> */ {
+@@ -43,6 +44,7 @@ async function getLatestHermesNightlyVersion() /*: Promise<{
+ 
+   return {
+     compilerVersion,
++    compilerV1Version,
+     // runtime version should match the compiler version
+     runtimeVersion: compilerVersion,
+     runtimeV1Version: compilerV1Version,
+@@ -84,7 +86,7 @@ async function updateHermesRuntimeDependenciesVersions(
+ async function updateHermesVersionsToNightly() {
+   const hermesVersions = await getLatestHermesNightlyVersion();
+   await updateHermesCompilerVersionInDependencies(
+-    hermesVersions.compilerVersion,
++    hermesVersions.compilerV1Version,
+   );
+   await updateHermesRuntimeDependenciesVersions(
+     hermesVersions.runtimeVersion,

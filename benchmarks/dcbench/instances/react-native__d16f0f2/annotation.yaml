@@ -1,0 +1,84 @@
+repo: react-native
+base_commit: c61c80b5c3c1de908692699768342af77fd48eee
+commit: d16f0f297c2abd45785c0c6bd94532535b41da0f
+patch_stored: true
+gold:
+- path: packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformance.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformanceObserver.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/nativemodule/webperformance/NativePerformanceObserver.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/performance/timeline/PerformanceEntryReporter.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/core/EventDispatcher.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/core/EventDispatcher.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/core/EventLogger.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/core/EventQueueProcessor.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/core/EventQueueProcessor.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/observers/events/EventPerformanceLogger.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/observers/events/EventPerformanceLogger.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/scheduler/Scheduler.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/react-native/Libraries/NativeComponent/BaseViewConfig.android.js
+- path: packages/react-native/ReactAndroid/src/main/jni/react/jni/JSLoader.cpp
+- path: packages/react-native/ReactAndroid/src/main/jni/react/jni/MethodInvoker.cpp
+- path: packages/react-native/ReactCommon/cxxreact/Instance.cpp
+- path: packages/react-native/ReactCommon/cxxreact/ModuleRegistry.cpp
+- path: packages/react-native/ReactCommon/cxxreact/NativeToJsBridge.cpp
+- path: packages/react-native/ReactCommon/hermes/executor/HermesExecutorFactory.cpp
+- path: packages/react-native/ReactCommon/jsi/jsi/jsi.cpp
+- path: packages/react-native/ReactCommon/jsi/jsi/jsi.h
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'This is the worst over-selection case in the batch: 107 ctx_files against only 26 files in truth.diff
+  — 82 extra files (76%) that are not part of the diff, including core JSI plumbing (jsi.h, jsi.cpp),
+  the bridge (Instance.cpp, NativeToJsBridge.cpp/h, ModuleRegistry.cpp), and Hermes executor internals
+  that have nothing to do with decoupling the event logger from PerformanceEntryReporter''s singleton.
+  This matches the co-located/whole-subsystem dump failure mode (#65) rather than a scoped selection.
+  Compounding it, podspec/build files again get full-file dumps (React-RCTFabric.podspec:1-106, build.gradle.kts:401-600)
+  for one-line dependency additions. Despite the noise, the actually-relevant EventLogger/EventDispatcher/EventPerformanceLogger/PerformanceEntryReporter
+  files are present, so recall on the core semantic change is reasonable even though precision is very
+  low.'

@@ -1,0 +1,80 @@
+repo: react-native
+base_commit: 30d6251b7890118290c1f7f7a9df69423e15a406
+commit: 1cb0a3342a8e58071599b104e008d2b43a96f260
+patch_stored: true
+gold:
+- path: .gitignore
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native-test-library/OSSLibraryExample.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native-test-library/babel.config.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native-test-library/index.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native-test-library/package.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native-test-library/src/NativeSampleModule.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native-test-library/src/SampleNativeComponent.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/js/examples/OSSLibraryExample/OSSLibraryExample.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/js/utils/RNTesterList.android.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/js/utils/RNTesterList.ios.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/metro.config.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/package.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: settings.gradle.kts
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: .prettierrc.js
+- path: package.json
+- path: packages/debugger-frontend/dist/third-party/front_end/panels/autofill/autofill.js
+- path: packages/normalize-color/index.js
+- path: packages/react-native-codegen/src/parsers/flow/components/__test_fixtures__/failures.js
+- path: packages/react-native/React/Base/RCTBridge.h
+- path: packages/react-native/React/Base/RCTBridgeModule.h
+- path: packages/react-native/ReactCommon/jsi/jsi/jsi.cpp
+- path: packages/react-native/ReactCommon/jsi/jsi/jsi.h
+- path: packages/react-native/ReactCommon/react/nativemodule/core/ReactCommon/TurboModule.cpp
+- path: packages/react-native/ReactCommon/react/nativemodule/core/ReactCommon/TurboModule.h
+- path: packages/react-native/ReactCommon/react/renderer/componentregistry/ComponentDescriptorRegistry.h
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Worst over-selection instance in this batch by file count: 59 changed files became 123 ctx_files,
+  i.e. 64 (52%) unrelated files pulled in from across the whole monorepo (engine core headers, third-party
+  vendored debugger JS, root package.json/.prettierrc.js). Likely caused by generic symbol names in the
+  new codegen''d package (ComponentDescriptors, EventEmitters, Props, ShadowNodes) pattern-matching against
+  RN''s actual core engine files of the same generic names. The genuinely new package is present and correctly
+  captured, so recall is fine, but relevance precision is badly hurt.'

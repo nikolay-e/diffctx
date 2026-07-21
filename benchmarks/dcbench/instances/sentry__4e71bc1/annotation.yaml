@@ -1,0 +1,28 @@
+repo: sentry
+base_commit: beafb9516463a13adab9c328afd950ef592762ae
+commit: 4e71bc1e2ad54b1dee6d1825cc5a2407b6ec029f
+patch_stored: true
+gold:
+- path: static/gsApp/components/upsellModal/featureList.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/gsApp/views/amCheckout/components/billingCycleSelectCard.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/gsApp/views/amCheckout/components/cart.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: '45-file ''checkout restructure'' that is almost entirely git renames (moving static/gsApp/views/amCheckout/*.tsx
+  into amCheckout/components/ and amCheckout/steps/checkoutV3/* back to amCheckout/steps/) with only a
+  handful of files carrying a real content change: an updated import path. The raw diff is only 48 insertions/48
+  deletions total — one of the smallest diffs in this whole batch — yet it still hung. This is strong
+  evidence the hang trigger is unrelated to diff size or file count and is more likely tied to the rename-heavy/near-duplicate-content
+  shape of the change (many files with near-identical historical content moving between directories).'

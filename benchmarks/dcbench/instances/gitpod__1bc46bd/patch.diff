@@ -1,0 +1,4150 @@
+From 1bc46bd2a58dbc9033313519453939d895f16fce Mon Sep 17 00:00:00 2001
+From: Pudong <tianshi8650@gmail.com>
+Date: Sat, 27 Apr 2024 02:50:04 +0800
+Subject: [PATCH] Refactor preview environment and image build methods (#19652)
+
+* [dev-image] upgrade terraform and gcloud
+
+* update leeway version and use new cache bucket
+
+* update image tag
+
+* use oidc
+
+* fix bob
+
+* Add code web extension as package
+
+* gcr token refresh
+
+* fluentbit use service account
+
+* Add xterm web ide as package
+
+* add ide configmap patch
+
+* fix ide first page 502
+
+* remove secret manager
+
+* fix monitoring
+
+* fix integration and delete preview
+
+* cleanup
+
+* use previewctl:install
+
+* change folder
+
+* cleanup
+
+* change leeway cache bucket for main branch
+
+* cleanup
+
+* fix
+
+* hot-deploy
+---
+ .github/actions/delete-preview/Dockerfile     |   2 +-
+ .github/actions/delete-preview/entrypoint.sh  |   9 +-
+ .github/actions/delete-preview/metadata.yml   |   6 -
+ .github/actions/deploy-gitpod/Dockerfile      |   2 +-
+ .github/actions/deploy-gitpod/entrypoint.sh   |  16 +-
+ .github/actions/deploy-gitpod/metadata.yml    |   6 -
+ .../deploy-monitoring-satellite/Dockerfile    |   2 +-
+ .../deploy-monitoring-satellite/entrypoint.sh |  12 +-
+ .../deploy-monitoring-satellite/metadata.yml  |   7 -
+ .github/actions/integration-tests/action.yml  |  69 ++++---
+ .github/actions/preview-create/Dockerfile     |   2 +-
+ .github/actions/preview-create/entrypoint.sh  |  18 +-
+ .github/actions/preview-create/metadata.yml   |   6 -
+ .github/actions/setup-environment/action.yml  |  33 ++--
+ .github/workflows/build.yml                   |  77 +++++---
+ .github/workflows/code-nightly.yml            |  13 +-
+ .github/workflows/ide-integration-tests.yml   |  54 ++++--
+ .../jetbrains-auto-update-template.yml        |  12 +-
+ .github/workflows/lacework-inline-scanner.yml |  16 +-
+ .../preview-env-check-regressions.yml         |  62 +++---
+ .github/workflows/preview-env-delete.yml      |  10 +-
+ .github/workflows/preview-env-gc.yml          |  30 +--
+ .../workflows/workspace-integration-tests.yml |  75 +++----
+ .gitpod.yml                                   |   2 +-
+ WORKSPACE.yaml                                |   4 +-
+ components/BUILD.yaml                         |   2 +
+ .../ide/code/gitpod-web-extension/BUILD.yaml  |  15 ++
+ .../gitpod-web-extension/leeway.Dockerfile    |  33 ++++
+ .../jetbrains/backend-plugin/hot-deploy.sh    |   2 +-
+ components/ide/jetbrains/image/hot-deploy.sh  |   2 +-
+ .../ide/jetbrains/launcher/hot-deploy.sh      |   2 +-
+ components/ide/xterm/BUILD.yaml               |  16 ++
+ components/ide/xterm/leeway.Dockerfile        |  39 ++++
+ components/image-builder-bob/BUILD.yaml       |   4 +-
+ dev/image/Dockerfile                          |  10 +-
+ dev/preview/BUILD.yaml                        |  15 +-
+ .../modules/dns/certificate-letsencrypt.tf    |  33 ++--
+ .../modules/dns/certificate-zerossl.tf        |  30 +--
+ dev/preview/infrastructure/modules/dns/dns.tf |   7 +
+ .../infrastructure/modules/dns/provider.tf    |   5 -
+ .../infrastructure/modules/dns/variables.tf   |   4 +-
+ .../infrastructure/modules/gce/cloudinit.yaml |  20 --
+ .../infrastructure/modules/gce/provider.tf    |   5 -
+ .../infrastructure/modules/gce/variables.tf   |   5 -
+ dev/preview/infrastructure/modules/gce/vm.tf  |  27 +--
+ dev/preview/infrastructure/preview.tf         |   7 -
+ dev/preview/infrastructure/provider.tf        |  10 +-
+ dev/preview/previewctl/BUILD.yaml             |  20 --
+ dev/preview/previewctl/cmd/access.go          |   2 +-
+ dev/preview/previewctl/cmd/credentials.go     |  90 ---------
+ dev/preview/previewctl/cmd/install_context.go |  30 +--
+ dev/preview/previewctl/cmd/report.go          |   2 +-
+ dev/preview/previewctl/cmd/root.go            |   1 -
+ dev/preview/previewctl/main.go                |  11 ++
+ .../previewctl/pkg/k8s/context/gke/dev.go     | 104 ----------
+ .../pkg/k8s/context/gke/dev_test.go           | 101 ----------
+ .../pkg/k8s/context/harvester/harvester.go    |  89 ---------
+ .../k8s/context/harvester/harvester_test.go   | 127 ------------
+ .../previewctl/pkg/k8s/context/k3s/k3s.go     |  16 +-
+ dev/preview/previewctl/pkg/preview/preview.go |   8 +-
+ dev/preview/ssh-vm.sh                         |  43 ++--
+ dev/preview/test/distribute-images.sh         |  81 --------
+ ...download-and-merge-harvester-kubeconfig.sh |  43 ----
+ dev/preview/util/install-vm-ssh-keys.sh       |  36 ----
+ dev/preview/workflow/lib/k8s-util.sh          |  13 --
+ dev/preview/workflow/preview/build.sh         |   1 -
+ .../workflow/preview/configure-workspace.sh   |  15 +-
+ dev/preview/workflow/preview/deploy-gitpod.sh | 183 +++++++-----------
+ .../preview/deploy-monitoring-satellite.sh    |  10 +-
+ ...{deploy-harvester.sh => deploy-preview.sh} |   5 +-
+ .../workflow/preview/patch-ide-configmap.js   |  33 ++++
+ dev/preview/workflow/preview/post-process.sh  |  31 ++-
+ dev/preview/workflow/preview/preview.sh       |   2 +-
+ .../workflow/vm/charts/fluentbit/values.yaml  |  15 +-
+ .../vm/template/gcr-pull-secret-job.yaml      |  82 ++++++++
+ install/installer/BUILD.yaml                  |   4 +-
+ install/installer/cmd/mirror_repo.go          |  26 +++
+ install/installer/pkg/common/constants.go     |   6 +-
+ .../components/ide-service/ide-configmap.json |   4 +-
+ .../ide-service/ide_config_configmap.go       |   2 +-
+ .../pkg/components/workspace/ide/constants.go |   1 -
+ install/installer/pkg/config/v1/config.go     |   5 +-
+ install/installer/pkg/config/vars.go          |   9 +
+ .../installer/pkg/config/versions/versions.go |  14 +-
+ install/preview/prettylog/BUILD.yaml          |  10 -
+ scripts/ws-deploy.sh                          |   2 +-
+ 86 files changed, 797 insertions(+), 1318 deletions(-)
+ create mode 100644 components/ide/code/gitpod-web-extension/BUILD.yaml
+ create mode 100644 components/ide/code/gitpod-web-extension/leeway.Dockerfile
+ create mode 100644 components/ide/xterm/BUILD.yaml
+ create mode 100644 components/ide/xterm/leeway.Dockerfile
+ delete mode 100644 dev/preview/previewctl/pkg/k8s/context/gke/dev.go
+ delete mode 100644 dev/preview/previewctl/pkg/k8s/context/gke/dev_test.go
+ delete mode 100644 dev/preview/previewctl/pkg/k8s/context/harvester/harvester.go
+ delete mode 100644 dev/preview/previewctl/pkg/k8s/context/harvester/harvester_test.go
+ delete mode 100755 dev/preview/test/distribute-images.sh
+ delete mode 100755 dev/preview/util/download-and-merge-harvester-kubeconfig.sh
+ delete mode 100755 dev/preview/util/install-vm-ssh-keys.sh
+ rename dev/preview/workflow/preview/{deploy-harvester.sh => deploy-preview.sh} (92%)
+ create mode 100644 dev/preview/workflow/preview/patch-ide-configmap.js
+ create mode 100644 dev/preview/workflow/vm/template/gcr-pull-secret-job.yaml
+ create mode 100644 install/installer/cmd/mirror_repo.go
+ create mode 100644 install/installer/pkg/config/vars.go
+
+diff --git a/.github/actions/delete-preview/Dockerfile b/.github/actions/delete-preview/Dockerfile
+index e261687cc..865ed0a33 100644
+--- a/.github/actions/delete-preview/Dockerfile
++++ b/.github/actions/delete-preview/Dockerfile
+@@ -1,4 +1,4 @@
+-FROM eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
++FROM eu.gcr.io/gitpod-core-dev/dev/dev-environment:pd-test-new-preview-gha.24525
+ 
+ COPY entrypoint.sh /entrypoint.sh
+ ENTRYPOINT ["/entrypoint.sh"]
+diff --git a/.github/actions/delete-preview/entrypoint.sh b/.github/actions/delete-preview/entrypoint.sh
+index 3f207654b..c08e808f9 100755
+--- a/.github/actions/delete-preview/entrypoint.sh
++++ b/.github/actions/delete-preview/entrypoint.sh
+@@ -3,19 +3,14 @@
+ set -euo pipefail
+ 
+ export HOME=/home/gitpod
+-export PREVIEW_ENV_DEV_SA_KEY_PATH="$HOME/.config/gcloud/preview-environment-dev-sa.json"
+ # shellcheck disable=SC2155
+ export LEEWAY_WORKSPACE_ROOT="$(pwd)"
+ export PATH="$PATH:$HOME/bin"
+ 
+ mkdir $HOME/bin
+ 
+-echo "${INPUT_SA_KEY}" > "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-gcloud auth activate-service-account --key-file "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-
+-leeway run dev/preview/previewctl:download
+-
+-previewctl get-credentials --gcp-service-account "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
++gcloud auth login --cred-file="$GOOGLE_APPLICATION_CREDENTIALS" --activate --quiet
++leeway run dev/preview/previewctl:install
+ 
+ export TF_INPUT=0
+ export TF_IN_AUTOMATION=true
+diff --git a/.github/actions/delete-preview/metadata.yml b/.github/actions/delete-preview/metadata.yml
+index f50f6d166..818dc5f76 100644
+--- a/.github/actions/delete-preview/metadata.yml
++++ b/.github/actions/delete-preview/metadata.yml
+@@ -1,15 +1,9 @@
+ name: "Delete preview environment"
+ description: "Deletes a preview environment"
+ inputs:
+-    sa_key:
+-        description: "The service account key to use when authenticating with GCP"
+-        required: true
+     name:
+         description: "The name of the preview environment"
+         required: true
+-    previewctl_hash:
+-        description: "The Leeway hash of the dev/preview/previewctl:docker package to be used when downloading previewclt"
+-        required: false
+ runs:
+     using: "docker"
+     image: "Dockerfile"
+diff --git a/.github/actions/deploy-gitpod/Dockerfile b/.github/actions/deploy-gitpod/Dockerfile
+index e261687cc..865ed0a33 100644
+--- a/.github/actions/deploy-gitpod/Dockerfile
++++ b/.github/actions/deploy-gitpod/Dockerfile
+@@ -1,4 +1,4 @@
+-FROM eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
++FROM eu.gcr.io/gitpod-core-dev/dev/dev-environment:pd-test-new-preview-gha.24525
+ 
+ COPY entrypoint.sh /entrypoint.sh
+ ENTRYPOINT ["/entrypoint.sh"]
+diff --git a/.github/actions/deploy-gitpod/entrypoint.sh b/.github/actions/deploy-gitpod/entrypoint.sh
+index 77d7916aa..5aa3c6b38 100755
+--- a/.github/actions/deploy-gitpod/entrypoint.sh
++++ b/.github/actions/deploy-gitpod/entrypoint.sh
+@@ -7,24 +7,20 @@ export PREVIEW_ENV_DEV_SA_KEY_PATH="$HOME/.config/gcloud/preview-environment-dev
+ # shellcheck disable=SC2155
+ export LEEWAY_WORKSPACE_ROOT="$(pwd)"
+ export VERSION="${INPUT_VERSION}"
++export IMAGE_REPO_BASE="${INPUT_IMAGE_REPO_BASE}"
+ export PATH="$PATH:$HOME/bin"
+ 
+ mkdir $HOME/bin
+ 
+ echo "Downloading installer for ${VERSION}"
+-oci-tool fetch file -o $HOME/bin/installer --platform=linux-amd64 "eu.gcr.io/gitpod-core-dev/build/installer:${VERSION}" app/installer
++oci-tool fetch file -o $HOME/bin/installer --platform=linux-amd64 "${IMAGE_REPO_BASE}/installer:${VERSION}" app/installer
+ chmod +x $HOME/bin/installer
+ 
+ echo "Download versions.yaml"
+-oci-tool fetch file -o /tmp/versions.yaml --platform=linux-amd64 "eu.gcr.io/gitpod-core-dev/build/versions:${VERSION}" versions.yaml
++oci-tool fetch file -o /tmp/versions.yaml --platform=linux-amd64 "${IMAGE_REPO_BASE}/versions:${VERSION}" versions.yaml
+ 
+-echo "${INPUT_SA_KEY}" > "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-gcloud auth activate-service-account --key-file "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-
+-leeway run dev/preview/previewctl:download
+-
+-echo "Setting up access to core-dev and harvester"
+-previewctl get-credentials --gcp-service-account "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
++gcloud auth login --cred-file="$GOOGLE_APPLICATION_CREDENTIALS" --activate --quiet
++leeway run dev/preview/previewctl:install
+ 
+ PREVIEW_NAME="$(previewctl get-name --branch "${INPUT_NAME}")"
+ export PREVIEW_NAME
+@@ -36,7 +32,7 @@ for var in WITH_DEDICATED_EMU ANALYTICS WORKSPACE_FEATURE_FLAGS; do
+   fi
+ done
+ 
+-previewctl install-context --branch "${PREVIEW_NAME}" --log-level debug --timeout 10m --gcp-service-account "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
++previewctl install-context --branch "${PREVIEW_NAME}" --log-level debug --timeout 10m
+ leeway run dev/preview:deploy-gitpod
+ previewctl report --branch "${PREVIEW_NAME}" >> "${GITHUB_STEP_SUMMARY}"
+ 
+diff --git a/.github/actions/deploy-gitpod/metadata.yml b/.github/actions/deploy-gitpod/metadata.yml
+index ad842cebd..853ce4b4e 100644
+--- a/.github/actions/deploy-gitpod/metadata.yml
++++ b/.github/actions/deploy-gitpod/metadata.yml
+@@ -1,18 +1,12 @@
+ name: "Deploy Gitpod"
+ description: "Deploys Gitpod to an existing preview environment"
+ inputs:
+-    sa_key:
+-        description: "The service account key to use when authenticating with GCP"
+-        required: true
+     name:
+         description: "The name of the preview environment to deploy Gitpod to"
+         required: false
+     version:
+         description: "The version of Gitpod to install"
+         required: true
+-    previewctl_hash:
+-        description: "The Leeway hash of the dev/preview/previewctl:docker package to be used when downloading previewclt"
+-        required: false
+     with_dedicated_emu:
+         description: "Dedicated Config"
+         required: false
+diff --git a/.github/actions/deploy-monitoring-satellite/Dockerfile b/.github/actions/deploy-monitoring-satellite/Dockerfile
+index e261687cc..865ed0a33 100644
+--- a/.github/actions/deploy-monitoring-satellite/Dockerfile
++++ b/.github/actions/deploy-monitoring-satellite/Dockerfile
+@@ -1,4 +1,4 @@
+-FROM eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
++FROM eu.gcr.io/gitpod-core-dev/dev/dev-environment:pd-test-new-preview-gha.24525
+ 
+ COPY entrypoint.sh /entrypoint.sh
+ ENTRYPOINT ["/entrypoint.sh"]
+diff --git a/.github/actions/deploy-monitoring-satellite/entrypoint.sh b/.github/actions/deploy-monitoring-satellite/entrypoint.sh
+index 152b1c3fe..e822edb3f 100755
+--- a/.github/actions/deploy-monitoring-satellite/entrypoint.sh
++++ b/.github/actions/deploy-monitoring-satellite/entrypoint.sh
+@@ -3,23 +3,17 @@
+ set -euo pipefail
+ 
+ export HOME=/home/gitpod
+-export PREVIEW_ENV_DEV_SA_KEY_PATH="$HOME/.config/gcloud/preview-environment-dev-sa.json"
+ # shellcheck disable=SC2155
+ export LEEWAY_WORKSPACE_ROOT="$(pwd)"
+ export PATH="$PATH:$HOME/bin"
+ 
+ mkdir $HOME/bin
+ 
+-echo "${INPUT_SA_KEY}" > "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-gcloud auth activate-service-account --key-file "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-
+-leeway run dev/preview/previewctl:download
+-
+-echo "previewctl get-credentials"
+-previewctl get-credentials --gcp-service-account "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
++gcloud auth login --cred-file="$GOOGLE_APPLICATION_CREDENTIALS" --activate --quiet
++leeway run dev/preview/previewctl:install
+ 
+ echo "previewctl install-context"
+-previewctl install-context --log-level debug --timeout 10m --gcp-service-account "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
++previewctl install-context --log-level debug --timeout 10m
+ 
+ echo "leeway run dev/preview:deploy-monitoring-satellite"
+ leeway run dev/preview:deploy-monitoring-satellite
+diff --git a/.github/actions/deploy-monitoring-satellite/metadata.yml b/.github/actions/deploy-monitoring-satellite/metadata.yml
+index ab8b29775..cfa3e476f 100644
+--- a/.github/actions/deploy-monitoring-satellite/metadata.yml
++++ b/.github/actions/deploy-monitoring-satellite/metadata.yml
+@@ -1,12 +1,5 @@
+ name: "Deploy monitoring satellite"
+ description: "Deploys monitoring satellite to an existing preview environment"
+-inputs:
+-    sa_key:
+-        description: "The service account key to use when authenticating with GCP"
+-        required: true
+-    previewctl_hash:
+-        description: "The Leeway hash of the dev/preview/previewctl:docker package to be used when downloading previewclt"
+-        required: false
+ runs:
+     using: "docker"
+     image: "Dockerfile"
+diff --git a/.github/actions/integration-tests/action.yml b/.github/actions/integration-tests/action.yml
+index ce51ed144..75c2fd77e 100644
+--- a/.github/actions/integration-tests/action.yml
++++ b/.github/actions/integration-tests/action.yml
+@@ -11,9 +11,6 @@ inputs:
+   preview_name:
+     description: "Name of the preview environment to run the tests against"
+     required: true
+-  sa_key:
+-    description: "The service account key to use when authenticating with GCP"
+-    required: true
+   github_token:
+     description: "The GitHub token to use when authenticating with GitHub"
+     required: true
+@@ -30,50 +27,64 @@ inputs:
+   test_build_ref:
+     description: "The build ref of the test run. Used in the IDE integration tests."
+     required: false
+-
++  integration_test_username:
++    description: "The username for integration test"
++    required: true
++  integration_test_usertoken:
++    description: "The username for integration test"
++    required: true
++  identity_provider:
++    description: "GCP workload identity provider"
++    required: true
++  service_account:
++    description: "GCP service account"
++    required: true
++  leeway_segment_key:
++    description: "leeway analytics key"
++    required: true
+ runs:
+   using: "composite"
+   steps:
++    - uses: actions/checkout@v4
++    - id: env-vars
++      name: configure env variables
++      shell: bash
++      run: |
++        {
++            echo "LEEWAY_SEGMENT_KEY=${{ inputs.leeway_segment_key }}"
++            echo "LEEWAY_WORKSPACE_ROOT=$GITHUB_WORKSPACE"
++            echo "HOME=/home/gitpod"
++        }  >> "$GITHUB_ENV"
+     - id: auth
+-      uses: google-github-actions/auth@v1
++      name: Authenticate to Google Cloud
++      uses: google-github-actions/auth@v2
+       with:
+-        token_format: access_token
+-        credentials_json: "${{ inputs.sa_key }}"
+-    - name: Get Secrets from GCP
+-      id: "secrets"
+-      uses: "google-github-actions/get-secretmanager-secrets@v1"
++        workload_identity_provider: "${{ inputs.identity_provider }}"
++        service_account: "${{ inputs.service_account }}"
++    - name: 'Set up Cloud SDK'
++      uses: 'google-github-actions/setup-gcloud@v2'
+       with:
+-        secrets: |-
+-          WORKSPACE_INTEGRATION_TEST_USERNAME:gitpod-core-dev/workspace-integration-test-username
+-          WORKSPACE_INTEGRATION_TEST_USER_TOKEN:gitpod-core-dev/workspace-integration-test-user-token
++        skip_install: true
++    - id: docker
++      name: configure docker
++      shell: bash
++      run: |
++        gcloud auth configure-docker eu.gcr.io --quiet
+     - name: Setup
+       shell: bash
+       env:
+-        PREVIEW_ENV_DEV_SA_KEY: ${{ inputs.sa_key }}
+         PREVIEW_NAME: ${{ inputs.preview_name }}
+       run: |
+-        export LEEWAY_WORKSPACE_ROOT="$(pwd)"
+-        export HOME="/home/gitpod"
+-        export PREVIEW_ENV_DEV_SA_KEY_PATH="/home/gitpod/.config/gcloud/preview-environment-dev-sa.json"
+-
+-        echo "${PREVIEW_ENV_DEV_SA_KEY}" > "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-        gcloud auth activate-service-account --key-file "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-
+         leeway run dev/preview/previewctl:install
+-
+-        echo "Setting up access to core-dev and harvester"
+-        previewctl get-credentials --gcp-service-account "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-
+-        previewctl install-context --branch "${PREVIEW_NAME}" --log-level debug --timeout 1m --gcp-service-account "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
++        previewctl install-context --branch "${PREVIEW_NAME}" --log-level debug --timeout 10m
+ 
+     - name: Integration Test
+       id: integration-test
+       shell: bash
+       env:
+         ROBOQUAT_TOKEN: ${{ inputs.github_token }}
+-        INTEGRATION_TEST_USERNAME: ${{ steps.secrets.outputs.WORKSPACE_INTEGRATION_TEST_USERNAME }}
+-        INTEGRATION_TEST_USER_TOKEN: ${{ steps.secrets.outputs.WORKSPACE_INTEGRATION_TEST_USER_TOKEN }}
+-        PREVIEW_ENV_DEV_SA_KEY: ${{ inputs.sa_key }}
++        INTEGRATION_TEST_USERNAME: ${{ inputs.integration_test_username }}
++        INTEGRATION_TEST_USER_TOKEN: ${{ inputs.integration_test_usertoken }}
+         PREVIEW_NAME: ${{ inputs.preview_name }}
+         TEST_USE_LATEST_VERSION: ${{ inputs.latest_ide_version }}
+         TEST_BUILD_ID: ${{ inputs.test_build_id }}
+diff --git a/.github/actions/preview-create/Dockerfile b/.github/actions/preview-create/Dockerfile
+index e261687cc..865ed0a33 100644
+--- a/.github/actions/preview-create/Dockerfile
++++ b/.github/actions/preview-create/Dockerfile
+@@ -1,4 +1,4 @@
+-FROM eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
++FROM eu.gcr.io/gitpod-core-dev/dev/dev-environment:pd-test-new-preview-gha.24525
+ 
+ COPY entrypoint.sh /entrypoint.sh
+ ENTRYPOINT ["/entrypoint.sh"]
+diff --git a/.github/actions/preview-create/entrypoint.sh b/.github/actions/preview-create/entrypoint.sh
+index ca2435ca8..f5a970971 100755
+--- a/.github/actions/preview-create/entrypoint.sh
++++ b/.github/actions/preview-create/entrypoint.sh
+@@ -3,31 +3,17 @@
+ set -euo pipefail
+ 
+ export HOME=/home/gitpod
+-export PREVIEW_ENV_DEV_SA_KEY_PATH="$HOME/.config/gcloud/preview-environment-dev-sa.json"
+ # shellcheck disable=SC2155
+ export LEEWAY_WORKSPACE_ROOT="$(pwd)"
+ export PATH="$PATH:$HOME/bin"
+ 
+ mkdir $HOME/bin
+ 
+-echo "${INPUT_SA_KEY}" >"${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-gcloud auth activate-service-account --key-file "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-
+-leeway run dev/preview/previewctl:download
+-previewctl get-credentials --gcp-service-account "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-
+-replace="module.preview_gce[0].google_compute_instance.default"
+-if [[ "${INPUT_INFRASTRUCTURE_PROVIDER}" = "harvester " ]]; then
+-  replace="module.preview_harvester[0].harvester_virtualmachine.harvester"
+-fi
+-
+-if [[ "${INPUT_RECREATE_VM:-x}" == "true" ]]; then
+-  export TF_CLI_ARGS_plan="-replace=${replace}"
+-fi
++gcloud auth login --cred-file="$GOOGLE_APPLICATION_CREDENTIALS" --activate --quiet
++leeway run dev/preview/previewctl:install
+ 
+ TF_VAR_preview_name="$(previewctl get-name --branch "${INPUT_NAME}")"
+ export TF_VAR_preview_name
+-export TF_VAR_infra_provider="${INPUT_INFRASTRUCTURE_PROVIDER}"
+ export TF_VAR_with_large_vm="${INPUT_LARGE_VM}"
+ export TF_VAR_gce_use_spot="${INPUT_PREEMPTIBLE}"
+ export TF_INPUT=0
+diff --git a/.github/actions/preview-create/metadata.yml b/.github/actions/preview-create/metadata.yml
+index e49f1ab9d..134bf610f 100644
+--- a/.github/actions/preview-create/metadata.yml
++++ b/.github/actions/preview-create/metadata.yml
+@@ -15,12 +15,6 @@ inputs:
+         description: "Whether to use preemptible VMs for the env"
+         required: true
+         default: true
+-    sa_key:
+-        description: "The service account key to use when authenticating with GCP"
+-        required: true
+-    previewctl_hash:
+-        description: "The Leeway hash of the dev/preview/previewctl:docker package to be used when downloading previewclt"
+-        required: false
+     recreate_vm:
+         description: "Whether to recreate the VM"
+         required: false
+diff --git a/.github/actions/setup-environment/action.yml b/.github/actions/setup-environment/action.yml
+index 33e764aaf..64be01b2a 100644
+--- a/.github/actions/setup-environment/action.yml
++++ b/.github/actions/setup-environment/action.yml
+@@ -1,7 +1,10 @@
+ name: Setup environment
+-
++description: "Setup environment"
+ inputs:
+-  sa_key:
++  identity_provider:
++    description: "GCP workload identity provider"
++    required: true
++  service_account:
+     description: "GCP service account"
+     required: true
+   leeway_segment_key:
+@@ -14,33 +17,21 @@ runs:
+     - uses: actions/checkout@v4
+     - id: auth
+       name: Authenticate to Google Cloud
+-      uses: google-github-actions/auth@v1
++      uses: google-github-actions/auth@v2
+       with:
+-        credentials_json: "${{ inputs.sa_key }}"
+-    - id: gcloud-auth
+-      name: gcloud auth activate-service-account
+-      shell: bash
+-      run: |
+-        gcloud auth activate-service-account --key-file ${{ steps.auth.outputs.credentials_file_path }}
++        workload_identity_provider: "${{ inputs.identity_provider }}"
++        service_account: "${{ inputs.service_account }}"
++    - name: 'Set up Cloud SDK'
++      uses: 'google-github-actions/setup-gcloud@v2'
++      with:
++        skip_install: true
+     - id: env-vars
+       name: configure env variables
+       shell: bash
+       run: |
+-        SA_KEY_FILE=$(mktemp)
+-        echo '${{ inputs.sa_key }}' > "$SA_KEY_FILE"
+-
+-        trap 'rm -f ${SA_KEY_FILE}' EXIT
+-
+         gcloud auth configure-docker eu.gcr.io --quiet
+ 
+-        PREVIEW_ENV_DEV_SA_KEY_PATH="$GITHUB_WORKSPACE/.config/gcloud/preview-environment-dev-sa.json"
+-
+         {
+             echo "LEEWAY_SEGMENT_KEY=${{ inputs.leeway_segment_key }}"
+             echo "LEEWAY_WORKSPACE_ROOT=$GITHUB_WORKSPACE"
+-            echo "PREVIEW_ENV_DEV_SA_KEY_PATH=${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+         }  >> "$GITHUB_ENV"
+-
+-        # Authenticate with GCP so we can use the Leeway cache
+-        mkdir -p "$(dirname "$PREVIEW_ENV_DEV_SA_KEY_PATH")"
+-        echo '${{ inputs.sa_key }}' > "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+diff --git a/.github/workflows/build.yml b/.github/workflows/build.yml
+index 40e9f1c71..6f22138ef 100644
+--- a/.github/workflows/build.yml
++++ b/.github/workflows/build.yml
+@@ -1,4 +1,8 @@
+ name: Build
++permissions:
++  id-token: write # This is required for requesting the JWT
++  contents: read  # This is required for actions/checkout
++  pull-requests: write
+ on:
+   pull_request:
+     types: [ opened, edited ]
+@@ -33,7 +37,6 @@ jobs:
+       version: ${{ steps.branches.outputs.sanitized-branch-name }}-gha.${{github.run_number}}
+       preview_enable: ${{ contains( steps.pr-details.outputs.pr_body, '[x] /werft with-preview') || (steps.output.outputs.with_integration_tests != '') }}
+       preview_name: ${{ github.head_ref || github.ref_name }}
+-      preview_infra_provider: ${{ contains( steps.pr-details.outputs.pr_body, '[x] /werft with-gce-vm') && 'gce' || 'harvester' }}
+       build_no_cache: ${{ contains( steps.pr-details.outputs.pr_body, '[x] leeway-no-cache') }}
+       build_no_test: ${{ contains( steps.pr-details.outputs.pr_body, '[x] /werft no-test') }}
+       with_large_vm: ${{ contains( steps.pr-details.outputs.pr_body, '[X] /werft with-large-vm') || (steps.output.outputs.with_integration_tests != '') }}
+@@ -49,6 +52,7 @@ jobs:
+       with_monitoring: ${{ contains( steps.pr-details.outputs.pr_body, '[x] with-monitoring') }}
+       latest_ide_version: ${{ contains( steps.pr-details.outputs.pr_body, '[x] latest-ide-version=true') }}
+       leeway_cache_bucket: ${{ steps.output.outputs.leeway_cache_bucket }}
++      image_repo_base: ${{ steps.output.outputs.image_repo_base }}
+       pr_number: ${{ steps.pr-details.outputs.number }}
+       pr_body: ${{ steps.pr-details.outputs.pr_body }}
+     steps:
+@@ -84,7 +88,8 @@ jobs:
+             echo "workspace_feature_flags=$(echo "$PR_DESC" | grep -oiP '(?<=\[x\] workspace-feature-flags=).*?(?=\s*$)')"
+             echo "with_integration_tests=$(echo "$PR_DESC" | grep -oiP '(?<=\[x\] with-integration-tests=).*?(?=\s*$)')"
+             echo "analytics=$(echo "$PR_DESC" | grep -oiP '(?<=\[x\] analytics=).*?(?=\s*$)')"
+-            echo "leeway_cache_bucket=$([[ "$MAIN_BRANCH"  = "true" ]] && echo "gitpod-core-leeway-cache-main" || echo "gitpod-core-leeway-cache-branch")"
++            echo "leeway_cache_bucket=$([[ "$MAIN_BRANCH"  = "true" ]] && echo "leeway-cache-main-c514a01" || echo "leeway-cache-dev-3ac8ef5")"
++            echo "image_repo_base=$([[ "$MAIN_BRANCH"  = "true" ]] && echo "eu.gcr.io/gitpod-core-dev" || echo "eu.gcr.io/gitpod-dev-artifact")"
+           } >> $GITHUB_OUTPUT
+ 
+   build-previewctl:
+@@ -98,23 +103,22 @@ jobs:
+       cancel-in-progress: ${{ needs.configuration.outputs.is_main_branch == 'false' }}
+     runs-on: ${{ needs.create-runner.outputs.label }}
+     container:
+-      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
+-    outputs:
+-      previewctl_hash: ${{ steps.build.outputs.previewctl_hash }}
++      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:pd-test-new-preview-gha.24525
+     steps:
+       - uses: actions/checkout@v4
+       - name: Setup Environment
+         uses: ./.github/actions/setup-environment
+         with:
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
++          identity_provider: ${{ github.ref == 'refs/heads/main' && secrets.CORE_DEV_PROVIDER || secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ github.ref == 'refs/heads/main' && secrets.CORE_DEV_SA || secrets.DEV_PREVIEW_SA }}
+           leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - name: Build previewctl
+         id: build
+         shell: bash
++        env:
++          LEEWAY_REMOTE_CACHE_BUCKET: ${{needs.configuration.outputs.leeway_cache_bucket}}
+         run: |
+-          leeway build dev/preview/previewctl:docker -Dversion="${{needs.configuration.outputs.version}}"
+-          echo "previewctl_hash=$(leeway describe dev/preview/previewctl:docker -Dversion="${{needs.configuration.outputs.version}}" -t '{{ .Metadata.Version }}')" >> $GITHUB_OUTPUT
+-
++          leeway build dev/preview/previewctl:cli --cache remote
+   infrastructure:
+     needs: [ configuration, build-previewctl, create-runner ]
+     if: |
+@@ -127,17 +131,22 @@ jobs:
+       cancel-in-progress: true
+     steps:
+       - uses: actions/checkout@v4
++      - name: Setup Environment
++        uses: ./.github/actions/setup-environment
++        with:
++          identity_provider: ${{ secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ secrets.DEV_PREVIEW_SA }}
++          leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - name: Create preview environment infrastructure
+         id: create
+         uses: ./.github/actions/preview-create
+         with:
+           name: ${{ needs.configuration.outputs.preview_name }}
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
+-          infrastructure_provider: ${{ needs.configuration.outputs.preview_infra_provider }}
+           previewctl_hash: ${{ needs.build-previewctl.outputs.previewctl_hash }}
+           large_vm: ${{ needs.configuration.outputs.with_large_vm }}
+           preemptible: ${{ needs.configuration.outputs.with_preemptible }}
+           recreate_vm: ${{ inputs.recreate_vm }}
++          image_repo_base: ${{needs.configuration.outputs.image_repo_base}}/build
+ 
+   build-gitpod:
+     name: Build Gitpod
+@@ -161,7 +170,7 @@ jobs:
+         ports:
+           - 6379:6379
+     container:
+-      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
++      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:pd-test-new-preview-gha.24525
+       env:
+         DB_HOST: "mysql"
+         DB_PORT: "23306"
+@@ -172,7 +181,8 @@ jobs:
+       - uses: actions/checkout@v4
+       - uses: ./.github/actions/setup-environment
+         with:
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
++          identity_provider: ${{ github.ref == 'refs/heads/main' && secrets.CORE_DEV_PROVIDER || secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ github.ref == 'refs/heads/main' && secrets.CORE_DEV_SA || secrets.DEV_PREVIEW_SA }}
+           leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - name: Leeway Vet
+         shell: bash
+@@ -189,10 +199,10 @@ jobs:
+           exit "$RESULT"
+       - name: Get Secrets from GCP
+         id: "secrets"
++        if: ${{ needs.configuration.outputs.is_main_branch == 'true' }}
+         uses: "google-github-actions/get-secretmanager-secrets@v1"
+         with:
+           secrets: |-
+-            segment-io-token:gitpod-core-dev/segment-io-token
+             npm-auth-token:gitpod-core-dev/npm-auth-token
+             jb-marketplace-publish-token:gitpod-core-dev/jb-marketplace-publish-token
+             codecov-token:gitpod-core-dev/codecov
+@@ -201,6 +211,8 @@ jobs:
+         env:
+           JAVA_HOME: /home/gitpod/.sdkman/candidates/java/current
+           VERSION: ${{needs.configuration.outputs.version}}
++          LEEWAY_REMOTE_CACHE_BUCKET: ${{needs.configuration.outputs.leeway_cache_bucket}}
++          IMAGE_REPO_BASE: ${{needs.configuration.outputs.image_repo_base}}/dev
+         shell: bash
+         run: |
+           RESULT=0
+@@ -211,7 +223,7 @@ jobs:
+             --cache remote \
+             -Dversion=$VERSION \
+             -DlocalAppVersion=$VERSION \
+-            -DimageRepoBase=eu.gcr.io/gitpod-core-dev/dev \
++            -DimageRepoBase=$IMAGE_REPO_BASE \
+             --report large-report.html || RESULT=$?
+ 
+           set +x
+@@ -232,7 +244,6 @@ jobs:
+           NODE_OPTIONS: "--max_old_space_size=4096"
+           JAVA_HOME: /home/gitpod/.sdkman/candidates/java/current
+           VERSION: ${{needs.configuration.outputs.version}}
+-          SEGMENT_IO_TOKEN: "${{ steps.secrets.outputs.segment-io-token }}"
+           PR_NO_CACHE: ${{needs.configuration.outputs.build_no_cache}}
+           PR_NO_TEST: ${{needs.configuration.outputs.build_no_test}}
+           NPM_AUTH_TOKEN: "${{ steps.secrets.outputs.npm-auth-token }}"
+@@ -240,6 +251,8 @@ jobs:
+           JB_MARKETPLACE_PUBLISH_TOKEN: "${{ steps.secrets.outputs.jb-marketplace-publish-token }}"
+           PUBLISH_TO_JBPM: ${{ needs.configuration.outputs.publish_to_jbmp == 'true'  || needs.configuration.outputs.is_main_branch == 'true' }}
+           CODECOV_TOKEN: "${{ steps.secrets.outputs.codecov-token }}"
++          LEEWAY_REMOTE_CACHE_BUCKET: ${{needs.configuration.outputs.leeway_cache_bucket}}
++          IMAGE_REPO_BASE: ${{needs.configuration.outputs.image_repo_base}}/build
+         run: |
+           [[ "$PR_NO_CACHE" = "true" ]] && CACHE="none"       || CACHE="remote"
+           [[ "$PR_NO_TEST"  = "true" ]] && TEST="--dont-test" || TEST=""
+@@ -255,11 +268,10 @@ jobs:
+             --docker-build-options network=host \
+             --max-concurrent-tasks 1 \
+             -DlocalAppVersion=$VERSION \
+-            -DSEGMENT_IO_TOKEN=$SEGMENT_IO_TOKEN \
+             -DpublishToNPM="${PUBLISH_TO_NPM}" \
+             -DnpmPublishTrigger="${NPM_PUBLISH_TRIGGER}" \
+             -DpublishToJBMarketplace="${PUBLISH_TO_JBPM}" \
+-            -DimageRepoBase=eu.gcr.io/gitpod-core-dev/build \
++            -DimageRepoBase=$IMAGE_REPO_BASE \
+             --report report.html || RESULT=$?
+           set +x
+ 
+@@ -338,17 +350,23 @@ jobs:
+       cancel-in-progress: ${{ needs.configuration.outputs.is_main_branch == 'false' }}
+     steps:
+       - uses: actions/checkout@v4
++      - name: Setup Environment
++        uses: ./.github/actions/setup-environment
++        with:
++          identity_provider: ${{ secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ secrets.DEV_PREVIEW_SA }}
++          leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - name: Deploy Gitpod to the preview environment
+         id: deploy-gitpod
+         uses: ./.github/actions/deploy-gitpod
+         with:
+           name: ${{ needs.configuration.outputs.preview_name }}
+           version: ${{needs.configuration.outputs.version}}
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
+           previewctl_hash: ${{ needs.build-previewctl.outputs.previewctl_hash }}
+           with_dedicated_emu: ${{needs.configuration.outputs.with_dedicated_emulation}}
+           analytics: ${{needs.configuration.outputs.analytics}}
+           workspace_feature_flags: ${{needs.configuration.outputs.workspace_feature_flags}}
++          image_repo_base: ${{needs.configuration.outputs.image_repo_base}}/build
+       - uses: actions/github-script@v6
+         if: needs.configuration.outputs.pr_number != '' && contains(needs.configuration.outputs.pr_body, 'gitpod:summary')
+         with:
+@@ -383,12 +401,18 @@ jobs:
+       cancel-in-progress: true
+     steps:
+       - uses: actions/checkout@v4
++      - name: Setup Environment
++        uses: ./.github/actions/setup-environment
++        with:
++          identity_provider: ${{ secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ secrets.DEV_PREVIEW_SA }}
++          leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - name: Deploy monitoring satellite to the preview environment
+         id: deploy-monitoring-satellite
+         uses: ./.github/actions/deploy-monitoring-satellite
+         with:
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
+           previewctl_hash: ${{ needs.build-previewctl.outputs.previewctl_hash }}
++          image_repo_base: ${{needs.configuration.outputs.image_repo_base}}/build
+ 
+   integration-test:
+     name: "Run integration test"
+@@ -401,18 +425,13 @@ jobs:
+       - create-runner
+     runs-on: ${{ needs.create-runner.outputs.label }}
+     container:
+-      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
++      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:pd-test-new-preview-gha.24525
+     if: needs.configuration.outputs.with_integration_tests != ''
+     concurrency:
+       group: ${{ needs.configuration.outputs.preview_name }}-integration-test
+       cancel-in-progress: true
+     steps:
+       - uses: actions/checkout@v4
+-      - uses: ./.github/actions/setup-environment
+-        with:
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
+-          leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+-
+       - name: Run integration test
+         id: integration-test
+         uses: ./.github/actions/integration-tests
+@@ -420,12 +439,16 @@ jobs:
+           preview_name: ${{ needs.configuration.outputs.preview_name }}
+           test_suite: ${{ needs.configuration.outputs.with_integration_tests }}
+           notify_slack_webhook: ''
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
+           github_token: ${{ secrets.GITHUB_TOKEN }}
+           latest_ide_version: ${{ needs.configuration.outputs.latest_ide_version }}
+           test_build_id: ${{ github.run_id }}
+           test_build_url: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+           test_build_ref: ${{ github.head_ref || github.ref }}
++          identity_provider: ${{ secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ secrets.DEV_PREVIEW_SA }}
++          leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
++          integration_test_username: ${{ secrets.WORKSPACE_INTEGRATION_TEST_USERNAME }}
++          integration_test_usertoken: ${{ secrets.WORKSPACE_INTEGRATION_TEST_USER_TOKEN }}
+ 
+   workspace-integration-tests-main:
+     name: "Run workspace integration tests on main branch"
+diff --git a/.github/workflows/code-nightly.yml b/.github/workflows/code-nightly.yml
+index d09ba6762..cda30132a 100644
+--- a/.github/workflows/code-nightly.yml
++++ b/.github/workflows/code-nightly.yml
+@@ -1,5 +1,7 @@
+ name: Code Nightly
+-
++permissions:
++  id-token: write # This is required for requesting the JWT
++  contents: read  # This is required for actions/checkout
+ on:
+   workflow_dispatch:
+   schedule:
+@@ -16,27 +18,30 @@ jobs:
+     runs-on: ${{ needs.create-runner.outputs.label }}
+     needs: [create-runner]
+     container:
+-      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
++      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:pd-test-new-preview-gha.24525
+     steps:
+       - uses: actions/checkout@v4
+       - uses: ./.github/actions/setup-environment
+         with:
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
++          identity_provider: ${{ github.ref == 'refs/heads/main' && secrets.CORE_DEV_PROVIDER || secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ github.ref == 'refs/heads/main' && secrets.CORE_DEV_SA || secrets.DEV_PREVIEW_SA }}
+           leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - id: build-code
+         name: Build
+         env:
+           PR_DESC: "${{ steps.pr-details.outputs.pr_body }}"
+           MAIN_BRANCH: ${{ (github.head_ref || github.ref) == 'refs/heads/main' }}
++          LEEWAY_REMOTE_CACHE_BUCKET: ${{ github.ref == 'refs/heads/main' && 'leeway-cache-main-c514a01' || 'leeway-cache-dev-3ac8ef5' }}
+         run: |
+           export LEEWAY_WORKSPACE_ROOT=$GITHUB_WORKSPACE
+ 
+           codeHeadCommit=$(curl -H 'Accept: application/vnd.github.VERSION.sha' https://api.github.com/repos/gitpod-io/openvscode-server/commits/gp-code/release/1.89)
+           codeVersion=$(curl https://raw.githubusercontent.com/gitpod-io/openvscode-server/$codeHeadCommit/package.json | jq .version)
++          imageRepoBase=${{ github.ref == 'refs/heads/main' && 'eu.gcr.io/gitpod-core-dev/build' || 'eu.gcr.io/gitpod-dev-artifact/build' }}
+           cd components/ide/code
+           leeway build \
+             -Dversion=nightly \
+-            -DimageRepoBase=eu.gcr.io/gitpod-core-dev/build \
++            -DimageRepoBase=$imageRepoBase \
+             -DcodeCommit=$codeHeadCommit \
+             -DcodeVersion=$codeVersion \
+             -DcodeQuality=insider \
+diff --git a/.github/workflows/ide-integration-tests.yml b/.github/workflows/ide-integration-tests.yml
+index 2b114f403..65311f0f4 100644
+--- a/.github/workflows/ide-integration-tests.yml
++++ b/.github/workflows/ide-integration-tests.yml
+@@ -1,4 +1,7 @@
+ name: "IDE integration tests"
++permissions:
++  id-token: write # This is required for requesting the JWT
++  contents: read  # This is required for actions/checkout
+ on:
+   workflow_dispatch:
+     inputs:
+@@ -10,6 +13,14 @@ on:
+         required: true
+         description: "The version of Gitpod to install"
+         default: "latest"
++      image_repo_base:
++        type: choice
++        required: false
++        description: "The base repo of image"
++        options:
++          - "eu.gcr.io/gitpod-core-dev/build"
++          - "eu.gcr.io/gitpod-dev-artifact/build"
++        default: "eu.gcr.io/gitpod-core-dev/build"
+       skip_deploy:
+         required: false
+         description: "Skip deploy preview environment (debug only)"
+@@ -31,7 +42,7 @@ jobs:
+     runs-on: ${{ needs.create-runner.outputs.label }}
+     needs: [create-runner]
+     container:
+-      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
++      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:pd-test-new-preview-gha.24525
+     outputs:
+       name: ${{ steps.configuration.outputs.name }}
+       version: ${{ steps.configuration.outputs.version }}
+@@ -80,66 +91,72 @@ jobs:
+       group: ${{ needs.configuration.outputs.name }}-infrastructure
+     steps:
+       - uses: actions/checkout@v4
++      - name: Setup Environment
++        uses: ./.github/actions/setup-environment
++        with:
++          identity_provider: ${{ secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ secrets.DEV_PREVIEW_SA }}
++          leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - name: Create preview environment infrastructure
+         id: create
+         uses: ./.github/actions/preview-create
+         with:
+           name: ${{ needs.configuration.outputs.name }}
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
+           infrastructure_provider: gce
+           large_vm: true
+           preemptible: true
++          image_repo_base: ${{ github.event.inputs.image_repo_base }}
+       - name: Deploy Gitpod to the preview environment
+         id: deploy-gitpod
+         if: github.event.inputs.skip_deploy != 'true'
+         uses: ./.github/actions/deploy-gitpod
+         with:
+           name: ${{ needs.configuration.outputs.name }}
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
+           version: ${{ needs.configuration.outputs.version}}
++          image_repo_base: ${{ github.event.inputs.image_repo_base }}
+ 
+   check:
+     name: Check for regressions
+     needs: [configuration, infrastructure, create-runner]
+     runs-on: ${{ needs.create-runner.outputs.label }}
+     container:
+-      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
++      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:pd-test-new-preview-gha.24525
+       volumes:
+         - /var/tmp:/var/tmp
+         - /tmp:/tmp
+     steps:
+       - uses: actions/checkout@v4
++      - name: Setup Environment
++        env:
++          HOME: /home/gitpod
++        uses: ./.github/actions/setup-environment
++        with:
++          identity_provider: ${{ secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ secrets.DEV_PREVIEW_SA }}
++          leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - name: Integration Test
+         shell: bash
+         env:
+           ROBOQUAT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+           USERNAME: ${{ secrets.IDE_INTEGRATION_TEST_USERNAME }}
+           USER_TOKEN: ${{ secrets.IDE_INTEGRATION_TEST_USER_TOKEN }}
+-          PREVIEW_ENV_DEV_SA_KEY: ${{ secrets.GCP_CREDENTIALS }}
+           PREVIEW_NAME: ${{ needs.configuration.outputs.name }}
+           TEST_BUILD_ID: ${{ github.run_id }}
+           TEST_BUILD_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+           TEST_BUILD_REF: ${{ github.head_ref || github.ref }}
++          HOME: /home/gitpod
+         run: |
+           set -euo pipefail
+ 
+           export LEEWAY_WORKSPACE_ROOT="$(pwd)"
+-          export HOME="/home/gitpod"
+-          export PREVIEW_ENV_DEV_SA_KEY_PATH="/home/gitpod/.config/gcloud/preview-environment-dev-sa.json"
+-
+-          echo "${PREVIEW_ENV_DEV_SA_KEY}" > "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-          gcloud auth activate-service-account --key-file "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+ 
+           leeway run dev/preview/previewctl:install
+ 
+-          echo "Setting up access to core-dev and harvester"
+-          previewctl get-credentials --gcp-service-account "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-
+-          previewctl install-context --branch "${PREVIEW_NAME}" --log-level debug --timeout 1m --gcp-service-account "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
++          previewctl install-context --branch "${PREVIEW_NAME}" --log-level debug --timeout 1m
+ 
+           # start integration test
+           args=()
+-          args+=( "-kubeconfig=/home/gitpod/.kube/config" )
++          args+=( "-kubeconfig=$HOME/.kube/config" )
+           args+=( "-namespace=default" )
+           [[ "$USERNAME" != "" ]] && args+=( "-username=$USERNAME" )
+           args+=( "-timeout=60m" )
+@@ -193,11 +210,16 @@ jobs:
+     runs-on: ${{ needs.create-runner.outputs.label }}
+     steps:
+       - uses: actions/checkout@v4
++      - name: Setup Environment
++        uses: ./.github/actions/setup-environment
++        with:
++          identity_provider: ${{ secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ secrets.DEV_PREVIEW_SA }}
++          leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - name: Delete preview environment
+         uses: ./.github/actions/delete-preview
+         with:
+           name: ${{ needs.configuration.outputs.name }}
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
+ 
+   delete-runner:
+     if: always()
+diff --git a/.github/workflows/jetbrains-auto-update-template.yml b/.github/workflows/jetbrains-auto-update-template.yml
+index cd7136682..2e6d6902c 100644
+--- a/.github/workflows/jetbrains-auto-update-template.yml
++++ b/.github/workflows/jetbrains-auto-update-template.yml
+@@ -1,3 +1,6 @@
++permissions:
++  id-token: write # This is required for requesting the JWT
++  contents: read  # This is required for actions/checkout
+ on:
+   workflow_call:
+     inputs:
+@@ -20,14 +23,15 @@ jobs:
+   update-jetbrains:
+     runs-on: ${{ needs.create-runner.outputs.label }}
+     container:
+-      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
++      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:pd-test-new-preview-gha.24525
+     needs: [ create-runner ]
+     steps:
+       - uses: actions/checkout@v2
+       - name: Setup Environment
+         uses: ./.github/actions/setup-environment
+         with:
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
++          identity_provider: ${{ github.ref == 'refs/heads/main' && secrets.CORE_DEV_PROVIDER || secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ github.ref == 'refs/heads/main' && secrets.CORE_DEV_SA || secrets.DEV_PREVIEW_SA }}
+           leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - name: Find IDE version to download
+         id: ide-version
+@@ -43,8 +47,10 @@ jobs:
+         if: ${{ steps.ide-version.outputs.ideBuildVersion }}
+         env:
+           LEEWAY_MAX_PROVENANCE_BUNDLE_SIZE: "8388608"
++          LEEWAY_REMOTE_CACHE_BUCKET: ${{ github.ref == 'refs/heads/main' && 'leeway-cache-main-c514a01' || 'leeway-cache-dev-3ac8ef5' }}
+         run: |
+-          leeway build -Dversion=latest -DimageRepoBase=eu.gcr.io/gitpod-core-dev/build -DbuildNumber=${{ steps.ide-version.outputs.ideBuildVersion }} components/ide/jetbrains/image:${{ inputs.productId }}-latest -DjbBackendVersion=${{ steps.ide-version.outputs.ideVersion }}
++          imageRepoBase=${{ github.ref == 'refs/heads/main' && 'eu.gcr.io/gitpod-core-dev/build' || 'eu.gcr.io/gitpod-dev-artifact/build' }}
++          leeway build -Dversion=latest -DimageRepoBase=$imageRepoBase -DbuildNumber=${{ steps.ide-version.outputs.ideBuildVersion }} components/ide/jetbrains/image:${{ inputs.productId }}-latest -DjbBackendVersion=${{ steps.ide-version.outputs.ideVersion }}
+       - name: Get previous job's status
+         id: lastrun
+         uses: filiptronicek/get-last-job-status@main
+diff --git a/.github/workflows/lacework-inline-scanner.yml b/.github/workflows/lacework-inline-scanner.yml
+index 23aed05e2..7e63b7b93 100644
+--- a/.github/workflows/lacework-inline-scanner.yml
++++ b/.github/workflows/lacework-inline-scanner.yml
+@@ -1,3 +1,6 @@
++permissions:
++  id-token: write # This is required for requesting the JWT
++  contents: read  # This is required for actions/checkout
+ name: Lacework Inline Scanner
+ on:
+   workflow_run:
+@@ -51,26 +54,21 @@ jobs:
+     needs: [configuration,create-runner]
+     if: ${{ needs.configuration.outputs.skip == 'false' }}
+     container:
+-      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
++      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:pd-test-new-preview-gha.24525
+     steps:
+       # Most of this is taken over from the Build workflow/preview-env-check-regressions workflow
+       - uses: actions/checkout@v4
+       - uses: ./.github/actions/setup-environment
+         with:
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
++          identity_provider: ${{ github.ref == 'refs/heads/main' && secrets.CORE_DEV_PROVIDER || secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ github.ref == 'refs/heads/main' && secrets.CORE_DEV_SA || secrets.DEV_PREVIEW_SA }}
+           leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+-      - name: Get Secrets from GCP
+-        id: "secrets"
+-        uses: "google-github-actions/get-secretmanager-secrets@v1"
+-        with:
+-          secrets: |-
+-            lacework-access-token:gitpod-core-dev/lacework-access-token
+       - name: Lacework Inline Scanner
+         id: lacework-inline-scanner
+         shell: bash
+         env:
+           VERSION: ${{needs.configuration.outputs.version}}
+-          LW_ACCESS_TOKEN: "${{ steps.secrets.outputs.lacework-access-token }}"
++          LW_ACCESS_TOKEN: "${{ secrets.LACEWORK_ACCESS_TOKEN }}"
+         run: |
+           $GITHUB_WORKSPACE/scripts/lw-scan-images.sh
+ 
+diff --git a/.github/workflows/preview-env-check-regressions.yml b/.github/workflows/preview-env-check-regressions.yml
+index 4285048cb..546fd3227 100644
+--- a/.github/workflows/preview-env-check-regressions.yml
++++ b/.github/workflows/preview-env-check-regressions.yml
+@@ -1,4 +1,7 @@
+ name: "Preview environment regression check"
++permissions:
++  id-token: write # This is required for requesting the JWT
++  contents: read  # This is required for actions/checkout
+ on:
+   workflow_run:
+     workflows: ["Build"]
+@@ -12,10 +15,14 @@ on:
+       version:
+         required: true
+         description: "The version of Gitpod to install"
+-      infrastructure_provider:
+-        description: "The infrastructure provider to use. Valid options: harvester, gcp"
++      image_repo_base:
++        type: choice
+         required: false
+-        default: gcp
++        description: "The base repo of image"
++        options:
++          - "eu.gcr.io/gitpod-core-dev/build"
++          - "eu.gcr.io/gitpod-dev-artifact/build"
++        default: "eu.gcr.io/gitpod-core-dev/build"
+ 
+ jobs:
+   create-runner:
+@@ -32,7 +39,6 @@ jobs:
+       skip: ${{ steps.configuration.outputs.skip }}
+       name: ${{ steps.configuration.outputs.name }}
+       version: ${{ steps.configuration.outputs.version }}
+-      infrastructure_provider: ${{ steps.configuration.outputs.infrastructure_provider }}
+     steps:
+       - name: "Set outputs"
+         id: configuration
+@@ -42,7 +48,6 @@ jobs:
+               {
+                   echo "version=${{ github.event.inputs.version }}"
+                   echo "name=${{ github.event.inputs.name }}"
+-                  echo "infrastructure_provider=${{ github.event.inputs.infrastructure_provider }}"
+                   echo "skip=false"
+               } >> $GITHUB_OUTPUT
+           else
+@@ -50,7 +55,6 @@ jobs:
+               {
+                   echo "version=main-gha.${{ github.event.workflow_run.run_number }}"
+                   echo "name=preview-regression-check-main-${{ github.run_id }}-${{ github.run_attempt }}"
+-                  echo "infrastructure_provider=harvester"
+                   echo "skip=${{ github.event.workflow_run.conclusion == 'failure' }}"
+               } >> $GITHUB_OUTPUT
+           fi
+@@ -63,22 +67,28 @@ jobs:
+       group: ${{ needs.configuration.outputs.name }}-infrastructure
+     steps:
+       - uses: actions/checkout@v4
++      - name: Setup Environment
++        uses: ./.github/actions/setup-environment
++        with:
++          identity_provider: ${{ secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ secrets.DEV_PREVIEW_SA }}
++          leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - name: Create preview environment infrastructure
+         id: create
+         uses: ./.github/actions/preview-create
+         with:
+           name: ${{ needs.configuration.outputs.name }}
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
+           infrastructure_provider: ${{ needs.configuration.outputs.infrastructure_provider }}
+           large_vm: false
+           preemptible: true
++          image_repo_base: ${{ github.event.inputs.image_repo_base }}
+       - name: Deploy Gitpod to the preview environment
+         id: deploy-gitpod
+         uses: ./.github/actions/deploy-gitpod
+         with:
+           name: ${{ needs.configuration.outputs.name }}
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
+           version: ${{ needs.configuration.outputs.version}}
++          image_repo_base: ${{ github.event.inputs.image_repo_base }}
+ 
+   check:
+     name: Check for regressions
+@@ -86,36 +96,32 @@ jobs:
+     if: ${{ needs.configuration.outputs.skip == 'false' }}
+     runs-on: ${{ needs.create-runner.outputs.label }}
+     container:
+-      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
++      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:pd-test-new-preview-gha.24525
+       volumes:
+         - /var/tmp:/var/tmp
+         - /tmp:/tmp
+     steps:
+       - uses: actions/checkout@v4
++      - name: Setup Environment
++        uses: ./.github/actions/setup-environment
++        with:
++          identity_provider: ${{ secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ secrets.DEV_PREVIEW_SA }}
++          leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - name: Check
+         shell: bash
+         env:
+           ROBOQUAT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+           USERNAME: ${{ secrets.IDE_INTEGRATION_TEST_USERNAME }}
+           USER_TOKEN: ${{ secrets.IDE_INTEGRATION_TEST_USER_TOKEN }}
+-          PREVIEW_ENV_DEV_SA_KEY: ${{ secrets.GCP_CREDENTIALS }}
+           PREVIEW_NAME: ${{ needs.configuration.outputs.name }}
+         run: |
+           set -euo pipefail
+ 
+           export LEEWAY_WORKSPACE_ROOT="$(pwd)"
+           export HOME="/home/gitpod"
+-          export PREVIEW_ENV_DEV_SA_KEY_PATH="/home/gitpod/.config/gcloud/preview-environment-dev-sa.json"
+-
+-          echo "${PREVIEW_ENV_DEV_SA_KEY}" > "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-          gcloud auth activate-service-account --key-file "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-
+-          leeway run dev/preview/previewctl:install
+ 
+-          echo "Setting up access to core-dev and harvester"
+-          previewctl get-credentials --gcp-service-account "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-
+-          previewctl install-context --branch "${PREVIEW_NAME}" --log-level debug --timeout 1m --gcp-service-account "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
++          previewctl install-context --branch "${PREVIEW_NAME}" --log-level debug --timeout 1m
+ 
+           # start integration test
+           args=()
+@@ -151,18 +157,11 @@ jobs:
+         with:
+           token_format: access_token
+           credentials_json: "${{ secrets.GCP_CREDENTIALS }}"
+-      - name: Get Secrets from GCP
+-        if: failure()
+-        id: "secrets"
+-        uses: "google-github-actions/get-secretmanager-secrets@v1"
+-        with:
+-          secrets: |-
+-            devx-slack-webhook:gitpod-core-dev/devx-alerts-slack-webhook
+       - name: Slack Notification
+         uses: rtCamp/action-slack-notify@v2
+         if: failure()
+         env:
+-          SLACK_WEBHOOK: "${{ steps.secrets.outputs.devx-slack-webhook }}"
++          SLACK_WEBHOOK: "${{ secrets.DEVX_SLACK_WEBHOOK }}"
+           SLACK_COLOR: ${{ job.status }}
+           SLACK_MESSAGE: "`${{ needs.configuration.outputs.version}}` smoke test failed"
+           SLACK_FOOTER: "<https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|Workflow logs>"
+@@ -174,11 +173,16 @@ jobs:
+     runs-on: ${{ needs.create-runner.outputs.label }}
+     steps:
+       - uses: actions/checkout@v4
++      - name: Setup Environment
++        uses: ./.github/actions/setup-environment
++        with:
++          identity_provider: ${{ secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ secrets.DEV_PREVIEW_SA }}
++          leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - name: Delete preview environment
+         uses: ./.github/actions/delete-preview
+         with:
+           name: ${{ needs.configuration.outputs.name }}
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
+ 
+   delete-runner:
+     if: always()
+diff --git a/.github/workflows/preview-env-delete.yml b/.github/workflows/preview-env-delete.yml
+index 0c197140d..4022af117 100644
+--- a/.github/workflows/preview-env-delete.yml
++++ b/.github/workflows/preview-env-delete.yml
+@@ -1,4 +1,7 @@
+ name: "Preview environment delete"
++permissions:
++  id-token: write # This is required for requesting the JWT
++  contents: read  # This is required for actions/checkout
+ on:
+   workflow_dispatch:
+     inputs:
+@@ -20,11 +23,16 @@ jobs:
+     needs: [create-runner]
+     steps:
+       - uses: actions/checkout@v4
++      - name: Setup Environment
++        uses: ./.github/actions/setup-environment
++        with:
++          identity_provider: ${{ secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ secrets.DEV_PREVIEW_SA }}
++          leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - name: Delete preview environment
+         uses: ./.github/actions/delete-preview
+         with:
+           name: ${{ github.event.inputs.name || github.event.ref}}
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
+ 
+   delete-runner:
+     if: always()
+diff --git a/.github/workflows/preview-env-gc.yml b/.github/workflows/preview-env-gc.yml
+index decef8f11..1642ce2c4 100644
+--- a/.github/workflows/preview-env-gc.yml
++++ b/.github/workflows/preview-env-gc.yml
+@@ -1,4 +1,7 @@
+ name: "Preview environment garbage collection"
++permissions:
++  id-token: write # This is required for requesting the JWT
++  contents: read  # This is required for actions/checkout
+ on:
+   workflow_dispatch:
+   schedule:
+@@ -15,7 +18,7 @@ jobs:
+     runs-on: ${{ needs.create-runner.outputs.label }}
+     needs: [create-runner]
+     container:
+-      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
++      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:pd-test-new-preview-gha.24525
+     outputs:
+       names: ${{ steps.set-matrix.outputs.names }}
+       count: ${{ steps.set-matrix.outputs.count }}
+@@ -23,26 +26,20 @@ jobs:
+       - uses: actions/checkout@v4
+         with:
+           fetch-depth: 0
++      - name: Setup Environment
++        uses: ./.github/actions/setup-environment
++        with:
++          identity_provider: ${{ secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ secrets.DEV_PREVIEW_SA }}
++          leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - name: Compute matrix
+         id: set-matrix
+         shell: bash
+-        env:
+-          PREVIEW_ENV_DEV_SA_KEY: ${{ secrets.GCP_CREDENTIALS }}
+         run: |
+           set -euo pipefail
+ 
+-          export LEEWAY_WORKSPACE_ROOT="$(pwd)"
+-          export HOME="/home/gitpod"
+-          export PREVIEW_ENV_DEV_SA_KEY_PATH="/home/gitpod/.config/gcloud/preview-environment-dev-sa.json"
+-          # Used by 'previewctl list stale'
+-          export GOOGLE_APPLICATION_CREDENTIALS="/home/gitpod/.config/gcloud/preview-environment-dev-sa.json"
+-
+-          echo "${PREVIEW_ENV_DEV_SA_KEY}" > "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-          gcloud auth activate-service-account --key-file "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-
+           leeway run dev/preview/previewctl:install
+ 
+-          previewctl get-credentials --gcp-service-account "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+           previewctl list stale | jq --null-input --raw-input --compact-output '[inputs | select(length>0)]' > /tmp/stale-json
+           echo "names=$(cat /tmp/stale-json)" >> $GITHUB_OUTPUT
+           echo "count=$(jq '. | length' /tmp/stale-json)" >> $GITHUB_OUTPUT
+@@ -58,11 +55,16 @@ jobs:
+         name: ${{ fromJSON(needs.stale.outputs.names) }}
+     steps:
+       - uses: actions/checkout@v4
++      - name: Setup Environment
++        uses: ./.github/actions/setup-environment
++        with:
++          identity_provider: ${{ secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ secrets.DEV_PREVIEW_SA }}
++          leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - name: Delete preview environment ${{ matrix.name }}
+         uses: ./.github/actions/delete-preview
+         with:
+           name: ${{ matrix.name }}
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
+ 
+   delete-runner:
+     if: always()
+diff --git a/.github/workflows/workspace-integration-tests.yml b/.github/workflows/workspace-integration-tests.yml
+index e6faa807a..c31f39c6c 100644
+--- a/.github/workflows/workspace-integration-tests.yml
++++ b/.github/workflows/workspace-integration-tests.yml
+@@ -1,4 +1,7 @@
+ name: "Workspace integration tests"
++permissions:
++  id-token: write # This is required for requesting the JWT
++  contents: read  # This is required for actions/checkout
+ on:
+   workflow_dispatch:
+     inputs:
+@@ -10,6 +13,14 @@ on:
+         required: false
+         type: string
+         description: "The version of Gitpod to install (leave empty to target the latest successful build on main)"
++      image_repo_base:
++        type: choice
++        required: false
++        description: "The base repo of image"
++        options:
++          - "eu.gcr.io/gitpod-core-dev/build"
++          - "eu.gcr.io/gitpod-dev-artifact/build"
++        default: "eu.gcr.io/gitpod-core-dev/build"
+       skip_deploy:
+         required: false
+         type: boolean
+@@ -28,6 +39,11 @@ on:
+         required: false
+         type: string
+         description: "The version of Gitpod to install (leave empty to target the latest successful build on main)"
++      image_repo_base:
++        type: string
++        required: false
++        description: "The base repo of image"
++        default: "eu.gcr.io/gitpod-core-dev/build"
+   schedule:
+     - cron: "0 3,12 * * *"
+ 
+@@ -45,24 +61,12 @@ jobs:
+     runs-on: ${{ needs.create-runner.outputs.label }}
+     needs: [create-runner]
+     container:
+-      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
++      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:pd-test-new-preview-gha.24525
+     outputs:
+       name: ${{ steps.configuration.outputs.name }}
+       version: ${{ steps.configuration.outputs.version }}
+     steps:
+-      - id: auth
+-        uses: google-github-actions/auth@v1
+-        continue-on-error: true
+-        with:
+-          token_format: access_token
+-          credentials_json: "${{ secrets.GCP_CREDENTIALS }}"
+-      # do this step as early as possible, so that Slack Notify failure has the secret
+-      - name: Get Secrets from GCP
+-        id: "secrets"
+-        uses: "google-github-actions/get-secretmanager-secrets@v1"
+-        with:
+-          secrets: |-
+-            WORKSPACE_SLACK_WEBHOOK:gitpod-core-dev/workspace-slack-webhook
++      - uses: actions/checkout@v4
+       - name: "Set outputs"
+         id: configuration
+         shell: bash
+@@ -99,7 +103,7 @@ jobs:
+         uses: rtCamp/action-slack-notify@v2
+         if: failure()
+         env:
+-          SLACK_WEBHOOK: ${{ steps.secrets.outputs.WORKSPACE_SLACK_WEBHOOK }}
++          SLACK_WEBHOOK: ${{ secrets.WORKSPACE_SLACK_WEBHOOK }}
+           SLACK_ICON_EMOJI: ":test_tube:"
+           SLACK_USERNAME: "Integration Tests: workspace"
+           SLACK_COLOR: ${{ job.status }}
+@@ -113,68 +117,69 @@ jobs:
+       group: ${{ needs.configuration.outputs.name }}-infrastructure
+     steps:
+       - uses: actions/checkout@v4
++      - name: Setup Environment
++        uses: ./.github/actions/setup-environment
++        with:
++          identity_provider: ${{ secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ secrets.DEV_PREVIEW_SA }}
++          leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - name: Create preview environment infrastructure
+         id: create
+         uses: ./.github/actions/preview-create
+         with:
+           name: ${{ needs.configuration.outputs.name }}
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
+           infrastructure_provider: gce
+           large_vm: true
+           preemptible: true
++          image_repo_base: ${{ github.event.inputs.image_repo_base }}
+       - name: Deploy Gitpod to the preview environment
+         if: inputs.skip_deploy != 'true'
+         id: deploy-gitpod
+         uses: ./.github/actions/deploy-gitpod
+         with:
+           name: ${{ needs.configuration.outputs.name }}
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
+           version: ${{ needs.configuration.outputs.version}}
++          image_repo_base: ${{ github.event.inputs.image_repo_base }}
+ 
+   check:
+     name: Check for regressions
+     needs: [configuration, infrastructure, create-runner]
+     runs-on: ${{ needs.create-runner.outputs.label }}
+     container:
+-      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
++      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:pd-test-new-preview-gha.24525
+     steps:
+       - uses: actions/checkout@v4
+-      - id: auth
+-        uses: google-github-actions/auth@v1
+-        with:
+-          token_format: access_token
+-          credentials_json: "${{ secrets.GCP_CREDENTIALS }}"
+-      - name: Get Secrets from GCP
+-        id: "secrets"
+-        uses: "google-github-actions/get-secretmanager-secrets@v1"
+-        with:
+-          secrets: |-
+-            WORKSPACE_SLACK_WEBHOOK:gitpod-core-dev/workspace-slack-webhook
+-
+       - name: Integration Test
+         id: integration-test
+         uses: ./.github/actions/integration-tests
+         with:
+           preview_name: ${{ needs.configuration.outputs.name }}
+           test_suite: workspace
+-          notify_slack_webhook: ${{ steps.secrets.outputs.WORKSPACE_SLACK_WEBHOOK }}
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
++          notify_slack_webhook: ${{ secrets.WORKSPACE_SLACK_WEBHOOK }}
+           github_token: ${{ secrets.GITHUB_TOKEN }}
++          identity_provider: ${{ secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ secrets.DEV_PREVIEW_SA }}
++          leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
++          integration_test_username: ${{ secrets.WORKSPACE_INTEGRATION_TEST_USERNAME }}
++          integration_test_usertoken: ${{ secrets.WORKSPACE_INTEGRATION_TEST_USER_TOKEN }}
+ 
+   delete:
+     name: Delete preview environment
+     needs: [configuration, infrastructure, check, create-runner]
+     if: inputs.skip_delete != 'true' && always()
+     runs-on: ${{ needs.create-runner.outputs.label }}
+-    container:
+-      image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
+     steps:
+       - uses: actions/checkout@v4
++      - name: Setup Environment
++        uses: ./.github/actions/setup-environment
++        with:
++          identity_provider: ${{ secrets.DEV_PREVIEW_PROVIDER }}
++          service_account: ${{ secrets.DEV_PREVIEW_SA }}
++          leeway_segment_key: ${{ secrets.LEEWAY_SEGMENT_KEY }}
+       - name: Delete preview environment
+         uses: ./.github/actions/delete-preview
+         with:
+           name: ${{ needs.configuration.outputs.name }}
+-          sa_key: ${{ secrets.GCP_CREDENTIALS }}
+ 
+   delete-runner:
+     if: always()
+diff --git a/.gitpod.yml b/.gitpod.yml
+index 59fb4551a..d2b1de461 100644
+--- a/.gitpod.yml
++++ b/.gitpod.yml
+@@ -1,4 +1,4 @@
+-image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:aledbf-go-122-gha.23879
++image: eu.gcr.io/gitpod-core-dev/dev/dev-environment:pd-test-new-preview-gha.24525
+ workspaceLocation: gitpod/gitpod-ws.code-workspace
+ checkoutLocation: gitpod
+ ports:
+diff --git a/WORKSPACE.yaml b/WORKSPACE.yaml
+index 7469e125b..eb2296a6c 100644
+--- a/WORKSPACE.yaml
++++ b/WORKSPACE.yaml
+@@ -1,7 +1,7 @@
+ # this file makes this a leeway workspace
+ defaultTarget: components:all
+ defaultArgs:
+-  imageRepoBase: "eu.gcr.io/gitpod-core-dev/build"
++  imageRepoBase: "eu.gcr.io/gitpod-dev-artifact/build"
+   coreYarnLockBase: ../..
+   npmPublishTrigger: "false"
+   publishToNPM: true
+@@ -10,6 +10,8 @@ defaultArgs:
+   codeCommit: 0859efdc73ff89d823efce9288ead6d36080f315
+   codeVersion: 1.88.0
+   codeQuality: stable
++  codeWebExtensionCommit: 7ff72a2938a7a06cbdf3964590f7e9b7525958f3
++  xtermCommit: 8915adfdb17c4dc52c327ca81c50c547e80d3a99
+   noVerifyJBPlugin: false
+   intellijDownloadUrl: "https://download.jetbrains.com/idea/ideaIU-2024.1.tar.gz"
+   golandDownloadUrl: "https://download.jetbrains.com/go/goland-2024.1.tar.gz"
+diff --git a/components/BUILD.yaml b/components/BUILD.yaml
+index c27c7e958..265a05c83 100644
+--- a/components/BUILD.yaml
++++ b/components/BUILD.yaml
+@@ -38,6 +38,8 @@ packages:
+       - components/ide/code-desktop:docker-insiders
+       - components/ide/code:docker
+       - components/ide/code/codehelper:docker
++      - components/ide/code/gitpod-web-extension:docker
++      - components/ide/xterm:docker
+       - components/ide/jetbrains/launcher:docker
+       - components/ide/jetbrains/backend-plugin:stable
+       - components/ide/jetbrains/backend-plugin:latest
+diff --git a/components/ide/code/gitpod-web-extension/BUILD.yaml b/components/ide/code/gitpod-web-extension/BUILD.yaml
+new file mode 100644
+index 000000000..f2312d2bc
+--- /dev/null
++++ b/components/ide/code/gitpod-web-extension/BUILD.yaml
+@@ -0,0 +1,15 @@
++packages:
++  - name: docker
++    type: docker
++    argdeps:
++      - imageRepoBase
++      - codeWebExtensionCommit
++    config:
++      dockerfile: leeway.Dockerfile
++      metadata:
++        helm-component: workspace.codeWebExtensionImage
++      buildArgs:
++        CODE_EXTENSION_COMMIT: ${codeWebExtensionCommit}
++      image:
++        - ${imageRepoBase}/ide/gitpod-code-web:${version}
++        - ${imageRepoBase}/ide/gitpod-code-web:commit-${__git_commit}
+diff --git a/components/ide/code/gitpod-web-extension/leeway.Dockerfile b/components/ide/code/gitpod-web-extension/leeway.Dockerfile
+new file mode 100644
+index 000000000..cb357af73
+--- /dev/null
++++ b/components/ide/code/gitpod-web-extension/leeway.Dockerfile
+@@ -0,0 +1,33 @@
++# Copyright (c) 2020 Gitpod GmbH. All rights reserved.
++# Licensed under the GNU Affero General Public License (AGPL).
++# See License.AGPL.txt in the project root for license information.
++FROM node:18 as builder
++
++ARG CODE_EXTENSION_COMMIT
++
++RUN apt update -y \
++    && apt install jq --no-install-recommends -y
++
++RUN mkdir /gitpod-code-web \
++    && cd /gitpod-code-web \
++    && git init \
++    && git remote add origin https://github.com/gitpod-io/gitpod-code \
++    && git fetch origin $CODE_EXTENSION_COMMIT --depth=1 \
++    && git reset --hard FETCH_HEAD
++WORKDIR /gitpod-code-web
++RUN yarn --frozen-lockfile --network-timeout 180000
++
++# update package.json
++RUN setSegmentKey="setpath([\"segmentKey\"]; \"untrusted-dummy-key\")" && \
++    jqCommands="${setSegmentKey}" && \
++    cat package.json | jq "${jqCommands}" > package.json.tmp && \
++    mv package.json.tmp package.json
++RUN yarn build:gitpod-web && yarn --cwd gitpod-web/ inject-commit-hash
++
++
++FROM scratch
++
++COPY --from=builder --chown=33333:33333 /gitpod-code-web/gitpod-web/out /ide/extensions/gitpod-web/out/
++COPY --from=builder --chown=33333:33333 /gitpod-code-web/gitpod-web/public /ide/extensions/gitpod-web/public/
++COPY --from=builder --chown=33333:33333 /gitpod-code-web/gitpod-web/resources /ide/extensions/gitpod-web/resources/
++COPY --from=builder --chown=33333:33333 /gitpod-code-web/gitpod-web/package.json /gitpod-code-web/gitpod-web/package.nls.json /gitpod-code-web/gitpod-web/README.md /gitpod-code-web/gitpod-web/LICENSE.txt /ide/extensions/gitpod-web/
+diff --git a/components/ide/jetbrains/backend-plugin/hot-deploy.sh b/components/ide/jetbrains/backend-plugin/hot-deploy.sh
+index 379b54e56..50d6d9b84 100755
+--- a/components/ide/jetbrains/backend-plugin/hot-deploy.sh
++++ b/components/ide/jetbrains/backend-plugin/hot-deploy.sh
+@@ -17,7 +17,7 @@ echo "Image Version: $version"
+ bldfn="/tmp/build-$version.tar.gz"
+ 
+ docker ps &> /dev/null || (echo "You need a working Docker daemon. Maybe set DOCKER_HOST?"; exit 1)
+-leeway build -DnoVerifyJBPlugin=true -Dversion="$version" -DimageRepoBase=eu.gcr.io/gitpod-core-dev/build .:"$qualifier" --save "$bldfn"
++leeway build -DnoVerifyJBPlugin=true -Dversion="$version" -DimageRepoBase=eu.gcr.io/gitpod-dev-artifact/build .:"$qualifier" --save "$bldfn"
+ dev_image="$(tar xfO "$bldfn" ./imgnames.txt | head -n1)"
+ echo "Dev Image: $dev_image"
+ 
+diff --git a/components/ide/jetbrains/image/hot-deploy.sh b/components/ide/jetbrains/image/hot-deploy.sh
+index 1da9ba05b..a4b1f8eeb 100755
+--- a/components/ide/jetbrains/image/hot-deploy.sh
++++ b/components/ide/jetbrains/image/hot-deploy.sh
+@@ -37,7 +37,7 @@ docker ps &> /dev/null || (echo "You need a working Docker daemon. Maybe set DOC
+ IDE_VERSIONS_JSON=$(bash "$ROOT_DIR/components/ide/jetbrains/image/resolve-latest-ide-version.sh" "$product_code")
+ IDE_BUILD_VERSION=$(echo "$IDE_VERSIONS_JSON" | jq -r .IDE_BUILD_VERSION)
+ IDE_VERSION=$(echo "$IDE_VERSIONS_JSON" | jq -r .IDE_VERSION)
+-leeway build -Dversion="$version" -DimageRepoBase=eu.gcr.io/gitpod-core-dev/build -DbuildNumber="$IDE_BUILD_VERSION" -DjbBackendVersion="$IDE_VERSION" ".:$component" --save "$bldfn"
++leeway build -Dversion="$version" -DimageRepoBase=eu.gcr.io/gitpod-dev-artifact/build -DbuildNumber="$IDE_BUILD_VERSION" -DjbBackendVersion="$IDE_VERSION" ".:$component" --save "$bldfn"
+ dev_image="$(tar xfO "$bldfn" ./imgnames.txt | head -n1)"
+ echo "Dev Image: $dev_image"
+ 
+diff --git a/components/ide/jetbrains/launcher/hot-deploy.sh b/components/ide/jetbrains/launcher/hot-deploy.sh
+index 85b9ec742..44859b212 100755
+--- a/components/ide/jetbrains/launcher/hot-deploy.sh
++++ b/components/ide/jetbrains/launcher/hot-deploy.sh
+@@ -14,7 +14,7 @@ echo "Image Version: $version"
+ bldfn="/tmp/build-$version.tar.gz"
+ 
+ docker ps &> /dev/null || (echo "You need a working Docker daemon. Maybe set DOCKER_HOST?"; exit 1)
+-leeway build -Dversion="$version" -DimageRepoBase=eu.gcr.io/gitpod-core-dev/build .:docker --save "$bldfn"
++leeway build -Dversion="$version" -DimageRepoBase=eu.gcr.io/gitpod-dev-artifact/build .:docker --save "$bldfn"
+ dev_image="$(tar xfO "$bldfn" ./imgnames.txt | head -n1)"
+ echo "Dev Image: $dev_image"
+ 
+diff --git a/components/ide/xterm/BUILD.yaml b/components/ide/xterm/BUILD.yaml
+new file mode 100644
+index 000000000..ee47d6198
+--- /dev/null
++++ b/components/ide/xterm/BUILD.yaml
+@@ -0,0 +1,16 @@
++packages:
++  - name: docker
++    type: docker
++    argdeps:
++      - imageRepoBase
++      - xtermCommit
++    config:
++      dockerfile: leeway.Dockerfile
++      metadata:
++        helm-component: workspace.xtermWebImage
++      buildArgs:
++        XTERM_COMMIT: ${xtermCommit}
++        XTERM_VERSION: 1.0.0
++      image:
++        - ${imageRepoBase}/ide/xterm-web:${version}
++        - ${imageRepoBase}/ide/xterm-web:commit-${__git_commit}
+diff --git a/components/ide/xterm/leeway.Dockerfile b/components/ide/xterm/leeway.Dockerfile
+new file mode 100644
+index 000000000..6f47a84ff
+--- /dev/null
++++ b/components/ide/xterm/leeway.Dockerfile
+@@ -0,0 +1,39 @@
++# Copyright (c) 2024 Gitpod GmbH. All rights reserved.
++# Licensed under the GNU Affero General Public License (AGPL).
++# See License.AGPL.txt in the project root for license information.
++FROM node:16 as ide_installer
++
++ARG XTERM_COMMIT
++
++RUN apt update -y \
++    && apt install python3 --no-install-recommends -y
++
++RUN mkdir /build \
++    && cd /build \
++    && git init \
++    && git remote add origin https://github.com/gitpod-io/xterm-web-ide \
++    && git fetch origin $XTERM_COMMIT --depth=1 \
++    && git reset --hard FETCH_HEAD
++WORKDIR /build
++RUN yarn --frozen-lockfile --network-timeout 180000
++RUN yarn build \
++    && cp -r dist/ /ide/ \
++    && rm -rf dist/ \
++    && yarn package:server \
++    && echo ${XTERM_COMMIT} > dist/commit.txt \
++    && cp -r dist/ out-server/ \
++    && chmod -R ugo+x /ide \
++    && cp icon.svg /ide/icon.svg
++
++FROM scratch
++# copy static web resources in first layer to serve from blobserve
++COPY --chown=33333:33333 --from=ide_installer /ide/ /ide/xterm
++COPY --chown=33333:33333 --from=ide_installer /build/out-server/ /ide/xterm
++COPY --chown=33333:33333 --from=ide_installer /build/node_modules/node/bin/node /ide/xterm/bin/
++COPY --chown=33333:33333 --from=ide_installer /build/startup.sh /ide/xterm
++COPY --chown=33333:33333 --from=ide_installer /build/supervisor-ide-config.json /ide/
++
++ARG XTERM_COMMIT
++ARG XTERM_VERSION
++LABEL "io.gitpod.ide.commit"=$XTERM_COMMIT
++LABEL "io.gitpod.ide.version"=$XTERM_VERSION
+diff --git a/components/image-builder-bob/BUILD.yaml b/components/image-builder-bob/BUILD.yaml
+index d6f7063ce..cafd239a3 100644
+--- a/components/image-builder-bob/BUILD.yaml
++++ b/components/image-builder-bob/BUILD.yaml
+@@ -40,11 +40,11 @@ packages:
+   deps:
+   - :app
+   - :runc-facade
++  argdeps:
++  - imageRepoBase
+   config:
+     buildArgs:
+       VERSION: ${version}
+-    argdeps:
+-        - imageRepoBase
+     dockerfile: leeway.Dockerfile
+     metadata:
+       helm-component: imageBuilderMk3.builderImage
+diff --git a/dev/image/Dockerfile b/dev/image/Dockerfile
+index 6b2b2e1f8..0b8062f78 100644
+--- a/dev/image/Dockerfile
++++ b/dev/image/Dockerfile
+@@ -22,7 +22,7 @@ RUN mkdir -p /tmp/helm/ \
+     && helm completion bash > /usr/share/bash-completion/completions/helm
+ 
+ ### kubectl ###
+-RUN curl -fsSL -o /usr/bin/kubectl "https://dl.k8s.io/release/v1.27.11/bin/linux/amd64/kubectl" && chmod +x /usr/bin/kubectl \
++RUN curl -fsSL -o /usr/bin/kubectl "https://dl.k8s.io/release/v1.28.9/bin/linux/amd64/kubectl" && chmod +x /usr/bin/kubectl \
+     && kubectl completion bash > /usr/share/bash-completion/completions/kubectl
+ 
+ RUN curl -fsSL -o /usr/bin/kubectx https://raw.githubusercontent.com/ahmetb/kubectx/master/kubectx && chmod +x /usr/bin/kubectx \
+@@ -45,10 +45,10 @@ RUN cd /usr/bin && curl -fsSL https://github.com/cert-manager/cert-manager/relea
+ RUN cd /usr/bin && curl -fsSL https://github.com/praetorian-inc/gokart/releases/download/v0.4.0/gokart_0.4.0_linux_x86_64.tar.gz | tar xzv --no-anchored gokart
+ 
+ # leeway
+-ARG LEEWAY_VERSION=0.8.0
++ARG LEEWAY_VERSION=0.8.2
+ ENV LEEWAY_MAX_PROVENANCE_BUNDLE_SIZE=8388608
+ ENV LEEWAY_WORKSPACE_ROOT=/workspace/gitpod
+-ENV LEEWAY_REMOTE_CACHE_BUCKET=gitpod-core-leeway-cache-branch
++ENV LEEWAY_REMOTE_CACHE_BUCKET=leeway-cache-dev-3ac8ef5
+ ENV LEEWAY_CACHE_DIR=/workspace/.leeway/cache
+ ENV LEEWAY_BUILD_DIR=/workspace/.leeway/build
+ RUN cd /usr/bin && curl -fsSL https://github.com/gitpod-io/leeway/releases/download/v${LEEWAY_VERSION}/leeway_${LEEWAY_VERSION}_Linux_x86_64.tar.gz | tar xz
+@@ -139,7 +139,7 @@ ARG GCS_DIR=/opt/google-cloud-sdk
+ ENV PATH=$GCS_DIR/bin:$PATH
+ RUN sudo chown gitpod: /opt \
+     && mkdir $GCS_DIR \
+-    && curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-445.0.0-linux-x86_64.tar.gz \
++    && curl -fsSL https://dl.google.com/dl/cloudsdk/channels/rapid/downloads/google-cloud-sdk-472.0.0-linux-x86_64.tar.gz \
+     | tar -xzvC /opt \
+     && /opt/google-cloud-sdk/install.sh --quiet --usage-reporting=false --bash-completion=true \
+     --additional-components gke-gcloud-auth-plugin docker-credential-gcr alpha beta \
+@@ -172,7 +172,7 @@ RUN curl -L "https://awscli.amazonaws.com/awscli-exe-linux-x86_64-2.7.25.zip" -o
+     && rm -f awscliv2.zip
+ 
+ # Install Terraform
+-ARG RELEASE_URL="https://releases.hashicorp.com/terraform/1.3.1/terraform_1.3.1_linux_amd64.zip"
++ARG RELEASE_URL="https://releases.hashicorp.com/terraform/1.8.1/terraform_1.8.1_linux_amd64.zip"
+ RUN mkdir -p ~/.terraform \
+     && cd ~/.terraform \
+     && curl -fsSL -o terraform_linux_amd64.zip ${RELEASE_URL} \
+diff --git a/dev/preview/BUILD.yaml b/dev/preview/BUILD.yaml
+index d7c48073d..a41353b20 100644
+--- a/dev/preview/BUILD.yaml
++++ b/dev/preview/BUILD.yaml
+@@ -13,7 +13,7 @@ packages:
+ scripts:
+ 
+   - name: configure-workspace
+-    description: Configures the workspace so that it has access to development resources (dev, harvester) as well as your preview environment.
++    description: Configures the workspace so that it has access to development resources as well as your preview environment.
+     script: ./workflow/preview/configure-workspace.sh
+ 
+   - name: build
+@@ -24,27 +24,18 @@ scripts:
+     description: Provisions a new preview environment
+     script: |
+       export GOOGLE_APPLICATION_CREDENTIALS="${GOOGLE_APPLICATION_CREDENTIALS:-$PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-      export GOOGLE_BACKEND_CREDENTIALS="${GOOGLE_BACKEND_CREDENTIALS:-$PREVIEW_ENV_DEV_SA_KEY_PATH}"
+       export TF_VAR_cert_issuer="${TF_VAR_cert_issuer:-letsencrypt-issuer-gitpod-core-dev}"
+-      export TF_VAR_dev_kube_path="${TF_VAR_dev_kube_path:-/home/gitpod/.kube/config}"
+-      export TF_VAR_dev_kube_context="${TF_VAR_dev_kube_context:-dev}"
+-      export TF_VAR_harvester_kube_path="${TF_VAR_harvester_kube_path:-$HOME/.kube/config}"
+-      export TF_VAR_harvester_kube_context="${TF_VAR_harvester_kube_context:-harvester}"
+       export TF_VAR_preview_name="${TF_VAR_preview_name:-$(previewctl get name)}"
+-      export TF_VAR_vm_cpu="${TF_VAR_vm_cpu:-6}"
+-      export TF_VAR_vm_memory="${TF_VAR_vm_memory:-12Gi}"
+-      export TF_VAR_vm_storage_class="${TF_VAR_vm_storage_class:-longhorn-gitpod-k3s-202304191605-onereplica}"
+-      ./workflow/preview/deploy-harvester.sh
++      ./workflow/preview/deploy-preview.sh
+ 
+   - name: delete-preview
+     description: Delete an existing preview environment
+     script: |
+       export DESTROY=true
+       export GOOGLE_APPLICATION_CREDENTIALS="${GOOGLE_APPLICATION_CREDENTIALS:-$PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-      export GOOGLE_BACKEND_CREDENTIALS="${GOOGLE_BACKEND_CREDENTIALS:-$PREVIEW_ENV_DEV_SA_KEY_PATH}"
+       export TF_VAR_kubeconfig_path="${TF_VAR_kubeconfig_path:-$HOME/.kube/config}"
+       export TF_VAR_preview_name="${TF_VAR_preview_name:-$(previewctl get name)}"
+-      ./workflow/preview/deploy-harvester.sh
++      ./workflow/preview/deploy-preview.sh
+ 
+   - name: deploy-gitpod
+     description: Deploys Gitpod to an existing preview environment
+diff --git a/dev/preview/infrastructure/modules/dns/certificate-letsencrypt.tf b/dev/preview/infrastructure/modules/dns/certificate-letsencrypt.tf
+index 90bfe7883..68e61d868 100644
+--- a/dev/preview/infrastructure/modules/dns/certificate-letsencrypt.tf
++++ b/dev/preview/infrastructure/modules/dns/certificate-letsencrypt.tf
+@@ -36,24 +36,31 @@ resource "acme_certificate" "letsencrypt" {
+   }
+ }
+ 
+-resource "kubernetes_secret" "letsencrypt" {
+-  provider = k8s.dev
+-  count    = local.letsencrypt_enabled ? 1 : 0
+ 
+-  type = "kubernetes.io/tls"
++resource "google_secret_manager_secret" "letsencrypt" {
++  count = local.letsencrypt_enabled ? 1 : 0
+ 
+-  metadata {
+-    name      = "harvester-${var.preview_name}"
+-    namespace = "certs"
+-    annotations = {
+-      "preview/owner" = var.preview_name
+-    }
++  secret_id = "certificate-${var.preview_name}"
++
++  labels = {
++    label = "preview-certificate"
+   }
+ 
+-  data = {
+-    "tls.crt" = "${lookup(acme_certificate.letsencrypt[0], "certificate_pem")}${lookup(acme_certificate.letsencrypt[0], "issuer_pem")}"
+-    "tls.key" = "${lookup(acme_certificate.letsencrypt[0], "private_key_pem")}"
++  replication {
++    auto {}
+   }
++}
++
++
++resource "google_secret_manager_secret_version" "letsencrypt" {
++  count = local.letsencrypt_enabled ? 1 : 0
++
++  secret = google_secret_manager_secret.letsencrypt[0].id
++
++  secret_data = jsonencode({
++    "tls.crt" = base64encode("${lookup(acme_certificate.letsencrypt[0], "certificate_pem")}${lookup(acme_certificate.letsencrypt[0], "issuer_pem")}")
++    "tls.key" = base64encode("${lookup(acme_certificate.letsencrypt[0], "private_key_pem")}")
++  })
+ 
+   depends_on = [
+     acme_certificate.letsencrypt[0]
+diff --git a/dev/preview/infrastructure/modules/dns/certificate-zerossl.tf b/dev/preview/infrastructure/modules/dns/certificate-zerossl.tf
+index 6735d983b..987440bb6 100644
+--- a/dev/preview/infrastructure/modules/dns/certificate-zerossl.tf
++++ b/dev/preview/infrastructure/modules/dns/certificate-zerossl.tf
+@@ -48,24 +48,26 @@ resource "acme_certificate" "zerossl" {
+   }
+ }
+ 
+-resource "kubernetes_secret" "zerossl" {
+-  provider = k8s.dev
+-  count    = local.zerossl_enabled ? 1 : 0
+-
+-  type = "kubernetes.io/tls"
++resource "google_secret_manager_secret" "zerossl" {
++  count     = local.zerossl_enabled ? 1 : 0
++  secret_id = "certificate-${var.preview_name}"
+ 
+-  metadata {
+-    name      = "harvester-${var.preview_name}"
+-    namespace = "certs"
+-    annotations = {
+-      "preview/owner" = var.preview_name
+-    }
++  labels = {
++    label = "preview-certificate"
+   }
+ 
+-  data = {
+-    "tls.crt" = "${lookup(acme_certificate.zerossl[0], "certificate_pem")}${lookup(acme_certificate.zerossl[0], "issuer_pem")}"
+-    "tls.key" = "${lookup(acme_certificate.zerossl[0], "private_key_pem")}"
++  replication {
++    auto {}
+   }
++}
++resource "google_secret_manager_secret_version" "zerossl" {
++  count  = local.zerossl_enabled ? 1 : 0
++  secret = google_secret_manager_secret.zerossl[0].id
++
++  secret_data = jsonencode({
++    "tls.crt" = base64encode("${lookup(acme_certificate.zerossl[0], "certificate_pem")}${lookup(acme_certificate.zerossl[0], "issuer_pem")}")
++    "tls.key" = base64encode("${lookup(acme_certificate.zerossl[0], "private_key_pem")}")
++  })
+ 
+   depends_on = [
+     acme_certificate.zerossl[0]
+diff --git a/dev/preview/infrastructure/modules/dns/dns.tf b/dev/preview/infrastructure/modules/dns/dns.tf
+index 780e8c2bb..03820c055 100644
+--- a/dev/preview/infrastructure/modules/dns/dns.tf
++++ b/dev/preview/infrastructure/modules/dns/dns.tf
+@@ -1,6 +1,7 @@
+ data "google_dns_managed_zone" "preview-gitpod-dev" {
+   provider = google
+   name     = "preview-gitpod-dev-com"
++  project  = var.gcp_project_dns
+ }
+ 
+ locals {
+@@ -11,6 +12,7 @@ locals {
+ 
+ resource "google_dns_record_set" "root" {
+   provider = google
++  project  = var.gcp_project_dns
+ 
+   name = "${var.preview_name}.${data.google_dns_managed_zone.preview-gitpod-dev.dns_name}"
+   type = "A"
+@@ -22,6 +24,7 @@ resource "google_dns_record_set" "root" {
+ 
+ resource "google_dns_record_set" "root-wc" {
+   provider = google
++  project  = var.gcp_project_dns
+ 
+   name = "*.${var.preview_name}.${data.google_dns_managed_zone.preview-gitpod-dev.dns_name}"
+   type = "A"
+@@ -33,6 +36,7 @@ resource "google_dns_record_set" "root-wc" {
+ 
+ resource "google_dns_record_set" "root-wc-ws-dev" {
+   provider = google
++  project  = var.gcp_project_dns
+ 
+   name = "*.ws-dev.${var.preview_name}.${data.google_dns_managed_zone.preview-gitpod-dev.dns_name}"
+   type = "A"
+@@ -44,6 +48,7 @@ resource "google_dns_record_set" "root-wc-ws-dev" {
+ 
+ resource "google_dns_record_set" "root-wc-ws-dev-ssh" {
+   provider = google
++  project  = var.gcp_project_dns
+ 
+   name = "*.ssh.ws-dev.${var.preview_name}.${data.google_dns_managed_zone.preview-gitpod-dev.dns_name}"
+   type = "A"
+@@ -55,6 +60,7 @@ resource "google_dns_record_set" "root-wc-ws-dev-ssh" {
+ 
+ resource "google_dns_record_set" "root-wc-local-ssh-a" {
+   provider = google
++  project  = var.gcp_project_dns
+ 
+   name = "*.lssh.${var.preview_name}.${data.google_dns_managed_zone.preview-gitpod-dev.dns_name}"
+   type = "A"
+@@ -66,6 +72,7 @@ resource "google_dns_record_set" "root-wc-local-ssh-a" {
+ 
+ resource "google_dns_record_set" "root-wc-local-ssh-aaaa" {
+   provider = google
++  project  = var.gcp_project_dns
+ 
+   name = "*.lssh.${var.preview_name}.${data.google_dns_managed_zone.preview-gitpod-dev.dns_name}"
+   type = "AAAA"
+diff --git a/dev/preview/infrastructure/modules/dns/provider.tf b/dev/preview/infrastructure/modules/dns/provider.tf
+index f4e88f847..8632cae07 100644
+--- a/dev/preview/infrastructure/modules/dns/provider.tf
++++ b/dev/preview/infrastructure/modules/dns/provider.tf
+@@ -2,11 +2,6 @@ terraform {
+   required_version = ">= 1.2"
+ 
+   required_providers {
+-    k8s = {
+-      source                = "hashicorp/kubernetes"
+-      version               = ">= 2.0"
+-      configuration_aliases = [k8s.dev]
+-    }
+     google = {
+       source                = "hashicorp/google"
+       version               = ">=4.40.0"
+diff --git a/dev/preview/infrastructure/modules/dns/variables.tf b/dev/preview/infrastructure/modules/dns/variables.tf
+index 127499212..1a4c19560 100644
+--- a/dev/preview/infrastructure/modules/dns/variables.tf
++++ b/dev/preview/infrastructure/modules/dns/variables.tf
+@@ -5,12 +5,12 @@ variable "preview_name" {
+ 
+ variable "preview_ip" {
+   type        = string
+-  description = "IP for the preview env: ingress in Harvester cluster, or machine ip"
++  description = "IP for the preview env: ingress in cluster, or machine ip"
+ }
+ 
+ variable "workspace_ip" {
+   type        = string
+-  description = "IP for the workspace: LB in dev cluster for Harvester previews, or machine ip"
++  description = "IP for the workspace: LB in dev cluster for previews, or machine ip"
+ }
+ 
+ variable "cert_issuer" {
+diff --git a/dev/preview/infrastructure/modules/gce/cloudinit.yaml b/dev/preview/infrastructure/modules/gce/cloudinit.yaml
+index 9b938025c..a99b76365 100644
+--- a/dev/preview/infrastructure/modules/gce/cloudinit.yaml
++++ b/dev/preview/infrastructure/modules/gce/cloudinit.yaml
+@@ -2,27 +2,7 @@
+ users:
+ - name: ubuntu
+   sudo: "ALL=(ALL) NOPASSWD: ALL"
+-  ssh_authorized_keys:
+-    - ${ssh_authorized_keys}
+ chpasswd:
+   list: |
+     ubuntu:ubuntu
+   expire: False
+-write_files:
+-  - path: /usr/local/bin/bootstrap.sh
+-    permissions: '0744'
+-    owner: root
+-    content: |
+-      #!/bin/bash
+-
+-      set -eo pipefail
+-
+-      cat <<'EOF' >> /etc/containerd/config.toml
+-      [plugins."io.containerd.grpc.v1.cri".registry.configs."registry-1.docker.io".auth]
+-        username = "${dockerhub_user}"
+-        password = "${dockerhub_passwd}"
+-      EOF
+-
+-      sudo systemctl restart containerd.service &
+-runcmd:
+- - bash /usr/local/bin/bootstrap.sh
+diff --git a/dev/preview/infrastructure/modules/gce/provider.tf b/dev/preview/infrastructure/modules/gce/provider.tf
+index f4e88f847..8632cae07 100644
+--- a/dev/preview/infrastructure/modules/gce/provider.tf
++++ b/dev/preview/infrastructure/modules/gce/provider.tf
+@@ -2,11 +2,6 @@ terraform {
+   required_version = ">= 1.2"
+ 
+   required_providers {
+-    k8s = {
+-      source                = "hashicorp/kubernetes"
+-      version               = ">= 2.0"
+-      configuration_aliases = [k8s.dev]
+-    }
+     google = {
+       source                = "hashicorp/google"
+       version               = ">=4.40.0"
+diff --git a/dev/preview/infrastructure/modules/gce/variables.tf b/dev/preview/infrastructure/modules/gce/variables.tf
+index f10d43a03..88427bf5a 100644
+--- a/dev/preview/infrastructure/modules/gce/variables.tf
++++ b/dev/preview/infrastructure/modules/gce/variables.tf
+@@ -14,11 +14,6 @@ variable "vm_type" {
+   default = "n2d-standard-16"
+ }
+ 
+-variable "ssh_key" {
+-  type        = string
+-  description = "ssh public key used for access to the vm"
+-}
+-
+ variable "dev_kube_context" {
+   type        = string
+   default     = "dev"
+diff --git a/dev/preview/infrastructure/modules/gce/vm.tf b/dev/preview/infrastructure/modules/gce/vm.tf
+index 4394cda7e..4a1db7970 100644
+--- a/dev/preview/infrastructure/modules/gce/vm.tf
++++ b/dev/preview/infrastructure/modules/gce/vm.tf
+@@ -2,12 +2,16 @@ data "google_compute_default_service_account" "default" {
+   provider = google
+ }
+ 
++data "google_service_account" "node_service_account" {
++  account_id = "preview-environmnet-node"
++}
++
+ resource "google_compute_instance" "default" {
+   provider = google
+ 
+   name                      = local.vm_name
+   machine_type              = local.machine_type
+-  zone                      = "us-central1-a"
++  zone                      = "europe-west1-c"
+   allow_stopping_for_update = true
+ 
+   boot_disk {
+@@ -43,7 +47,6 @@ resource "google_compute_instance" "default" {
+   }
+ 
+   metadata = {
+-    ssh-keys           = "ubuntu:${var.ssh_key}"
+     serial-port-enable = true
+     user-data          = local.cloudinit_user_data
+   }
+@@ -60,24 +63,15 @@ resource "google_compute_instance" "default" {
+ 
+   service_account {
+     # Google recommends custom service accounts that have cloud-platform scope and permissions granted via IAM Roles.
+-    email  = data.google_compute_default_service_account.default.email
++    email  = data.google_service_account.node_service_account.email
+     scopes = ["cloud-platform"]
+   }
+ }
+ 
+ resource "google_compute_address" "static-preview-ip" {
+   provider = google
+-
+-  name = var.preview_name
+-}
+-
+-data "kubernetes_secret" "harvester-k3s-dockerhub-pull-account" {
+-  provider = k8s.dev
+-
+-  metadata {
+-    name      = "harvester-k3s-dockerhub-pull-account"
+-    namespace = "werft"
+-  }
++  region   = "europe-west1"
++  name     = var.preview_name
+ }
+ 
+ locals {
+@@ -94,10 +88,7 @@ locals {
+   EOT
+ 
+   cloudinit_user_data = templatefile("${path.module}/cloudinit.yaml", {
+-    dockerhub_user      = data.kubernetes_secret.harvester-k3s-dockerhub-pull-account.data["username"]
+-    dockerhub_passwd    = data.kubernetes_secret.harvester-k3s-dockerhub-pull-account.data["password"]
+-    vm_name             = local.vm_name
+-    ssh_authorized_keys = var.ssh_key
++    vm_name = local.vm_name
+   })
+ 
+   machine_type = var.with_large_vm ? "n2d-standard-32" : var.vm_type
+diff --git a/dev/preview/infrastructure/preview.tf b/dev/preview/infrastructure/preview.tf
+index 39d2d3f2a..a34bfccd4 100644
+--- a/dev/preview/infrastructure/preview.tf
++++ b/dev/preview/infrastructure/preview.tf
+@@ -4,7 +4,6 @@ module "preview_gce" {
+ 
+   preview_name  = var.preview_name
+   cert_issuer   = var.cert_issuer
+-  ssh_key       = local.ssh_key
+   use_spot      = var.gce_use_spot
+   with_large_vm = var.with_large_vm
+   vm_type       = var.vm_type
+@@ -13,7 +12,6 @@ module "preview_gce" {
+     google           = google,
+     acme.letsencrypt = acme.letsencrypt,
+     acme.zerossl     = acme.zerossl,
+-    k8s.dev          = k8s.dev
+   }
+ }
+ 
+@@ -34,10 +32,5 @@ module "dns" {
+     google           = google,
+     acme.letsencrypt = acme.letsencrypt,
+     acme.zerossl     = acme.zerossl,
+-    k8s.dev          = k8s.dev
+   }
+ }
+-
+-locals {
+-  ssh_key = "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQC/aB/HYsb56V0NBOEab6j33v3LIxRiGqG4fmidAryAXevLyTANJPF8m44KSzSQg7AI7PMy6egxQp/JqH2b+3z1cItWuHZSU+klsKNuf5HxK7AOrND3ahbejZfyYewtKFQ3X9rv5Sk8TAR5gw5oPbkTR61jiLa58Sw7UkhLm2EDguGASb6mBal8iboiF8Wpl8QIvPmJaGIOY2YwXLepwFA3S3kVqW88eh2WFmjTMre5ASLguYNkHXjyb/TuhVFzAvphzpl84RAaEyjKYnk45fh4xRXx+oKqlfKRJJ/Owxa7SmGO+/4rWb3chdnpodHeu7XjERmjYLY+r46sf6n6ySgEht1xAWjMb1uqZqkDx+fDDsjFSeaN3ncX6HSoDOrphFmXYSwaMpZ8v67A791fuUPrMLC+YMckhTuX2g4i3XUdumIWvhaMvKhy/JRRMsfUH0h+KAkBLI6tn5ozoXiQhgM4SAE5HsMr6CydSIzab0yY3sq0avmZgeoc78+8PKPkZG1zRMEspV/hKKBC8hq7nm0bu4IgzuEIYHowOD8svqA0ufhDWxTt6A4Jo0xDzhFyKme7KfmW7SIhpejf3T1Wlf+QINs1hURr8LSOZEyY2SzYmAoQ49N0SSPb5xyG44cptpKcj0WCAJjBJoZqz0F5x9TjJ8XToB5obyJfRHD1JjxoMQ== dev@gitpod.io"
+-}
+diff --git a/dev/preview/infrastructure/provider.tf b/dev/preview/infrastructure/provider.tf
+index 84f278c92..89bed71da 100644
+--- a/dev/preview/infrastructure/provider.tf
++++ b/dev/preview/infrastructure/provider.tf
+@@ -1,10 +1,10 @@
+ terraform {
+   backend "gcs" {
+-    bucket = "3f4745df-preview-tf-state"
++    bucket = "5d39183e-preview-tf-state"
+     prefix = "preview"
+   }
+ 
+-  required_version = ">= 1.2"
++  required_version = ">= 1.8"
+   required_providers {
+     k8s = {
+       source  = "hashicorp/kubernetes"
+@@ -12,7 +12,7 @@ terraform {
+     }
+     google = {
+       source  = "hashicorp/google"
+-      version = ">=4.40.0"
++      version = ">=5.25.0"
+     }
+     acme = {
+       source  = "vancluever/acme"
+@@ -28,8 +28,8 @@ provider "k8s" {
+ }
+ 
+ provider "google" {
+-  project = "gitpod-core-dev"
+-  region  = "us-central1"
++  project = "gitpod-dev-preview"
++  region  = "europe-west1"
+ }
+ 
+ provider "acme" {
+diff --git a/dev/preview/previewctl/BUILD.yaml b/dev/preview/previewctl/BUILD.yaml
+index 647bc1824..1862e86a3 100644
+--- a/dev/preview/previewctl/BUILD.yaml
++++ b/dev/preview/previewctl/BUILD.yaml
+@@ -40,23 +40,3 @@ scripts:
+     description: Build and install previewctl into the current environment
+     script:
+       leeway build dev/preview/previewctl:install -Dno-cache=$RANDOM --dont-test --cache=remote-pull
+-  - name: download
+-    description:
+-    script: |
+-      if [[ -z "$INPUT_PREVIEWCTL_HASH" ]]; then
+-        # If a specific hash isn't provided we'll use the latest image off main
+-        PREVIEWCTL_VERSION=$(\
+-            gcloud container images list-tags eu.gcr.io/gitpod-core-dev/build/previewctl \
+-                --filter="tags:main-gha.*" \
+-                --limit=1 \
+-                --format=json \
+-            | jq --raw-output '.[0].tags[0]' \
+-        )
+-        PREVIEWCTL_IMAGE="eu.gcr.io/gitpod-core-dev/build/previewctl:$PREVIEWCTL_VERSION"
+-      else
+-        PREVIEWCTL_IMAGE="eu.gcr.io/gitpod-core-dev/build/previewctl:hash-$INPUT_PREVIEWCTL_HASH"
+-      fi
+-
+-      echo "Downloading previewctl for $PREVIEWCTL_IMAGE"
+-      oci-tool fetch file -o $HOME/bin/previewctl --platform=linux-amd64 "$PREVIEWCTL_IMAGE" app/previewctl
+-      chmod +x $HOME/bin/previewctl
+diff --git a/dev/preview/previewctl/cmd/access.go b/dev/preview/previewctl/cmd/access.go
+index f4f737463..144003aeb 100644
+--- a/dev/preview/previewctl/cmd/access.go
++++ b/dev/preview/previewctl/cmd/access.go
+@@ -29,7 +29,7 @@ func newHasAccessCmd(logger *logrus.Logger) *cobra.Command {
+ 		},
+ 	}
+ 
+-	cmd.PersistentFlags().StringSliceVar(&clusters, "clusters", []string{"dev"}, "Comma separated list of cluster to check access for")
++	cmd.PersistentFlags().StringSliceVar(&clusters, "clusters", []string{""}, "Comma separated list of cluster to check access for")
+ 
+ 	return cmd
+ }
+diff --git a/dev/preview/previewctl/cmd/credentials.go b/dev/preview/previewctl/cmd/credentials.go
+index 39bf7505e..9f778b37b 100644
+--- a/dev/preview/previewctl/cmd/credentials.go
++++ b/dev/preview/previewctl/cmd/credentials.go
+@@ -10,107 +10,17 @@ import (
+ 
+ 	"github.com/cockroachdb/errors"
+ 	"github.com/sirupsen/logrus"
+-	"github.com/spf13/cobra"
+ 	"github.com/spf13/viper"
+ 	"k8s.io/client-go/tools/clientcmd"
+-	"k8s.io/client-go/tools/clientcmd/api"
+ 	"k8s.io/client-go/util/homedir"
+ 
+ 	kube "github.com/gitpod-io/gitpod/previewctl/pkg/k8s"
+-	kctx "github.com/gitpod-io/gitpod/previewctl/pkg/k8s/context"
+-	"github.com/gitpod-io/gitpod/previewctl/pkg/k8s/context/gke"
+-	"github.com/gitpod-io/gitpod/previewctl/pkg/k8s/context/harvester"
+ )
+ 
+ var (
+ 	DefaultKubeConfigPath = filepath.Join(homedir.HomeDir(), clientcmd.RecommendedHomeDir, clientcmd.RecommendedFileName)
+ )
+ 
+-const (
+-	coreDevClusterName = "core-dev"
+-	coreDevProjectID   = "gitpod-core-dev"
+-	coreDevClusterZone = "europe-west1-b"
+-)
+-
+-type getCredentialsOpts struct {
+-	logger *logrus.Logger
+-
+-	serviceAccountPath string
+-	kubeConfigSavePath string
+-}
+-
+-func newGetCredentialsCommand(logger *logrus.Logger) *cobra.Command {
+-	ctx := context.Background()
+-	opts := &getCredentialsOpts{
+-		logger: logger,
+-	}
+-
+-	cmd := &cobra.Command{
+-		Use: "get-credentials",
+-		Long: `previewctl get-credentials retrieves the kubernetes configs for core-dev and harvester clusters,
+-merges them with the default config, and saves them to the path in KUBECONFIG or the default path '~/.kube/config'"`,
+-		RunE: func(cmd *cobra.Command, args []string) error {
+-			configs, err := opts.getCredentials(ctx)
+-			if err != nil {
+-				return err
+-			}
+-
+-			opts.kubeConfigSavePath = getKubeConfigPath()
+-
+-			return kube.OutputContext(opts.kubeConfigSavePath, configs)
+-		},
+-	}
+-
+-	cmd.PersistentFlags().StringVar(&opts.serviceAccountPath, "gcp-service-account", viper.GetString("PREVIEW_ENV_DEV_SA_KEY_PATH"), "path to the GCP service account to use")
+-
+-	return cmd
+-}
+-
+-func (o *getCredentialsOpts) getCredentials(ctx context.Context) (*api.Config, error) {
+-	gkeLoader, err := gke.New(ctx, gke.ConfigLoaderOpts{
+-		Logger:             o.logger,
+-		ServiceAccountPath: o.serviceAccountPath,
+-		Name:               coreDevClusterName,
+-		ProjectID:          coreDevProjectID,
+-		Zone:               coreDevClusterZone,
+-		RenamedContextName: gke.DevContextName,
+-	})
+-
+-	if err != nil {
+-		return nil, errors.Wrap(err, "failed to instantiate gke loader")
+-	}
+-
+-	loaderMap := map[string]kctx.Loader{
+-		gke.DevContextName:    gkeLoader,
+-		harvester.ContextName: &harvester.ConfigLoader{},
+-	}
+-
+-	for _, contextName := range []string{gke.DevContextName, harvester.ContextName} {
+-		loader := loaderMap[contextName]
+-		if kc, err := kube.NewFromDefaultConfigWithContext(o.logger, contextName); err == nil && kc.HasAccess(ctx) {
+-			continue
+-		}
+-
+-		kc, err := loader.Load(ctx)
+-		if err != nil {
+-			return nil, err
+-		}
+-
+-		configs, err := kube.MergeContextsWithDefault(kc)
+-		if err != nil {
+-			return nil, err
+-		}
+-
+-		// always save the context at the default path
+-		err = kube.OutputContext(DefaultKubeConfigPath, configs)
+-		if err != nil {
+-			return nil, err
+-		}
+-	}
+-
+-	return kube.MergeContextsWithDefault()
+-}
+-
+ func hasAccess(ctx context.Context, logger *logrus.Logger, contextName string) bool {
+ 	config, err := kube.NewFromDefaultConfigWithContext(logger, contextName)
+ 	if err != nil {
+diff --git a/dev/preview/previewctl/cmd/install_context.go b/dev/preview/previewctl/cmd/install_context.go
+index fbc392147..5eed72261 100644
+--- a/dev/preview/previewctl/cmd/install_context.go
++++ b/dev/preview/previewctl/cmd/install_context.go
+@@ -14,10 +14,8 @@ import (
+ 	"github.com/cockroachdb/errors"
+ 	"github.com/sirupsen/logrus"
+ 	"github.com/spf13/cobra"
+-	"github.com/spf13/viper"
+ 	"k8s.io/client-go/util/homedir"
+ 
+-	kube "github.com/gitpod-io/gitpod/previewctl/pkg/k8s"
+ 	"github.com/gitpod-io/gitpod/previewctl/pkg/preview"
+ )
+ 
+@@ -28,8 +26,6 @@ type installContextCmdOpts struct {
+ 	timeout            time.Duration
+ 	kubeConfigSavePath string
+ 	sshPrivateKeyPath  string
+-
+-	getCredentialsOpts *getCredentialsOpts
+ }
+ 
+ func newInstallContextCmd(logger *logrus.Logger) *cobra.Command {
+@@ -37,9 +33,6 @@ func newInstallContextCmd(logger *logrus.Logger) *cobra.Command {
+ 
+ 	opts := installContextCmdOpts{
+ 		logger: logger,
+-		getCredentialsOpts: &getCredentialsOpts{
+-			logger: logger,
+-		},
+ 	}
+ 
+ 	// Used to ensure that we only install contexts
+@@ -56,7 +49,7 @@ func newInstallContextCmd(logger *logrus.Logger) *cobra.Command {
+ 			return nil
+ 		}
+ 
+-		p, err := preview.New(branch, logger, preview.WithServiceAccountPath(opts.getCredentialsOpts.serviceAccountPath))
++		p, err := preview.New(branch, logger)
+ 		if err != nil {
+ 			return err
+ 		}
+@@ -84,22 +77,14 @@ func newInstallContextCmd(logger *logrus.Logger) *cobra.Command {
+ 		Use:   "install-context",
+ 		Short: "Installs the kubectl context of a preview environment.",
+ 		PreRunE: func(cmd *cobra.Command, args []string) error {
+-			configs, err := opts.getCredentialsOpts.getCredentials(ctx)
+-			if err != nil {
+-				return err
++			if _, err := os.Stat(opts.sshPrivateKeyPath); errors.Is(err, fs.ErrNotExist) {
++				err := preview.GenerateSSHPrivateKey(opts.sshPrivateKeyPath)
++				if err != nil {
++					return err
++				}
+ 			}
+ 
+ 			opts.kubeConfigSavePath = getKubeConfigPath()
+-
+-			err = kube.OutputContext(opts.kubeConfigSavePath, configs)
+-			if err != nil {
+-				return err
+-			}
+-
+-			if _, err = os.Stat(opts.sshPrivateKeyPath); errors.Is(err, fs.ErrNotExist) {
+-				return preview.InstallVMSSHKeys()
+-			}
+-
+ 			return nil
+ 		},
+ 		RunE: func(cmd *cobra.Command, args []string) error {
+@@ -122,8 +107,7 @@ func newInstallContextCmd(logger *logrus.Logger) *cobra.Command {
+ 
+ 	cmd.Flags().BoolVar(&opts.watch, "watch", false, "If watch is enabled, previewctl will keep trying to install the kube-context every 15 seconds, even when successful.")
+ 	cmd.Flags().DurationVarP(&opts.timeout, "timeout", "t", 10*time.Minute, "Timeout before considering the installation failed. It will retry installing the context until successful or the timeout is reached")
+-	cmd.PersistentFlags().StringVar(&opts.sshPrivateKeyPath, "private-key-path", fmt.Sprintf("%s/.ssh/vm_id_rsa", homedir.HomeDir()), "path to the private key used to authenticate with the VM")
+-	cmd.PersistentFlags().StringVar(&opts.getCredentialsOpts.serviceAccountPath, "gcp-service-account", viper.GetString("PREVIEW_ENV_DEV_SA_KEY_PATH"), "path to the GCP service account to use")
++	cmd.PersistentFlags().StringVar(&opts.sshPrivateKeyPath, "private-key-path", fmt.Sprintf("%s/.ssh/vm_ed25519", homedir.HomeDir()), "path to the private key used to authenticate with the VM")
+ 
+ 	return cmd
+ }
+diff --git a/dev/preview/previewctl/cmd/report.go b/dev/preview/previewctl/cmd/report.go
+index a351f4811..849982f93 100644
+--- a/dev/preview/previewctl/cmd/report.go
++++ b/dev/preview/previewctl/cmd/report.go
+@@ -22,7 +22,7 @@ var tmplString = `
+ 	<li><b>🔗 URL</b> - <a href="https://{{ .Name }}.preview.gitpod-dev.com/workspaces" target="_blank">{{ .Name }}.preview.gitpod-dev.com/workspaces</a>.</li>
+ 	<li><b>📚 Documentation</b> - See our <a href="https://www.notion.so/gitpod/6debd359591b43688b52f76329d04010#7c1ce80ab31a41e29eff2735e38eec39" target="_blank">internal documentation</a> for information on how to interact with your preview environment.</li>
+ 	<li><b>📦 Version</b> - {{ .Version }}</li>
+-	<li><b>🗒️ Logs</b> - <a href="https://console.cloud.google.com/logs/query;query=jsonPayload.kubernetes.host%3D%22preview-{{ .Name }}%22%0A%0A--%20Filter%20on%20service:%0A--%20jsonPayload.serviceContext.service%3D%22ws-manager-mk2%22%0A;duration=P1D?project=gitpod-core-dev" target="_blank">GCP Logs Explorer</a></li>
++	<li><b>🗒️ Logs</b> - <a href="https://console.cloud.google.com/logs/query;query=jsonPayload.kubernetes.host%3D%22preview-{{ .Name }}%22%0A%0A--%20Filter%20on%20service:%0A--%20jsonPayload.serviceContext.service%3D%22ws-manager-mk2%22%0A;duration=P1D?project=gitpod-dev-preview" target="_blank">GCP Logs Explorer</a></li>
+ </ul>
+ `
+ 
+diff --git a/dev/preview/previewctl/cmd/root.go b/dev/preview/previewctl/cmd/root.go
+index dfd5ab6b5..a7ded64bc 100644
+--- a/dev/preview/previewctl/cmd/root.go
++++ b/dev/preview/previewctl/cmd/root.go
+@@ -42,7 +42,6 @@ func NewRootCmd(logger *logrus.Logger) *cobra.Command {
+ 		newGetNameCmd(),
+ 		newListPreviewsCmd(logger),
+ 		newSSHPreviewCmd(logger),
+-		newGetCredentialsCommand(logger),
+ 		newGetCmd(logger),
+ 		newHasAccessCmd(logger),
+ 		newReportNameCmd(),
+diff --git a/dev/preview/previewctl/main.go b/dev/preview/previewctl/main.go
+index 276ad45d9..bfdb17b26 100644
+--- a/dev/preview/previewctl/main.go
++++ b/dev/preview/previewctl/main.go
+@@ -5,6 +5,8 @@
+ package main
+ 
+ import (
++	"os"
++
+ 	"github.com/sirupsen/logrus"
+ 
+ 	"github.com/gitpod-io/gitpod/previewctl/cmd"
+@@ -18,6 +20,15 @@ func main() {
+ 		TimestampFormat: "2006-01-02 15:04:05",
+ 	})
+ 
++	if os.Getenv("GOOGLE_APPLICATION_CREDENTIALS") == "" {
++		if credFile := os.Getenv("PREVIEW_ENV_DEV_SA_KEY_PATH"); credFile != "" {
++			_, err := os.Stat(credFile)
++			if err == nil {
++				os.Setenv("GOOGLE_APPLICATION_CREDENTIALS", credFile)
++			}
++		}
++	}
++
+ 	root := cmd.NewRootCmd(logger)
+ 	if err := root.Execute(); err != nil {
+ 		logger.WithFields(logrus.Fields{"err": err}).Fatal("command failed.")
+diff --git a/dev/preview/previewctl/pkg/k8s/context/gke/dev.go b/dev/preview/previewctl/pkg/k8s/context/gke/dev.go
+deleted file mode 100644
+index 77ee2fc2a..000000000
+--- a/dev/preview/previewctl/pkg/k8s/context/gke/dev.go
++++ /dev/null
+@@ -1,104 +0,0 @@
+-// Copyright (c) 2022 Gitpod GmbH. All rights reserved.
+-// Licensed under the GNU Affero General Public License (AGPL).
+-// See License.AGPL.txt in the project root for license information.
+-
+-package gke
+-
+-import (
+-	"context"
+-	"encoding/base64"
+-	"fmt"
+-
+-	"github.com/sirupsen/logrus"
+-	"k8s.io/client-go/tools/clientcmd/api"
+-
+-	"github.com/gitpod-io/gitpod/previewctl/pkg/gcloud"
+-	"github.com/gitpod-io/gitpod/previewctl/pkg/k8s"
+-	kctx "github.com/gitpod-io/gitpod/previewctl/pkg/k8s/context"
+-)
+-
+-var _ kctx.Loader = (*ConfigLoader)(nil)
+-
+-const (
+-	DevContextName = "dev"
+-)
+-
+-type ConfigLoader struct {
+-	logger *logrus.Logger
+-
+-	Client gcloud.Client
+-	Opts   ConfigLoaderOpts
+-}
+-
+-type ConfigLoaderOpts struct {
+-	Logger *logrus.Logger
+-
+-	Name               string
+-	ProjectID          string
+-	Zone               string
+-	ServiceAccountPath string
+-	RenamedContextName string
+-}
+-
+-func New(ctx context.Context, opts ConfigLoaderOpts) (*ConfigLoader, error) {
+-	client, err := gcloud.New(ctx, opts.ServiceAccountPath)
+-	if err != nil {
+-		return nil, err
+-	}
+-
+-	return &ConfigLoader{
+-		logger: opts.Logger,
+-		Client: client,
+-		Opts:   opts,
+-	}, nil
+-}
+-
+-func (k *ConfigLoader) Load(ctx context.Context) (*api.Config, error) {
+-	name := k.Opts.Name
+-	cluster, err := k.Client.GetCluster(ctx, k.Opts.Name, k.Opts.ProjectID, k.Opts.Zone)
+-	if err != nil {
+-		return nil, err
+-	}
+-
+-	ret := &api.Config{
+-		APIVersion: "v1",
+-		Kind:       "Config",
+-		Clusters:   map[string]*api.Cluster{},  // Clusters is a map of referencable names to cluster configs
+-		AuthInfos:  map[string]*api.AuthInfo{}, // AuthInfos is a map of referencable names to user configs
+-		Contexts:   map[string]*api.Context{},  // Contexts is a map of referencable names to context configs
+-	}
+-
+-	cert, err := base64.StdEncoding.DecodeString(cluster.MasterAuth.ClusterCaCertificate)
+-	if err != nil {
+-		return nil, fmt.Errorf("invalid certificate cluster=%s cert=%s: %w", name, cluster.MasterAuth.ClusterCaCertificate, err)
+-	}
+-
+-	ret.Clusters[name] = &api.Cluster{
+-		CertificateAuthorityData: cert,
+-		Server:                   "https://" + cluster.Endpoint,
+-	}
+-
+-	// Just reuse the context name as an auth name.
+-	ret.Contexts[name] = &api.Context{
+-		Cluster:  name,
+-		AuthInfo: name,
+-	}
+-
+-	// GCP specific configuration; use cloud platform scope.
+-	ret.AuthInfos[name] = &api.AuthInfo{
+-		Exec: &api.ExecConfig{
+-			Command:    "gke-gcloud-auth-plugin",
+-			APIVersion: "client.authentication.k8s.io/v1beta1",
+-			InstallHint: `Install gke-gcloud-auth-plugin for use with kubectl by following
+-        https://cloud.google.com/blog/products/containers-kubernetes/kubectl-auth-changes-in-gke`,
+-			ProvideClusterInfo: true,
+-			InteractiveMode:    api.IfAvailableExecInteractiveMode,
+-		},
+-	}
+-
+-	if k.Opts.RenamedContextName != "" {
+-		return k8s.RenameConfig(ret, name, k.Opts.RenamedContextName)
+-	}
+-
+-	return ret, nil
+-}
+diff --git a/dev/preview/previewctl/pkg/k8s/context/gke/dev_test.go b/dev/preview/previewctl/pkg/k8s/context/gke/dev_test.go
+deleted file mode 100644
+index 0b9063df2..000000000
+--- a/dev/preview/previewctl/pkg/k8s/context/gke/dev_test.go
++++ /dev/null
+@@ -1,101 +0,0 @@
+-// Copyright (c) 2022 Gitpod GmbH. All rights reserved.
+-// Licensed under the GNU Affero General Public License (AGPL).
+-// See License.AGPL.txt in the project root for license information.
+-
+-package gke
+-
+-import (
+-	"context"
+-	"testing"
+-
+-	"github.com/stretchr/testify/assert"
+-	"google.golang.org/api/container/v1"
+-	"k8s.io/client-go/tools/clientcmd/api"
+-
+-	"github.com/gitpod-io/gitpod/previewctl/pkg/gcloud"
+-)
+-
+-func Test_Load(t *testing.T) {
+-	type expStruct struct {
+-		config *api.Config
+-		err    error
+-	}
+-
+-	type testCase struct {
+-		name     string
+-		client   *mockGetClusterClient
+-		expected *expStruct
+-	}
+-
+-	testCases := []testCase{
+-		{
+-			name: "Get config",
+-			client: &mockGetClusterClient{
+-				cert: "dGVzdF9kYXRh",
+-			},
+-			expected: &expStruct{
+-				config: &api.Config{
+-					APIVersion: "v1",
+-					Kind:       "Config",
+-					Contexts: map[string]*api.Context{
+-						DevContextName: {
+-							Cluster:  DevContextName,
+-							AuthInfo: DevContextName,
+-						},
+-					},
+-					Clusters: map[string]*api.Cluster{
+-						DevContextName: {
+-							CertificateAuthorityData: []byte("test_data"),
+-							Server:                   "https://test",
+-						},
+-					},
+-					AuthInfos: map[string]*api.AuthInfo{
+-						DevContextName: {
+-							Exec: &api.ExecConfig{
+-								Command:    "gke-gcloud-auth-plugin",
+-								APIVersion: "client.authentication.k8s.io/v1beta1",
+-								InstallHint: `Install gke-gcloud-auth-plugin for use with kubectl by following
+-        https://cloud.google.com/blog/products/containers-kubernetes/kubectl-auth-changes-in-gke`,
+-								ProvideClusterInfo: true,
+-								InteractiveMode:    api.IfAvailableExecInteractiveMode,
+-							},
+-						},
+-					},
+-				},
+-				err: nil,
+-			},
+-		},
+-	}
+-
+-	for _, test := range testCases {
+-		t.Run(test.name, func(t *testing.T) {
+-			k := &ConfigLoader{
+-				Client: test.client,
+-				Opts: ConfigLoaderOpts{
+-					Name:               "test",
+-					RenamedContextName: DevContextName,
+-				},
+-			}
+-
+-			config, err := k.Load(context.TODO())
+-
+-			assert.ErrorIs(t, test.expected.err, err)
+-			assert.Equal(t, test.expected.config, config)
+-		})
+-	}
+-}
+-
+-type mockGetClusterClient struct {
+-	gcloud.Client
+-
+-	cert string
+-}
+-
+-func (m *mockGetClusterClient) GetCluster(ctx context.Context, name, projectID, zone string) (*container.Cluster, error) {
+-	return &container.Cluster{
+-		MasterAuth: &container.MasterAuth{
+-			ClusterCaCertificate: m.cert,
+-		},
+-		Endpoint: name,
+-	}, nil
+-}
+diff --git a/dev/preview/previewctl/pkg/k8s/context/harvester/harvester.go b/dev/preview/previewctl/pkg/k8s/context/harvester/harvester.go
+deleted file mode 100644
+index 5bb758019..000000000
+--- a/dev/preview/previewctl/pkg/k8s/context/harvester/harvester.go
++++ /dev/null
+@@ -1,89 +0,0 @@
+-// Copyright (c) 2022 Gitpod GmbH. All rights reserved.
+-// Licensed under the GNU Affero General Public License (AGPL).
+-// See License.AGPL.txt in the project root for license information.
+-
+-package harvester
+-
+-import (
+-	"context"
+-
+-	"github.com/cockroachdb/errors"
+-	"github.com/sirupsen/logrus"
+-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+-	"k8s.io/client-go/tools/clientcmd"
+-	"k8s.io/client-go/tools/clientcmd/api"
+-
+-	"github.com/gitpod-io/gitpod/previewctl/pkg/k8s"
+-	kctx "github.com/gitpod-io/gitpod/previewctl/pkg/k8s/context"
+-	"github.com/gitpod-io/gitpod/previewctl/pkg/k8s/context/gke"
+-)
+-
+-const (
+-	ContextName = "harvester"
+-
+-	harvesterConfigSecretName = "harvester-kubeconfig"
+-	werftNamespace            = "werft"
+-)
+-
+-var (
+-	ErrSecretDataNotFound = errors.New("secret data not found")
+-)
+-
+-var _ kctx.Loader = (*ConfigLoader)(nil)
+-
+-type ConfigLoader struct {
+-	logger *logrus.Logger
+-
+-	Client *k8s.Config
+-}
+-
+-type ConfigLoaderOpts struct {
+-	Logger *logrus.Logger
+-}
+-
+-func New(ctx context.Context, opts ConfigLoaderOpts) (*ConfigLoader, error) {
+-	client, err := k8s.NewFromDefaultConfigWithContext(opts.Logger, gke.DevContextName)
+-	if err != nil {
+-		return nil, err
+-	}
+-
+-	return &ConfigLoader{
+-		logger: opts.Logger,
+-		Client: client,
+-	}, nil
+-}
+-
+-func (k *ConfigLoader) setup() error {
+-	client, err := k8s.NewFromDefaultConfigWithContext(k.logger, gke.DevContextName)
+-	if err != nil {
+-		return err
+-	}
+-
+-	k.Client = client
+-
+-	return nil
+-}
+-
+-func (k *ConfigLoader) Load(ctx context.Context) (*api.Config, error) {
+-	if k.Client == nil {
+-		if err := k.setup(); err != nil {
+-			return nil, err
+-		}
+-	}
+-
+-	secret, err := k.Client.CoreClient.CoreV1().Secrets(werftNamespace).Get(ctx, harvesterConfigSecretName, metav1.GetOptions{})
+-	if err != nil {
+-		return nil, err
+-	}
+-
+-	if _, ok := secret.Data["harvester-kubeconfig.yml"]; !ok {
+-		return nil, ErrSecretDataNotFound
+-	}
+-
+-	config, err := clientcmd.Load(secret.Data["harvester-kubeconfig.yml"])
+-	if err != nil {
+-		return nil, err
+-	}
+-
+-	return k8s.RenameConfig(config, "default", "harvester")
+-}
+diff --git a/dev/preview/previewctl/pkg/k8s/context/harvester/harvester_test.go b/dev/preview/previewctl/pkg/k8s/context/harvester/harvester_test.go
+deleted file mode 100644
+index 1d632ba80..000000000
+--- a/dev/preview/previewctl/pkg/k8s/context/harvester/harvester_test.go
++++ /dev/null
+@@ -1,127 +0,0 @@
+-// Copyright (c) 2022 Gitpod GmbH. All rights reserved.
+-// Licensed under the GNU Affero General Public License (AGPL).
+-// See License.AGPL.txt in the project root for license information.
+-
+-package harvester
+-
+-import (
+-	"context"
+-	"testing"
+-
+-	"github.com/stretchr/testify/assert"
+-	v1 "k8s.io/api/core/v1"
+-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+-	"k8s.io/apimachinery/pkg/runtime"
+-	"k8s.io/client-go/kubernetes/fake"
+-	"k8s.io/client-go/tools/clientcmd/api"
+-
+-	"github.com/gitpod-io/gitpod/previewctl/pkg/k8s"
+-)
+-
+-func TestLoad(t *testing.T) {
+-	type expStruct struct {
+-		config *api.Config
+-		err    error
+-	}
+-
+-	testCases := []struct {
+-		name     string
+-		objects  []runtime.Object
+-		expected expStruct
+-	}{
+-		{
+-			name: "secret not found",
+-			objects: []runtime.Object{
+-				&v1.Secret{
+-					ObjectMeta: metav1.ObjectMeta{
+-						Name:      harvesterConfigSecretName,
+-						Namespace: werftNamespace,
+-					},
+-					Data: map[string][]byte{},
+-				},
+-			},
+-			expected: expStruct{
+-				config: nil,
+-				err:    ErrSecretDataNotFound,
+-			},
+-		},
+-		{
+-			name: "harvester config",
+-			objects: []runtime.Object{
+-				&v1.Secret{
+-					ObjectMeta: metav1.ObjectMeta{
+-						Name:      harvesterConfigSecretName,
+-						Namespace: werftNamespace,
+-					},
+-					Data: map[string][]byte{
+-						"harvester-kubeconfig.yml": []byte(`
+-apiVersion: v1
+-clusters:
+-- cluster:
+-    certificate-authority-data: dGVzdF9kYXRh
+-    server: https://test.kube.gitpod-dev.com:6443
+-  name: default
+-contexts:
+-- context:
+-    cluster: default
+-    user: default
+-  name: default
+-current-context: default
+-kind: Config
+-preferences: {}
+-users:
+-- name: default
+-  user:
+-    client-certificate-data: dGVzdF9kYXRh
+-    client-key-data: dGVzdF9kYXRh`),
+-					},
+-				},
+-			},
+-			expected: expStruct{
+-				config: &api.Config{
+-					Preferences: api.Preferences{
+-						Extensions: map[string]runtime.Object{},
+-					},
+-					Contexts: map[string]*api.Context{
+-						"harvester": {
+-							Cluster:    "harvester",
+-							AuthInfo:   "harvester",
+-							Extensions: map[string]runtime.Object{},
+-						},
+-					},
+-					Clusters: map[string]*api.Cluster{
+-						"harvester": {
+-							LocationOfOrigin:         "",
+-							Server:                   "https://test.kube.gitpod-dev.com:6443",
+-							CertificateAuthorityData: []byte("test_data"),
+-							Extensions:               map[string]runtime.Object{},
+-						},
+-					},
+-					CurrentContext: "harvester",
+-					AuthInfos: map[string]*api.AuthInfo{
+-						"harvester": {
+-							ClientCertificateData: []byte("test_data"),
+-							ClientKeyData:         []byte("test_data"),
+-							Extensions:            map[string]runtime.Object{},
+-						},
+-					},
+-					Extensions: map[string]runtime.Object{},
+-				},
+-				err: nil,
+-			},
+-		},
+-	}
+-
+-	for _, test := range testCases {
+-		t.Run(test.name, func(t *testing.T) {
+-			c := &ConfigLoader{
+-				Client: &k8s.Config{CoreClient: fake.NewSimpleClientset(test.objects...)},
+-			}
+-
+-			config, err := c.Load(context.TODO())
+-
+-			assert.ErrorIs(t, test.expected.err, err)
+-			assert.Equal(t, test.expected.config, config)
+-		})
+-	}
+-}
+diff --git a/dev/preview/previewctl/pkg/k8s/context/k3s/k3s.go b/dev/preview/previewctl/pkg/k8s/context/k3s/k3s.go
+index 3499d7339..6b6dd1718 100644
+--- a/dev/preview/previewctl/pkg/k8s/context/k3s/k3s.go
++++ b/dev/preview/previewctl/pkg/k8s/context/k3s/k3s.go
+@@ -9,6 +9,8 @@ import (
+ 	"context"
+ 	"fmt"
+ 	"os"
++	"os/exec"
++	"path/filepath"
+ 	"strings"
+ 
+ 	"github.com/cockroachdb/errors"
+@@ -81,9 +83,21 @@ func New(ctx context.Context, opts ConfigLoaderOpts) (*ConfigLoader, error) {
+ 	return config, nil
+ }
+ 
++func (k *ConfigLoader) installVMSSHKeys() error {
++	path := filepath.Join(os.Getenv("LEEWAY_WORKSPACE_ROOT"), "dev/preview/ssh-vm.sh")
++	cmd := exec.Command(path, "-c", "echo success", "-v", k.opts.PreviewName)
++	cmd.Env = os.Environ()
++	return cmd.Run()
++}
++
+ func (k *ConfigLoader) Load(ctx context.Context) (*api.Config, error) {
+ 	if k.client == nil {
+-		err := k.connectToHost(ctx, fmt.Sprintf("%s.preview.gitpod-dev.com", k.opts.PreviewName), "2222")
++		err := k.installVMSSHKeys()
++		if err != nil {
++			k.logger.Error(err)
++			return nil, err
++		}
++		err = k.connectToHost(ctx, fmt.Sprintf("%s.preview.gitpod-dev.com", k.opts.PreviewName), "2222")
+ 		if err != nil {
+ 			k.logger.Error(err)
+ 			return nil, err
+diff --git a/dev/preview/previewctl/pkg/preview/preview.go b/dev/preview/previewctl/pkg/preview/preview.go
+index dff711a70..77b3760aa 100644
+--- a/dev/preview/previewctl/pkg/preview/preview.go
++++ b/dev/preview/previewctl/pkg/preview/preview.go
+@@ -19,7 +19,7 @@ import (
+ 	"github.com/gitpod-io/gitpod/previewctl/pkg/k8s/context/k3s"
+ )
+ 
+-const TFStateBucket = "3f4745df-preview-tf-state"
++const TFStateBucket = "5d39183e-preview-tf-state"
+ 
+ type Config struct {
+ 	branch string
+@@ -121,10 +121,8 @@ func (c *Config) GetName() string {
+ 	return c.name
+ }
+ 
+-func InstallVMSSHKeys() error {
+-	// TODO: https://github.com/gitpod-io/ops/issues/6524
+-	path := filepath.Join(os.Getenv("LEEWAY_WORKSPACE_ROOT"), "dev/preview/util/install-vm-ssh-keys.sh")
+-	return exec.Command("bash", path).Run()
++func GenerateSSHPrivateKey(path string) error {
++	return exec.Command("ssh-keygen", "-t", "ed25519", "-q", "-N", "", "-f", path).Run()
+ }
+ 
+ func SSHPreview(branch string) error {
+diff --git a/dev/preview/ssh-vm.sh b/dev/preview/ssh-vm.sh
+index 0b9f29558..86831bd81 100755
+--- a/dev/preview/ssh-vm.sh
++++ b/dev/preview/ssh-vm.sh
+@@ -5,22 +5,21 @@
+ 
+ set -euo pipefail
+ 
+-THIS_DIR="$(dirname "$0")"
+-
+-PRIVATE_KEY=$HOME/.ssh/vm_id_rsa
+-PUBLIC_KEY=$HOME/.ssh/vm_id_rsa.pub
++PRIVATE_KEY=$HOME/.ssh/vm_ed25519
++PUBLIC_KEY=$HOME/.ssh/vm_ed25519.pub
+ PORT=2222
+ USER="ubuntu"
+ COMMAND=""
+ BRANCH=""
+ 
+-while getopts c:p:u:b: flag
++while getopts c:p:u:b:v: flag
+ do
+     case "${flag}" in
+         c) COMMAND="${OPTARG}";;
+         p) PORT="${OPTARG}";;
+         u) USER="${OPTARG}";;
+-        b) BRANCH="${2}";;
++        v) VM_NAME="${OPTARG}";;
++        b) BRANCH="${OPTARG}";;
+         *) ;;
+     esac
+ done
+@@ -33,32 +32,18 @@ if [ -z "${VM_NAME:-}" ]; then
+   fi
+ fi
+ 
+-function log {
+-    echo "[$(date)] $*"
+-}
+-
+-function has-harvester-access {
+-    kubectl --context=harvester auth can-i get secrets > /dev/null 2>&1 || false
+-}
+-
+ function set-up-ssh {
+     if [[ (! -f $PRIVATE_KEY) || (! -f $PUBLIC_KEY) ]]; then
+-        echo Setting up ssh-keys
+-        "$THIS_DIR"/util/install-vm-ssh-keys.sh
++        echo Generate ssh-keys
++        ssh-keygen -t ed25519 -q -N "" -f "$PRIVATE_KEY"
+     fi
+ }
+ 
+-if ! has-harvester-access; then
+-    echo Setting up kubeconfig
+-    "$THIS_DIR"/util/download-and-merge-harvester-kubeconfig.sh
+-fi
+-
+ set-up-ssh
+-
+-ssh "$USER@$VM_NAME.preview.gitpod-dev.com" \
+-    -o UserKnownHostsFile=/dev/null \
+-    -o StrictHostKeyChecking=no \
+-    -o LogLevel=ERROR \
+-    -i "$HOME/.ssh/vm_id_rsa" \
+-    -p "$PORT" \
+-    "$COMMAND"
++zone=$(gcloud compute instances list --project gitpod-dev-preview --format="value(zone)" preview-"$VM_NAME")
++gcloud compute ssh "$USER@preview-$VM_NAME" \
++    --project gitpod-dev-preview \
++    --ssh-key-file "$PRIVATE_KEY" \
++    --ssh-flag="-p $PORT" \
++    --zone="$zone" \
++    -- "$COMMAND"
+diff --git a/dev/preview/test/distribute-images.sh b/dev/preview/test/distribute-images.sh
+deleted file mode 100755
+index 2966d74eb..000000000
+--- a/dev/preview/test/distribute-images.sh
++++ /dev/null
+@@ -1,81 +0,0 @@
+-#!/usr/bin/env bash
+-
+-set -euo pipefail
+-
+-[[ "$(kubectx -c)" == "harvester" ]] || ( echo "Set kubectx to 'harvester'."; exit 1)
+-
+-while getopts i:s: flag
+-do
+-    case "${flag}" in
+-        i) IMAGEID="${OPTARG}";;
+-        s) STORAGECLASS="${OPTARG}";;
+-        *) ;;
+-    esac
+-done
+-
+-# We don't delete the namespace "distribute-${IMAGEID} because we want to avoid
+-# images from being garbage collected
+-NODES=$(kubectl get nodes -o=jsonpath='{.items[*].metadata.name}')
+-NAMESPACE="distribute-${IMAGEID}"
+-
+-kubectl get ns "${NAMESPACE}" && kubectl delete ns "${NAMESPACE}"
+-kubectl create ns "${NAMESPACE}"
+-
+-for NODE in $NODES
+-do
+-    VMNAME="${IMAGEID}-on-${NODE}"
+-    PVC="pvc-${STORAGECLASS}-${NODE}"
+-    kubectl apply -f - << YAML
+-apiVersion: kubevirt.io/v1
+-kind: VirtualMachine
+-metadata:
+-  namespace: ${NAMESPACE}
+-  annotations:
+-    harvesterhci.io/volumeClaimTemplates: '[{"metadata":{"name":"${PVC}","annotations":{"harvesterhci.io/imageId":"default/${IMAGEID}"}},"spec":{"accessModes":["ReadWriteMany"],"resources":{"requests":{"storage":"200Gi"}},"volumeMode":"Block","storageClassName":"${STORAGECLASS}"}}]'
+-    network.harvesterhci.io/ips: "[]"
+-  labels:
+-    harvesterhci.io/creator: harvester
+-    harvesterhci.io/os: ubuntu
+-  name: ${VMNAME}
+-spec:
+-  running: true
+-  template:
+-    metadata:
+-      annotations:
+-        harvesterhci.io/sshNames: "[]"
+-      labels:
+-        harvesterhci.io/vmName: ${VMNAME}
+-    spec:
+-      nodeSelector:
+-        kubernetes.io/hostname: ${NODE}
+-      domain:
+-        machine:
+-          type: q35
+-        cpu:
+-          cores: 2
+-          sockets: 1
+-          threads: 1
+-        devices:
+-          interfaces:
+-            - masquerade: {}
+-              model: virtio
+-              name: default
+-          disks:
+-            - name: system
+-              bootOrder: 1
+-              disk:
+-                bus: scsi
+-        resources:
+-          limits:
+-            memory: 4Gi
+-            cpu: 2
+-      evictionStrategy: LiveMigrate
+-      networks:
+-        - pod: {}
+-          name: default
+-      volumes:
+-        - name: system
+-          persistentVolumeClaim:
+-            claimName: ${PVC}
+-YAML
+-done
+diff --git a/dev/preview/util/download-and-merge-harvester-kubeconfig.sh b/dev/preview/util/download-and-merge-harvester-kubeconfig.sh
+deleted file mode 100755
+index 727cf4fac..000000000
+--- a/dev/preview/util/download-and-merge-harvester-kubeconfig.sh
++++ /dev/null
+@@ -1,43 +0,0 @@
+-#!/usr/bin/env bash
+-
+-set -euo pipefail
+-
+-KUBE_CONTEXT="dev"
+-KUBECONFIG_PATH=${KUBECONFIG_PATH:-"/home/gitpod/.kube/config"}
+-HARVESTER_KUBECONFIG_PATH="$(mktemp)"
+-MERGED_KUBECONFIG_PATH="$(mktemp)"
+-
+-function log {
+-    echo "[$(date)] $*"
+-}
+-
+-function has-dev-access {
+-    # shellcheck disable=SC2069
+-    kubectl --context=$KUBE_CONTEXT auth can-i get secrets 2>&1 1> /dev/null  || false
+-}
+-
+-if ! has-dev-access; then
+-    log "The workspace isn't configured to have core-dev access. Exiting."
+-    exit 1
+-fi
+-
+-log "Downloading and preparing Harvester kubeconfig"
+-kubectl --context=$KUBE_CONTEXT -n werft get secret harvester-kubeconfig -o jsonpath='{.data}' \
+-| jq -r '.["harvester-kubeconfig.yml"]' \
+-| base64 -d \
+-| sed 's/default/harvester/g' \
+-> "${HARVESTER_KUBECONFIG_PATH}"
+-
+-# Order of files is important, we have the original config first so we preserve
+-# the value of current-context
+-log "Merging kubeconfig files ${KUBECONFIG_PATH} ${HARVESTER_KUBECONFIG_PATH} into ${MERGED_KUBECONFIG_PATH}"
+-KUBECONFIG="${KUBECONFIG_PATH}:${HARVESTER_KUBECONFIG_PATH}" \
+-    kubectl --context=$KUBE_CONTEXT config view --flatten --merge > "${MERGED_KUBECONFIG_PATH}"
+-
+-log "Overwriting ${KUBECONFIG_PATH}"
+-mv "${MERGED_KUBECONFIG_PATH}" "${KUBECONFIG_PATH}"
+-
+-log "Cleaning up temporary Harvester kubeconfig"
+-rm "${HARVESTER_KUBECONFIG_PATH}"
+-
+-log "Done"
+diff --git a/dev/preview/util/install-vm-ssh-keys.sh b/dev/preview/util/install-vm-ssh-keys.sh
+deleted file mode 100755
+index a20dd909b..000000000
+--- a/dev/preview/util/install-vm-ssh-keys.sh
++++ /dev/null
+@@ -1,36 +0,0 @@
+-#!/usr/bin/env bash
+-
+-set -euo pipefail
+-
+-THIS_DIR="$(dirname "$0")"
+-PRIVATE_KEY_PATH="$HOME/.ssh/vm_id_rsa"
+-PUBLIC_KEY_PATH="$HOME/.ssh/vm_id_rsa.pub"
+-
+-mkdir -p "$HOME/.ssh"
+-
+-function log {
+-    echo "[$(date)] $*"
+-}
+-
+-function has-dev-access {
+-    kubectl --context=dev auth can-i get secrets > /dev/null 2>&1 || false
+-}
+-
+-if ! has-dev-access; then
+-    log "Setting up kubeconfig"
+-    "$THIS_DIR"/download-and-merge-harvester-kubeconfig.sh
+-fi
+-
+-log "Downloading private key to ${PRIVATE_KEY_PATH}"
+-kubectl --context dev -n werft get secret harvester-vm-ssh-keys -o jsonpath='{.data}' \
+-| jq -r '.["id_rsa"]' \
+-| base64 -d > "${PRIVATE_KEY_PATH}"
+-
+-log "Downloading public key to ${PUBLIC_KEY_PATH}"
+-kubectl --context dev -n werft get secret harvester-vm-ssh-keys -o jsonpath='{.data}' \
+-| jq -r '.["id_rsa.pub"]' \
+-| base64 -d > "${PUBLIC_KEY_PATH}"
+-
+-log "Setting permission"
+-chmod 600 "${PRIVATE_KEY_PATH}"
+-chmod 644 "${PUBLIC_KEY_PATH}"
+diff --git a/dev/preview/workflow/lib/k8s-util.sh b/dev/preview/workflow/lib/k8s-util.sh
+index f053e5d29..6b51d95b1 100755
+--- a/dev/preview/workflow/lib/k8s-util.sh
++++ b/dev/preview/workflow/lib/k8s-util.sh
+@@ -74,19 +74,6 @@ function waitUntilAllPodsAreReady {
+   fi
+ }
+ 
+-function readWerftSecret {
+-    local name
+-    local key
+-    name="$1"
+-    key="$2"
+-    kubectl \
+-        --kubeconfig "${DEV_KUBE_PATH}" \
+-        --context "${DEV_KUBE_CONTEXT}" \
+-        --namespace werft \
+-    get secret "${name}" -o jsonpath="{.data.${key}}" \
+-  | base64 -d
+-}
+-
+ function diff-apply {
+   local context=$1
+   shift
+diff --git a/dev/preview/workflow/preview/build.sh b/dev/preview/workflow/preview/build.sh
+index 01d786783..a9aade83f 100755
+--- a/dev/preview/workflow/preview/build.sh
++++ b/dev/preview/workflow/preview/build.sh
+@@ -20,7 +20,6 @@ if [[ "${VERSION:-}" == "" ]]; then
+ fi
+ 
+ leeway build \
+-    -DSEGMENT_IO_TOKEN="$(kubectl --context=dev -n werft get secret self-hosted -o jsonpath='{.data.segmentIOToken}' | base64 -d)" \
+     -Dversion="${VERSION}" \
+     --dont-test \
+     dev/preview:deploy-dependencies
+diff --git a/dev/preview/workflow/preview/configure-workspace.sh b/dev/preview/workflow/preview/configure-workspace.sh
+index 747957514..737664600 100755
+--- a/dev/preview/workflow/preview/configure-workspace.sh
++++ b/dev/preview/workflow/preview/configure-workspace.sh
+@@ -8,26 +8,23 @@ SCRIPT_PATH=$(realpath "$(dirname "$0")")
+ source "$(realpath "${SCRIPT_PATH}/../lib/common.sh")"
+ 
+ auth=$(gcloud config get-value account)
+-if { [[ "${auth}" != "(unset)" ]] || [ -n "${auth:-}" ]; } && [ -f "${PREVIEW_ENV_DEV_SA_KEY_PATH}" ] && { previewctl has-access; }; then
++if { [[ "${auth}" != "(unset)" ]] || [ -n "${auth:-}" ]; } && [ -f "${PREVIEW_ENV_DEV_SA_KEY_PATH}" ] && { gcloud projects list >/dev/null 2>&1; }; then
+   log_info "Access already configured"
+   exit 0
+ fi
+ 
+-if [[ -z "${PREVIEW_ENV_DEV_SA_KEY:-}" ]] || [[ -z "${PREVIEW_ENV_DEV_SA_KEY_PATH:-}" ]]; then
+-  log_warn "Neither PREVIEW_ENV_DEV_SA_KEY, nor PREVIEW_ENV_DEV_SA_KEY_PATH is set. Skipping workspace setup."
++if [[ -z "${PREVIEW_ENV_DEV_CRED:-}" ]] || [[ -z "${PREVIEW_ENV_DEV_SA_KEY_PATH:-}" ]]; then
++  log_warn "Neither PREVIEW_ENV_DEV_CRED, nor PREVIEW_ENV_DEV_SA_KEY_PATH is set. Skipping workspace setup."
+   exit 0
+ fi
+ 
+ if [ ! -f "${PREVIEW_ENV_DEV_SA_KEY_PATH}" ]; then
+-  echo "${PREVIEW_ENV_DEV_SA_KEY}" >"${PREVIEW_ENV_DEV_SA_KEY_PATH}"
++  echo "${PREVIEW_ENV_DEV_CRED}" >"${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+ fi
+ 
+-gcloud auth activate-service-account --key-file "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
+-
+-log_info "Configuring access to kubernetes clusters"
+-previewctl get-credentials --gcp-service-account "${PREVIEW_ENV_DEV_SA_KEY_PATH}"
++gcloud auth login --cred-file "${PREVIEW_ENV_DEV_SA_KEY_PATH}" --activate --quiet
+ 
+ if [[ -n "${INSTALL_CONTEXT:-}" ]]; then
+   log_info "Starting watch-loop to configure access to your preview environment"
+-  previewctl install-context --gcp-service-account "${PREVIEW_ENV_DEV_SA_KEY_PATH}" --watch
++  previewctl install-context --watch
+ fi
+diff --git a/dev/preview/workflow/preview/deploy-gitpod.sh b/dev/preview/workflow/preview/deploy-gitpod.sh
+index 06ca46061..2ab11dfea 100755
+--- a/dev/preview/workflow/preview/deploy-gitpod.sh
++++ b/dev/preview/workflow/preview/deploy-gitpod.sh
+@@ -11,23 +11,21 @@ source "$(realpath "${SCRIPT_PATH}/../lib/common.sh")"
+ # shellcheck source=../lib/k8s-util.sh
+ source "$(realpath "${SCRIPT_PATH}/../lib/k8s-util.sh")"
+ 
+-DEV_KUBE_PATH="${DEV_KUBE_PATH:-/home/gitpod/.kube/config}"
+-DEV_KUBE_CONTEXT="${DEV_KUBE_CONTEXT:-dev}"
+-
+ PREVIEW_NAME="${PREVIEW_NAME:-$(previewctl get name)}"
+ PREVIEW_K3S_KUBE_PATH="${PREVIEW_K3S_KUBECONFIG_PATH:-/home/gitpod/.kube/config}"
+ PREVIEW_K3S_KUBE_CONTEXT="${PREVIEW_K3S_KUBE_CONTEXT:-$PREVIEW_NAME}"
+ PREVIEW_NAMESPACE="default"
+-PREVIEW_SORUCE_CERT_NAME="harvester-${PREVIEW_NAME}"
++PREVIEW_SORUCE_CERT_NAME="certificate-${PREVIEW_NAME}"
+ 
+ GITPOD_AGENT_SMITH_TOKEN="$(openssl rand -hex 30)"
+ GITPOD_AGENT_SMITH_TOKEN_HASH="$(echo -n "$GITPOD_AGENT_SMITH_TOKEN" | sha256sum - | tr -d '  -')"
+-GITPOD_CONTAINER_REGISTRY_URL="eu.gcr.io/gitpod-core-dev/build/";
+-GITPOD_IMAGE_PULL_SECRET_NAME="gcp-sa-registry-auth";
++GITPOD_CONTAINER_REGISTRY_URL="eu.gcr.io/gitpod-dev-artifact/image-build/";
++GITPOD_IMAGE_PULL_SECRET_NAME="image-pull-secret";
+ GITPOD_PROXY_SECRET_NAME="proxy-config-certificates";
+ GITPOD_ANALYTICS="${GITPOD_ANALYTICS:-}"
+ GITPOD_WORKSPACE_FEATURE_FLAGS="${GITPOD_WORKSPACE_FEATURE_FLAGS:-}"
+ GITPOD_WITH_DEDICATED_EMU="${GITPOD_WITH_DEDICATED_EMU:-false}"
++PREVIEW_GCP_PROJECT="gitpod-dev-preview"
+ 
+ 
+ if [[ "${VERSION:-}" == "" ]]; then
+@@ -48,13 +46,12 @@ INSTALLER_RENDER_PATH="k8s.yaml" # k8s.yaml is hardcoded in post-prcess.sh - we
+ # Or just build it and get it from there
+ if ! test -f "/tmp/versions.yaml"; then
+   ec=0
+-  docker run --rm "eu.gcr.io/gitpod-core-dev/build/versions:$VERSION" cat /versions.yaml > /tmp/versions.yaml || ec=$?
++  docker run --rm "eu.gcr.io/gitpod-dev-artifact/build/versions:$VERSION" cat /versions.yaml > /tmp/versions.yaml || ec=$?
+   if [[ ec -ne 0 ]];then
+       VERSIONS_TMP_ZIP=$(mktemp "/tmp/XXXXXX.installer.tar.gz")
+       leeway build components:all-docker \
+                               --dont-test \
+                               -Dversion="${VERSION}" \
+-                              -DSEGMENT_IO_TOKEN="$(kubectl --context=dev -n werft get secret self-hosted -o jsonpath='{.data.segmentIOToken}' | base64 -d)" \
+                               --save "${VERSIONS_TMP_ZIP}"
+       tar -xzvf "${VERSIONS_TMP_ZIP}" ./versions.yaml && sudo mv ./versions.yaml /tmp/versions.yaml
+       rm "${VERSIONS_TMP_ZIP}"
+@@ -69,86 +66,35 @@ if ! command -v installer;then
+ fi
+ 
+ function copyCachedCertificate {
+-  CERTS_NAMESPACE="certs"
+   DESTINATION_CERT_NAME="$GITPOD_PROXY_SECRET_NAME"
+ 
++  secret=$(gcloud secrets versions access latest --secret="${PREVIEW_SORUCE_CERT_NAME}" --project=${PREVIEW_GCP_PROJECT})
+   kubectl \
+-    --kubeconfig "${DEV_KUBE_PATH}" \
+-    --context "${DEV_KUBE_CONTEXT}" \
+-    get secret "${PREVIEW_SORUCE_CERT_NAME}" --namespace="${CERTS_NAMESPACE}" -o yaml \
+-  | yq d - 'metadata.namespace' \
+-  | yq d - 'metadata.uid' \
+-  | yq d - 'metadata.resourceVersion' \
+-  | yq d - 'metadata.creationTimestamp' \
+-  | yq d - 'metadata.ownerReferences' \
+-  | sed "s/${PREVIEW_SORUCE_CERT_NAME}/${DESTINATION_CERT_NAME}/g" \
+-  | kubectl \
++    create secret generic "${DESTINATION_CERT_NAME}" --namespace="${PREVIEW_NAMESPACE}" --dry-run=client -oyaml \
++    | yq4 eval-all ".data = $secret | .type = \"kubernetes.io/tls\"" \
++    | kubectl \
+       --kubeconfig "${PREVIEW_K3S_KUBE_PATH}" \
+       --context "${PREVIEW_K3S_KUBE_CONTEXT}" \
+-      apply --namespace="${PREVIEW_NAMESPACE}" -f -
++      apply -f -
+ }
+ 
+-# Used by blobserve
+-function copyImagePullSecret {
+-  local exists
+-
+-  # hasPullSecret
+-  exists="$(
+-    kubectl \
+-      --kubeconfig "${PREVIEW_K3S_KUBE_PATH}" \
+-      --context "${PREVIEW_K3S_KUBE_CONTEXT}" \
+-      get secret ${GITPOD_IMAGE_PULL_SECRET_NAME} \
+-        --namespace "${PREVIEW_NAMESPACE}" \
+-        --ignore-not-found
+-  )"
+-
+-  if [[ -n "${exists}" ]]; then
+-    return
+-  fi
+-
+-  imagePullAuth=$(
+-    printf "%s" "_json_key:$(kubectl --kubeconfig "${DEV_KUBE_PATH}" --context "${DEV_KUBE_CONTEXT}" get secret ${GITPOD_IMAGE_PULL_SECRET_NAME} --namespace=keys -o yaml \
+-    | yq r - data['.dockerconfigjson'] \
+-    | base64 -d)" | base64 -w 0
+-  )
+-
+-  cat <<EOF > "${GITPOD_IMAGE_PULL_SECRET_NAME}"
+-  {
+-    "auths": {
+-      "eu.gcr.io": { "auth": "${imagePullAuth}" },
+-      "europe-docker.pkg.dev": { "auth": "${imagePullAuth}" }
+-    }
+-  }
+-EOF
+-
++function refreshImagePullSecret {
+   kubectl \
+     --kubeconfig "${PREVIEW_K3S_KUBE_PATH}" \
+     --context "${PREVIEW_K3S_KUBE_CONTEXT}" \
+-    create secret docker-registry ${GITPOD_IMAGE_PULL_SECRET_NAME} \
+-      --namespace ${PREVIEW_NAMESPACE} \
+-      --from-file=.dockerconfigjson=./${GITPOD_IMAGE_PULL_SECRET_NAME}
+-
+-  rm -f ${GITPOD_IMAGE_PULL_SECRET_NAME}
++    apply -f "$SCRIPT_PATH/../vm/template/gcr-pull-secret-job.yaml"
++  kubectl \
++    --kubeconfig "${PREVIEW_K3S_KUBE_PATH}" \
++    --context "${PREVIEW_K3S_KUBE_CONTEXT}" \
++    delete job refresh-job --ignore-not-found
++  kubectl \
++    --kubeconfig "${PREVIEW_K3S_KUBE_PATH}" \
++    --context "${PREVIEW_K3S_KUBE_CONTEXT}" \
++    create job refresh-job --from=cronjob/gcr-refresh-token
+ }
+ 
+ # Install Fluent-Bit sending logs to GCP
+ function installFluentBit {
+-    kubectl \
+-      --kubeconfig "${DEV_KUBE_PATH}" \
+-      --context "${DEV_KUBE_CONTEXT}" \
+-      --namespace werft \
+-      get secret "fluent-bit-external" -o yaml \
+-    | yq d - 'metadata.namespace' \
+-    | yq d - 'metadata.uid' \
+-    | yq d - 'metadata.resourceVersion' \
+-    | yq d - 'metadata.creationTimestamp' \
+-    | yq d - 'metadata.ownerReferences' \
+-    | sed "s/werft/${PREVIEW_NAMESPACE}/g" \
+-    | kubectl \
+-      --kubeconfig "${PREVIEW_K3S_KUBE_PATH}" \
+-      --context "${PREVIEW_K3S_KUBE_CONTEXT}" \
+-      apply -n ${PREVIEW_NAMESPACE} -f -
+-
+     helm3 \
+       --kubeconfig "${PREVIEW_K3S_KUBE_PATH}" \
+       --kube-context "${PREVIEW_K3S_KUBE_CONTEXT}" \
+@@ -184,7 +130,7 @@ while ! copyCachedCertificate; do
+   tries=$((tries + 1))
+ done
+ 
+-copyImagePullSecret
++refreshImagePullSecret
+ installFluentBit
+ 
+ # ========
+@@ -224,6 +170,7 @@ rm shortname.yaml
+ #
+ yq w -i "${INSTALLER_CONFIG_PATH}" certificate.name "${GITPOD_PROXY_SECRET_NAME}"
+ yq w -i "${INSTALLER_CONFIG_PATH}" containerRegistry.inCluster "false"
++
+ yq w -i "${INSTALLER_CONFIG_PATH}" containerRegistry.external.url "${GITPOD_CONTAINER_REGISTRY_URL}"
+ yq w -i "${INSTALLER_CONFIG_PATH}" containerRegistry.external.certificate.kind secret
+ yq w -i "${INSTALLER_CONFIG_PATH}" containerRegistry.external.certificate.name "${GITPOD_IMAGE_PULL_SECRET_NAME}"
+@@ -297,7 +244,8 @@ yq w -i "${INSTALLER_CONFIG_PATH}" experimental.ide.ideMetrics.enabledErrorRepor
+ 
+ if [[ "${GITPOD_WITH_DEDICATED_EMU}" != "true" ]]
+ then
+-  for row in $(kubectl --kubeconfig "$DEV_KUBE_PATH" --context "${DEV_KUBE_CONTEXT}" get secret preview-envs-authproviders-harvester --namespace=keys -o jsonpath="{.data.authProviders}" \
++  secret=$(gcloud secrets versions access latest --secret="preview-envs-authproviders" --project=${PREVIEW_GCP_PROJECT})
++  for row in $(gcloud secrets versions access latest --secret="preview-envs-authproviders" --project=${PREVIEW_GCP_PROJECT}  | yq r - "authProviders" \
+   | base64 -d -w 0 \
+   | yq r - authProviders -j \
+   | jq -r 'to_entries | .[] | @base64'); do
+@@ -333,16 +281,14 @@ fi
+ #
+ if [[ "${GITPOD_WITH_DEDICATED_EMU}" != "true" ]]
+ then
+-  kubectl --kubeconfig "${DEV_KUBE_PATH}" --context "${DEV_KUBE_CONTEXT}" -n werft get secret stripe-api-keys -o yaml > stripe-api-keys.secret.yaml
+-  yq w -i stripe-api-keys.secret.yaml metadata.namespace "default"
+-  yq d -i stripe-api-keys.secret.yaml metadata.creationTimestamp
+-  yq d -i stripe-api-keys.secret.yaml metadata.uid
+-  yq d -i stripe-api-keys.secret.yaml metadata.resourceVersion
+-  diff-apply "${PREVIEW_K3S_KUBE_CONTEXT}" stripe-api-keys.secret.yaml
+-  rm -f stripe-api-keys.secret.yaml
+-
+-  yq w -i "${INSTALLER_CONFIG_PATH}" "experimental.webapp.server.stripeSecret" "stripe-api-keys"
+-  yq w -i "${INSTALLER_CONFIG_PATH}" "experimental.webapp.server.stripeConfig" "stripe-config"
++  secret=$(gcloud secrets versions access latest --secret="stripe-api-keys" --project=${PREVIEW_GCP_PROJECT})
++  kubectl \
++    create secret generic "stripe-api-keys" --namespace="${PREVIEW_NAMESPACE}" --dry-run=client -oyaml \
++    | yq4 eval-all ".data = $secret" \
++    | kubectl \
++      --kubeconfig "${PREVIEW_K3S_KUBE_PATH}" \
++      --context "${PREVIEW_K3S_KUBE_CONTEXT}" \
++      apply -n ${PREVIEW_NAMESPACE} -f -
+ fi
+ 
+ #
+@@ -350,13 +296,14 @@ fi
+ #
+ if [[ "${GITPOD_WITH_DEDICATED_EMU}" != "true" ]]
+ then
+-  kubectl --kubeconfig "${DEV_KUBE_PATH}" --context "${DEV_KUBE_CONTEXT}" -n werft get secret linked-in -o yaml > linked-in.secret.yaml
+-  yq w -i linked-in.secret.yaml metadata.namespace "default"
+-  yq d -i linked-in.secret.yaml metadata.creationTimestamp
+-  yq d -i linked-in.secret.yaml metadata.uid
+-  yq d -i linked-in.secret.yaml metadata.resourceVersion
+-  diff-apply "${PREVIEW_K3S_KUBE_CONTEXT}" linked-in.secret.yaml
+-  rm -f linked-in.secret.yaml
++  secret=$(gcloud secrets versions access latest --secret="linked-in" --project=${PREVIEW_GCP_PROJECT})
++  kubectl \
++    create secret generic "linked-in" --namespace="${PREVIEW_NAMESPACE}" --dry-run=client -oyaml \
++    | yq4 eval-all ".data = $secret" \
++    | kubectl \
++      --kubeconfig "${PREVIEW_K3S_KUBE_PATH}" \
++      --context "${PREVIEW_K3S_KUBE_CONTEXT}" \
++      apply -n ${PREVIEW_NAMESPACE} -f -
+ 
+   yq w -i "${INSTALLER_CONFIG_PATH}" "experimental.webapp.server.linkedInSecret" "linked-in"
+ fi
+@@ -364,21 +311,23 @@ fi
+ #
+ # configureSSHGateway
+ #
+-kubectl --kubeconfig "${DEV_KUBE_PATH}" --context "${DEV_KUBE_CONTEXT}" --namespace keys get secret host-key -o yaml \
+-| yq w - metadata.namespace ${PREVIEW_NAMESPACE} \
+-| yq d - metadata.uid \
+-| yq d - metadata.resourceVersion \
+-| yq d - metadata.creationTimestamp > host-key.yaml
+-diff-apply "${PREVIEW_K3S_KUBE_CONTEXT}" host-key.yaml
+-rm -f host-key.yaml
+-
+-kubectl --kubeconfig "${DEV_KUBE_PATH}" --context "${DEV_KUBE_CONTEXT}" --namespace keys get secret ssh-ca -o yaml \
+-| yq w - metadata.namespace ${PREVIEW_NAMESPACE} \
+-| yq d - metadata.uid \
+-| yq d - metadata.resourceVersion \
+-| yq d - metadata.creationTimestamp > ssh-ca.yaml
+-diff-apply "${PREVIEW_K3S_KUBE_CONTEXT}" ssh-ca.yaml
+-rm -f ssh-ca.yaml
++secret=$(gcloud secrets versions access latest --secret="host-key" --project=${PREVIEW_GCP_PROJECT})
++kubectl \
++  create secret generic "host-key" --namespace="${PREVIEW_NAMESPACE}" --dry-run=client -oyaml \
++  | yq4 eval-all ".data = $secret" \
++  | kubectl \
++    --kubeconfig "${PREVIEW_K3S_KUBE_PATH}" \
++    --context "${PREVIEW_K3S_KUBE_CONTEXT}" \
++    apply -n ${PREVIEW_NAMESPACE} -f -
++
++secret=$(gcloud secrets versions access latest --secret="ssh-ca" --project=${PREVIEW_GCP_PROJECT})
++kubectl \
++  create secret generic "ssh-ca" --namespace="${PREVIEW_NAMESPACE}" --dry-run=client -oyaml \
++  | yq4 eval-all ".data = $secret" \
++  | kubectl \
++    --kubeconfig "${PREVIEW_K3S_KUBE_PATH}" \
++    --context "${PREVIEW_K3S_KUBE_CONTEXT}" \
++    apply -n ${PREVIEW_NAMESPACE} -f -
+ 
+ yq w -i "${INSTALLER_CONFIG_PATH}" sshGatewayHostKey.kind "secret"
+ yq w -i "${INSTALLER_CONFIG_PATH}" sshGatewayHostKey.name "host-key"
+@@ -433,7 +382,7 @@ yq w -i "${INSTALLER_CONFIG_PATH}" 'experimental.workspace.classes.g1-small.temp
+ # includeAnalytics
+ #
+ if [[ "${GITPOD_ANALYTICS}" == "segment" ]]; then
+-  GITPOD_ANALYTICS_SEGMENT_TOKEN="$(readWerftSecret "segment-staging-write-key" "token")"
++  GITPOD_ANALYTICS_SEGMENT_TOKEN="$(gcloud secrets versions access latest --secret="segment-staging-write-key" --project=${PREVIEW_GCP_PROJECT})"
+   if [[ -z "${GITPOD_ANALYTICS_SEGMENT_TOKEN}" ]]; then
+     echo "GITPOD_ANALYTICS_SEGMENT_TOKEN is empty"
+     exit 1
+@@ -475,13 +424,14 @@ yq w -i "${INSTALLER_CONFIG_PATH}" experimental.webapp.spicedb.secretRef "spiced
+ #
+ # Configure spicedb secret
+ #
+-kubectl --kubeconfig "${DEV_KUBE_PATH}" --context "${DEV_KUBE_CONTEXT}" -n werft get secret spicedb-secret -o yaml > spicedb-secret.yaml
+-yq w -i spicedb-secret.yaml metadata.namespace "default"
+-yq d -i spicedb-secret.yaml metadata.creationTimestamp
+-yq d -i spicedb-secret.yaml metadata.uid
+-yq d -i spicedb-secret.yaml metadata.resourceVersion
+-diff-apply "${PREVIEW_K3S_KUBE_CONTEXT}" spicedb-secret.yaml
+-rm -f spicedb-secret.yaml
++secret=$(gcloud secrets versions access latest --secret="spicedb-secret" --project=${PREVIEW_GCP_PROJECT})
++kubectl \
++  create secret generic "spicedb-secret" --namespace="${PREVIEW_NAMESPACE}" --dry-run=client -oyaml \
++  | yq4 eval-all ".data = $secret" \
++  | kubectl \
++    --kubeconfig "${PREVIEW_K3S_KUBE_PATH}" \
++    --context "${PREVIEW_K3S_KUBE_CONTEXT}" \
++    apply -n ${PREVIEW_NAMESPACE} -f -
+ 
+ #
+ # Enable "Frontend Dev" on all preview envs
+@@ -563,6 +513,7 @@ log_info "Applying manifests (installing)"
+ # avoid random werft namespace errors
+ kubectl --kubeconfig "${PREVIEW_K3S_KUBE_PATH}" --context "${PREVIEW_K3S_KUBE_CONTEXT}" create namespace werft || true
+ kubectl --kubeconfig "${PREVIEW_K3S_KUBE_PATH}" --context "${PREVIEW_K3S_KUBE_CONTEXT}" delete -n "${PREVIEW_NAMESPACE}" job migrations || true
++kubectl --kubeconfig "${PREVIEW_K3S_KUBE_PATH}" --context "${PREVIEW_K3S_KUBE_CONTEXT}" delete -n "${PREVIEW_NAMESPACE}" job spicedb-migrations || true
+ # export the function so we can use it in xargs
+ export -f diff-apply
+ mkdir temp-installer || true
+diff --git a/dev/preview/workflow/preview/deploy-monitoring-satellite.sh b/dev/preview/workflow/preview/deploy-monitoring-satellite.sh
+index feffe9b6d..f9f97e7fb 100755
+--- a/dev/preview/workflow/preview/deploy-monitoring-satellite.sh
++++ b/dev/preview/workflow/preview/deploy-monitoring-satellite.sh
+@@ -11,12 +11,10 @@ source "$(realpath "${SCRIPT_PATH}/../lib/common.sh")"
+ # shellcheck source=../lib/k8s-util.sh
+ source "$(realpath "${SCRIPT_PATH}/../lib/k8s-util.sh")"
+ 
+-DEV_KUBE_PATH="${DEV_KUBE_PATH:-/home/gitpod/.kube/config}"
+-DEV_KUBE_CONTEXT="${DEV_KUBE_CONTEXT:-dev}"
+-
+ PREVIEW_NAME="${PREVIEW_NAME:-$(previewctl get name)}"
+ PREVIEW_K3S_KUBE_PATH="${PREVIEW_K3S_KUBECONFIG_PATH:-/home/gitpod/.kube/config}"
+ PREVIEW_K3S_KUBE_CONTEXT="${PREVIEW_K3S_KUBE_CONTEXT:-$PREVIEW_NAME}"
++PREVIEW_GCP_PROJECT="gitpod-dev-preview"
+ 
+ INITIAL_DEFAULT_NAMESPACE="$(kubens -c)"
+ 
+@@ -60,9 +58,9 @@ fi
+ GOBIN=$(pwd) go install github.com/gitpod-io/observability/installer@main
+ mv installer observability-installer
+ 
+-HONEYCOMB_API_KEY="$(readWerftSecret honeycomb-api-key apikey)" \
+-PROM_REMOTE_WRITE_USER="$(readWerftSecret prometheus-remote-write-auth user)" \
+-PROM_REMOTE_WRITE_PASSWORD="$(readWerftSecret prometheus-remote-write-auth password)" \
++HONEYCOMB_API_KEY="$(gcloud secrets versions access latest --secret="honeycomb-api-key" --project=${PREVIEW_GCP_PROJECT})" \
++PROM_REMOTE_WRITE_USER="$(gcloud secrets versions access latest --secret="prometheus-remote-write-auth" --project=${PREVIEW_GCP_PROJECT})" \
++PROM_REMOTE_WRITE_PASSWORD="$(gcloud secrets versions access latest --secret="prometheus-remote-write-auth-password" --project=${PREVIEW_GCP_PROJECT}))" \
+ PREVIEW_NAME="${PREVIEW_NAME}" \
+ WORKSPACE_ROOT="${ROOT}" \
+ envsubst <"${ROOT}/dev/preview/workflow/config/monitoring-satellite.yaml" \
+diff --git a/dev/preview/workflow/preview/deploy-harvester.sh b/dev/preview/workflow/preview/deploy-preview.sh
+similarity index 92%
+rename from dev/preview/workflow/preview/deploy-harvester.sh
+rename to dev/preview/workflow/preview/deploy-preview.sh
+index 5423977f7..348919b9d 100755
+--- a/dev/preview/workflow/preview/deploy-harvester.sh
++++ b/dev/preview/workflow/preview/deploy-preview.sh
+@@ -24,7 +24,7 @@ TARGET_DIR="${PROJECT_ROOT}/dev/preview/infrastructure"
+ # Setting the TF_DATA_DIR is advisable if we set the PLAN_LOCATION in a different place than the dir with the tf
+ TF_DATA_DIR="${TARGET_DIR}"
+ 
+-# Illustration purposes, but this will set the plan location to $TARGET_DIR/harvester.plan if PLAN_LOCATION is not set
++# Illustration purposes, but this will set the plan location to $TARGET_DIR/infrastructure.plan if PLAN_LOCATION is not set
+ static_plan="$(realpath "${TARGET_DIR}")/$(basename "${TARGET_DIR}").plan"
+ PLAN_LOCATION="${PLAN_LOCATION:-$static_plan}"
+ 
+@@ -33,9 +33,6 @@ shopt -os allexport
+ 
+ terraform_init
+ 
+-# avoid harvester entirely
+-export TF_VAR_infra_provider="gce"
+-
+ PLAN_EXIT_CODE=0
+ terraform_plan || PLAN_EXIT_CODE=$?
+ 
+diff --git a/dev/preview/workflow/preview/patch-ide-configmap.js b/dev/preview/workflow/preview/patch-ide-configmap.js
+new file mode 100644
+index 000000000..979f82905
+--- /dev/null
++++ b/dev/preview/workflow/preview/patch-ide-configmap.js
+@@ -0,0 +1,33 @@
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
++// Licensed under the GNU Affero General Public License (AGPL).
++// See License.AGPL.txt in the project root for license information.
++
++const fs = require("fs");
++let json = JSON.parse(fs.readFileSync(process.argv[2]).toString());
++
++function replaceImage(image) {
++    return image.replace("gitpod-dev-artifact", "gitpod-core-dev");
++}
++
++for (let ide in json.ideOptions.options) {
++    if (["clion", "goland", "intellij", "phpstorm", "pycharm", "rider", "rubymine", "webstorm"].includes(ide)) {
++        json.ideOptions.options[ide].latestImage = replaceImage(json.ideOptions.options[ide].latestImage);
++        json.ideOptions.options[ide].versions = json.ideOptions.options[ide].versions?.map((version) => {
++            version.image = replaceImage(version.image);
++            return version;
++        });
++    }
++    if (["code", "code1_85"].includes(ide)) {
++        json.ideOptions.options[ide].image = replaceImage(json.ideOptions.options[ide].image);
++        json.ideOptions.options[ide].versions = json.ideOptions.options[ide].versions?.map((version) => {
++            version.image = replaceImage(version.image);
++            return version;
++        });
++    }
++    if (["intellij-previous"].includes(ide)) {
++        json.ideOptions.options[ide].image = replaceImage(json.ideOptions.options[ide].image);
++        json.ideOptions.options[ide].imageLayers = json.ideOptions.options[ide].imageLayers.map((i) => replaceImage(i));
++    }
++}
++
++fs.writeFileSync(process.argv[2], JSON.stringify(json));
+diff --git a/dev/preview/workflow/preview/post-process.sh b/dev/preview/workflow/preview/post-process.sh
+index de5c62cd3..5622c08e8 100755
+--- a/dev/preview/workflow/preview/post-process.sh
++++ b/dev/preview/workflow/preview/post-process.sh
+@@ -11,13 +11,14 @@ set -euo pipefail
+ # Node pool index was only relevant with core-dev
+ NODE_POOL_INDEX=0
+ 
+-# These were previously using "findLastPort" etc. but in harvester-based preview environments they can be stable
+ REG_DAEMON_PORT="31750"
+ 
+ # Required params
+ DEV_BRANCH=$1
+ SMITH_TOKEN=$2
+ 
++SCRIPT_PATH=$(realpath "$(dirname "$0")")
++
+ if [[ -z ${REG_DAEMON_PORT} ]] || [[ -z ${DEV_BRANCH} ]] || [[ -z ${SMITH_TOKEN} ]]; then
+    echo "One or more input params were invalid: ${REG_DAEMON_PORT} ${DEV_BRANCH} ${SMITH_TOKEN}"
+    exit 1
+@@ -143,6 +144,34 @@ while [ "$documentIndex" -le "$DOCS" ]; do
+       yq m -x -i k8s.yaml -d "$documentIndex" /tmp/"$NAME"overrides.yaml
+    fi
+ 
++   # overrides for ide-config configmap
++   if [[ "ide-config" == "$NAME" ]] && [[ "$KIND" == "ConfigMap" ]]; then
++      WORK="overrides for $NAME $KIND"
++      echo "$WORK"
++      touch /tmp/"$NAME"-overrides.yaml
++
++      yq r k8s.yaml -d "$documentIndex" data | yq prefix - data > /tmp/"$NAME"-overrides.yaml
++      yq r /tmp/"$NAME"-overrides.yaml 'data.[config.json]' > /tmp/"$NAME"-overrides.json
++      node "$SCRIPT_PATH/patch-ide-configmap.js" /tmp/"$NAME"-overrides.json
++      yq w -i /tmp/"$NAME"-overrides.yaml  "data.[config.json]" -- "$(< /tmp/"$NAME"-overrides.json)"
++      yq m -x -i k8s.yaml -d "$documentIndex" /tmp/"$NAME"-overrides.yaml
++   fi
++
++   # overrides for blobserve configmap
++   if [[ "blobserve" == "$NAME" ]] && [[ "$KIND" == "ConfigMap" ]]; then
++      WORK="overrides for $NAME $KIND"
++      echo "$WORK"
++      touch /tmp/"$NAME"-overrides.yaml
++
++      yq r k8s.yaml -d "$documentIndex" data | yq prefix - data > /tmp/"$NAME"-overrides.yaml
++      yq r /tmp/"$NAME"-overrides.yaml 'data.[config.json]' > /tmp/"$NAME"-overrides.json
++
++      jq 'if .blobserve.repos["eu.gcr.io/gitpod-core-dev/build/ide/code"] == null then .blobserve.repos["eu.gcr.io/gitpod-core-dev/build/ide/code"] = .blobserve.repos["eu.gcr.io/gitpod-dev-artifact/build/ide/code"] else . end' /tmp/"$NAME"-overrides.json > /tmp/"$NAME"-updated-overrides.json
++
++      yq w -i /tmp/"$NAME"-overrides.yaml  "data.[config.json]" -- "$(< /tmp/"$NAME"-updated-overrides.json)"
++      yq m -x -i k8s.yaml -d "$documentIndex" /tmp/"$NAME"-overrides.yaml
++   fi
++
+    # override details for Minio
+    if [[ "minio" == "$NAME" ]] && [[ "$KIND" == "Deployment" ]]; then
+       WORK="overrides for $NAME $KIND"
+diff --git a/dev/preview/workflow/preview/preview.sh b/dev/preview/workflow/preview/preview.sh
+index b553af272..27d301011 100755
+--- a/dev/preview/workflow/preview/preview.sh
++++ b/dev/preview/workflow/preview/preview.sh
+@@ -33,5 +33,5 @@ leeway run dev/preview:configure-workspace
+ ensure_gcloud_auth
+ 
+ leeway run dev/preview:create-preview dev/preview:build
+-previewctl install-context --gcp-service-account "${PREVIEW_ENV_DEV_SA_KEY_PATH}" --timeout 10m
++previewctl install-context --timeout 10m
+ leeway run dev/preview:deploy-gitpod dev/preview:deploy-monitoring-satellite
+diff --git a/dev/preview/workflow/vm/charts/fluentbit/values.yaml b/dev/preview/workflow/vm/charts/fluentbit/values.yaml
+index 0f315aa16..5ee54750a 100644
+--- a/dev/preview/workflow/vm/charts/fluentbit/values.yaml
++++ b/dev/preview/workflow/vm/charts/fluentbit/values.yaml
+@@ -3,17 +3,4 @@ config:
+     [OUTPUT]
+         Name stackdriver
+         Match *
+-
+-env:
+-  - name: GOOGLE_SERVICE_CREDENTIALS
+-    value: /gcp/credentials.json
+-
+-extraVolumes:
+-  - name: fluent-bit-external
+-    secret:
+-      secretName: fluent-bit-external
+-      defaultMode: 420
+-
+-extraVolumeMounts:
+-  - name: fluent-bit-external
+-    mountPath: /gcp
++        metadata_server http://169.254.169.254
+diff --git a/dev/preview/workflow/vm/template/gcr-pull-secret-job.yaml b/dev/preview/workflow/vm/template/gcr-pull-secret-job.yaml
+new file mode 100644
+index 000000000..3fd4ca305
+--- /dev/null
++++ b/dev/preview/workflow/vm/template/gcr-pull-secret-job.yaml
+@@ -0,0 +1,82 @@
++apiVersion: batch/v1
++kind: CronJob
++metadata:
++  name: gcr-refresh-token
++spec:
++  schedule: "30 * * * *"
++  successfulJobsHistoryLimit: 1
++  suspend: false
++  concurrencyPolicy: Forbid
++  failedJobsHistoryLimit: 1
++  jobTemplate:
++    spec:
++      ttlSecondsAfterFinished: 60
++      template:
++        spec:
++          serviceAccountName: gcr-refresh-token
++          containers:
++          - name: gcr-refresh-token
++            image: chainguard/kubectl:latest-dev
++            command:
++              - /bin/sh
++              - -c
++              - |-
++                ACCOUNTS=$(wget -q -O - --header "Metadata-Flavor: Google" "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/" | tr -d '\r')
++                NON_DEFAULT_ACCOUNTS=$(echo "$ACCOUNTS" | grep -v "^default$")
++                FIRST_NON_DEFAULT_ACCOUNT=$(echo "$NON_DEFAULT_ACCOUNTS" | head -1)
++                TOKEN=$(wget -q -O - --header "Metadata-Flavor: Google" "http://169.254.169.254/computeMetadata/v1/instance/service-accounts/$FIRST_NON_DEFAULT_ACCOUNT/token")
++                ACCESS_TOKEN=$(echo "$TOKEN" | grep -o '"access_token": *"[^"]*"' | sed 's/"access_token": *"\([^"]*\)"/\1/')
++
++                AUTH_TOKEN=$(echo -n _dcgcloud_token:${ACCESS_TOKEN} | base64 -w0)
++
++
++                # Create Docker config.json
++                cat << EOF > /tmp/config.json
++                {
++                  "auths": {
++                    "eu.gcr.io": {
++                      "auth": "${AUTH_TOKEN}"
++                    }
++                  }
++                }
++                EOF
++
++                # To avoid the deletion/creation we can run dry-run and then apply
++                kubectl create secret generic image-pull-secret \
++                  --from-file=.dockerconfigjson=/tmp/config.json \
++                  --type=kubernetes.io/dockerconfigjson \
++                  -o yaml --dry-run=client | kubectl apply --server-side --force-conflicts -f -
++
++                echo "Secret gcr-credential was successfully updated at $(date)"
++          restartPolicy: Never
++---
++apiVersion: rbac.authorization.k8s.io/v1
++kind: Role
++metadata:
++  name: gcr-refresh-token-access-to-secrets-role
++rules:
++- apiGroups: [""]
++  resources: ["secrets"]
++  resourceNames: ["image-pull-secret"]
++  verbs:
++    - "get"
++    - "create"
++    - "patch"
++---
++kind: RoleBinding
++apiVersion: rbac.authorization.k8s.io/v1
++metadata:
++  name: gcr-refresh-token-role-binding
++subjects:
++- kind: ServiceAccount
++  name: gcr-refresh-token
++  apiGroup: ""
++roleRef:
++  kind: Role
++  name: gcr-refresh-token-access-to-secrets-role
++  apiGroup: ""
++---
++apiVersion: v1
++kind: ServiceAccount
++metadata:
++  name: gcr-refresh-token
+diff --git a/install/installer/BUILD.yaml b/install/installer/BUILD.yaml
+index 432108e14..accef8569 100644
+--- a/install/installer/BUILD.yaml
++++ b/install/installer/BUILD.yaml
+@@ -43,13 +43,15 @@ packages:
+       - components/spicedb:lib
+     env:
+       - CGO_ENABLED=0
++    argdeps:
++      - imageRepoBase
+     prep:
+       - ["sh", "-c", "ls -d third_party/charts/*/ | while read f; do echo \"cd $f && helm dep up && cd -\"; done | sh"]
+       - ["mv", "_deps/components-ws-manager-mk2--crd/workspace.gitpod.io_workspaces.yaml", "pkg/components/ws-manager-mk2/crd.yaml"]
+       - ["sh", "-c", "cat _deps/components-ws-manager-mk2--crd/workspace.gitpod.io_snapshots.yaml >> pkg/components/ws-manager-mk2/crd.yaml"]
+     config:
+       packaging: app
+-      buildCommand: ["go", "build", "-trimpath", "-ldflags", "-buildid= -w -s -X 'github.com/gitpod-io/gitpod/installer/cmd.Version=commit-${__git_commit}'"]
++      buildCommand: ["go", "build", "-trimpath", "-ldflags", "-buildid= -w -s -X 'github.com/gitpod-io/gitpod/installer/cmd.Version=commit-${__git_commit}' -X 'github.com/gitpod-io/gitpod/installer/pkg/config.GitpodContainerRegistry=${imageRepoBase}'"]
+   - name: app
+     type: generic
+     deps:
+diff --git a/install/installer/cmd/mirror_repo.go b/install/installer/cmd/mirror_repo.go
+new file mode 100644
+index 000000000..216435869
+--- /dev/null
++++ b/install/installer/cmd/mirror_repo.go
+@@ -0,0 +1,26 @@
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
++// Licensed under the GNU Affero General Public License (AGPL).
++// See License.AGPL.txt in the project root for license information.
++
++package cmd
++
++import (
++	"fmt"
++
++	"github.com/gitpod-io/gitpod/installer/pkg/config"
++	"github.com/spf13/cobra"
++)
++
++// mirrorRepoCmd represents the mirror list command
++var mirrorRepoCmd = &cobra.Command{
++	Use:   "repo",
++	Short: "Get original image repo for this installer",
++	RunE: func(cmd *cobra.Command, args []string) error {
++		fmt.Printf(config.GitpodContainerRegistry)
++		return nil
++	},
++}
++
++func init() {
++	mirrorCmd.AddCommand(mirrorRepoCmd)
++}
+diff --git a/install/installer/pkg/common/constants.go b/install/installer/pkg/common/constants.go
+index 9fd9f1e94..2ff016b97 100644
+--- a/install/installer/pkg/common/constants.go
++++ b/install/installer/pkg/common/constants.go
+@@ -7,18 +7,22 @@ package common
+ import (
+ 	"time"
+ 
++	"github.com/gitpod-io/gitpod/installer/pkg/config"
+ 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+ )
+ 
+ // This file exists to break cyclic-dependency errors
+ 
++var (
++	GitpodContainerRegistry = config.GitpodContainerRegistry
++)
++
+ const (
+ 	AppName                     = "gitpod"
+ 	BlobServeServicePort        = 4000
+ 	CertManagerCAIssuer         = "gitpod-ca-issuer"
+ 	DockerRegistryURL           = "docker.io"
+ 	DockerRegistryName          = "registry"
+-	GitpodContainerRegistry     = "eu.gcr.io/gitpod-core-dev/build"
+ 	InClusterDbSecret           = "mysql"
+ 	KubeRBACProxyRepo           = "quay.io"
+ 	KubeRBACProxyImage          = "brancz/kube-rbac-proxy"
+diff --git a/install/installer/pkg/components/ide-service/ide-configmap.json b/install/installer/pkg/components/ide-service/ide-configmap.json
+index 0e1cea307..9074848f6 100644
+--- a/install/installer/pkg/components/ide-service/ide-configmap.json
++++ b/install/installer/pkg/components/ide-service/ide-configmap.json
+@@ -365,8 +365,8 @@
+         "type": "browser",
+         "logo": "{{.IdeLogoBase}}/terminal.svg",
+         "label": "Insiders",
+-        "image": "{{.Repository}}/ide/xterm-web:latest",
+-        "latestImage": "{{.Repository}}/ide/xterm-web:latest",
++        "image": "{{.Repository}}/ide/xterm-web:{{.WorkspaceVersions.Workspace.XtermWebImage.Version}}",
++        "latestImage": "{{.Repository}}/ide/xterm-web:{{.WorkspaceVersions.Workspace.XtermWebImage.Version}}",
+         "resolveImageDigest": true
+       }
+     },
+diff --git a/install/installer/pkg/components/ide-service/ide_config_configmap.go b/install/installer/pkg/components/ide-service/ide_config_configmap.go
+index 6a703d761..b2004ce5d 100644
+--- a/install/installer/pkg/components/ide-service/ide_config_configmap.go
++++ b/install/installer/pkg/components/ide-service/ide_config_configmap.go
+@@ -62,7 +62,7 @@ func ideConfigConfigmap(ctx *common.RenderContext) ([]runtime.Object, error) {
+ 		CodeBrowserVersionStable:       ide.CodeIDEImageStableVersion,
+ 		ResolvedCodeBrowserImageLatest: resolveLatestImage(ide.CodeIDEImage, "nightly", ctx.VersionManifest.Components.Workspace.CodeImage),
+ 		CodeHelperImage:                ctx.ImageName(ctx.Config.Repository, ide.CodeHelperIDEImage, ctx.VersionManifest.Components.Workspace.CodeHelperImage.Version),
+-		CodeWebExtensionImage:          ctx.ImageName(ctx.Config.Repository, ide.CodeWebExtensionImage, ide.CodeWebExtensionVersion),
++		CodeWebExtensionImage:          ctx.ImageName(ctx.Config.Repository, ide.CodeWebExtensionImage, ctx.VersionManifest.Components.Workspace.CodeWebExtensionImage.Version),
+ 
+ 		JetBrainsPluginImage:           ctx.ImageName(ctx.Config.Repository, ide.JetBrainsBackendPluginImage, ctx.VersionManifest.Components.Workspace.DesktopIdeImages.JetBrainsBackendPluginImage.Version),
+ 		JetBrainsPluginLatestImage:     ctx.ImageName(ctx.Config.Repository, ide.JetBrainsBackendPluginImage, ctx.VersionManifest.Components.Workspace.DesktopIdeImages.JetBrainsBackendPluginLatestImage.Version),
+diff --git a/install/installer/pkg/components/workspace/ide/constants.go b/install/installer/pkg/components/workspace/ide/constants.go
+index 69c9775f6..17bd3b03b 100644
+--- a/install/installer/pkg/components/workspace/ide/constants.go
++++ b/install/installer/pkg/components/workspace/ide/constants.go
+@@ -10,7 +10,6 @@ const (
+ 	Code1_85IDEImageStableVersion = "commit-cb1173f2a457633550a7fdc89af86d8d4da51876"
+ 	CodeHelperIDEImage            = "ide/code-codehelper"
+ 	CodeWebExtensionImage         = "ide/gitpod-code-web"
+-	CodeWebExtensionVersion       = "commit-4e069a6195f3926ba8b84725bc806228f4cb94ec" // gitpod-web extension version comes from https://github.com/gitpod-io/gitpod-code
+ 	CodeDesktopIDEImage           = "ide/code-desktop"
+ 	CodeDesktopInsidersIDEImage   = "ide/code-desktop-insiders"
+ 	XtermIDEImage                 = "ide/xterm-web"
+diff --git a/install/installer/pkg/config/v1/config.go b/install/installer/pkg/config/v1/config.go
+index a7a15d481..418458791 100644
+--- a/install/installer/pkg/config/v1/config.go
++++ b/install/installer/pkg/config/v1/config.go
+@@ -36,8 +36,11 @@ func (v version) Factory() interface{} {
+ 	}
+ }
+ 
++var (
++	defaultRepositoryUrl = config.GitpodContainerRegistry
++)
++
+ const (
+-	defaultRepositoryUrl  = "eu.gcr.io/gitpod-core-dev/build"
+ 	defaultOpenVSXURL     = "https://open-vsx.org"
+ 	defaultMetadataRegion = "local"
+ )
+diff --git a/install/installer/pkg/config/vars.go b/install/installer/pkg/config/vars.go
+new file mode 100644
+index 000000000..9144f450a
+--- /dev/null
++++ b/install/installer/pkg/config/vars.go
+@@ -0,0 +1,9 @@
++// Copyright (c) 2024 Gitpod GmbH. All rights reserved.
++// Licensed under the GNU Affero General Public License (AGPL).
++// See License.AGPL.txt in the project root for license information.
++
++package config
++
++var (
++	GitpodContainerRegistry = "eu.gcr.io/gitpod-dev-artifact/build"
++)
+diff --git a/install/installer/pkg/config/versions/versions.go b/install/installer/pkg/config/versions/versions.go
+index 5091f6645..3a4d19b87 100644
+--- a/install/installer/pkg/config/versions/versions.go
++++ b/install/installer/pkg/config/versions/versions.go
+@@ -37,12 +37,14 @@ type Components struct {
+ 	ServiceWaiter     Versioned `json:"serviceWaiter"`
+ 	Usage             Versioned `json:"usage"`
+ 	Workspace         struct {
+-		CodeImage        Versioned `json:"codeImage"`
+-		CodeHelperImage  Versioned `json:"codeHelperImage"`
+-		DockerUp         Versioned `json:"dockerUp"`
+-		Supervisor       Versioned `json:"supervisor"`
+-		Workspacekit     Versioned `json:"workspacekit"`
+-		DesktopIdeImages struct {
++		CodeImage             Versioned `json:"codeImage"`
++		CodeHelperImage       Versioned `json:"codeHelperImage"`
++		CodeWebExtensionImage Versioned `json:"codeWebExtensionImage"`
++		XtermWebImage         Versioned `json:"xtermWebImage"`
++		DockerUp              Versioned `json:"dockerUp"`
++		Supervisor            Versioned `json:"supervisor"`
++		Workspacekit          Versioned `json:"workspacekit"`
++		DesktopIdeImages      struct {
+ 			CodeDesktopImage                  Versioned `json:"codeDesktop"`
+ 			CodeDesktopImageInsiders          Versioned `json:"codeDesktopInsiders"`
+ 			IntelliJImage                     Versioned `json:"intellij"`
+diff --git a/install/preview/prettylog/BUILD.yaml b/install/preview/prettylog/BUILD.yaml
+index fb4f7c56e..dcafd77f4 100644
+--- a/install/preview/prettylog/BUILD.yaml
++++ b/install/preview/prettylog/BUILD.yaml
+@@ -5,8 +5,6 @@
+ packages:
+   - name: app
+     type: go
+-    argdeps:
+-      - SEGMENT_IO_TOKEN
+     srcs:
+       - "main.go"
+       - "go.sum"
+@@ -15,11 +13,3 @@ packages:
+       - CGO_ENABLED=0
+     config:
+       packaging: app
+-      buildCommand:
+-        [
+-          "go",
+-          "build",
+-          "-trimpath",
+-          "-ldflags",
+-          "-buildid= -w -s -X 'main.segmentIOToken=${SEGMENT_IO_TOKEN}'",
+-        ]
+diff --git a/scripts/ws-deploy.sh b/scripts/ws-deploy.sh
+index 61ade2fe9..1be32ad2d 100755
+--- a/scripts/ws-deploy.sh
++++ b/scripts/ws-deploy.sh
+@@ -14,7 +14,7 @@ version="dev-$(date +%F_T"%H-%M-%S")"
+ bldfn="/tmp/build-$version.tar.gz"
+ 
+ docker ps &> /dev/null || (echo "You need a working Docker daemon. Maybe set DOCKER_HOST?"; exit 1)
+-leeway build .:docker -Dversion="$version" -DimageRepoBase=eu.gcr.io/gitpod-core-dev/dev --save "$bldfn" --dont-test
++leeway build .:docker -Dversion="$version" -DimageRepoBase=eu.gcr.io/gitpod-dev-artifact/build --save "$bldfn" --dont-test
+ dev_image="$(tar xfO "$bldfn" ./imgnames.txt | head -n1)"
+ 
+ kubectl set image "$resource_type" "$resource_name" "$resource_name"="$dev_image"

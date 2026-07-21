@@ -1,0 +1,1545 @@
+From 79b75ab4d5d979c927f1a3a77a128636cabce6a3 Mon Sep 17 00:00:00 2001
+From: Sven Efftinge <sven@gitpod.io>
+Date: Mon, 29 Aug 2022 07:00:37 +0000
+Subject: [PATCH] Add phone verification
+
+---
+ components/dashboard/package.json             |   1 +
+ components/dashboard/src/admin/UserDetail.tsx |   1 +
+ components/dashboard/src/components/Alert.tsx |   9 +
+ components/dashboard/src/index.css            |   3 +
+ components/dashboard/src/start/StartPage.tsx  |   3 +
+ .../dashboard/src/start/VerifyModal.tsx       | 241 ++++++++++++++++++
+ .../dashboard/src/start/phone-input.css       |  18 ++
+ .../gitpod-db/src/typeorm/entity/db-user.ts   |  12 +
+ .../1661519441407-PhoneVerification.ts        |  29 +++
+ .../gitpod-protocol/src/gitpod-service.ts     |   2 +
+ .../gitpod-protocol/src/messaging/error.ts    |   3 +
+ components/gitpod-protocol/src/protocol.ts    |  22 +-
+ .../gitpod-protocol/src/util/timeutil.spec.ts |   8 +-
+ .../gitpod-protocol/src/util/timeutil.ts      |   6 +
+ .../ee/src/billing/entitlement-service.ts     |   9 +
+ .../ee/src/workspace/gitpod-server-impl.ts    |   3 +
+ components/server/package.json                |   1 +
+ components/server/src/auth/auth-provider.ts   |   1 +
+ components/server/src/auth/rate-limiter.ts    |   8 +-
+ .../server/src/auth/verification-service.ts   |  76 ++++++
+ .../server/src/billing/entitlement-service.ts |   2 +
+ components/server/src/config.ts               |  20 ++
+ components/server/src/container-module.ts     |   3 +
+ .../server/src/github/github-auth-provider.ts |  13 +-
+ .../server/src/gitlab/gitlab-auth-provider.ts |   3 +-
+ components/server/src/user/user-controller.ts |   7 +
+ .../server/src/user/user-deletion-service.ts  |   4 +
+ components/server/src/user/user-service.ts    |   2 +
+ .../src/workspace/gitpod-server-impl.ts       |  24 ++
+ .../testdata/render/aws-setup/output.golden   |   7 +
+ .../testdata/render/azure-setup/output.golden |   7 +
+ .../render/customization/output.golden        |   7 +
+ .../render/external-registry/output.golden    |   7 +
+ .../testdata/render/gcp-setup/output.golden   |   7 +
+ .../cmd/testdata/render/minimal/output.golden |   7 +
+ .../statefulset-customization/output.golden   |   7 +
+ .../use-pod-security-policies/output.golden   |   7 +
+ .../workspace-requests-limits/output.golden   |   7 +
+ .../pkg/components/server/deployment.go       |  18 ++
+ yarn.lock                                     | 124 ++++++++-
+ 40 files changed, 722 insertions(+), 17 deletions(-)
+ create mode 100644 components/dashboard/src/start/VerifyModal.tsx
+ create mode 100644 components/dashboard/src/start/phone-input.css
+ create mode 100644 components/gitpod-db/src/typeorm/migration/1661519441407-PhoneVerification.ts
+ create mode 100644 components/server/src/auth/verification-service.ts
+
+diff --git a/components/dashboard/package.json b/components/dashboard/package.json
+index 4d9840347..afbe89a45 100644
+--- a/components/dashboard/package.json
++++ b/components/dashboard/package.json
+@@ -15,6 +15,7 @@
+     "query-string": "^7.1.1",
+     "react": "^17.0.1",
+     "react-dom": "^17.0.1",
++    "react-intl-tel-input": "^8.2.0",
+     "react-router-dom": "^5.2.0",
+     "xterm": "^4.11.0",
+     "xterm-addon-fit": "^0.5.0"
+diff --git a/components/dashboard/src/admin/UserDetail.tsx b/components/dashboard/src/admin/UserDetail.tsx
+index d5df4f012..e764f1109 100644
+--- a/components/dashboard/src/admin/UserDetail.tsx
++++ b/components/dashboard/src/admin/UserDetail.tsx
+@@ -123,6 +123,7 @@ export default function UserDetail(p: { user: User }) {
+                             <h3>{user.fullName}</h3>
+                             {user.blocked ? <Label text="Blocked" color="red" /> : null}{" "}
+                             {user.markedDeleted ? <Label text="Deleted" color="red" /> : null}
++                            {user.lastVerificationTime ? <Label text="Verified" color="green" /> : null}
+                         </div>
+                         <p>
+                             {user.identities
+diff --git a/components/dashboard/src/components/Alert.tsx b/components/dashboard/src/components/Alert.tsx
+index a74db4e67..b3d9cbed1 100644
+--- a/components/dashboard/src/components/Alert.tsx
++++ b/components/dashboard/src/components/Alert.tsx
+@@ -9,8 +9,11 @@ import { ReactComponent as Exclamation } from "../images/exclamation.svg";
+ import { ReactComponent as Exclamation2 } from "../images/exclamation2.svg";
+ import { ReactComponent as InfoSvg } from "../images/info.svg";
+ import { ReactComponent as XSvg } from "../images/x.svg";
++import { ReactComponent as Check } from "../images/check-circle.svg";
+ 
+ export type AlertType =
++    // Green
++    | "success"
+     // Yellow
+     | "warning"
+     // Gray alert
+@@ -40,6 +43,12 @@ interface AlertInfo {
+ }
+ 
+ const infoMap: Record<AlertType, AlertInfo> = {
++    success: {
++        bgCls: "bg-green-100 dark:bg-green-800",
++        txtCls: "text-green-700 dark:text-green-50",
++        icon: <Check className="w-4 h-4"></Check>,
++        iconColor: "text-green-700 dark:text-green-100",
++    },
+     warning: {
+         bgCls: "bg-yellow-100 dark:bg-yellow-700",
+         txtCls: "text-yellow-600 dark:text-yellow-50",
+diff --git a/components/dashboard/src/index.css b/components/dashboard/src/index.css
+index edd42b328..cc0b5ed55 100644
+--- a/components/dashboard/src/index.css
++++ b/components/dashboard/src/index.css
+@@ -79,6 +79,7 @@
+ 
+     textarea,
+     input[type="text"],
++    input[type="tel"],
+     input[type="number"],
+     input[type="search"],
+     input[type="password"],
+@@ -87,12 +88,14 @@
+     }
+     textarea::placeholder,
+     input[type="text"]::placeholder,
++    input[type="tel"]::placeholder,
+     input[type="number"]::placeholder,
+     input[type="search"]::placeholder,
+     input[type="password"]::placeholder {
+         @apply text-gray-400 dark:text-gray-500;
+     }
+     input[type="text"].error,
++    input[type="tel"].error,
+     input[type="number"].error,
+     input[type="search"].error,
+     input[type="password"].error,
+diff --git a/components/dashboard/src/start/StartPage.tsx b/components/dashboard/src/start/StartPage.tsx
+index 183876353..5e17b1414 100644
+--- a/components/dashboard/src/start/StartPage.tsx
++++ b/components/dashboard/src/start/StartPage.tsx
+@@ -4,10 +4,12 @@
+  * See License-AGPL.txt in the project root for license information.
+  */
+ 
++import { ErrorCodes } from "@gitpod/gitpod-protocol/lib/messaging/error";
+ import { useEffect } from "react";
+ import Alert from "../components/Alert";
+ import gitpodIconUA from "../icons/gitpod.svg";
+ import { gitpodHostUrl } from "../service/service";
++import { VerifyModal } from "./VerifyModal";
+ 
+ export enum StartPhase {
+     Checking = 0,
+@@ -106,6 +108,7 @@ export function StartPage(props: StartPageProps) {
+                 {typeof phase === "number" && phase < StartPhase.IdeReady && (
+                     <ProgressBar phase={phase} error={!!error} />
+                 )}
++                {error && error.code === ErrorCodes.NEEDS_VERIFICATION && <VerifyModal />}
+                 {error && <StartError error={error} />}
+                 {props.children}
+                 {props.showLatestIdeWarning && (
+diff --git a/components/dashboard/src/start/VerifyModal.tsx b/components/dashboard/src/start/VerifyModal.tsx
+new file mode 100644
+index 000000000..4b92495c6
+--- /dev/null
++++ b/components/dashboard/src/start/VerifyModal.tsx
+@@ -0,0 +1,241 @@
++/**
++ * Copyright (c) 2022 Gitpod GmbH. All rights reserved.
++ * Licensed under the GNU Affero General Public License (AGPL).
++ * See License-AGPL.txt in the project root for license information.
++ */
++
++import { useState } from "react";
++import Alert, { AlertType } from "../components/Alert";
++import Modal from "../components/Modal";
++import { getGitpodService } from "../service/service";
++import PhoneInput from "react-intl-tel-input";
++import "react-intl-tel-input/dist/main.css";
++import "./phone-input.css";
++
++interface VerifyModalState {
++    phoneNumber?: string;
++    phoneNumberValid?: boolean;
++    sent?: Date;
++    sending?: boolean;
++    message?: {
++        type: AlertType;
++        text: string;
++    };
++    token?: string;
++    verified?: boolean;
++}
++
++export function VerifyModal() {
++    const [state, setState] = useState<VerifyModalState>({});
++
++    if (!state.sent) {
++        const sendCode = async () => {
++            try {
++                setState({
++                    ...state,
++                    message: undefined,
++                    sending: true,
++                });
++                await getGitpodService().server.sendPhoneNumberVerificationToken(state.phoneNumber || "");
++                setState({
++                    ...state,
++                    sending: false,
++                    sent: new Date(),
++                });
++                return true;
++            } catch (err) {
++                setState({
++                    sent: undefined,
++                    sending: false,
++                    message: {
++                        type: "error",
++                        text: err.toString(),
++                    },
++                });
++                return false;
++            }
++        };
++        return (
++            <Modal
++                onClose={() => {}}
++                closeable={false}
++                onEnter={sendCode}
++                title="User Validation Required"
++                buttons={
++                    <div>
++                        <button className="ml-2" disabled={!state.phoneNumberValid || state.sending} onClick={sendCode}>
++                            Send Code via SMS
++                        </button>
++                    </div>
++                }
++                visible={true}
++            >
++                <Alert type="warning" className="mt-2">
++                    To use Gitpod you'll need to validate your account with your phone number. This is required to
++                    discourage and reduce abuse on Gitpod infrastructure.
++                </Alert>
++                <div className="text-gray-600 dark:text-gray-400 mt-2">
++                    Enter a mobile phone number you would like to use to verify your account.
++                </div>
++                {state.message ? (
++                    <Alert type={state.message.type} className="mt-4 py-3">
++                        {state.message.text}
++                    </Alert>
++                ) : (
++                    <></>
++                )}
++                <div className="mt-4">
++                    <h4>Mobile Phone Number</h4>
++                    {/* HACK: Below we are adding a dummy dom element that is not visible, to reference the classes so they are not removed by purgeCSS. */}
++                    <input type="tel" className="hidden intl-tel-input country-list" />
++                    <PhoneInput
++                        autoFocus={true}
++                        containerClassName={"allow-dropdown w-full intl-tel-input"}
++                        inputClassName={"w-full"}
++                        allowDropdown={true}
++                        defaultCountry={""}
++                        autoHideDialCode={false}
++                        onPhoneNumberChange={(isValid, phoneNumberRaw, countryData) => {
++                            let phoneNumber = phoneNumberRaw;
++                            if (!phoneNumber.startsWith("+") && !phoneNumber.startsWith("00")) {
++                                phoneNumber = "+" + countryData.dialCode + phoneNumber;
++                            }
++                            setState({
++                                ...state,
++                                phoneNumber,
++                                phoneNumberValid: isValid,
++                            });
++                        }}
++                    />
++                </div>
++            </Modal>
++        );
++    } else if (!state.verified) {
++        const isTokenFilled = () => {
++            return state.token && /\d{6}/.test(state.token);
++        };
++        const verifyToken = async () => {
++            try {
++                const verified = await getGitpodService().server.verifyPhoneNumberVerificationToken(
++                    state.phoneNumber!,
++                    state.token!,
++                );
++                if (verified) {
++                    setState({
++                        ...state,
++                        verified: true,
++                        message: undefined,
++                    });
++                } else {
++                    setState({
++                        ...state,
++                        message: {
++                            type: "error",
++                            text: `Invalid verification code.`,
++                        },
++                    });
++                }
++                return verified;
++            } catch (err) {
++                setState({
++                    sent: undefined,
++                    sending: false,
++                    message: {
++                        type: "error",
++                        text: err.toString(),
++                    },
++                });
++                return false;
++            }
++        };
++
++        const reset = () => {
++            setState({
++                ...state,
++                sent: undefined,
++                message: undefined,
++                token: undefined,
++            });
++        };
++        return (
++            <Modal
++                onClose={() => {}}
++                closeable={false}
++                onEnter={verifyToken}
++                title="User Validation Required"
++                buttons={
++                    <div>
++                        <button className="ml-2" disabled={!isTokenFilled()} onClick={verifyToken}>
++                            Validate Account
++                        </button>
++                    </div>
++                }
++                visible={true}
++            >
++                <Alert type="warning" className="mt-2">
++                    To use Gitpod you'll need to validate your account with your phone number. This is required to
++                    discourage and reduce abuse on Gitpod infrastructure.
++                </Alert>
++                <div className="pt-4">
++                    <button className="gp-link" onClick={reset}>
++                        &larr; Use a different phone number
++                    </button>
++                </div>
++                <div className="text-gray-600 dark:text-gray-400 pt-4">
++                    Enter the verification code we sent to {state.phoneNumber}.<br />
++                    Having trouble?{" "}
++                    <a className="gp-link" href="https://www.gitpod.io/contact/support">
++                        Contact support
++                    </a>
++                </div>
++                {state.message ? (
++                    <Alert type={state.message.type} className="mt-4 py-3">
++                        {state.message.text}
++                    </Alert>
++                ) : (
++                    <></>
++                )}
++                <div className="mt-4">
++                    <h4>Verification Code</h4>
++                    <input
++                        autoFocus={true}
++                        className="w-full"
++                        type="text"
++                        placeholder="Enter code sent via SMS"
++                        onChange={(v) => {
++                            setState({
++                                ...state,
++                                token: v.currentTarget.value,
++                            });
++                        }}
++                    />
++                </div>
++            </Modal>
++        );
++    } else {
++        const continueStartWorkspace = () => {
++            window.location.reload();
++            return true;
++        };
++        return (
++            <Modal
++                onClose={continueStartWorkspace}
++                closeable={false}
++                onEnter={continueStartWorkspace}
++                title="User Validation Successful"
++                buttons={
++                    <div>
++                        <button className="ml-2" onClick={continueStartWorkspace}>
++                            Continue
++                        </button>
++                    </div>
++                }
++                visible={true}
++            >
++                <Alert type="success" className="mt-2">
++                    Your account has been successfully verified.
++                </Alert>
++            </Modal>
++        );
++    }
++}
+diff --git a/components/dashboard/src/start/phone-input.css b/components/dashboard/src/start/phone-input.css
+new file mode 100644
+index 000000000..4ff752aee
+--- /dev/null
++++ b/components/dashboard/src/start/phone-input.css
+@@ -0,0 +1,18 @@
++/**
++ * Copyright (c) 2022 Gitpod GmbH. All rights reserved.
++ * Licensed under the GNU Affero General Public License (AGPL).
++ * See License-AGPL.txt in the project root for license information.
++ */
++
++.country-list {
++    width: 29rem !important;
++}
++
++input[type="tel"],
++.country-list {
++    @apply block w-56 text-gray-600 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-md border border-gray-300 dark:border-gray-500 focus:border-gray-400 dark:focus:border-gray-400 focus:ring-0;
++}
++
++input[type="tel"]::placeholder {
++    @apply text-gray-400 dark:text-gray-500;
++}
+diff --git a/components/gitpod-db/src/typeorm/entity/db-user.ts b/components/gitpod-db/src/typeorm/entity/db-user.ts
+index efd941751..3ebfa1938 100644
+--- a/components/gitpod-db/src/typeorm/entity/db-user.ts
++++ b/components/gitpod-db/src/typeorm/entity/db-user.ts
+@@ -84,4 +84,16 @@ export class DBUser implements User {
+         transformer: Transformer.MAP_EMPTY_STR_TO_UNDEFINED,
+     })
+     usageAttributionId?: string;
++
++    @Column({
++        default: "",
++        transformer: Transformer.MAP_EMPTY_STR_TO_UNDEFINED,
++    })
++    lastVerificationTime?: string;
++
++    @Column({
++        default: "",
++        transformer: Transformer.MAP_EMPTY_STR_TO_UNDEFINED,
++    })
++    verificationPhoneNumber?: string;
+ }
+diff --git a/components/gitpod-db/src/typeorm/migration/1661519441407-PhoneVerification.ts b/components/gitpod-db/src/typeorm/migration/1661519441407-PhoneVerification.ts
+new file mode 100644
+index 000000000..bf42227af
+--- /dev/null
++++ b/components/gitpod-db/src/typeorm/migration/1661519441407-PhoneVerification.ts
+@@ -0,0 +1,29 @@
++/**
++ * Copyright (c) 2022 Gitpod GmbH. All rights reserved.
++ * Licensed under the GNU Affero General Public License (AGPL).
++ * See License-AGPL.txt in the project root for license information.
++ */
++
++import { MigrationInterface, QueryRunner } from "typeorm";
++import { columnExists } from "./helper/helper";
++
++const D_B_USER = "d_b_user";
++const COL_VERIFICATIONTIME = "lastVerificationTime";
++const COL_PHONE_NUMBER = "verificationPhoneNumber";
++
++export class PhoneVerification1661519441407 implements MigrationInterface {
++    public async up(queryRunner: QueryRunner): Promise<void> {
++        if (!(await columnExists(queryRunner, D_B_USER, COL_VERIFICATIONTIME))) {
++            await queryRunner.query(
++                `ALTER TABLE ${D_B_USER} ADD COLUMN ${COL_VERIFICATIONTIME} varchar(30) NOT NULL DEFAULT '', ALGORITHM=INPLACE, LOCK=NONE `,
++            );
++        }
++        if (!(await columnExists(queryRunner, D_B_USER, COL_PHONE_NUMBER))) {
++            await queryRunner.query(
++                `ALTER TABLE ${D_B_USER} ADD COLUMN ${COL_PHONE_NUMBER} varchar(30) NOT NULL DEFAULT '', ALGORITHM=INPLACE, LOCK=NONE `,
++            );
++        }
++    }
++
++    public async down(queryRunner: QueryRunner): Promise<void> {}
++}
+diff --git a/components/gitpod-protocol/src/gitpod-service.ts b/components/gitpod-protocol/src/gitpod-service.ts
+index b02a41cc8..b5535b54b 100644
+--- a/components/gitpod-protocol/src/gitpod-service.ts
++++ b/components/gitpod-protocol/src/gitpod-service.ts
+@@ -85,6 +85,8 @@ export interface GitpodServer extends JsonRpcServer<GitpodClient>, AdminServer,
+     getLoggedInUser(): Promise<User>;
+     getTerms(): Promise<Terms>;
+     updateLoggedInUser(user: Partial<User>): Promise<User>;
++    sendPhoneNumberVerificationToken(phoneNumber: string): Promise<void>;
++    verifyPhoneNumberVerificationToken(phoneNumber: string, token: string): Promise<boolean>;
+     getAuthProviders(): Promise<AuthProviderInfo[]>;
+     getOwnAuthProviders(): Promise<AuthProviderEntry[]>;
+     updateOwnAuthProvider(params: GitpodServer.UpdateOwnAuthProviderParams): Promise<AuthProviderEntry>;
+diff --git a/components/gitpod-protocol/src/messaging/error.ts b/components/gitpod-protocol/src/messaging/error.ts
+index 1393aa283..7d8d17a3a 100644
+--- a/components/gitpod-protocol/src/messaging/error.ts
++++ b/components/gitpod-protocol/src/messaging/error.ts
+@@ -26,6 +26,9 @@ export namespace ErrorCodes {
+     // 410 No User
+     export const SETUP_REQUIRED = 410;
+ 
++    // 411 No User
++    export const NEEDS_VERIFICATION = 411;
++
+     // 429 Too Many Requests
+     export const TOO_MANY_REQUESTS = 429;
+ 
+diff --git a/components/gitpod-protocol/src/protocol.ts b/components/gitpod-protocol/src/protocol.ts
+index 0a16c6f23..df8765be1 100644
+--- a/components/gitpod-protocol/src/protocol.ts
++++ b/components/gitpod-protocol/src/protocol.ts
+@@ -48,6 +48,12 @@ export interface User {
+ 
+     // Identifies an explicit team or user ID to which all the user's workspace usage should be attributed to (e.g. for billing purposes)
+     usageAttributionId?: string;
++
++    // The last time this user got verified somehow. The user is not verified if this is empty.
++    lastVerificationTime?: string;
++
++    // The phone number used for the last phone verification.
++    verificationPhoneNumber?: string;
+ }
+ 
+ export namespace User {
+@@ -207,7 +213,21 @@ export interface AdditionalUserData {
+     // additional user profile data
+     profile?: ProfileDetails;
+ }
+-
++export namespace AdditionalUserData {
++    export function set(user: User, partialData: Partial<AdditionalUserData>): User {
++        if (!user.additionalData) {
++            user.additionalData = {
++                ...partialData,
++            };
++        } else {
++            user.additionalData = {
++                ...user.additionalData,
++                ...partialData,
++            };
++        }
++        return user;
++    }
++}
+ // The format in which we store User Profiles in
+ export interface ProfileDetails {
+     // when was the last time the user updated their profile information or has been nudged to do so.
+diff --git a/components/gitpod-protocol/src/util/timeutil.spec.ts b/components/gitpod-protocol/src/util/timeutil.spec.ts
+index 232a4ae44..e51885691 100644
+--- a/components/gitpod-protocol/src/util/timeutil.spec.ts
++++ b/components/gitpod-protocol/src/util/timeutil.spec.ts
+@@ -7,10 +7,16 @@
+ import * as chai from "chai";
+ const expect = chai.expect;
+ import { suite, test } from "mocha-typescript";
+-import { oneMonthLater } from "./timeutil";
++import { daysBefore, hoursBefore, oneMonthLater } from "./timeutil";
+ 
+ @suite()
+ export class TimeutilSpec {
++    @test
++    testDaysBefore() {
++        const now = new Date().toISOString();
++        expect(daysBefore(now, 2)).to.be.eq(hoursBefore(now, 48));
++    }
++
+     @test
+     testTimeutil() {
+         // targeting a 1st, 1th of Jan => 1st of Feb
+diff --git a/components/gitpod-protocol/src/util/timeutil.ts b/components/gitpod-protocol/src/util/timeutil.ts
+index 9f0971b46..ab17114e0 100644
+--- a/components/gitpod-protocol/src/util/timeutil.ts
++++ b/components/gitpod-protocol/src/util/timeutil.ts
+@@ -47,6 +47,12 @@ export const orderAsc = (d1: string, d2: string): number => liftDate(d1, d2, (d1
+ export const liftDate1 = <T>(d1: string, f: (d1: Date) => T): T => f(new Date(d1));
+ export const liftDate = <T>(d1: string, d2: string, f: (d1: Date, d2: Date) => T): T => f(new Date(d1), new Date(d2));
+ 
++export function daysBefore(date: string, days: number): string {
++    const result = new Date(date);
++    result.setDate(result.getDate() - days);
++    return result.toISOString();
++}
++
+ export function hoursBefore(date: string, hours: number): string {
+     const result = new Date(date);
+     result.setHours(result.getHours() - hours);
+diff --git a/components/server/ee/src/billing/entitlement-service.ts b/components/server/ee/src/billing/entitlement-service.ts
+index 11a4c1fa7..d7537b7af 100644
+--- a/components/server/ee/src/billing/entitlement-service.ts
++++ b/components/server/ee/src/billing/entitlement-service.ts
+@@ -12,6 +12,7 @@ import {
+ } from "@gitpod/gitpod-protocol";
+ import { log } from "@gitpod/gitpod-protocol/lib/util/logging";
+ import { inject, injectable } from "inversify";
++import { VerificationService } from "../../../src/auth/verification-service";
+ import { EntitlementService, MayStartWorkspaceResult } from "../../../src/billing/entitlement-service";
+ import { Config } from "../../../src/config";
+ import { BillingModes } from "./billing-mode";
+@@ -31,6 +32,7 @@ export class EntitlementServiceImpl implements EntitlementService {
+     @inject(EntitlementServiceChargebee) protected readonly chargebee: EntitlementServiceChargebee;
+     @inject(EntitlementServiceLicense) protected readonly license: EntitlementServiceLicense;
+     @inject(EntitlementServiceUBP) protected readonly ubp: EntitlementServiceUBP;
++    @inject(VerificationService) protected readonly verificationService: VerificationService;
+ 
+     async mayStartWorkspace(
+         user: User,
+@@ -38,6 +40,13 @@ export class EntitlementServiceImpl implements EntitlementService {
+         runningInstances: Promise<WorkspaceInstance[]>,
+     ): Promise<MayStartWorkspaceResult> {
+         try {
++            const verification = await this.verificationService.needsVerification(user);
++            if (verification) {
++                return {
++                    mayStart: false,
++                    needsVerification: true,
++                };
++            }
+             const billingMode = await this.billingModes.getBillingModeForUser(user, date);
+             let result;
+             switch (billingMode.mode) {
+diff --git a/components/server/ee/src/workspace/gitpod-server-impl.ts b/components/server/ee/src/workspace/gitpod-server-impl.ts
+index 2d38b0884..ae7ebfd87 100644
+--- a/components/server/ee/src/workspace/gitpod-server-impl.ts
++++ b/components/server/ee/src/workspace/gitpod-server-impl.ts
+@@ -266,6 +266,9 @@ export class GitpodServerEEImpl extends GitpodServerImpl {
+         if (result.mayStart) {
+             return; // green light from entitlement service
+         }
++        if (!!result.needsVerification) {
++            throw new ResponseError(ErrorCodes.NEEDS_VERIFICATION, `Please verify your account.`);
++        }
+         if (!!result.oufOfCredits) {
+             throw new ResponseError(
+                 ErrorCodes.NOT_ENOUGH_CREDIT,
+diff --git a/components/server/package.json b/components/server/package.json
+index 56a34df7c..a6b34390a 100644
+--- a/components/server/package.json
++++ b/components/server/package.json
+@@ -81,6 +81,7 @@
+     "reflect-metadata": "^0.1.10",
+     "stripe": "^9.0.0",
+     "swot-js": "^1.0.3",
++    "twilio": "^3.78.0",
+     "uuid": "^8.3.2",
+     "vscode-ws-jsonrpc": "^0.2.0",
+     "ws": "^7.4.6"
+diff --git a/components/server/src/auth/auth-provider.ts b/components/server/src/auth/auth-provider.ts
+index 00eeb1b9d..25b010c73 100644
+--- a/components/server/src/auth/auth-provider.ts
++++ b/components/server/src/auth/auth-provider.ts
+@@ -74,6 +74,7 @@ export interface AuthUser {
+     readonly name?: string;
+     readonly avatarUrl?: string;
+     readonly company?: string;
++    readonly created_at?: string;
+ }
+ 
+ export const AuthProvider = Symbol("AuthProvider");
+diff --git a/components/server/src/auth/rate-limiter.ts b/components/server/src/auth/rate-limiter.ts
+index 43fa7b805..e041213b7 100644
+--- a/components/server/src/auth/rate-limiter.ts
++++ b/components/server/src/auth/rate-limiter.ts
+@@ -14,7 +14,7 @@ type GitpodServerMethodType =
+     | keyof Omit<GitpodServer, "dispose" | "setClient">
+     | typeof accessCodeSyncStorage
+     | typeof accessHeadlessLogs;
+-type GroupKey = "default" | "startWorkspace" | "createWorkspace";
++type GroupKey = "default" | "startWorkspace" | "createWorkspace" | "phoneVerification";
+ type GroupsConfig = {
+     [key: string]: {
+         points: number;
+@@ -46,11 +46,17 @@ function getConfig(config: RateLimiterConfig): RateLimiterConfig {
+             points: 3, // 3 workspace creates per user per 10s
+             durationsSec: 10,
+         },
++        phoneVerification: {
++            points: 10,
++            durationsSec: 10,
++        },
+     };
+     const defaultFunctions: FunctionsConfig = {
+         getLoggedInUser: { group: "default", points: 1 },
+         getTerms: { group: "default", points: 1 },
+         updateLoggedInUser: { group: "default", points: 1 },
++        sendPhoneNumberVerificationToken: { group: "phoneVerification", points: 1 },
++        verifyPhoneNumberVerificationToken: { group: "phoneVerification", points: 1 },
+         getAuthProviders: { group: "default", points: 1 },
+         getOwnAuthProviders: { group: "default", points: 1 },
+         updateOwnAuthProvider: { group: "default", points: 1 },
+diff --git a/components/server/src/auth/verification-service.ts b/components/server/src/auth/verification-service.ts
+new file mode 100644
+index 000000000..8db34ca21
+--- /dev/null
++++ b/components/server/src/auth/verification-service.ts
+@@ -0,0 +1,76 @@
++/**
++ * Copyright (c) 2022 Gitpod GmbH. All rights reserved.
++ * Licensed under the GNU Affero General Public License (AGPL).
++ * See License-AGPL.txt in the project root for license information.
++ */
++
++import { User } from "@gitpod/gitpod-protocol";
++import { log } from "@gitpod/gitpod-protocol/lib/util/logging";
++import { inject, injectable, postConstruct } from "inversify";
++import { Config } from "../config";
++import { Twilio } from "twilio";
++import { ServiceContext } from "twilio/lib/rest/verify/v2/service";
++import { WorkspaceDB } from "@gitpod/gitpod-db/lib";
++import { ConfigCatClientFactory } from "@gitpod/gitpod-protocol/lib/experiments/configcat-server";
++
++@injectable()
++export class VerificationService {
++    @inject(Config) protected config: Config;
++    @inject(WorkspaceDB) protected workspaceDB: WorkspaceDB;
++    @inject(ConfigCatClientFactory) protected readonly configCatClientFactory: ConfigCatClientFactory;
++
++    protected verifyService: ServiceContext;
++
++    @postConstruct()
++    protected initialize(): void {
++        if (this.config.twilioConfig) {
++            const client = new Twilio(this.config.twilioConfig.accountSID, this.config.twilioConfig.authToken);
++            this.verifyService = client.verify.v2.services(this.config.twilioConfig.serviceID);
++        }
++    }
++
++    public async needsVerification(user: User): Promise<boolean> {
++        if (!this.config.twilioConfig) {
++            return false;
++        }
++        if (!!user.lastVerificationTime) {
++            return false;
++        }
++        // we treat existing users (created before we introduced phone vwerification) as verified
++        if (user.creationDate < "2022-08-22") {
++            return false;
++        }
++        const isPhoneVerificationEnabled = await this.configCatClientFactory().getValueAsync(
++            "isPhoneVerificationEnabled",
++            false,
++            {
++                user,
++            },
++        );
++        return isPhoneVerificationEnabled;
++    }
++
++    public markVerified(user: User): User {
++        user.lastVerificationTime = new Date().toISOString();
++        return user;
++    }
++
++    public async sendVerificationToken(phoneNumber: string): Promise<void> {
++        if (!this.verifyService) {
++            throw new Error("No verification service configured.");
++        }
++        const verification = await this.verifyService.verifications.create({ to: phoneNumber, channel: "sms" });
++        log.info("Verification code sent", { phoneNumber, status: verification.status });
++    }
++
++    public async verifyVerificationToken(phoneNumber: string, oneTimePassword: string): Promise<boolean> {
++        if (!this.verifyService) {
++            throw new Error("No verification service configured.");
++        }
++        const verification_check = await this.verifyService.verificationChecks.create({
++            to: phoneNumber,
++            code: oneTimePassword,
++        });
++        return verification_check.status === "approved";
++    }
++}
+diff --git a/components/server/src/billing/entitlement-service.ts b/components/server/src/billing/entitlement-service.ts
+index c69469074..a77b4adbe 100644
+--- a/components/server/src/billing/entitlement-service.ts
++++ b/components/server/src/billing/entitlement-service.ts
+@@ -20,6 +20,8 @@ export interface MayStartWorkspaceResult {
+ 
+     oufOfCredits?: boolean;
+ 
++    needsVerification?: boolean;
++
+     /** Usage-Based Pricing: AttributionId of the CostCenter that reached it's spending limit */
+     spendingLimitReachedOnCostCenter?: AttributionId;
+ }
+diff --git a/components/server/src/config.ts b/components/server/src/config.ts
+index 72b4aa95f..662e2d09b 100644
+--- a/components/server/src/config.ts
++++ b/components/server/src/config.ts
+@@ -178,6 +178,15 @@ export interface ConfigSerialized {
+      * Supported workspace classes
+      */
+     workspaceClasses: WorkspaceClassesConfig;
++
++    /**
++     * configuration for twilio
++     */
++    twilioConfig?: {
++        serviceID: string;
++        accountSID: string;
++        authToken: string;
++    };
+ }
+ 
+ export namespace ConfigFile {
+@@ -252,6 +261,16 @@ export namespace ConfigFile {
+             }
+         }
+ 
++        const twilioConfigPath = "/twilio-config/config.json";
++        let twilioConfig: Config["twilioConfig"];
++        if (fs.existsSync(filePathTelepresenceAware(twilioConfigPath))) {
++            try {
++                twilioConfig = JSON.parse(fs.readFileSync(filePathTelepresenceAware(twilioConfigPath), "utf-8"));
++            } catch (error) {
++                log.error("Could not load Twilio config", error);
++            }
++        }
++
+         WorkspaceClasses.validate(config.workspaceClasses);
+ 
+         return {
+@@ -262,6 +281,7 @@ export namespace ConfigFile {
+             chargebeeProviderOptions,
+             stripeSecrets,
+             stripeConfig,
++            twilioConfig,
+             license,
+             workspaceGarbageCollection: {
+                 ...config.workspaceGarbageCollection,
+diff --git a/components/server/src/container-module.ts b/components/server/src/container-module.ts
+index 2bd626d4d..c2eea4848 100644
+--- a/components/server/src/container-module.ts
++++ b/components/server/src/container-module.ts
+@@ -114,6 +114,7 @@ import {
+     ConfigCatClientFactory,
+     getExperimentsClientForBackend,
+ } from "@gitpod/gitpod-protocol/lib/experiments/configcat-server";
++import { VerificationService } from "./auth/verification-service";
+ 
+ export const productionContainerModule = new ContainerModule((bind, unbind, isBound, rebind) => {
+     bind(Config).toConstantValue(ConfigFile.fromFile());
+@@ -284,4 +285,6 @@ export const productionContainerModule = new ContainerModule((bind, unbind, isBo
+             return () => getExperimentsClientForBackend();
+         })
+         .inSingletonScope();
++
++    bind(VerificationService).toSelf().inSingletonScope();
+ });
+diff --git a/components/server/src/github/github-auth-provider.ts b/components/server/src/github/github-auth-provider.ts
+index 2f932e8a9..5298617be 100644
+--- a/components/server/src/github/github-auth-provider.ts
++++ b/components/server/src/github/github-auth-provider.ts
+@@ -88,13 +88,11 @@ export class GitHubAuthProvider extends GenericAuthProvider {
+         const userEmailsPromise = this.retry(() => fetchUserEmails());
+ 
+         try {
+-            const [
+-                {
+-                    data: { id, login, avatar_url, name, company },
+-                    headers,
+-                },
+-                userEmails,
+-            ] = await Promise.all([currentUserPromise, userEmailsPromise]);
++            const [currentUser, userEmails] = await Promise.all([currentUserPromise, userEmailsPromise]);
++            const {
++                data: { id, login, avatar_url, name, company, created_at },
++                headers,
++            } = currentUser;
+ 
+             // https://developer.github.com/apps/building-oauth-apps/understanding-scopes-for-oauth-apps/
+             // e.g. X-OAuth-Scopes: repo, user
+@@ -124,6 +122,7 @@ export class GitHubAuthProvider extends GenericAuthProvider {
+                     name,
+                     primaryEmail: filterPrimaryEmail(userEmails),
+                     company,
++                    created_at: created_at ? new Date(created_at).toISOString() : undefined,
+                 },
+                 currentScopes,
+             };
+diff --git a/components/server/src/gitlab/gitlab-auth-provider.ts b/components/server/src/gitlab/gitlab-auth-provider.ts
+index 882e4221f..9ea9a6977 100644
+--- a/components/server/src/gitlab/gitlab-auth-provider.ts
++++ b/components/server/src/gitlab/gitlab-auth-provider.ts
+@@ -71,7 +71,7 @@ export class GitLabAuthProvider extends GenericAuthProvider {
+                     throw UnconfirmedUserException.create(unconfirmedUserMessage, result);
+                 }
+             }
+-            const { id, username, avatar_url, name, email, web_url } = result;
++            const { id, username, avatar_url, name, email, web_url, confirmed_at } = result;
+ 
+             return <AuthUserSetup>{
+                 authUser: {
+@@ -81,6 +81,7 @@ export class GitLabAuthProvider extends GenericAuthProvider {
+                     name,
+                     primaryEmail: email,
+                     company: web_url,
++                    created_at: confirmed_at ? new Date(confirmed_at).toISOString() : undefined,
+                 },
+                 currentScopes: this.readScopesFromVerifyParams(tokenResponse),
+             };
+diff --git a/components/server/src/user/user-controller.ts b/components/server/src/user/user-controller.ts
+index 35a27e8f4..4eda58b75 100644
+--- a/components/server/src/user/user-controller.ts
++++ b/components/server/src/user/user-controller.ts
+@@ -34,6 +34,8 @@ import { WorkspaceManagerClientProvider } from "@gitpod/ws-manager/lib/client-pr
+ import { EnforcementControllerServerFactory } from "./enforcement-endpoint";
+ import { ClientMetadata } from "../websocket/websocket-connection-manager";
+ import { ResponseError } from "vscode-jsonrpc";
++import { VerificationService } from "../auth/verification-service";
++import { daysBefore, isDateSmaller } from "@gitpod/gitpod-protocol/lib/util/timeutil";
+ 
+ @injectable()
+ export class UserController {
+@@ -53,6 +55,7 @@ export class UserController {
+     @inject(WorkspaceManagerClientProvider)
+     protected readonly workspaceManagerClientProvider: WorkspaceManagerClientProvider;
+     @inject(EnforcementControllerServerFactory) private readonly serverFactory: EnforcementControllerServerFactory;
++    @inject(VerificationService) protected readonly verificationService: VerificationService;
+ 
+     get apiRouter(): express.Router {
+         const router = express.Router();
+@@ -670,6 +673,10 @@ export class UserController {
+         newUser.fullName = authUser.name || undefined;
+         newUser.avatarUrl = authUser.avatarUrl;
+         newUser.blocked = newUser.blocked || tosFlowInfo.isBlocked;
++        if (authUser.created_at && isDateSmaller(authUser.created_at, daysBefore(new Date().toISOString(), 30))) {
++            // people with an account older than 30 days are treated as trusted
++            this.verificationService.markVerified(newUser);
++        }
+     }
+ 
+     protected getSorryUrl(message: string) {
+diff --git a/components/server/src/user/user-deletion-service.ts b/components/server/src/user/user-deletion-service.ts
+index ec1068498..d7d63513e 100644
+--- a/components/server/src/user/user-deletion-service.ts
++++ b/components/server/src/user/user-deletion-service.ts
+@@ -65,6 +65,7 @@ export class UserDeletionService {
+             this.anonymizeUser(user);
+             this.deleteIdentities(user);
+             await this.deleteTokens(db, user);
++            user.lastVerificationTime = undefined;
+             user.markedDeleted = true;
+             await db.storeUser(user);
+         });
+@@ -148,6 +149,9 @@ export class UserDeletionService {
+         user.avatarUrl = "deleted-avatarUrl";
+         user.fullName = "deleted-fullName";
+         user.name = "deleted-Name";
++        if (user.verificationPhoneNumber) {
++            user.verificationPhoneNumber = "deleted-phoneNumber";
++        }
+     }
+ 
+     protected deleteIdentities(user: User) {
+diff --git a/components/server/src/user/user-service.ts b/components/server/src/user/user-service.ts
+index a067c06c1..28a32c0b7 100644
+--- a/components/server/src/user/user-service.ts
++++ b/components/server/src/user/user-service.ts
+@@ -32,6 +32,7 @@ import { AttributionId } from "@gitpod/gitpod-protocol/lib/attribution";
+ import { StripeService } from "../../ee/src/user/stripe-service";
+ import { ResponseError } from "vscode-ws-jsonrpc";
+ import { ErrorCodes } from "@gitpod/gitpod-protocol/lib/messaging/error";
++import { VerificationService } from "../auth/verification-service";
+ 
+ export interface FindUserByIdentityStrResult {
+     user: User;
+@@ -72,6 +73,7 @@ export class UserService {
+     @inject(CostCenterDB) protected readonly costCenterDb: CostCenterDB;
+     @inject(TeamDB) protected readonly teamDB: TeamDB;
+     @inject(StripeService) protected readonly stripeService: StripeService;
++    @inject(VerificationService) protected readonly verificationService: VerificationService;
+ 
+     /**
+      * Takes strings in the form of <authHost>/<authName> and returns the matching User
+diff --git a/components/server/src/workspace/gitpod-server-impl.ts b/components/server/src/workspace/gitpod-server-impl.ts
+index 21ae78c5d..9ebdcf22a 100644
+--- a/components/server/src/workspace/gitpod-server-impl.ts
++++ b/components/server/src/workspace/gitpod-server-impl.ts
+@@ -175,6 +175,7 @@ import { Currency } from "@gitpod/gitpod-protocol/lib/plans";
+ import { getExperimentsClientForBackend } from "@gitpod/gitpod-protocol/lib/experiments/configcat-server";
+ import { BillableSession, BillableSessionRequest } from "@gitpod/gitpod-protocol/lib/usage";
+ import { WorkspaceClusterImagebuilderClientProvider } from "./workspace-cluster-imagebuilder-client-provider";
++import { VerificationService } from "../auth/verification-service";
+ import { BillingMode } from "@gitpod/gitpod-protocol/lib/billing-mode";
+ 
+ // shortcut
+@@ -244,6 +245,8 @@ export class GitpodServerImpl implements GitpodServerWithTracing, Disposable {
+ 
+     @inject(IDEConfigService) protected readonly ideConfigService: IDEConfigService;
+ 
++    @inject(VerificationService) protected readonly verificationService: VerificationService;
++
+     /** Id the uniquely identifies this server instance */
+     public readonly uuid: string = uuidv4();
+     public readonly clientMetadata: ClientMetadata;
+@@ -464,6 +467,27 @@ export class GitpodServerImpl implements GitpodServerWithTracing, Disposable {
+         return user;
+     }
+ 
++    public async sendPhoneNumberVerificationToken(ctx: TraceContext, phoneNumber: string): Promise<void> {
++        this.checkUser("sendPhoneNumberVerificationToken");
++        return this.verificationService.sendVerificationToken(phoneNumber);
++    }
++
++    public async verifyPhoneNumberVerificationToken(
++        ctx: TraceContext,
++        phoneNumber: string,
++        token: string,
++    ): Promise<boolean> {
++        const user = this.checkUser("verifyPhoneNumberVerificationToken");
++        const checked = await this.verificationService.verifyVerificationToken(phoneNumber, token);
++        if (!checked) {
++            return false;
++        }
++        this.verificationService.markVerified(user);
++        user.verificationPhoneNumber = phoneNumber;
++        await this.userDB.updateUserPartial(user);
++        return true;
++    }
++
+     public async getClientRegion(ctx: TraceContext): Promise<string | undefined> {
+         this.checkUser("getClientRegion");
+         return this.clientHeaderFields?.clientRegion;
+diff --git a/install/installer/cmd/testdata/render/aws-setup/output.golden b/install/installer/cmd/testdata/render/aws-setup/output.golden
+index 0006f7d11..c9f4ea4cb 100644
+--- a/install/installer/cmd/testdata/render/aws-setup/output.golden
++++ b/install/installer/cmd/testdata/render/aws-setup/output.golden
+@@ -7515,6 +7515,9 @@ spec:
+         - mountPath: /ws-manager-client-tls-certs
+           name: ws-manager-client-tls-certs
+           readOnly: true
++        - mountPath: /twilio-config
++          name: twilio-secret-volume
++          readOnly: true
+       - args:
+         - --logtostderr
+         - --insecure-listen-address=[$(IP)]:9500
+@@ -7622,6 +7625,10 @@ spec:
+       - name: ws-manager-client-tls-certs
+         secret:
+           secretName: ws-manager-client-tls
++      - name: twilio-secret-volume
++        secret:
++          optional: true
++          secretName: twilio-secret
+ status: {}
+ ---
+ # apps/v1/Deployment ws-manager
+diff --git a/install/installer/cmd/testdata/render/azure-setup/output.golden b/install/installer/cmd/testdata/render/azure-setup/output.golden
+index 28139d286..937468097 100644
+--- a/install/installer/cmd/testdata/render/azure-setup/output.golden
++++ b/install/installer/cmd/testdata/render/azure-setup/output.golden
+@@ -7367,6 +7367,9 @@ spec:
+         - mountPath: /ws-manager-client-tls-certs
+           name: ws-manager-client-tls-certs
+           readOnly: true
++        - mountPath: /twilio-config
++          name: twilio-secret-volume
++          readOnly: true
+       - args:
+         - --logtostderr
+         - --insecure-listen-address=[$(IP)]:9500
+@@ -7474,6 +7477,10 @@ spec:
+       - name: ws-manager-client-tls-certs
+         secret:
+           secretName: ws-manager-client-tls
++      - name: twilio-secret-volume
++        secret:
++          optional: true
++          secretName: twilio-secret
+ status: {}
+ ---
+ # apps/v1/Deployment ws-manager
+diff --git a/install/installer/cmd/testdata/render/customization/output.golden b/install/installer/cmd/testdata/render/customization/output.golden
+index 28c3858fb..ccc2eb851 100644
+--- a/install/installer/cmd/testdata/render/customization/output.golden
++++ b/install/installer/cmd/testdata/render/customization/output.golden
+@@ -8884,6 +8884,9 @@ spec:
+         - mountPath: /ws-manager-client-tls-certs
+           name: ws-manager-client-tls-certs
+           readOnly: true
++        - mountPath: /twilio-config
++          name: twilio-secret-volume
++          readOnly: true
+       - args:
+         - --logtostderr
+         - --insecure-listen-address=[$(IP)]:9500
+@@ -8991,6 +8994,10 @@ spec:
+       - name: ws-manager-client-tls-certs
+         secret:
+           secretName: ws-manager-client-tls
++      - name: twilio-secret-volume
++        secret:
++          optional: true
++          secretName: twilio-secret
+ status: {}
+ ---
+ # apps/v1/Deployment ws-manager
+diff --git a/install/installer/cmd/testdata/render/external-registry/output.golden b/install/installer/cmd/testdata/render/external-registry/output.golden
+index 6848024c5..349f729c6 100644
+--- a/install/installer/cmd/testdata/render/external-registry/output.golden
++++ b/install/installer/cmd/testdata/render/external-registry/output.golden
+@@ -7793,6 +7793,9 @@ spec:
+         - mountPath: /ws-manager-client-tls-certs
+           name: ws-manager-client-tls-certs
+           readOnly: true
++        - mountPath: /twilio-config
++          name: twilio-secret-volume
++          readOnly: true
+       - args:
+         - --logtostderr
+         - --insecure-listen-address=[$(IP)]:9500
+@@ -7900,6 +7903,10 @@ spec:
+       - name: ws-manager-client-tls-certs
+         secret:
+           secretName: ws-manager-client-tls
++      - name: twilio-secret-volume
++        secret:
++          optional: true
++          secretName: twilio-secret
+ status: {}
+ ---
+ # apps/v1/Deployment ws-manager
+diff --git a/install/installer/cmd/testdata/render/gcp-setup/output.golden b/install/installer/cmd/testdata/render/gcp-setup/output.golden
+index b8e282281..416618a9f 100644
+--- a/install/installer/cmd/testdata/render/gcp-setup/output.golden
++++ b/install/installer/cmd/testdata/render/gcp-setup/output.golden
+@@ -7290,6 +7290,9 @@ spec:
+         - mountPath: /ws-manager-client-tls-certs
+           name: ws-manager-client-tls-certs
+           readOnly: true
++        - mountPath: /twilio-config
++          name: twilio-secret-volume
++          readOnly: true
+       - args:
+         - --logtostderr
+         - --insecure-listen-address=[$(IP)]:9500
+@@ -7391,6 +7394,10 @@ spec:
+       - name: ws-manager-client-tls-certs
+         secret:
+           secretName: ws-manager-client-tls
++      - name: twilio-secret-volume
++        secret:
++          optional: true
++          secretName: twilio-secret
+ status: {}
+ ---
+ # apps/v1/Deployment ws-manager
+diff --git a/install/installer/cmd/testdata/render/minimal/output.golden b/install/installer/cmd/testdata/render/minimal/output.golden
+index 9be6b01bc..b2f1adffb 100644
+--- a/install/installer/cmd/testdata/render/minimal/output.golden
++++ b/install/installer/cmd/testdata/render/minimal/output.golden
+@@ -8168,6 +8168,9 @@ spec:
+         - mountPath: /ws-manager-client-tls-certs
+           name: ws-manager-client-tls-certs
+           readOnly: true
++        - mountPath: /twilio-config
++          name: twilio-secret-volume
++          readOnly: true
+       - args:
+         - --logtostderr
+         - --insecure-listen-address=[$(IP)]:9500
+@@ -8275,6 +8278,10 @@ spec:
+       - name: ws-manager-client-tls-certs
+         secret:
+           secretName: ws-manager-client-tls
++      - name: twilio-secret-volume
++        secret:
++          optional: true
++          secretName: twilio-secret
+ status: {}
+ ---
+ # apps/v1/Deployment ws-manager
+diff --git a/install/installer/cmd/testdata/render/statefulset-customization/output.golden b/install/installer/cmd/testdata/render/statefulset-customization/output.golden
+index 2a67f36a1..dccad55fa 100644
+--- a/install/installer/cmd/testdata/render/statefulset-customization/output.golden
++++ b/install/installer/cmd/testdata/render/statefulset-customization/output.golden
+@@ -8180,6 +8180,9 @@ spec:
+         - mountPath: /ws-manager-client-tls-certs
+           name: ws-manager-client-tls-certs
+           readOnly: true
++        - mountPath: /twilio-config
++          name: twilio-secret-volume
++          readOnly: true
+       - args:
+         - --logtostderr
+         - --insecure-listen-address=[$(IP)]:9500
+@@ -8287,6 +8290,10 @@ spec:
+       - name: ws-manager-client-tls-certs
+         secret:
+           secretName: ws-manager-client-tls
++      - name: twilio-secret-volume
++        secret:
++          optional: true
++          secretName: twilio-secret
+ status: {}
+ ---
+ # apps/v1/Deployment ws-manager
+diff --git a/install/installer/cmd/testdata/render/use-pod-security-policies/output.golden b/install/installer/cmd/testdata/render/use-pod-security-policies/output.golden
+index df260bc84..e27fc9714 100644
+--- a/install/installer/cmd/testdata/render/use-pod-security-policies/output.golden
++++ b/install/installer/cmd/testdata/render/use-pod-security-policies/output.golden
+@@ -8612,6 +8612,9 @@ spec:
+         - mountPath: /ws-manager-client-tls-certs
+           name: ws-manager-client-tls-certs
+           readOnly: true
++        - mountPath: /twilio-config
++          name: twilio-secret-volume
++          readOnly: true
+       - args:
+         - --logtostderr
+         - --insecure-listen-address=[$(IP)]:9500
+@@ -8719,6 +8722,10 @@ spec:
+       - name: ws-manager-client-tls-certs
+         secret:
+           secretName: ws-manager-client-tls
++      - name: twilio-secret-volume
++        secret:
++          optional: true
++          secretName: twilio-secret
+ status: {}
+ ---
+ # apps/v1/Deployment ws-manager
+diff --git a/install/installer/cmd/testdata/render/workspace-requests-limits/output.golden b/install/installer/cmd/testdata/render/workspace-requests-limits/output.golden
+index aac8a0854..67e619ead 100644
+--- a/install/installer/cmd/testdata/render/workspace-requests-limits/output.golden
++++ b/install/installer/cmd/testdata/render/workspace-requests-limits/output.golden
+@@ -8171,6 +8171,9 @@ spec:
+         - mountPath: /ws-manager-client-tls-certs
+           name: ws-manager-client-tls-certs
+           readOnly: true
++        - mountPath: /twilio-config
++          name: twilio-secret-volume
++          readOnly: true
+       - args:
+         - --logtostderr
+         - --insecure-listen-address=[$(IP)]:9500
+@@ -8278,6 +8281,10 @@ spec:
+       - name: ws-manager-client-tls-certs
+         secret:
+           secretName: ws-manager-client-tls
++      - name: twilio-secret-volume
++        secret:
++          optional: true
++          secretName: twilio-secret
+ status: {}
+ ---
+ # apps/v1/Deployment ws-manager
+diff --git a/install/installer/pkg/components/server/deployment.go b/install/installer/pkg/components/server/deployment.go
+index 04540fb97..07a69c447 100644
+--- a/install/installer/pkg/components/server/deployment.go
++++ b/install/installer/pkg/components/server/deployment.go
+@@ -161,6 +161,24 @@ func deployment(ctx *common.RenderContext) ([]runtime.Object, error) {
+ 		}
+ 	}
+ 
++	// mount the optional twilio secret
++	truethy := true
++	volumes = append(volumes, corev1.Volume{
++		Name: "twilio-secret-volume",
++		VolumeSource: corev1.VolumeSource{
++			Secret: &corev1.SecretVolumeSource{
++				SecretName: "twilio-secret",
++				Optional:   &truethy,
++			},
++		},
++	})
++
++	volumeMounts = append(volumeMounts, corev1.VolumeMount{
++		Name:      "twilio-secret-volume",
++		MountPath: "/twilio-config",
++		ReadOnly:  true,
++	})
++
+ 	if vol, mnt, envv, ok := common.CustomCACertVolume(ctx); ok {
+ 		volumes = append(volumes, *vol)
+ 		volumeMounts = append(volumeMounts, *mnt)
+diff --git a/yarn.lock b/yarn.lock
+index 41291516d..4cd3927d0 100644
+--- a/yarn.lock
++++ b/yarn.lock
+@@ -4174,7 +4174,7 @@ arrify@^2.0.0, arrify@^2.0.1:
+   resolved "https://registry.npmjs.org/arrify/-/arrify-2.0.1.tgz"
+   integrity sha512-3duEwti880xqi4eAMN8AyR4a0ByT90zoYdLlevfrvU43vb0YZwZVfxOgxWrLXXXpyugL0hNZc9G6BiB5B3nUug==
+ 
+-asap@~2.0.6:
++asap@^2.0.0, asap@~2.0.6:
+   version "2.0.6"
+   resolved "https://registry.npmjs.org/asap/-/asap-2.0.6.tgz"
+   integrity sha1-5QNHYR1+aQlDIIu9r+vLwvuGbUY=
+@@ -4347,6 +4347,13 @@ axios@^0.21.4:
+   dependencies:
+     follow-redirects "^1.14.0"
+ 
++axios@^0.26.1:
++  version "0.26.1"
++  resolved "https://registry.yarnpkg.com/axios/-/axios-0.26.1.tgz#1ede41c51fcf51bbbd6fd43669caaa4f0495aaa9"
++  integrity sha512-fPwcX4EvnSHuInCMItEhAGnaSEXRBjtzh9fOtsE6E1G6p7vl7edEeZe11QHf18+6+9gR5PbKV/sGKNaD8YaMeA==
++  dependencies:
++    follow-redirects "^1.14.8"
++
+ axobject-query@^2.2.0:
+   version "2.2.0"
+   resolved "https://registry.npmjs.org/axobject-query/-/axobject-query-2.2.0.tgz"
+@@ -5439,7 +5446,7 @@ class-utils@^0.3.5:
+     isobject "^3.0.0"
+     static-extend "^0.1.1"
+ 
+-classnames@^2.3.1:
++classnames@^2.2.5, classnames@^2.3.1:
+   version "2.3.1"
+   resolved "https://registry.npmjs.org/classnames/-/classnames-2.3.1.tgz"
+   integrity sha512-OlQdbZ7gLfGarSqxesMesDa5uz7KFbID8Kpq/SxIoNGDqY8lSYs0D+hhtBXhcdB3rcbXArFr7vlHheLk1voeNA==
+@@ -6588,6 +6595,11 @@ dayjs@^1.10.4:
+   resolved "https://registry.npmjs.org/dayjs/-/dayjs-1.10.7.tgz"
+   integrity sha512-P6twpd70BcPK34K26uJ1KT3wlhpuOAPoMwJzpsIWUxHZ7wpmbdZL/hQqBDfz7hGurYSa5PhzdhDHtt319hL3ig==
+ 
++dayjs@^1.8.29:
++  version "1.11.3"
++  resolved "https://registry.yarnpkg.com/dayjs/-/dayjs-1.11.3.tgz#4754eb694a624057b9ad2224b67b15d552589258"
++  integrity sha512-xxwlswWOlGhzgQ4TKzASQkUhqERI3egRNqgV4ScR8wlANA/A9tZ7miXa44vTTKEq5l7vWoL5G57bG3zA+Kow0A==
++
+ debug@2.6.9, debug@^2.2.0, debug@^2.3.3, debug@^2.6.0, debug@^2.6.9, debug@~2.6.9:
+   version "2.6.9"
+   resolved "https://registry.npmjs.org/debug/-/debug-2.6.9.tgz"
+@@ -8333,6 +8345,11 @@ follow-redirects@^1.0.0, follow-redirects@^1.14.0:
+   resolved "https://registry.npmjs.org/follow-redirects/-/follow-redirects-1.14.5.tgz"
+   integrity sha512-wtphSXy7d4/OR+MvIFbCVBDzZ5520qV8XfPklSN5QtxuMUJZ+b0Wnst1e1lCDocfzuCkHqj8k0FpZqO+UIaKNA==
+ 
++follow-redirects@^1.14.8:
++  version "1.15.1"
++  resolved "https://registry.yarnpkg.com/follow-redirects/-/follow-redirects-1.15.1.tgz#0ca6a452306c9b276e4d3127483e29575e207ad5"
++  integrity sha512-yLAMQs+k0b2m7cVxpS1VKJVvoz7SS9Td1zss3XRwXj+ZDH00RJgnuLx7E44wx02kQLrdM3aOOy+FpzS7+8OizA==
++
+ for-in@^1.0.2:
+   version "1.0.2"
+   resolved "https://registry.npmjs.org/for-in/-/for-in-1.0.2.tgz"
+@@ -11168,6 +11185,11 @@ li@^1.3.0:
+   resolved "https://registry.npmjs.org/li/-/li-1.3.0.tgz"
+   integrity sha1-IsWbyu+qmo7zWc91l4TkvxBq6hs=
+ 
++libphonenumber-js-utils@^8.10.5:
++  version "8.10.5"
++  resolved "https://registry.yarnpkg.com/libphonenumber-js-utils/-/libphonenumber-js-utils-8.10.5.tgz#778cb7633c94e2524f08c3109a7450095b4e6727"
++  integrity sha512-VxpwgrAGps1p5avOVQVBTCpUQwkrJZqptV2DoTimY3VXTzm0EetbT73sWVTkg8FmreVmM2qwwFl7yqymdOkFug==
++
+ lilconfig@^2.0.3:
+   version "2.0.3"
+   resolved "https://registry.npmjs.org/lilconfig/-/lilconfig-2.0.3.tgz"
+@@ -13223,6 +13245,11 @@ pnp-webpack-plugin@1.6.4:
+   dependencies:
+     ts-pnp "^1.1.6"
+ 
++pop-iterate@^1.0.1:
++  version "1.0.1"
++  resolved "https://registry.yarnpkg.com/pop-iterate/-/pop-iterate-1.0.1.tgz#ceacfdab4abf353d7a0f2aaa2c1fc7b3f9413ba3"
++  integrity sha512-HRCx4+KJE30JhX84wBN4+vja9bNfysxg1y28l0DuJmkoaICiv2ZSilKddbS48pq50P8d2erAhqDLbp47yv3MbQ==
++
+ portfinder@^1.0.26:
+   version "1.0.28"
+   resolved "https://registry.npmjs.org/portfinder/-/portfinder-1.0.28.tgz"
+@@ -14388,6 +14415,15 @@ prompts@^2.0.1:
+     kleur "^3.0.3"
+     sisteransi "^1.0.5"
+ 
++prop-types@^15.5.4, prop-types@^15.6.1:
++  version "15.8.1"
++  resolved "https://registry.yarnpkg.com/prop-types/-/prop-types-15.8.1.tgz#67d87bf1a694f48435cf332c24af10214a3140b5"
++  integrity sha512-oj87CgZICdulUohogVAR7AjlC0327U4el4L6eAvOqCeudMDVU0NThNaV+b9Df4dXgSP1gXMTnPdhfe/2qDH5cg==
++  dependencies:
++    loose-envify "^1.4.0"
++    object-assign "^4.1.1"
++    react-is "^16.13.1"
++
+ prop-types@^15.6.2, prop-types@^15.7.2:
+   version "15.7.2"
+   resolved "https://registry.npmjs.org/prop-types/-/prop-types-15.7.2.tgz"
+@@ -14522,6 +14558,15 @@ purgecss@^4.0.3:
+     postcss "^8.2.1"
+     postcss-selector-parser "^6.0.2"
+ 
++q@2.0.x:
++  version "2.0.3"
++  resolved "https://registry.yarnpkg.com/q/-/q-2.0.3.tgz#75b8db0255a1a5af82f58c3f3aaa1efec7d0d134"
++  integrity sha512-gv6vLGcmAOg96/fgo3d9tvA4dJNZL3fMyBqVRrGxQ+Q/o4k9QzbJ3NQF9cOO/71wRodoXhaPgphvMFU68qVAJQ==
++  dependencies:
++    asap "^2.0.0"
++    pop-iterate "^1.0.1"
++    weak-map "^1.0.5"
++
+ q@>=1.0.1, q@^1.1.2:
+   version "1.5.1"
+   resolved "https://registry.npmjs.org/q/-/q-1.5.1.tgz"
+@@ -14551,6 +14596,13 @@ qs@^6.5.1:
+   dependencies:
+     side-channel "^1.0.4"
+ 
++qs@^6.9.4:
++  version "6.11.0"
++  resolved "https://registry.yarnpkg.com/qs/-/qs-6.11.0.tgz#fd0d963446f7a65e1367e01abd85429453f0c37a"
++  integrity sha512-MvjoMCJwEarSbUYk5O+nmoSzSutSsTwF85zcHPQ9OrlFoZOYIjaqBAJIqIXjptyD5vThxGq52Xu/MaJzRkIk4Q==
++  dependencies:
++    side-channel "^1.0.4"
++
+ qs@~6.5.2:
+   version "6.5.3"
+   resolved "https://registry.npmjs.org/qs/-/qs-6.5.3.tgz"
+@@ -14760,7 +14812,18 @@ react-error-overlay@^6.0.9:
+   resolved "https://registry.npmjs.org/react-error-overlay/-/react-error-overlay-6.0.9.tgz"
+   integrity sha512-nQTTcUu+ATDbrSD1BZHr5kgSD4oF8OFjxun8uAaL8RwPBacGBNPf/yAuVVdx17N8XNzRDMrZ9XcKZHCjPW+9ew==
+ 
+-react-is@^16.6.0, react-is@^16.7.0, react-is@^16.8.1:
++react-intl-tel-input@^8.2.0:
++  version "8.2.0"
++  resolved "https://registry.yarnpkg.com/react-intl-tel-input/-/react-intl-tel-input-8.2.0.tgz#9e830fbe3bcca5aa5e8cdd84bac80da13e3ab389"
++  integrity sha512-fuIrd+rk2GTXj9Ff1qnSAIjwKkOb37xcTHjsQ4CcJZUma533pOOFtQxIhPYFA0qFRmblzclhP+Pn7EfiA38Eqg==
++  dependencies:
++    classnames "^2.2.5"
++    libphonenumber-js-utils "^8.10.5"
++    prop-types "^15.6.1"
++    react-style-proptype "^3.0.0"
++    underscore.deferred "^0.4.0"
++
++react-is@^16.13.1, react-is@^16.6.0, react-is@^16.7.0, react-is@^16.8.1:
+   version "16.13.1"
+   resolved "https://registry.npmjs.org/react-is/-/react-is-16.13.1.tgz"
+   integrity sha512-24e6ynE2H+OKt4kqsOvNd8kBpV65zoxbA4BVsEOB3ARVWQki/DHzaUoC5KuON/BiccDaCCTZBuOcfZs70kR8bQ==
+@@ -14870,6 +14933,13 @@ react-scripts@^4.0.3:
+   optionalDependencies:
+     fsevents "^2.1.3"
+ 
++react-style-proptype@^3.0.0:
++  version "3.2.2"
++  resolved "https://registry.yarnpkg.com/react-style-proptype/-/react-style-proptype-3.2.2.tgz#d8e998e62ce79ec35b087252b90f19f1c33968a0"
++  integrity sha512-ywYLSjNkxKHiZOqNlso9PZByNEY+FTyh3C+7uuziK0xFXu9xzdyfHwg4S9iyiRRoPCR4k2LqaBBsWVmSBwCWYQ==
++  dependencies:
++    prop-types "^15.5.4"
++
+ react@17.0.2, react@^17.0.1:
+   version "17.0.2"
+   resolved "https://registry.npmjs.org/react/-/react-17.0.2.tgz"
+@@ -15443,9 +15513,14 @@ rollup@^1.31.1:
+     "@types/node" "*"
+     acorn "^7.1.0"
+ 
++rootpath@^0.1.2:
++  version "0.1.2"
++  resolved "https://registry.yarnpkg.com/rootpath/-/rootpath-0.1.2.tgz#5b379a87dca906e9b91d690a599439bef267ea6b"
++  integrity sha512-R3wLbuAYejpxQjL/SjXo1Cjv4wcJECnMRT/FlcCfTwCBhaji9rWaRCoVEQ1SPiTJ4kKK+yh+bZLAV7SCafoDDw==
++
+ router-ips@^1.0.0:
+   version "1.0.0"
+-  resolved "https://registry.npmjs.org/router-ips/-/router-ips-1.0.0.tgz"
++  resolved "https://registry.yarnpkg.com/router-ips/-/router-ips-1.0.0.tgz#44e00858ebebc0133d58e40b2cd8a1fbb04203f5"
+   integrity sha512-yBo6F52Un/WYioXbedBGvrKIiofbwt+4cUhdqDb9fNMJBI4D4jOy7jlxxaRVEvICPKU7xMmJDtDFR6YswX/sFQ==
+ 
+ rsvp@^4.8.4:
+@@ -15581,6 +15656,11 @@ schema-utils@^3.0.0, schema-utils@^3.1.0, schema-utils@^3.1.1:
+     ajv "^6.12.5"
+     ajv-keywords "^3.5.2"
+ 
++scmp@^2.1.0:
++  version "2.1.0"
++  resolved "https://registry.yarnpkg.com/scmp/-/scmp-2.1.0.tgz#37b8e197c425bdeb570ab91cc356b311a11f9c9a"
++  integrity sha512-o/mRQGk9Rcer/jEEw/yw4mwo3EU/NvYvp577/Btqrym9Qy5/MdWGBqipbALgd2lrdWTJ5/gqDusxfnQBxOxT2Q==
++
+ select-hose@^2.0.0:
+   version "2.0.0"
+   resolved "https://registry.npmjs.org/select-hose/-/select-hose-2.0.0.tgz"
+@@ -17187,6 +17267,23 @@ tweetnacl@^0.14.3, tweetnacl@~0.14.0:
+   resolved "https://registry.npmjs.org/tweetnacl/-/tweetnacl-0.14.5.tgz"
+   integrity sha1-WuaBd/GS1EViadEIr6k/+HQ/T2Q=
+ 
++twilio@^3.78.0:
++  version "3.78.0"
++  resolved "https://registry.yarnpkg.com/twilio/-/twilio-3.78.0.tgz#d03913d13dd9b74fc39fada686e001b9bdef6235"
++  integrity sha512-XowaxcOeLVNnvxx3t81seLZ/hE/N4z6yt9Vg+KtGhj81gf2ghUa57cr5QtqsI06qnknsGcId5I9X4mRoxZ4nMg==
++  dependencies:
++    axios "^0.26.1"
++    dayjs "^1.8.29"
++    https-proxy-agent "^5.0.0"
++    jsonwebtoken "^8.5.1"
++    lodash "^4.17.21"
++    q "2.0.x"
++    qs "^6.9.4"
++    rootpath "^0.1.2"
++    scmp "^2.1.0"
++    url-parse "^1.5.9"
++    xmlbuilder "^13.0.2"
++
+ type-check@^0.4.0, type-check@~0.4.0:
+   version "0.4.0"
+   resolved "https://registry.npmjs.org/type-check/-/type-check-0.4.0.tgz"
+@@ -17362,6 +17459,11 @@ unbox-primitive@^1.0.1:
+     has-symbols "^1.0.2"
+     which-boxed-primitive "^1.0.2"
+ 
++underscore.deferred@^0.4.0:
++  version "0.4.0"
++  resolved "https://registry.yarnpkg.com/underscore.deferred/-/underscore.deferred-0.4.0.tgz#2753de633b9ff7db601a2f3fa2af92b3dd290e6c"
++  integrity sha512-OByG6SGS1FlbQrOijhS/B+QBiKbbtoOt6KvLrF/042W/96poPkVIVfaYxvoxW7ifDwG6RgKFV2X2x/EYEPXObA==
++
+ underscore@1.13.1, underscore@^1.7.0:
+   version "1.13.1"
+   resolved "https://registry.npmjs.org/underscore/-/underscore-1.13.1.tgz"
+@@ -17550,9 +17652,9 @@ url-parse@^1.4.3, url-parse@^1.5.3, url-parse@~1.5.1:
+     querystringify "^2.1.1"
+     requires-port "^1.0.0"
+ 
+-url-parse@^1.5.10:
++url-parse@^1.5.10, url-parse@^1.5.9:
+   version "1.5.10"
+-  resolved "https://registry.npmjs.org/url-parse/-/url-parse-1.5.10.tgz"
++  resolved "https://registry.yarnpkg.com/url-parse/-/url-parse-1.5.10.tgz#9d3c2f736c1d75dd3bd2be507dcc111f1e2ea9c1"
+   integrity sha512-WypcfiRhfeUP9vvF0j6rw0J3hrWrw6iZv3+22h6iRMJ/8z1Tj6XfLP4DsUix5MhMPnXpiHDoKyoZ/bdCkwBCiQ==
+   dependencies:
+     querystringify "^2.1.1"
+@@ -17807,6 +17909,11 @@ wbuf@^1.1.0, wbuf@^1.7.3:
+   dependencies:
+     minimalistic-assert "^1.0.0"
+ 
++weak-map@^1.0.5:
++  version "1.0.8"
++  resolved "https://registry.yarnpkg.com/weak-map/-/weak-map-1.0.8.tgz#394c18a9e8262e790544ed8b55c6a4ddad1cb1a3"
++  integrity sha512-lNR9aAefbGPpHO7AEnY0hCFjz1eTkWCXYvkTRrTHs9qv8zJp+SkVYpzfLIFXQQiG3tVvbNFQgVg2bQS8YGgxyw==
++
+ web-encoding@^1.1.5:
+   version "1.1.5"
+   resolved "https://registry.npmjs.org/web-encoding/-/web-encoding-1.1.5.tgz"
+@@ -18464,6 +18571,11 @@ xml@^1.0.0:
+   resolved "https://registry.npmjs.org/xml/-/xml-1.0.1.tgz"
+   integrity sha1-eLpyAgApxbyHuKgaPPzXS0ovweU=
+ 
++xmlbuilder@^13.0.2:
++  version "13.0.2"
++  resolved "https://registry.yarnpkg.com/xmlbuilder/-/xmlbuilder-13.0.2.tgz#02ae33614b6a047d1c32b5389c1fdacb2bce47a7"
++  integrity sha512-Eux0i2QdDYKbdbA6AM6xE4m6ZTZr4G4xF9kahI2ukSEMCzwce2eX9WlTI5J3s+NU7hpasFsr8hWIONae7LluAQ==
++
+ xmlbuilder@~11.0.0:
+   version "11.0.1"
+   resolved "https://registry.npmjs.org/xmlbuilder/-/xmlbuilder-11.0.1.tgz"

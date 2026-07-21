@@ -1,0 +1,127 @@
+repo: react-native
+base_commit: 63f8c3dcd6dbc4424d4f519101b06fab9cb4ff76
+commit: 66df63d3b5194ac7163c7cba41699678ea791244
+patch_stored: true
+gold:
+- path: package.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlags.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxAccessor.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsCxxInterop.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsDefaults.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsLocalAccessor.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/featureflags/ReactNativeFeatureFlagsProvider.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/featureflags/JReactNativeFeatureFlagsCxxInterop.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsDefaults.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsProvider.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/nativemodule/featureflags/NativeReactNativeFeatureFlags.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/package.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/featureflags/README.md
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/featureflags/generateFiles.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/featureflags/index.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/featureflags/utils.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/src/private/featureflags/specs/NativeReactNativeFeatureFlags.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: scripts/run-ci-javascript-tests.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/asset-utils/package.json
+- path: packages/babel-plugin-codegen/package.json
+- path: packages/debugger-frontend/package.json
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactActivityDelegate.java
+- path: packages/react-native/ReactCommon/react/bridging/Array.h
+- path: packages/react-native/ReactCommon/react/bridging/Promise.h
+- path: scripts/js-api/README.md
+- path: scripts/releases/create-release-commit.js
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Worst noise ratio in the corpus: 26 real changed files vs 120 ctx_files means 94 unrelated files
+  (78%) were pulled in, including package.json for completely unrelated packages (debugger-frontend, gradle-plugin,
+  eslint-plugin-specs) and release-pipeline scripts that have nothing to do with generalizing the feature-flags
+  generator. This reads as an almost whole-repo dump rather than targeted diff context; the true diff
+  (26 files) is present but drowned in 3-4x its own volume of noise.'

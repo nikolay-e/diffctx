@@ -1,0 +1,655 @@
+From 4e71bc1e2ad54b1dee6d1825cc5a2407b6ec029f Mon Sep 17 00:00:00 2001
+From: Isabella Enriquez <isabella.enriquez@sentry.io>
+Date: Mon, 17 Nov 2025 10:36:24 -0500
+Subject: [PATCH] ref(checkout): Cleanup file structure (#103378)
+
+Follow up PRs will deal with cleaning up unused code now that the new
+checkout flow is GA'd for everyone.
+---
+ .../gsApp/components/upsellModal/featureList.tsx   |  2 +-
+ .../{ => components}/billingCycleSelectCard.tsx    |  2 +-
+ .../amCheckout/{ => components}/cart.spec.tsx      |  2 +-
+ .../views/amCheckout/{ => components}/cart.tsx     |  2 +-
+ .../amCheckout/{ => components}/cartDiff.spec.tsx  |  2 +-
+ .../views/amCheckout/{ => components}/cartDiff.tsx |  0
+ .../amCheckout/{ => components}/checkoutOption.tsx |  0
+ .../{ => components}/checkoutOverview.spec.tsx     |  2 +-
+ .../{ => components}/checkoutOverview.tsx          |  0
+ .../{ => components}/checkoutOverviewV2.spec.tsx   |  2 +-
+ .../{ => components}/checkoutOverviewV2.tsx        |  0
+ .../{ => components}/checkoutSuccess.spec.tsx      |  2 +-
+ .../{ => components}/checkoutSuccess.tsx           |  0
+ .../{ => components}/legacyPlanToggle.spec.tsx     |  2 +-
+ .../{ => components}/legacyPlanToggle.tsx          |  0
+ .../{ => components}/moreFeaturesLink.tsx          |  0
+ .../{ => components}/planFeatures.spec.tsx         |  2 +-
+ .../amCheckout/{ => components}/planFeatures.tsx   |  0
+ .../{steps => components}/planSelectCard.tsx       |  4 ++--
+ .../{steps => components}/planSelectRow.tsx        |  2 +-
+ .../{steps => components}/stepHeader.spec.tsx      |  2 +-
+ .../{steps => components}/stepHeader.tsx           |  2 +-
+ .../{steps => components}/unitTypeItem.tsx         |  0
+ .../{steps => components}/volumeSliders.tsx        |  2 +-
+ static/gsApp/views/amCheckout/index.tsx            | 14 +++++++-------
+ .../views/amCheckout/steps/addBillingDetails.tsx   |  2 +-
+ .../steps/{checkoutV3 => }/addBillingInfo.spec.tsx |  0
+ .../steps/{checkoutV3 => }/addBillingInfo.tsx      |  2 +-
+ .../gsApp/views/amCheckout/steps/addDataVolume.tsx |  4 ++--
+ .../views/amCheckout/steps/addPaymentMethod.tsx    |  2 +-
+ .../steps/{checkoutV3 => }/buildYourPlan.spec.tsx  |  0
+ .../steps/{checkoutV3 => }/buildYourPlan.tsx       |  6 +++---
+ .../chooseYourBillingCycle.spec.tsx                |  0
+ .../{checkoutV3 => }/chooseYourBillingCycle.tsx    |  4 ++--
+ .../views/amCheckout/steps/contractSelect.tsx      |  4 ++--
+ .../views/amCheckout/steps/onDemandBudgets.tsx     |  2 +-
+ .../gsApp/views/amCheckout/steps/onDemandSpend.tsx |  2 +-
+ static/gsApp/views/amCheckout/steps/planSelect.tsx |  4 ++--
+ .../gsApp/views/amCheckout/steps/productSelect.tsx |  2 +-
+ .../{ => steps}/reserveAdditionalVolume.spec.tsx   |  2 +-
+ .../{ => steps}/reserveAdditionalVolume.tsx        |  2 +-
+ .../views/amCheckout/steps/reviewAndConfirm.tsx    |  2 +-
+ .../gsApp/views/amCheckout/steps/setPayAsYouGo.tsx |  2 +-
+ .../gsApp/views/amCheckout/steps/setSpendLimit.tsx |  4 ++--
+ .../gsApp/views/spendLimits/spendLimitSettings.tsx |  4 ++--
+ 45 files changed, 48 insertions(+), 48 deletions(-)
+ rename static/gsApp/views/amCheckout/{ => components}/billingCycleSelectCard.tsx (98%)
+ rename static/gsApp/views/amCheckout/{ => components}/cart.spec.tsx (99%)
+ rename static/gsApp/views/amCheckout/{ => components}/cart.tsx (99%)
+ rename static/gsApp/views/amCheckout/{ => components}/cartDiff.spec.tsx (99%)
+ rename static/gsApp/views/amCheckout/{ => components}/cartDiff.tsx (100%)
+ rename static/gsApp/views/amCheckout/{ => components}/checkoutOption.tsx (100%)
+ rename static/gsApp/views/amCheckout/{ => components}/checkoutOverview.spec.tsx (98%)
+ rename static/gsApp/views/amCheckout/{ => components}/checkoutOverview.tsx (100%)
+ rename static/gsApp/views/amCheckout/{ => components}/checkoutOverviewV2.spec.tsx (98%)
+ rename static/gsApp/views/amCheckout/{ => components}/checkoutOverviewV2.tsx (100%)
+ rename static/gsApp/views/amCheckout/{ => components}/checkoutSuccess.spec.tsx (97%)
+ rename static/gsApp/views/amCheckout/{ => components}/checkoutSuccess.tsx (100%)
+ rename static/gsApp/views/amCheckout/{ => components}/legacyPlanToggle.spec.tsx (98%)
+ rename static/gsApp/views/amCheckout/{ => components}/legacyPlanToggle.tsx (100%)
+ rename static/gsApp/views/amCheckout/{ => components}/moreFeaturesLink.tsx (100%)
+ rename static/gsApp/views/amCheckout/{ => components}/planFeatures.spec.tsx (94%)
+ rename static/gsApp/views/amCheckout/{ => components}/planFeatures.tsx (100%)
+ rename static/gsApp/views/amCheckout/{steps => components}/planSelectCard.tsx (96%)
+ rename static/gsApp/views/amCheckout/{steps => components}/planSelectRow.tsx (99%)
+ rename static/gsApp/views/amCheckout/{steps => components}/stepHeader.spec.tsx (97%)
+ rename static/gsApp/views/amCheckout/{steps => components}/stepHeader.tsx (97%)
+ rename static/gsApp/views/amCheckout/{steps => components}/unitTypeItem.tsx (100%)
+ rename static/gsApp/views/amCheckout/{steps => components}/volumeSliders.tsx (99%)
+ rename static/gsApp/views/amCheckout/steps/{checkoutV3 => }/addBillingInfo.spec.tsx (100%)
+ rename static/gsApp/views/amCheckout/steps/{checkoutV3 => }/addBillingInfo.tsx (97%)
+ rename static/gsApp/views/amCheckout/steps/{checkoutV3 => }/buildYourPlan.spec.tsx (100%)
+ rename static/gsApp/views/amCheckout/steps/{checkoutV3 => }/buildYourPlan.tsx (96%)
+ rename static/gsApp/views/amCheckout/steps/{checkoutV3 => }/chooseYourBillingCycle.spec.tsx (100%)
+ rename static/gsApp/views/amCheckout/steps/{checkoutV3 => }/chooseYourBillingCycle.tsx (93%)
+ rename static/gsApp/views/amCheckout/{ => steps}/reserveAdditionalVolume.spec.tsx (99%)
+ rename static/gsApp/views/amCheckout/{ => steps}/reserveAdditionalVolume.tsx (98%)
+
+diff --git a/static/gsApp/components/upsellModal/featureList.tsx b/static/gsApp/components/upsellModal/featureList.tsx
+index b99d160c8e8..567604512ad 100644
+--- a/static/gsApp/components/upsellModal/featureList.tsx
++++ b/static/gsApp/components/upsellModal/featureList.tsx
+@@ -10,7 +10,7 @@ import {t} from 'sentry/locale';
+ import {space} from 'sentry/styles/space';
+ import testableTransition from 'sentry/utils/testableTransition';
+ 
+-import MoreFeaturesLink from 'getsentry/views/amCheckout/moreFeaturesLink';
++import MoreFeaturesLink from 'getsentry/views/amCheckout/components/moreFeaturesLink';
+ 
+ import type {Feature} from './types';
+ 
+diff --git a/static/gsApp/views/amCheckout/billingCycleSelectCard.tsx b/static/gsApp/views/amCheckout/components/billingCycleSelectCard.tsx
+similarity index 98%
+rename from static/gsApp/views/amCheckout/billingCycleSelectCard.tsx
+rename to static/gsApp/views/amCheckout/components/billingCycleSelectCard.tsx
+index af66768bc3a..3230dd678b3 100644
+--- a/static/gsApp/views/amCheckout/billingCycleSelectCard.tsx
++++ b/static/gsApp/views/amCheckout/components/billingCycleSelectCard.tsx
+@@ -10,7 +10,7 @@ import {t, tct} from 'sentry/locale';
+ import {ANNUAL} from 'getsentry/constants';
+ import type {Plan, Subscription} from 'getsentry/types';
+ import {displayBudgetName, isDeveloperPlan} from 'getsentry/utils/billing';
+-import CheckoutOption from 'getsentry/views/amCheckout/checkoutOption';
++import CheckoutOption from 'getsentry/views/amCheckout/components/checkoutOption';
+ import type {CheckoutFormData} from 'getsentry/views/amCheckout/types';
+ 
+ type BillingCycleSelectCardProps = {
+diff --git a/static/gsApp/views/amCheckout/cart.spec.tsx b/static/gsApp/views/amCheckout/components/cart.spec.tsx
+similarity index 99%
+rename from static/gsApp/views/amCheckout/cart.spec.tsx
+rename to static/gsApp/views/amCheckout/components/cart.spec.tsx
+index 968a8aa11aa..0dde16b67e4 100644
+--- a/static/gsApp/views/amCheckout/cart.spec.tsx
++++ b/static/gsApp/views/amCheckout/components/cart.spec.tsx
+@@ -25,7 +25,7 @@ import {
+   PlanTier,
+ } from 'getsentry/types';
+ import AMCheckout from 'getsentry/views/amCheckout/';
+-import Cart from 'getsentry/views/amCheckout/cart';
++import Cart from 'getsentry/views/amCheckout/components/cart';
+ import {type CheckoutFormData} from 'getsentry/views/amCheckout/types';
+ 
+ // Jun 06 2022 - with milliseconds
+diff --git a/static/gsApp/views/amCheckout/cart.tsx b/static/gsApp/views/amCheckout/components/cart.tsx
+similarity index 99%
+rename from static/gsApp/views/amCheckout/cart.tsx
+rename to static/gsApp/views/amCheckout/components/cart.tsx
+index e695d422855..a9468fe1e29 100644
+--- a/static/gsApp/views/amCheckout/cart.tsx
++++ b/static/gsApp/views/amCheckout/components/cart.tsx
+@@ -43,7 +43,7 @@ import {
+ } from 'getsentry/utils/billing';
+ import {getPlanCategoryName, getSingularCategoryName} from 'getsentry/utils/dataCategory';
+ import type {State as CheckoutState} from 'getsentry/views/amCheckout/';
+-import CartDiff from 'getsentry/views/amCheckout/cartDiff';
++import CartDiff from 'getsentry/views/amCheckout/components/cartDiff';
+ import type {CheckoutFormData} from 'getsentry/views/amCheckout/types';
+ import * as utils from 'getsentry/views/amCheckout/utils';
+ 
+diff --git a/static/gsApp/views/amCheckout/cartDiff.spec.tsx b/static/gsApp/views/amCheckout/components/cartDiff.spec.tsx
+similarity index 99%
+rename from static/gsApp/views/amCheckout/cartDiff.spec.tsx
+rename to static/gsApp/views/amCheckout/components/cartDiff.spec.tsx
+index 5bd1e23b6f9..d22a5e8e5d5 100644
+--- a/static/gsApp/views/amCheckout/cartDiff.spec.tsx
++++ b/static/gsApp/views/amCheckout/components/cartDiff.spec.tsx
+@@ -10,7 +10,7 @@ import {
+   type Plan,
+   type Subscription,
+ } from 'getsentry/types';
+-import CartDiff from 'getsentry/views/amCheckout/cartDiff';
++import CartDiff from 'getsentry/views/amCheckout/components/cartDiff';
+ import {type CheckoutFormData} from 'getsentry/views/amCheckout/types';
+ 
+ describe('CartDiff', () => {
+diff --git a/static/gsApp/views/amCheckout/cartDiff.tsx b/static/gsApp/views/amCheckout/components/cartDiff.tsx
+similarity index 100%
+rename from static/gsApp/views/amCheckout/cartDiff.tsx
+rename to static/gsApp/views/amCheckout/components/cartDiff.tsx
+diff --git a/static/gsApp/views/amCheckout/checkoutOption.tsx b/static/gsApp/views/amCheckout/components/checkoutOption.tsx
+similarity index 100%
+rename from static/gsApp/views/amCheckout/checkoutOption.tsx
+rename to static/gsApp/views/amCheckout/components/checkoutOption.tsx
+diff --git a/static/gsApp/views/amCheckout/checkoutOverview.spec.tsx b/static/gsApp/views/amCheckout/components/checkoutOverview.spec.tsx
+similarity index 98%
+rename from static/gsApp/views/amCheckout/checkoutOverview.spec.tsx
+rename to static/gsApp/views/amCheckout/components/checkoutOverview.spec.tsx
+index ff0dcf76e88..ea4bd7352f5 100644
+--- a/static/gsApp/views/amCheckout/checkoutOverview.spec.tsx
++++ b/static/gsApp/views/amCheckout/components/checkoutOverview.spec.tsx
+@@ -9,7 +9,7 @@ import {render, screen, waitForElementToBeRemoved} from 'sentry-test/reactTestin
+ import SubscriptionStore from 'getsentry/stores/subscriptionStore';
+ import {AddOnCategory, OnDemandBudgetMode, PlanTier} from 'getsentry/types';
+ import AMCheckout from 'getsentry/views/amCheckout/';
+-import CheckoutOverview from 'getsentry/views/amCheckout/checkoutOverview';
++import CheckoutOverview from 'getsentry/views/amCheckout/components/checkoutOverview';
+ import {type CheckoutFormData} from 'getsentry/views/amCheckout/types';
+ 
+ describe('CheckoutOverview', () => {
+diff --git a/static/gsApp/views/amCheckout/checkoutOverview.tsx b/static/gsApp/views/amCheckout/components/checkoutOverview.tsx
+similarity index 100%
+rename from static/gsApp/views/amCheckout/checkoutOverview.tsx
+rename to static/gsApp/views/amCheckout/components/checkoutOverview.tsx
+diff --git a/static/gsApp/views/amCheckout/checkoutOverviewV2.spec.tsx b/static/gsApp/views/amCheckout/components/checkoutOverviewV2.spec.tsx
+similarity index 98%
+rename from static/gsApp/views/amCheckout/checkoutOverviewV2.spec.tsx
+rename to static/gsApp/views/amCheckout/components/checkoutOverviewV2.spec.tsx
+index 652c49f0069..07477c58e06 100644
+--- a/static/gsApp/views/amCheckout/checkoutOverviewV2.spec.tsx
++++ b/static/gsApp/views/amCheckout/components/checkoutOverviewV2.spec.tsx
+@@ -7,7 +7,7 @@ import {render, screen} from 'sentry-test/reactTestingLibrary';
+ import SubscriptionStore from 'getsentry/stores/subscriptionStore';
+ import {AddOnCategory, PlanTier} from 'getsentry/types';
+ import AMCheckout from 'getsentry/views/amCheckout/';
+-import CheckoutOverviewV2 from 'getsentry/views/amCheckout/checkoutOverviewV2';
++import CheckoutOverviewV2 from 'getsentry/views/amCheckout/components/checkoutOverviewV2';
+ import {type CheckoutFormData} from 'getsentry/views/amCheckout/types';
+ 
+ describe('CheckoutOverviewV2', () => {
+diff --git a/static/gsApp/views/amCheckout/checkoutOverviewV2.tsx b/static/gsApp/views/amCheckout/components/checkoutOverviewV2.tsx
+similarity index 100%
+rename from static/gsApp/views/amCheckout/checkoutOverviewV2.tsx
+rename to static/gsApp/views/amCheckout/components/checkoutOverviewV2.tsx
+diff --git a/static/gsApp/views/amCheckout/checkoutSuccess.spec.tsx b/static/gsApp/views/amCheckout/components/checkoutSuccess.spec.tsx
+similarity index 97%
+rename from static/gsApp/views/amCheckout/checkoutSuccess.spec.tsx
+rename to static/gsApp/views/amCheckout/components/checkoutSuccess.spec.tsx
+index 621848c4491..3a9f2763341 100644
+--- a/static/gsApp/views/amCheckout/checkoutSuccess.spec.tsx
++++ b/static/gsApp/views/amCheckout/components/checkoutSuccess.spec.tsx
+@@ -7,7 +7,7 @@ import {resetMockDate, setMockDate} from 'sentry-test/utils';
+ 
+ import {PreviewDataFixture} from 'getsentry/__fixtures__/previewData';
+ import {InvoiceItemType} from 'getsentry/types';
+-import CheckoutSuccess from 'getsentry/views/amCheckout/checkoutSuccess';
++import CheckoutSuccess from 'getsentry/views/amCheckout/components/checkoutSuccess';
+ 
+ describe('CheckoutSuccess', () => {
+   const bizPlan = PlanDetailsLookupFixture('am3_business')!;
+diff --git a/static/gsApp/views/amCheckout/checkoutSuccess.tsx b/static/gsApp/views/amCheckout/components/checkoutSuccess.tsx
+similarity index 100%
+rename from static/gsApp/views/amCheckout/checkoutSuccess.tsx
+rename to static/gsApp/views/amCheckout/components/checkoutSuccess.tsx
+diff --git a/static/gsApp/views/amCheckout/legacyPlanToggle.spec.tsx b/static/gsApp/views/amCheckout/components/legacyPlanToggle.spec.tsx
+similarity index 98%
+rename from static/gsApp/views/amCheckout/legacyPlanToggle.spec.tsx
+rename to static/gsApp/views/amCheckout/components/legacyPlanToggle.spec.tsx
+index 88b04ed82e5..234aac534ca 100644
+--- a/static/gsApp/views/amCheckout/legacyPlanToggle.spec.tsx
++++ b/static/gsApp/views/amCheckout/components/legacyPlanToggle.spec.tsx
+@@ -6,7 +6,7 @@ import {render, screen, waitForElementToBeRemoved} from 'sentry-test/reactTestin
+ 
+ import SubscriptionStore from 'getsentry/stores/subscriptionStore';
+ import {CohortId} from 'getsentry/types';
+-import LegacyPlanToggle from 'getsentry/views/amCheckout/legacyPlanToggle';
++import LegacyPlanToggle from 'getsentry/views/amCheckout/components/legacyPlanToggle';
+ 
+ describe('LegacyPlanToggle', () => {
+   const organization = OrganizationFixture();
+diff --git a/static/gsApp/views/amCheckout/legacyPlanToggle.tsx b/static/gsApp/views/amCheckout/components/legacyPlanToggle.tsx
+similarity index 100%
+rename from static/gsApp/views/amCheckout/legacyPlanToggle.tsx
+rename to static/gsApp/views/amCheckout/components/legacyPlanToggle.tsx
+diff --git a/static/gsApp/views/amCheckout/moreFeaturesLink.tsx b/static/gsApp/views/amCheckout/components/moreFeaturesLink.tsx
+similarity index 100%
+rename from static/gsApp/views/amCheckout/moreFeaturesLink.tsx
+rename to static/gsApp/views/amCheckout/components/moreFeaturesLink.tsx
+diff --git a/static/gsApp/views/amCheckout/planFeatures.spec.tsx b/static/gsApp/views/amCheckout/components/planFeatures.spec.tsx
+similarity index 94%
+rename from static/gsApp/views/amCheckout/planFeatures.spec.tsx
+rename to static/gsApp/views/amCheckout/components/planFeatures.spec.tsx
+index 7c7f71405aa..f813f23d45b 100644
+--- a/static/gsApp/views/amCheckout/planFeatures.spec.tsx
++++ b/static/gsApp/views/amCheckout/components/planFeatures.spec.tsx
+@@ -1,7 +1,7 @@
+ import {PlanDetailsLookupFixture} from 'getsentry-test/fixtures/planDetailsLookup';
+ import {render, screen} from 'sentry-test/reactTestingLibrary';
+ 
+-import PlanFeatures from 'getsentry/views/amCheckout/planFeatures';
++import PlanFeatures from 'getsentry/views/amCheckout/components/planFeatures';
+ 
+ describe('PlanFeatures', () => {
+   const freePlan = PlanDetailsLookupFixture('am3_f')!;
+diff --git a/static/gsApp/views/amCheckout/planFeatures.tsx b/static/gsApp/views/amCheckout/components/planFeatures.tsx
+similarity index 100%
+rename from static/gsApp/views/amCheckout/planFeatures.tsx
+rename to static/gsApp/views/amCheckout/components/planFeatures.tsx
+diff --git a/static/gsApp/views/amCheckout/steps/planSelectCard.tsx b/static/gsApp/views/amCheckout/components/planSelectCard.tsx
+similarity index 96%
+rename from static/gsApp/views/amCheckout/steps/planSelectCard.tsx
+rename to static/gsApp/views/amCheckout/components/planSelectCard.tsx
+index 2ddb54d5c0c..01d02471793 100644
+--- a/static/gsApp/views/amCheckout/steps/planSelectCard.tsx
++++ b/static/gsApp/views/amCheckout/components/planSelectCard.tsx
+@@ -6,8 +6,8 @@ import {Heading, Text} from 'sentry/components/core/text';
+ import {PAYG_BUSINESS_DEFAULT, PAYG_TEAM_DEFAULT} from 'getsentry/constants';
+ import {OnDemandBudgetMode} from 'getsentry/types';
+ import {isBizPlanFamily} from 'getsentry/utils/billing';
+-import CheckoutOption from 'getsentry/views/amCheckout/checkoutOption';
+-import type {PlanSelectRowProps} from 'getsentry/views/amCheckout/steps/planSelectRow';
++import CheckoutOption from 'getsentry/views/amCheckout/components/checkoutOption';
++import type {PlanSelectRowProps} from 'getsentry/views/amCheckout/components/planSelectRow';
+ import type {CheckoutFormData} from 'getsentry/views/amCheckout/types';
+ import {getShortInterval} from 'getsentry/views/amCheckout/utils';
+ 
+diff --git a/static/gsApp/views/amCheckout/steps/planSelectRow.tsx b/static/gsApp/views/amCheckout/components/planSelectRow.tsx
+similarity index 99%
+rename from static/gsApp/views/amCheckout/steps/planSelectRow.tsx
+rename to static/gsApp/views/amCheckout/components/planSelectRow.tsx
+index 03e2d1b882d..b55fbd45d1c 100644
+--- a/static/gsApp/views/amCheckout/steps/planSelectRow.tsx
++++ b/static/gsApp/views/amCheckout/components/planSelectRow.tsx
+@@ -13,7 +13,7 @@ import TextBlock from 'sentry/views/settings/components/text/textBlock';
+ import {PAYG_BUSINESS_DEFAULT, PAYG_TEAM_DEFAULT} from 'getsentry/constants';
+ import {OnDemandBudgetMode, type Plan, type Promotion} from 'getsentry/types';
+ import {isBizPlanFamily} from 'getsentry/utils/billing';
+-import MoreFeaturesLink from 'getsentry/views/amCheckout/moreFeaturesLink';
++import MoreFeaturesLink from 'getsentry/views/amCheckout/components/moreFeaturesLink';
+ import type {CheckoutFormData, PlanContent} from 'getsentry/views/amCheckout/types';
+ import {
+   displayUnitPrice,
+diff --git a/static/gsApp/views/amCheckout/steps/stepHeader.spec.tsx b/static/gsApp/views/amCheckout/components/stepHeader.spec.tsx
+similarity index 97%
+rename from static/gsApp/views/amCheckout/steps/stepHeader.spec.tsx
+rename to static/gsApp/views/amCheckout/components/stepHeader.spec.tsx
+index 4bb28cb18d2..564b939de3f 100644
+--- a/static/gsApp/views/amCheckout/steps/stepHeader.spec.tsx
++++ b/static/gsApp/views/amCheckout/components/stepHeader.spec.tsx
+@@ -1,6 +1,6 @@
+ import {render, screen, userEvent} from 'sentry-test/reactTestingLibrary';
+ 
+-import StepHeader from 'getsentry/views/amCheckout/steps/stepHeader';
++import StepHeader from 'getsentry/views/amCheckout/components/stepHeader';
+ 
+ describe('StepHeader', () => {
+   let onEdit: any;
+diff --git a/static/gsApp/views/amCheckout/steps/stepHeader.tsx b/static/gsApp/views/amCheckout/components/stepHeader.tsx
+similarity index 97%
+rename from static/gsApp/views/amCheckout/steps/stepHeader.tsx
+rename to static/gsApp/views/amCheckout/components/stepHeader.tsx
+index fc00b981a93..469eb926b11 100644
+--- a/static/gsApp/views/amCheckout/steps/stepHeader.tsx
++++ b/static/gsApp/views/amCheckout/components/stepHeader.tsx
+@@ -10,7 +10,7 @@ import {space} from 'sentry/styles/space';
+ import type {Organization} from 'sentry/types/organization';
+ 
+ import type {PlanTier} from 'getsentry/types';
+-import LegacyPlanToggle from 'getsentry/views/amCheckout/legacyPlanToggle';
++import LegacyPlanToggle from 'getsentry/views/amCheckout/components/legacyPlanToggle';
+ import {getToggleTier} from 'getsentry/views/amCheckout/utils';
+ 
+ // TODO(checkout v3): Remove isActive/isCompleted/onEdit/canSkip
+diff --git a/static/gsApp/views/amCheckout/steps/unitTypeItem.tsx b/static/gsApp/views/amCheckout/components/unitTypeItem.tsx
+similarity index 100%
+rename from static/gsApp/views/amCheckout/steps/unitTypeItem.tsx
+rename to static/gsApp/views/amCheckout/components/unitTypeItem.tsx
+diff --git a/static/gsApp/views/amCheckout/steps/volumeSliders.tsx b/static/gsApp/views/amCheckout/components/volumeSliders.tsx
+similarity index 99%
+rename from static/gsApp/views/amCheckout/steps/volumeSliders.tsx
+rename to static/gsApp/views/amCheckout/components/volumeSliders.tsx
+index 1409e7b14da..f53fbe4538b 100644
+--- a/static/gsApp/views/amCheckout/steps/volumeSliders.tsx
++++ b/static/gsApp/views/amCheckout/components/volumeSliders.tsx
+@@ -22,7 +22,7 @@ import {
+   isByteCategory,
+ } from 'getsentry/utils/dataCategory';
+ import trackGetsentryAnalytics from 'getsentry/utils/trackGetsentryAnalytics';
+-import UnitTypeItem from 'getsentry/views/amCheckout/steps/unitTypeItem';
++import UnitTypeItem from 'getsentry/views/amCheckout/components/unitTypeItem';
+ import type {StepProps} from 'getsentry/views/amCheckout/types';
+ import * as utils from 'getsentry/views/amCheckout/utils';
+ 
+diff --git a/static/gsApp/views/amCheckout/index.tsx b/static/gsApp/views/amCheckout/index.tsx
+index 2992a18449d..4600bc73b59 100644
+--- a/static/gsApp/views/amCheckout/index.tsx
++++ b/static/gsApp/views/amCheckout/index.tsx
+@@ -69,16 +69,16 @@ import {getCompletedOrActivePromotion} from 'getsentry/utils/promotions';
+ import {showSubscriptionDiscount} from 'getsentry/utils/promotionUtils';
+ import trackGetsentryAnalytics from 'getsentry/utils/trackGetsentryAnalytics';
+ import withPromotions from 'getsentry/utils/withPromotions';
+-import Cart from 'getsentry/views/amCheckout/cart';
+-import CheckoutOverview from 'getsentry/views/amCheckout/checkoutOverview';
+-import CheckoutOverviewV2 from 'getsentry/views/amCheckout/checkoutOverviewV2';
+-import CheckoutSuccess from 'getsentry/views/amCheckout/checkoutSuccess';
++import Cart from 'getsentry/views/amCheckout/components/cart';
++import CheckoutOverview from 'getsentry/views/amCheckout/components/checkoutOverview';
++import CheckoutOverviewV2 from 'getsentry/views/amCheckout/components/checkoutOverviewV2';
++import CheckoutSuccess from 'getsentry/views/amCheckout/components/checkoutSuccess';
+ import AddBillingDetails from 'getsentry/views/amCheckout/steps/addBillingDetails';
++import AddBillingInformation from 'getsentry/views/amCheckout/steps/addBillingInfo';
+ import AddDataVolume from 'getsentry/views/amCheckout/steps/addDataVolume';
+ import AddPaymentMethod from 'getsentry/views/amCheckout/steps/addPaymentMethod';
+-import AddBillingInformation from 'getsentry/views/amCheckout/steps/checkoutV3/addBillingInfo';
+-import BuildYourPlan from 'getsentry/views/amCheckout/steps/checkoutV3/buildYourPlan';
+-import ChooseYourBillingCycle from 'getsentry/views/amCheckout/steps/checkoutV3/chooseYourBillingCycle';
++import BuildYourPlan from 'getsentry/views/amCheckout/steps/buildYourPlan';
++import ChooseYourBillingCycle from 'getsentry/views/amCheckout/steps/chooseYourBillingCycle';
+ import ContractSelect from 'getsentry/views/amCheckout/steps/contractSelect';
+ import OnDemandBudgetsStep from 'getsentry/views/amCheckout/steps/onDemandBudgets';
+ import OnDemandSpend from 'getsentry/views/amCheckout/steps/onDemandSpend';
+diff --git a/static/gsApp/views/amCheckout/steps/addBillingDetails.tsx b/static/gsApp/views/amCheckout/steps/addBillingDetails.tsx
+index 3f2bc76b05d..60cc98a9ead 100644
+--- a/static/gsApp/views/amCheckout/steps/addBillingDetails.tsx
++++ b/static/gsApp/views/amCheckout/steps/addBillingDetails.tsx
+@@ -21,7 +21,7 @@ import type {BillingDetails} from 'getsentry/types';
+ import {AddressType} from 'getsentry/types';
+ import {getCountryByCode} from 'getsentry/utils/ISO3166codes';
+ import {getRegionChoiceName, getTaxFieldInfo} from 'getsentry/utils/salesTax';
+-import StepHeader from 'getsentry/views/amCheckout/steps/stepHeader';
++import StepHeader from 'getsentry/views/amCheckout/components/stepHeader';
+ import type {StepProps} from 'getsentry/views/amCheckout/types';
+ 
+ type State = {
+diff --git a/static/gsApp/views/amCheckout/steps/checkoutV3/addBillingInfo.spec.tsx b/static/gsApp/views/amCheckout/steps/addBillingInfo.spec.tsx
+similarity index 100%
+rename from static/gsApp/views/amCheckout/steps/checkoutV3/addBillingInfo.spec.tsx
+rename to static/gsApp/views/amCheckout/steps/addBillingInfo.spec.tsx
+diff --git a/static/gsApp/views/amCheckout/steps/checkoutV3/addBillingInfo.tsx b/static/gsApp/views/amCheckout/steps/addBillingInfo.tsx
+similarity index 97%
+rename from static/gsApp/views/amCheckout/steps/checkoutV3/addBillingInfo.tsx
+rename to static/gsApp/views/amCheckout/steps/addBillingInfo.tsx
+index 864cc9776aa..7e6666a9cc5 100644
+--- a/static/gsApp/views/amCheckout/steps/checkoutV3/addBillingInfo.tsx
++++ b/static/gsApp/views/amCheckout/steps/addBillingInfo.tsx
+@@ -10,7 +10,7 @@ import BillingDetailsPanel from 'getsentry/components/billingDetails/panel';
+ import CreditCardPanel from 'getsentry/components/creditCardEdit/panel';
+ import {useBillingDetails} from 'getsentry/hooks/useBillingDetails';
+ import {FTCConsentLocation} from 'getsentry/types';
+-import StepHeader from 'getsentry/views/amCheckout/steps/stepHeader';
++import StepHeader from 'getsentry/views/amCheckout/components/stepHeader';
+ import type {CheckoutV3StepProps} from 'getsentry/views/amCheckout/types';
+ import {hasBillingInfo} from 'getsentry/views/amCheckout/utils';
+ 
+diff --git a/static/gsApp/views/amCheckout/steps/addDataVolume.tsx b/static/gsApp/views/amCheckout/steps/addDataVolume.tsx
+index 5307952036d..d1ad0834fb3 100644
+--- a/static/gsApp/views/amCheckout/steps/addDataVolume.tsx
++++ b/static/gsApp/views/amCheckout/steps/addDataVolume.tsx
+@@ -13,8 +13,8 @@ import TextBlock from 'sentry/views/settings/components/text/textBlock';
+ import {PlanTier} from 'getsentry/types';
+ import {displayBudgetName, isAmPlan} from 'getsentry/utils/billing';
+ import trackGetsentryAnalytics from 'getsentry/utils/trackGetsentryAnalytics';
+-import StepHeader from 'getsentry/views/amCheckout/steps/stepHeader';
+-import VolumeSliders from 'getsentry/views/amCheckout/steps/volumeSliders';
++import StepHeader from 'getsentry/views/amCheckout/components/stepHeader';
++import VolumeSliders from 'getsentry/views/amCheckout/components/volumeSliders';
+ import type {StepProps} from 'getsentry/views/amCheckout/types';
+ 
+ function AddDataVolume({
+diff --git a/static/gsApp/views/amCheckout/steps/addPaymentMethod.tsx b/static/gsApp/views/amCheckout/steps/addPaymentMethod.tsx
+index f4a943efb96..9c074eb0918 100644
+--- a/static/gsApp/views/amCheckout/steps/addPaymentMethod.tsx
++++ b/static/gsApp/views/amCheckout/steps/addPaymentMethod.tsx
+@@ -16,7 +16,7 @@ import TextBlock from 'sentry/views/settings/components/text/textBlock';
+ import CreditCardSetup from 'getsentry/components/creditCardEdit/setup';
+ import SubscriptionStore from 'getsentry/stores/subscriptionStore';
+ import {FTCConsentLocation} from 'getsentry/types';
+-import StepHeader from 'getsentry/views/amCheckout/steps/stepHeader';
++import StepHeader from 'getsentry/views/amCheckout/components/stepHeader';
+ import type {StepProps} from 'getsentry/views/amCheckout/types';
+ 
+ type Props = StepProps;
+diff --git a/static/gsApp/views/amCheckout/steps/checkoutV3/buildYourPlan.spec.tsx b/static/gsApp/views/amCheckout/steps/buildYourPlan.spec.tsx
+similarity index 100%
+rename from static/gsApp/views/amCheckout/steps/checkoutV3/buildYourPlan.spec.tsx
+rename to static/gsApp/views/amCheckout/steps/buildYourPlan.spec.tsx
+diff --git a/static/gsApp/views/amCheckout/steps/checkoutV3/buildYourPlan.tsx b/static/gsApp/views/amCheckout/steps/buildYourPlan.tsx
+similarity index 96%
+rename from static/gsApp/views/amCheckout/steps/checkoutV3/buildYourPlan.tsx
+rename to static/gsApp/views/amCheckout/steps/buildYourPlan.tsx
+index 6188b10e1a6..f92f4a12939 100644
+--- a/static/gsApp/views/amCheckout/steps/checkoutV3/buildYourPlan.tsx
++++ b/static/gsApp/views/amCheckout/steps/buildYourPlan.tsx
+@@ -18,10 +18,10 @@ import {
+   isNewPayingCustomer,
+   isTrialPlan,
+ } from 'getsentry/utils/billing';
+-import PlanFeatures from 'getsentry/views/amCheckout/planFeatures';
+-import PlanSelectCard from 'getsentry/views/amCheckout/steps/planSelectCard';
++import PlanFeatures from 'getsentry/views/amCheckout/components/planFeatures';
++import PlanSelectCard from 'getsentry/views/amCheckout/components/planSelectCard';
++import StepHeader from 'getsentry/views/amCheckout/components/stepHeader';
+ import ProductSelect from 'getsentry/views/amCheckout/steps/productSelect';
+-import StepHeader from 'getsentry/views/amCheckout/steps/stepHeader';
+ import type {
+   CheckoutFormData,
+   CheckoutV3StepProps,
+diff --git a/static/gsApp/views/amCheckout/steps/checkoutV3/chooseYourBillingCycle.spec.tsx b/static/gsApp/views/amCheckout/steps/chooseYourBillingCycle.spec.tsx
+similarity index 100%
+rename from static/gsApp/views/amCheckout/steps/checkoutV3/chooseYourBillingCycle.spec.tsx
+rename to static/gsApp/views/amCheckout/steps/chooseYourBillingCycle.spec.tsx
+diff --git a/static/gsApp/views/amCheckout/steps/checkoutV3/chooseYourBillingCycle.tsx b/static/gsApp/views/amCheckout/steps/chooseYourBillingCycle.tsx
+similarity index 93%
+rename from static/gsApp/views/amCheckout/steps/checkoutV3/chooseYourBillingCycle.tsx
+rename to static/gsApp/views/amCheckout/steps/chooseYourBillingCycle.tsx
+index ce2089bee47..94d77ba897f 100644
+--- a/static/gsApp/views/amCheckout/steps/checkoutV3/chooseYourBillingCycle.tsx
++++ b/static/gsApp/views/amCheckout/steps/chooseYourBillingCycle.tsx
+@@ -4,8 +4,8 @@ import {Flex, Grid} from 'sentry/components/core/layout';
+ import {t} from 'sentry/locale';
+ 
+ import {ANNUAL} from 'getsentry/constants';
+-import BillingCycleSelectCard from 'getsentry/views/amCheckout/billingCycleSelectCard';
+-import StepHeader from 'getsentry/views/amCheckout/steps/stepHeader';
++import BillingCycleSelectCard from 'getsentry/views/amCheckout/components/billingCycleSelectCard';
++import StepHeader from 'getsentry/views/amCheckout/components/stepHeader';
+ import type {CheckoutV3StepProps} from 'getsentry/views/amCheckout/types';
+ import * as utils from 'getsentry/views/amCheckout/utils';
+ 
+diff --git a/static/gsApp/views/amCheckout/steps/contractSelect.tsx b/static/gsApp/views/amCheckout/steps/contractSelect.tsx
+index 865c9795c51..42a42745c8e 100644
+--- a/static/gsApp/views/amCheckout/steps/contractSelect.tsx
++++ b/static/gsApp/views/amCheckout/steps/contractSelect.tsx
+@@ -11,8 +11,8 @@ import {space} from 'sentry/styles/space';
+ 
+ import {ANNUAL, MONTHLY} from 'getsentry/constants';
+ import {InvoiceItemType, type Plan} from 'getsentry/types';
+-import PlanSelectRow from 'getsentry/views/amCheckout/steps/planSelectRow';
+-import StepHeader from 'getsentry/views/amCheckout/steps/stepHeader';
++import PlanSelectRow from 'getsentry/views/amCheckout/components/planSelectRow';
++import StepHeader from 'getsentry/views/amCheckout/components/stepHeader';
+ import type {StepProps} from 'getsentry/views/amCheckout/types';
+ import {formatPrice, getReservedPriceCents} from 'getsentry/views/amCheckout/utils';
+ 
+diff --git a/static/gsApp/views/amCheckout/steps/onDemandBudgets.tsx b/static/gsApp/views/amCheckout/steps/onDemandBudgets.tsx
+index 1829d920729..c4c437b2335 100644
+--- a/static/gsApp/views/amCheckout/steps/onDemandBudgets.tsx
++++ b/static/gsApp/views/amCheckout/steps/onDemandBudgets.tsx
+@@ -11,7 +11,7 @@ import {space} from 'sentry/styles/space';
+ import type {OnDemandBudgets} from 'getsentry/types';
+ import {OnDemandBudgetMode} from 'getsentry/types';
+ import {displayBudgetName, isDeveloperPlan} from 'getsentry/utils/billing';
+-import StepHeader from 'getsentry/views/amCheckout/steps/stepHeader';
++import StepHeader from 'getsentry/views/amCheckout/components/stepHeader';
+ import type {StepProps} from 'getsentry/views/amCheckout/types';
+ import {getReservedPriceCents} from 'getsentry/views/amCheckout/utils';
+ import OnDemandBudgetEdit from 'getsentry/views/onDemandBudgets/onDemandBudgetEdit';
+diff --git a/static/gsApp/views/amCheckout/steps/onDemandSpend.tsx b/static/gsApp/views/amCheckout/steps/onDemandSpend.tsx
+index b8365a0e893..706c8b98872 100644
+--- a/static/gsApp/views/amCheckout/steps/onDemandSpend.tsx
++++ b/static/gsApp/views/amCheckout/steps/onDemandSpend.tsx
+@@ -13,7 +13,7 @@ import TextBlock from 'sentry/views/settings/components/text/textBlock';
+ 
+ import {displayBudgetName} from 'getsentry/utils/billing';
+ import {listDisplayNames} from 'getsentry/utils/dataCategory';
+-import StepHeader from 'getsentry/views/amCheckout/steps/stepHeader';
++import StepHeader from 'getsentry/views/amCheckout/components/stepHeader';
+ import type {StepProps} from 'getsentry/views/amCheckout/types';
+ 
+ type Props = StepProps;
+diff --git a/static/gsApp/views/amCheckout/steps/planSelect.tsx b/static/gsApp/views/amCheckout/steps/planSelect.tsx
+index e252af195df..5befc643683 100644
+--- a/static/gsApp/views/amCheckout/steps/planSelect.tsx
++++ b/static/gsApp/views/amCheckout/steps/planSelect.tsx
+@@ -27,9 +27,9 @@ import {
+ } from 'getsentry/utils/promotionUtils';
+ import trackGetsentryAnalytics from 'getsentry/utils/trackGetsentryAnalytics';
+ import usePromotionTriggerCheck from 'getsentry/utils/usePromotionTriggerCheck';
+-import PlanSelectRow from 'getsentry/views/amCheckout/steps/planSelectRow';
++import PlanSelectRow from 'getsentry/views/amCheckout/components/planSelectRow';
++import StepHeader from 'getsentry/views/amCheckout/components/stepHeader';
+ import ProductSelect from 'getsentry/views/amCheckout/steps/productSelect';
+-import StepHeader from 'getsentry/views/amCheckout/steps/stepHeader';
+ import type {PlanContent, StepProps} from 'getsentry/views/amCheckout/types';
+ import {
+   formatPrice,
+diff --git a/static/gsApp/views/amCheckout/steps/productSelect.tsx b/static/gsApp/views/amCheckout/steps/productSelect.tsx
+index b0a2cf49371..be93765b6ec 100644
+--- a/static/gsApp/views/amCheckout/steps/productSelect.tsx
++++ b/static/gsApp/views/amCheckout/steps/productSelect.tsx
+@@ -31,7 +31,7 @@ import {
+   getSingularCategoryName,
+ } from 'getsentry/utils/dataCategory';
+ import formatCurrency from 'getsentry/utils/formatCurrency';
+-import CheckoutOption from 'getsentry/views/amCheckout/checkoutOption';
++import CheckoutOption from 'getsentry/views/amCheckout/components/checkoutOption';
+ import {type StepProps} from 'getsentry/views/amCheckout/types';
+ import * as utils from 'getsentry/views/amCheckout/utils';
+ 
+diff --git a/static/gsApp/views/amCheckout/reserveAdditionalVolume.spec.tsx b/static/gsApp/views/amCheckout/steps/reserveAdditionalVolume.spec.tsx
+similarity index 99%
+rename from static/gsApp/views/amCheckout/reserveAdditionalVolume.spec.tsx
+rename to static/gsApp/views/amCheckout/steps/reserveAdditionalVolume.spec.tsx
+index 0263d7fc98f..24fbfafde47 100644
+--- a/static/gsApp/views/amCheckout/reserveAdditionalVolume.spec.tsx
++++ b/static/gsApp/views/amCheckout/steps/reserveAdditionalVolume.spec.tsx
+@@ -9,7 +9,7 @@ import {render, screen, userEvent} from 'sentry-test/reactTestingLibrary';
+ import {MONTHLY} from 'getsentry/constants';
+ import SubscriptionStore from 'getsentry/stores/subscriptionStore';
+ import {PlanTier, type Subscription} from 'getsentry/types';
+-import ReserveAdditionalVolume from 'getsentry/views/amCheckout/reserveAdditionalVolume';
++import ReserveAdditionalVolume from 'getsentry/views/amCheckout/steps/reserveAdditionalVolume';
+ 
+ type SliderInfo = {
+   billingInterval: string;
+diff --git a/static/gsApp/views/amCheckout/reserveAdditionalVolume.tsx b/static/gsApp/views/amCheckout/steps/reserveAdditionalVolume.tsx
+similarity index 98%
+rename from static/gsApp/views/amCheckout/reserveAdditionalVolume.tsx
+rename to static/gsApp/views/amCheckout/steps/reserveAdditionalVolume.tsx
+index 58d66e22530..5051a1aaf3d 100644
+--- a/static/gsApp/views/amCheckout/reserveAdditionalVolume.tsx
++++ b/static/gsApp/views/amCheckout/steps/reserveAdditionalVolume.tsx
+@@ -11,7 +11,7 @@ import type {DataCategory} from 'sentry/types/core';
+ import {PlanTier} from 'getsentry/types';
+ import {isAmPlan, isDeveloperPlan} from 'getsentry/utils/billing';
+ import trackGetsentryAnalytics from 'getsentry/utils/trackGetsentryAnalytics';
+-import VolumeSliders from 'getsentry/views/amCheckout/steps/volumeSliders';
++import VolumeSliders from 'getsentry/views/amCheckout/components/volumeSliders';
+ import type {StepProps} from 'getsentry/views/amCheckout/types';
+ import {formatPrice, getBucket, getShortInterval} from 'getsentry/views/amCheckout/utils';
+ 
+diff --git a/static/gsApp/views/amCheckout/steps/reviewAndConfirm.tsx b/static/gsApp/views/amCheckout/steps/reviewAndConfirm.tsx
+index 730d21af730..ff24e219f72 100644
+--- a/static/gsApp/views/amCheckout/steps/reviewAndConfirm.tsx
++++ b/static/gsApp/views/amCheckout/steps/reviewAndConfirm.tsx
+@@ -19,7 +19,7 @@ import {useStripeInstance} from 'getsentry/hooks/useStripeInstance';
+ import type {PreviewData, Subscription} from 'getsentry/types';
+ import {InvoiceItemType} from 'getsentry/types';
+ import {hasPartnerMigrationFeature} from 'getsentry/utils/billing';
+-import StepHeader from 'getsentry/views/amCheckout/steps/stepHeader';
++import StepHeader from 'getsentry/views/amCheckout/components/stepHeader';
+ import type {StepPropsWithApi} from 'getsentry/views/amCheckout/types';
+ import type {IntentDetails} from 'getsentry/views/amCheckout/utils';
+ import {
+diff --git a/static/gsApp/views/amCheckout/steps/setPayAsYouGo.tsx b/static/gsApp/views/amCheckout/steps/setPayAsYouGo.tsx
+index 092064c50d7..07fdfcc1c45 100644
+--- a/static/gsApp/views/amCheckout/steps/setPayAsYouGo.tsx
++++ b/static/gsApp/views/amCheckout/steps/setPayAsYouGo.tsx
+@@ -21,7 +21,7 @@ import {OnDemandBudgetMode, type OnDemandBudgets} from 'getsentry/types';
+ import {isBizPlanFamily} from 'getsentry/utils/billing';
+ import {getPlanCategoryName} from 'getsentry/utils/dataCategory';
+ import trackGetsentryAnalytics from 'getsentry/utils/trackGetsentryAnalytics';
+-import StepHeader from 'getsentry/views/amCheckout/steps/stepHeader';
++import StepHeader from 'getsentry/views/amCheckout/components/stepHeader';
+ import type {StepProps} from 'getsentry/views/amCheckout/types';
+ import {getTotalBudget} from 'getsentry/views/onDemandBudgets/utils';
+ 
+diff --git a/static/gsApp/views/amCheckout/steps/setSpendLimit.tsx b/static/gsApp/views/amCheckout/steps/setSpendLimit.tsx
+index 4b94fca11af..84b5d710e96 100644
+--- a/static/gsApp/views/amCheckout/steps/setSpendLimit.tsx
++++ b/static/gsApp/views/amCheckout/steps/setSpendLimit.tsx
+@@ -6,8 +6,8 @@ import {t} from 'sentry/locale';
+ import type {OnDemandBudgets} from 'getsentry/types';
+ import {displayBudgetName} from 'getsentry/utils/billing';
+ import trackGetsentryAnalytics from 'getsentry/utils/trackGetsentryAnalytics';
+-import ReserveAdditionalVolume from 'getsentry/views/amCheckout/reserveAdditionalVolume';
+-import StepHeader from 'getsentry/views/amCheckout/steps/stepHeader';
++import StepHeader from 'getsentry/views/amCheckout/components/stepHeader';
++import ReserveAdditionalVolume from 'getsentry/views/amCheckout/steps/reserveAdditionalVolume';
+ import type {StepProps} from 'getsentry/views/amCheckout/types';
+ import {
+   getTotalBudget,
+diff --git a/static/gsApp/views/spendLimits/spendLimitSettings.tsx b/static/gsApp/views/spendLimits/spendLimitSettings.tsx
+index 8dcea206a08..27dded64966 100644
+--- a/static/gsApp/views/spendLimits/spendLimitSettings.tsx
++++ b/static/gsApp/views/spendLimits/spendLimitSettings.tsx
+@@ -35,9 +35,9 @@ import {
+   getPlanCategoryName,
+   getSingularCategoryName,
+ } from 'getsentry/utils/dataCategory';
+-import CheckoutOption from 'getsentry/views/amCheckout/checkoutOption';
++import CheckoutOption from 'getsentry/views/amCheckout/components/checkoutOption';
++import {renderPerformanceHovercard} from 'getsentry/views/amCheckout/components/volumeSliders';
+ import {getProductCheckoutDescription} from 'getsentry/views/amCheckout/steps/productSelect';
+-import {renderPerformanceHovercard} from 'getsentry/views/amCheckout/steps/volumeSliders';
+ import {
+   displayPrice,
+   displayPriceWithCents,

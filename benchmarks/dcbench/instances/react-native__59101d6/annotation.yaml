@@ -1,0 +1,100 @@
+repo: react-native
+base_commit: c102f245228c65c8107b0ec21d836fcf2f925937
+commit: 59101d6809079913fbdddb0df196b6ed383f96e4
+patch_stored: true
+gold:
+- path: .gitignore
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/Podfile
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/Podfile.lock
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/android/app/src/main/java/com/facebook/react/uiapp/RNTesterApplication.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/js/utils/RNTesterList.android.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/js/utils/RNTesterList.ios.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/metro.config.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/package.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: .markdownlint-cli2.mjs
+- path: packages/debugger-frontend/dist/third-party/front_end/entrypoints/devtools_app/devtools_app.js
+- path: packages/debugger-shell/src/electron/AppMenu.js
+- path: packages/jest-preset/jest/mocks/ActivityIndicator.js
+- path: packages/jest-preset/jest/mocks/AppState.js
+- path: packages/jest-preset/jest/mocks/Image.js
+- path: packages/jest-preset/jest/mocks/Linking.js
+- path: packages/jest-preset/jest/mocks/Modal.js
+- path: packages/jest-preset/jest/mocks/Text.js
+- path: packages/jest-preset/jest/mocks/Vibration.js
+- path: packages/jest-preset/jest/mocks/View.js
+- path: packages/new-app-screen/src/NewAppScreen.js
+- path: packages/react-native-babel-preset/src/__tests__/plugin-warn-on-deep-imports-test.js
+- path: packages/react-native-codegen/src/generators/__tests__/RNCodegen-test.js
+- path: packages/react-native-codegen/src/parsers/flow/components/__test_fixtures__/fixtures.js
+- path: packages/react-native-popup-menu-android/android/src/main/jni/ReactPopupMenuAndroidSpecs.h
+- path: packages/react-native-popup-menu-android/js/PopupMenuAndroid.android.js
+- path: packages/react-native/Libraries/Alert/Alert.d.ts
+- path: packages/react-native/Libraries/Animated/Animated.js
+- path: packages/react-native/Libraries/Animated/__tests__/AnimatedObject-itest.js
+- path: packages/react-native/Libraries/BatchedBridge/__tests__/MessageQueue-itest.js
+- path: packages/react-native/Libraries/EventEmitter/NativeEventEmitter.d.ts
+- path: packages/react-native/Libraries/NativeAnimation/RCTNativeAnimatedModule.mm
+- path: packages/react-native/Libraries/NativeAnimation/RCTNativeAnimatedNodesManager.mm
+- path: packages/react-native/React/CoreModules/RCTPerfMonitor.mm
+- path: packages/react-native/React/Fabric/Mounting/ComponentViews/Image/RCTImageComponentView.mm
+- path: packages/react-native/React/Fabric/Mounting/ComponentViews/LegacyViewManagerInterop/RCTLegacyViewManagerInteropComponentView.mm
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/ViewManager.java
+- path: packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.h
+- path: packages/react-native/ReactAndroid/src/main/jni/react/fabric/SurfaceHandlerBinding.h
+- path: packages/react-native/ReactCommon/cxxreact/CxxNativeModule.cpp
+- path: packages/react-native/ReactCommon/cxxreact/CxxNativeModule.h
+- path: packages/react-native/ReactCommon/cxxreact/NativeModule.h
+- path: packages/react-native/ReactCommon/cxxreact/tests/RecoverableErrorTest.cpp
+- path: packages/react-native/ReactCommon/jsi/jsi/test/testlib.cpp
+- path: packages/react-native/ReactCommon/jsi/jsi/test/testlib.h
+- path: packages/react-native/ReactCommon/jsinspector-modern/tests/ConsoleCreateTaskTest.cpp
+- path: packages/react-native/ReactCommon/react/renderer/core/State.h
+- path: packages/react-native/ReactCommon/react/renderer/imagemanager/platform/ios/react/renderer/imagemanager/RCTImagePrimitivesConversions.h
+- path: packages/react-native/ReactCommon/react/test_utils/shadowTreeGeneration.h
+- path: packages/react-native/scripts/cocoapods/autolinking.rb
+- path: packages/react-native/scripts/ios-prebuild/utils.js
+- path: packages/react-native/scripts/react_native_pods.rb
+- path: packages/rn-tester/js/components/RNTesterModuleContainer.js
+- path: packages/rn-tester/js/examples/FlatList/FlatList-multiColumn.js
+- path: packages/rn-tester/js/examples/Text/TextExample.android.js
+- path: scripts/js-api/build-types/transforms/flow/ensureNoUnprefixedProps.js
+- path: scripts/js-api/build-types/transforms/typescript/replaceDefaultExportName.js
+- path: scripts/releases-ci/publish-updated-packages.js
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Textbook #65 over-selection: this is a pure deletion commit (removes the OSSLibraryExample sample
+  package, 197 insertions/2202 deletions across 59 files) yet diffctx pulled in 128 ctx_files -- more
+  than double the files actually in the diff -- and produced 48,556 md tokens. The head of ctx.md correctly
+  lists changed/deleted files, but then dumps the ENTIRE 180-line .gitignore and multiple 400-line Podfile.lock
+  windows verbatim for what are tiny line-level edits, and beyond that pulls in dozens of files with no
+  relation to the change at all (a vendored third-party debugger bundle, unrelated Jest mocks, a community
+  popup-menu package, markdownlint config, random C++ test files). Recall on the actually-relevant files
+  is fine (they''re all present), but precision is severely damaged -- the bulk of the token budget is
+  noise a reader would have to wade through to find the 8 files that matter.'

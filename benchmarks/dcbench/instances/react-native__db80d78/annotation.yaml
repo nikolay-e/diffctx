@@ -1,0 +1,42 @@
+repo: react-native
+base_commit: 7916f7e12014c42b2bc9bfcfe053e37358fc39a4
+commit: db80d78d7a3d61d5bd6871258513f778851059f5
+patch_stored: true
+gold:
+- path: packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/NdkConfiguratorUtils.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/build.gradle.kts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/CMakeLists.txt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/hermes/reactexecutor/OnLoad.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/sdks/ossonly-soloader/src/main/java/com/facebook/soloader/MergedSoMapping.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/sdks/ossonly-soloader/src/main/java/com/facebook/soloader/SoLoader.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'diff.stat is 261 insertions/233 deletions across 31 files (merging .so libraries into one), and
+  the ctx_files count (59) shows meaningful expansion beyond the 31 touched files. Unlike the react-native/004
+  and /014 cases I could not pin exact noise filenames from the 60-line head sample, but the pathology
+  is visible directly: CMakeLists.txt files (coarse build-config, no fine-grained tree-sitter grammar)
+  are rendered as single whole-file ''chunk'' fragments (e.g. a 138-line Kotlin file for what is likely
+  a handful of changed lines), so token cost tracks file size rather than diff size. Recall is good since
+  the touched build files legitimately need cross-referencing to understand the merge, but precision suffers
+  from full-file rather than hunk-scoped rendering.'

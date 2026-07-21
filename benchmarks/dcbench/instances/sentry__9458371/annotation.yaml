@@ -1,0 +1,46 @@
+repo: sentry
+base_commit: b6c4d31ef9554843a3c694dc837e4df97907fd6c
+commit: 9458371a81d8df7858d044c3209c3cd332ed6a9c
+patch_stored: true
+gold:
+- path: .envrc
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/workflows/frontend.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .node-version
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .volta.json (deleted)
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: config/tsconfig.base.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: package.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: rspack.config.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 1
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Most concerning hang of the batch: this is a small, simple 21-file dependency-bump diff (75 insertions,
+  76 deletions, all plain-text CI YAML/config/JSON edits, no binaries, no huge generated files, no mass
+  renames or deletions) yet it still produced zero output. Unlike the other 6 hangs there is no obvious
+  size/complexity/binary/rename trigger visible in the diff itself, which suggests the hang here is not
+  correlated with diff content characteristics at all but with something systemic (e.g. a file-count-independent
+  stall, an environment/tool-invocation issue, or a rare pathological input like rspack.config.ts''s mix
+  of JS/TS config logic). This is the cleanest minimal repro case for issue #70 and should be prioritized
+  for root-causing since it rules out ''big diff'' as the sole explanation.'

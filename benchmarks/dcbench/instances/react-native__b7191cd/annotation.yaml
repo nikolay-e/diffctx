@@ -1,0 +1,73 @@
+repo: react-native
+base_commit: 9295b9caa8b175baebcf0eb3ee1e38cd2f7017df
+commit: b7191cde4e36d3d712affc8b714e7d6179642cbb
+patch_stored: true
+gold:
+- path: packages/react-native-codegen/src/generators/modules/GenerateModuleJavaSpec.js:buildGetConstantsMethod
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: packages/react-native/ReactAndroid/proguard-rules.pro
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactInstanceManager.java
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/CatalystInstanceImpl.java
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/config/ReactFeatureFlags.java
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/internal/turbomodule/core/TurboModuleManager.java
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/react-native-codegen/src/generators/RNCodegen.js
+- path: packages/react-native-codegen/src/generators/components/GenerateComponentDescriptorH.js
+- path: packages/react-native-codegen/src/generators/modules/GenerateModuleJniH.js
+- path: packages/react-native-codegen/src/generators/modules/Utils.js
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactActivity.java
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactActivityDelegate.java
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/ReactRootView.java
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/BaseJavaModule.java
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/NativeModule.java
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/ReactContext.java
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/bridge/Systrace.kt
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/fabric/FabricUIManager.java
+- path: packages/react-native/ReactAndroid/src/main/java/com/facebook/react/uimanager/ViewManager.java
+- path: packages/react-native/ReactAndroid/src/main/jni/react/fabric/FabricUIManagerBinding.h
+- path: packages/react-native/ReactAndroid/src/main/jni/react/jni/JCallback.h
+- path: packages/react-native/ReactAndroid/src/main/jni/react/jni/JDynamicNative.h
+- path: packages/react-native/ReactAndroid/src/main/jni/react/jni/JMessageQueueThread.h
+- path: packages/react-native/ReactAndroid/src/main/jni/react/jni/JRuntimeExecutor.h
+- path: packages/react-native/ReactAndroid/src/main/jni/react/jni/JavaModuleWrapper.cpp
+- path: packages/react-native/ReactAndroid/src/main/jni/react/runtime/jni/JReactHostInspectorTarget.h
+- path: packages/react-native/ReactCommon/cxxreact/JSBigString.h
+- path: packages/react-native/ReactCommon/cxxreact/NativeToJsBridge.h
+- path: packages/react-native/ReactCommon/jserrorhandler/JsErrorHandler.cpp
+- path: packages/react-native/ReactCommon/jsi/jsi/jsi.h
+- path: packages/react-native/ReactCommon/jsi/jsi/test/testlib.cpp
+- path: packages/react-native/ReactCommon/jsi/jsi/threadsafe.h
+- path: packages/react-native/ReactCommon/jsinspector-modern/tests/ReactInstanceIntegrationTest.cpp
+- path: packages/react-native/ReactCommon/react/nativemodule/core/platform/android/ReactCommon/JavaTurboModule.cpp
+- path: packages/react-native/ReactCommon/react/nativemodule/core/platform/ios/ReactCommon/RCTInteropTurboModule.h
+nontrivial_gold_count: 1
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Confirmed over-selection: meta reports ctx_files=74 against only 41 files actually touched by
+  the diff (134 changed lines total, a package-namespace rename com.facebook.react.turbomodule -> .internal.turbomodule).
+  Diffing ctx.md''s ''## path'' headers against truth.diff''s real file list shows 33 extra files with
+  zero relation to this commit (BaseJavaModule.java, NativeModule.java, ReactActivity.java, cocoa/jsi
+  headers, JNI glue, tests) pulled in as graph-neighbor ''context''. Compounding this, the sampled head
+  shows the tool dumping an ENTIRE 525-line generated snapshot file (GenerateModuleJavaSpec-test.js.snap)
+  as one fragment even though only ~9 lines (single import statement, repeated 8x) actually changed inside
+  it — whole-file chunking instead of touched-region slicing. Net: 47989 tokens (worse token/changed-line
+  ratio than the other two over_dump samples in this set) for what is fundamentally a mechanical rename
+  plus one doc-comment tweak.'

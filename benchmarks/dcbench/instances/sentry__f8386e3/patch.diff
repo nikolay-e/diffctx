@@ -1,0 +1,3052 @@
+From f8386e32fccba988daa8d4eadc481e86e1344e2c Mon Sep 17 00:00:00 2001
+From: Dan Fuller <dfuller@sentry.io>
+Date: Mon, 28 Apr 2025 09:54:07 -0700
+Subject: [PATCH] chore(migrations): Switch all uses of `RunSQL` over to
+ `SafeRunSQL`, and stop relying on `allow_run_sql` (#90453)
+
+Using `RunSQL` is dangerous, because it doesn't apply statement and
+timeout locks when it runs. We have `SafeRunSQL` now, so we should rely
+on that.
+
+This removes uses of `RunSQL` in the migrations. I'll remove the code
+that supports `allow_run_sql` in a follow up
+
+<!-- Describe your PR here. -->
+---
+ .../0003_add_scopes_to_api_key_replica.py     |   5 +-
+ ..._squashed_0484_break_org_member_user_fk.py | 150 ++++++++++--------
+ .../migrations/0490_add_is_test_to_org.py     |   5 +-
+ ...491_remove_orgmemmap_unique_constraints.py |   5 +-
+ .../0505_debugfile_date_accessed.py           |   5 +-
+ .../migrations/0526_pr_comment_type_column.py |   5 +-
+ .../0535_add_created_date_to_outbox_model.py  |   7 +-
+ .../0544_remove_groupsubscription_columns.py  |   5 +-
+ ...45_add_last_verified_auth_ident_replica.py |   5 +-
+ .../0548_add_is_unclaimed_boolean_to_user.py  |   5 +-
+ .../0549_re_add_groupsubscription_columns.py  |   5 +-
+ ...ganizationmapping_replicate_require_2fa.py |   5 +-
+ ...commitfilechange_delete_language_column.py |   5 +-
+ .../0570_repository_add_languages_column.py   |   5 +-
+ ...d_early_adopter_to_organization_mapping.py |   5 +-
+ .../0590_add_metadata_to_sentry_app.py        |   5 +-
+ ...ve_relocation_hybrid_cloud_foreign_keys.py |   5 +-
+ ...te_relocation_hybrid_cloud_foreign_keys.py |   5 +-
+ .../0607_drop_externalactor_actorid.py        |   5 +-
+ .../0610_remove_notification_setting_table.py |   8 +-
+ ...7_monitor_boolean_fields_muted_disabled.py |   5 +-
+ ...nt_user_id_from_userreport_table_step_2.py |   5 +-
+ .../0624_add_is_muted_monitorenvironment.py   |   5 +-
+ ..._add_priority_columns_to_groupedmessage.py |   5 +-
+ ...dd_priority_locked_at_to_groupedmessage.py |   5 +-
+ ...0637_remove_pr_comment_pr_id_constraint.py |   5 +-
+ ...ate_added_to_dashboard_widget_on_demand.py |   5 +-
+ ...ate_modified_col_dashboard_widget_query.py |   5 +-
+ .../0651_enable_activated_alert_rules.py      |   5 +-
+ ...us_column_for_alert_rule_trigger_action.py |   5 +-
+ .../migrations/0658_projectkey_usecase.py     |   5 +-
+ .../0663_artifactbundleindex_cleanup_step3.py |  12 +-
+ .../0665_monitor_drop_last_state_change_db.py |   5 +-
+ ...78_add_is_hidden_dashboard_widget_query.py |   5 +-
+ ...2_monitors_constrain_to_project_id_slug.py |   6 +-
+ .../0689_drop_config_from_cron_checkin.py     |   5 +-
+ .../0697_remove_monitor_owner_actor_id_db.py  |   5 +-
+ .../0700_drop_fileid_controlavatar.py         |   9 +-
+ ...707_alert_rule_activations_incidents_fk.py |   7 +-
+ .../0709_alertrule_remove_owner_state.py      |   9 +-
+ .../0710_grouphistory_remove_actor_state.py   |   6 +-
+ .../0713_team_remove_actor_state.py           |   6 +-
+ .../0714_drop_project_team_avatar.py          |   7 +-
+ .../0715_remove_actormodel_constraints.py     |   6 +-
+ ...subscription_timebox_column_deletion_db.py |   5 +-
+ .../migrations/0720_remove_actor_columns.py   |  11 +-
+ .../migrations/0722_drop_sentryfunctions.py   |   8 +-
+ .../0724_discover_saved_query_dataset.py      |   5 +-
+ ...725_create_sentry_groupsearchview_table.py |   9 +-
+ .../migrations/0733_relocation_provenance.py  |   5 +-
+ ...add_discover_saved_query_dataset_source.py |   5 +-
+ .../migrations/0738_rm_reprocessing_step3.py  |  14 +-
+ .../0741_metric_alert_anomaly_detection.py    |   5 +-
+ ..._add_dataset_source_field_to_dashboards.py |   5 +-
+ .../0746_add_bitflags_to_hybrid_cloud.py      |   5 +-
+ ...0_disable_member_invite_in_hybrid_cloud.py |   5 +-
+ .../0757_add_scopes_to_apiapplication.py      |   5 +-
+ ...9_remove_spanattributeextraction_tables.py |  10 +-
+ ...ove_appstore_connect_integration_tables.py |  10 +-
+ .../0776_drop_group_score_in_database.py      |   5 +-
+ ..._add_new_field_to_dashboard_permissions.py |   5 +-
+ .../0786_drop_broadcasts_cta_column.py        |   5 +-
+ .../0790_delete_dashboard_perms_col.py        |   5 +-
+ .../0003_drop_remote_subscription.py          |   8 +-
+ ...002_remove_separate_remote_subscription.py |   7 +-
+ .../0003_drop_remote_subscription.py          |   8 +-
+ .../0004_projectuptimesubscription_mode.py    |   5 +-
+ .../uptime/migrations/0005_uptime_status.py   |   5 +-
+ ...06_projectuptimesubscription_name_owner.py |   5 +-
+ .../migrations/0008_uptime_url_suffix.py      |  11 +-
+ .../0011_remove_uptime_whois_columns_db.py    |   5 +-
+ ...0012_uptime_subscription_request_fields.py |   9 +-
+ ...0018_add_trace_sampling_field_to_uptime.py |   5 +-
+ .../0010_detector_state_unique_group.py       |   9 +-
+ 74 files changed, 263 insertions(+), 334 deletions(-)
+
+diff --git a/src/sentry/hybridcloud/migrations/0003_add_scopes_to_api_key_replica.py b/src/sentry/hybridcloud/migrations/0003_add_scopes_to_api_key_replica.py
+index 092ed71bbc5..e5d779d84fb 100644
+--- a/src/sentry/hybridcloud/migrations/0003_add_scopes_to_api_key_replica.py
++++ b/src/sentry/hybridcloud/migrations/0003_add_scopes_to_api_key_replica.py
+@@ -5,6 +5,7 @@ from django.db import migrations
+ import bitfield.models
+ import sentry.db.models.fields.array
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("hybridcloud", "0002_add_slug_reservation_replica_model"),
+     ]
+@@ -29,7 +28,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "hybridcloud_apikeyreplica" ADD COLUMN "scopes" BIGINT NOT NULL DEFAULT 0;
+                     ALTER TABLE "hybridcloud_apikeyreplica" ADD COLUMN "scope_list" TEXT NULL;
+diff --git a/src/sentry/migrations/0001_squashed_0484_break_org_member_user_fk.py b/src/sentry/migrations/0001_squashed_0484_break_org_member_user_fk.py
+index 86c413bbfc6..ec351fe2e50 100644
+--- a/src/sentry/migrations/0001_squashed_0484_break_org_member_user_fk.py
++++ b/src/sentry/migrations/0001_squashed_0484_break_org_member_user_fk.py
+@@ -38,6 +38,7 @@ import sentry.users.models.authenticator
+ import sentry.users.models.user
+ import sentry.utils.security.hash
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -53,8 +54,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     replaces = [
+         ("sentry", "0001_squashed_0200_release_indices"),
+         ("sentry", "0201_semver_package"),
+@@ -4599,7 +4598,7 @@ class Migration(CheckedMigration):
+                 "unique_together": {("user", "application")},
+             },
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql="\n        create or replace function sentry_increment_project_counter(\n                project bigint, delta int) returns int as $$\n            declare\n            new_val int;\n            begin\n            loop\n                update sentry_projectcounter set value = value + delta\n                where project_id = project\n                returning value into new_val;\n                if found then\n                return new_val;\n                end if;\n                begin\n                insert into sentry_projectcounter(project_id, value)\n                    values (project, delta)\n                    returning value into new_val;\n                return new_val;\n                exception when unique_violation then\n                end;\n            end loop;\n            end\n            $$ language plpgsql;\n        ",
+             hints={"tables": ["sentry_projectcounter"]},
+         ),
+@@ -5747,7 +5746,7 @@ class Migration(CheckedMigration):
+                 "unique_together": {("provider", "organization_id")},
+             },
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql="ALTER TABLE sentry_timeseriessnapshot ALTER COLUMN values SET DATA TYPE float[] USING values::float[]",
+             hints={"tables": ["sentry_timeseriessnapshot"]},
+         ),
+@@ -6039,15 +6038,16 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_projectdsymfile" ADD COLUMN "checksum" varchar(40) NULL;\n                    ',
+                     reverse_sql='\n                        ALTER TABLE "sentry_projectdsymfile" DROP COLUMN "checksum";\n                        ',
+                     hints={"tables": ["sentry_projectdsymfile"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    CREATE INDEX CONCURRENTLY "sentry_projectdsymfile_checksum_8fb028a8_idx" ON "sentry_projectdsymfile" ("checksum");\n                    ',
+                     reverse_sql='\n                        DROP INDEX CONCURRENTLY "sentry_projectdsymfile_checksum_8fb028a8_idx";\n                        ',
+                     hints={"tables": ["sentry_projectdsymfile"]},
++                    use_statement_timeout=False,
+                 ),
+             ],
+             state_operations=[
+@@ -6096,7 +6096,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_release" ADD COLUMN "status" integer NULL;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_release" DROP COLUMN "status";\n                    ',
+                     hints={"tables": ["sentry_release"]},
+@@ -6105,20 +6105,22 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_groupinbox" ADD COLUMN "organization_id" bigint NULL;\n                    ALTER TABLE "sentry_groupinbox" ADD COLUMN "project_id" bigint NULL;\n                    ',
+                     reverse_sql='\n                        ALTER TABLE "sentry_groupinbox" DROP COLUMN "organization_id";\n                        ALTER TABLE "sentry_groupinbox" DROP COLUMN "project_id";\n                        ',
+                     hints={"tables": ["sentry_groupinbox"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    CREATE INDEX CONCURRENTLY "sentry_groupinbox_organization_id_7b67769a" ON "sentry_groupinbox" ("organization_id");\n                    ',
+                     reverse_sql='\n                        DROP INDEX CONCURRENTLY "sentry_groupinbox_organization_id_7b67769a";\n                        ',
+                     hints={"tables": ["sentry_groupinbox"]},
++                    use_statement_timeout=False,
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    CREATE INDEX CONCURRENTLY "sentry_groupinbox_project_id_ef8f034d" ON "sentry_groupinbox" ("project_id");\n                    ',
+                     reverse_sql='\n                        DROP INDEX CONCURRENTLY "sentry_groupinbox_project_id_ef8f034d";\n                        ',
+                     hints={"tables": ["sentry_groupinbox"]},
++                    use_statement_timeout=False,
+                 ),
+             ],
+             state_operations=[
+@@ -6301,7 +6303,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                        ALTER TABLE "sentry_dashboard" DROP COLUMN "status";\n                        ',
+                     reverse_sql='\n                        ALTER TABLE "sentry_dashboard" ADD COLUMN "status" int NOT NULL;\n                        ',
+                     hints={"tables": ["sentry_dashboard"]},
+@@ -6362,10 +6364,11 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="\n                    CREATE INDEX CONCURRENTLY IF NOT EXISTS sentry_groupinbox_date_added_f113c11b\n                    ON sentry_groupinbox (date_added);\n                    ",
+                     reverse_sql="\n                    DROP INDEX CONCURRENTLY IF EXISTS sentry_groupinbox_date_added_f113c11b;\n                    ",
+                     hints={"tables": ["sentry_groupinbox"]},
++                    use_statement_timeout=False,
+                 ),
+             ],
+             state_operations=[
+@@ -6586,15 +6589,16 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='ALTER TABLE sentry_team ADD COLUMN "actor_id" bigint NULL;',
+                     reverse_sql='ALTER TABLE sentry_team DROP COLUMN "actor_id";',
+                     hints={"tables": ["sentry_team"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS sentry_team_actor_idx ON sentry_team (actor_id);",
+                     reverse_sql="DROP INDEX CONCURRENTLY IF EXISTS sentry_team_actor_idx;",
+                     hints={"tables": ["sentry_team"]},
++                    use_statement_timeout=False,
+                 ),
+             ],
+             state_operations=[
+@@ -6734,12 +6738,12 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_externalactor" ALTER COLUMN "integration_id" SET DEFAULT 1;\n                    UPDATE "sentry_externalactor" SET "integration_id" = 1 where "integration_id" is NULL;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_externalactor" ALTER COLUMN "integration_id" DROP DEFAULT;\n                    ',
+                     hints={"tables": ["sentry_externalactor"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_externalactor" ALTER COLUMN "integration_id" SET NOT NULL;\n                    ALTER TABLE "sentry_externalactor" ALTER COLUMN "integration_id" DROP DEFAULT;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_externalactor" ALTER COLUMN "integration_id" DROP NOT NULL;\n                    ',
+                     hints={"tables": ["sentry_externalactor"]},
+@@ -7021,10 +7025,11 @@ class Migration(CheckedMigration):
+                 fields=["organization", "status"], name="sentry_rele_organiz_6975e7_idx"
+             ),
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql='\n            CREATE INDEX CONCURRENTLY IF NOT EXISTS "sentry_organization_slug_upper_idx"\n            ON "sentry_organization" (UPPER(("slug"::text)));\n            ',
+             reverse_sql="DROP INDEX CONCURRENTLY IF EXISTS sentry_organization_slug_upper_idx",
+             hints={"tables": ["sentry_organization"]},
++            use_statement_timeout=False,
+         ),
+         migrations.AlterField(
+             model_name="organization",
+@@ -7065,35 +7070,37 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_release_project" ADD COLUMN "adopted" timestamp with time zone NULL;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_release_project" DROP COLUMN "adopted";\n                    ',
+                     hints={"tables": ["sentry_release_project"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_release_project" ADD COLUMN "unadopted" timestamp with time zone NULL;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_release_project" DROP COLUMN "unadopted";\n                    ',
+                     hints={"tables": ["sentry_release_project"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_releaseprojectenvironment" ADD COLUMN "adopted" timestamp with time zone NULL;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_releaseprojectenvironment" DROP COLUMN "adopted";\n                    ',
+                     hints={"tables": ["sentry_releaseprojectenvironment"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_releaseprojectenvironment" ADD COLUMN "unadopted" timestamp with time zone NULL;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_releaseprojectenvironment" DROP COLUMN "unadopted";\n                    ',
+                     hints={"tables": ["sentry_releaseprojectenvironment"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    CREATE INDEX CONCURRENTLY IF NOT EXISTS "sentry_release_project_proj_id_adopted_4ce765fa" ON "sentry_release_project" ("project_id", "adopted");\n                    ',
+                     reverse_sql="DROP INDEX CONCURRENTLY IF EXISTS sentry_release_project_proj_id_adopted_4ce765fa",
+                     hints={"tables": ["sentry_release_project"]},
++                    use_statement_timeout=False,
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    CREATE INDEX CONCURRENTLY IF NOT EXISTS "sentry_release_project_proj_id_unadopted_8h5g84ee" ON "sentry_release_project" ("project_id", "unadopted");\n                    ',
+                     reverse_sql="DROP INDEX CONCURRENTLY IF EXISTS sentry_release_project_proj_id_unadopted_8h5g84ee",
+                     hints={"tables": ["sentry_release_project"]},
++                    use_statement_timeout=False,
+                 ),
+             ],
+             state_operations=[
+@@ -7561,7 +7568,7 @@ class Migration(CheckedMigration):
+                 name="sentry_audi_organiz_588b1e_idx",
+             ),
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql='\n                DROP TABLE IF EXISTS "jira_ac_tenant";\n                ',
+             reverse_sql="CREATE TABLE jira_ac_tenant (fake_col int)",
+             hints={"tables": ["jira_ac_tenant"]},
+@@ -7675,7 +7682,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="ALTER TABLE sentry_scheduleddeletion ALTER COLUMN aborted DROP NOT NULL",
+                     reverse_sql="ALTER TABLE sentry_scheduleddeletion ALTER COLUMN aborted SET NOT NULL",
+                     hints={"tables": ["sentry_scheduleddeletion"]},
+@@ -7690,7 +7697,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="ALTER TABLE sentry_scheduleddeletion DROP COLUMN aborted",
+                     reverse_sql="ALTER TABLE sentry_scheduleddeletion ADD COLUMN aborted BOOLEAN",
+                     hints={"tables": ["sentry_scheduleddeletion"]},
+@@ -8090,7 +8097,7 @@ class Migration(CheckedMigration):
+             name="key",
+             field=models.CharField(max_length=256),
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql="\n            ALTER SEQUENCE sentry_stringindexer_id_seq START WITH 65536;\n            ALTER SEQUENCE sentry_stringindexer_id_seq RESTART;\n            ",
+             reverse_sql="\n            ALTER SEQUENCE sentry_stringindexer_id_seq START WITH 1;\n            ALTER SEQUENCE sentry_stringindexer_id_seq RESTART;\n            ",
+             hints={"tables": ["sentry_stringindexer"]},
+@@ -8144,7 +8151,7 @@ class Migration(CheckedMigration):
+                 fields=("string", "organization_id"), name="perf_unique_org_string"
+             ),
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql="\n            ALTER SEQUENCE sentry_perfstringindexer_id_seq START WITH 65536;\n            ALTER SEQUENCE sentry_perfstringindexer_id_seq RESTART;\n            ",
+             reverse_sql="\n            ALTER SEQUENCE sentry_perfstringindexer_id_seq START WITH 1;\n            ALTER SEQUENCE sentry_perfstringindexer_id_seq RESTART;\n             ",
+             hints={"tables": ["sentry_perfstringindexer"]},
+@@ -8296,17 +8303,17 @@ class Migration(CheckedMigration):
+                 "db_table": "sentry_authprovider_default_teams",
+             },
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql="ALTER TABLE sentry_dashboardproject ALTER COLUMN id TYPE bigint",
+             reverse_sql="ALTER TABLE sentry_dashboardproject ALTER COLUMN id TYPE int",
+             hints={"tables": ["sentry_dashboardproject"]},
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql="ALTER TABLE sentry_dashboardproject ALTER COLUMN id TYPE bigint",
+             reverse_sql="ALTER TABLE sentry_dashboardproject ALTER COLUMN dashboard_id TYPE int",
+             hints={"tables": ["sentry_dashboardproject"]},
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql="ALTER TABLE sentry_dashboardproject ALTER COLUMN id TYPE bigint",
+             reverse_sql="ALTER TABLE sentry_dashboardproject ALTER COLUMN project_id TYPE int",
+             hints={"tables": ["sentry_dashboardproject"]},
+@@ -8462,29 +8469,29 @@ class Migration(CheckedMigration):
+             name="project_id",
+             field=sentry.db.models.fields.bounded.BoundedBigIntegerField(db_index=True),
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql="ALTER TABLE sentry_externalissue ALTER COLUMN organization_id TYPE bigint",
+             reverse_sql="ALTER TABLE sentry_externalissue ALTER COLUMN organization_id TYPE int",
+             hints={"tables": ["sentry_externalissue"]},
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql="ALTER TABLE sentry_externalissue ALTER COLUMN integration_id TYPE bigint",
+             reverse_sql="ALTER TABLE sentry_externalissue ALTER COLUMN integration_id TYPE int",
+             hints={"tables": ["sentry_externalissue"]},
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql="ALTER TABLE sentry_dashboardproject ALTER COLUMN project_id TYPE bigint",
+             reverse_sql="ALTER TABLE sentry_dashboardproject ALTER COLUMN project_id TYPE int",
+             hints={"tables": ["sentry_dashboardproject"]},
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql="ALTER TABLE sentry_dashboardproject ALTER COLUMN dashboard_id TYPE bigint",
+             reverse_sql="ALTER TABLE sentry_dashboardproject ALTER COLUMN dashboard_id TYPE int",
+             hints={"tables": ["sentry_dashboardproject"]},
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_groupedmessage" ADD COLUMN "type" integer NOT NULL DEFAULT 1;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_groupedmessage" DROP COLUMN "type";\n                    ',
+                     hints={"tables": ["sentry_groupedmessage"]},
+@@ -8528,7 +8535,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_projectownership" ADD COLUMN "suspect_committer_auto_assignment" BOOLEAN NOT NULL DEFAULT false;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_projectownership" DROP COLUMN "suspect_committer_auto_assignment";\n                    ',
+                     hints={"tables": ["sentry_projectownership"]},
+@@ -8587,7 +8594,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_appconnectbuild" ADD COLUMN "app_id_str" varchar(256) NOT NULL DEFAULT \'0\';\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_appconnectbuild" DROP COLUMN "app_id_str";\n                    ',
+                     hints={"tables": ["sentry_appconnectbuild"]},
+@@ -8643,7 +8650,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_appconnectbuild" DROP COLUMN "app_id";\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_appconnectbuild" ADD COLUMN "app_id" int NULL;\n                    ',
+                     hints={"tables": ["sentry_appconnectbuild"]},
+@@ -8652,7 +8659,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_repositoryprojectpathconfig" ADD COLUMN "automatically_generated" BOOLEAN NOT NULL DEFAULT false;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_repositoryprojectpathconfig" DROP COLUMN "automatically_generated";\n                    ',
+                     hints={"tables": ["sentry_repositoryprojectpathconfig"]},
+@@ -8736,7 +8743,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_team" ADD COLUMN "idp_provisioned" BOOLEAN NOT NULL DEFAULT false;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_team" DROP COLUMN "idp_provisioned";\n                    ',
+                     hints={"tables": ["sentry_team"]},
+@@ -9326,12 +9333,12 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "auth_user" ADD COLUMN "avatar_type" smallint NOT NULL DEFAULT 0;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "auth_user" DROP COLUMN "avatar_type";\n                    ',
+                     hints={"tables": ["auth_user"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "auth_user" ADD COLUMN "avatar_url" varchar(120) DEFAULT NULL;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "auth_user" DROP COLUMN "avatar_url";\n                    ',
+                     hints={"tables": ["auth_user"]},
+@@ -9352,7 +9359,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_groupsnooze" ADD COLUMN "until_escalating" BOOLEAN NOT NULL DEFAULT false;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_groupsnooze" DROP COLUMN "until_escalating";\n                    ',
+                     hints={"tables": ["sentry_groupsnooze"]},
+@@ -9381,7 +9388,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_debugidartifactbundle" DROP COLUMN "date_last_accessed";\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_debugidartifactbundle" ADD COLUMN "date_last_accessed" timestamp with time zone NULL;\n                    ',
+                     hints={"tables": ["sentry_debugidartifactbundle"]},
+@@ -9390,7 +9397,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="\n                    ALTER TABLE sentry_perfstringindexer ADD COLUMN use_case_id varchar(120) NOT NULL DEFAULT 'performance';\n                    ",
+                     reverse_sql="\n                    ALTER TABLE sentry_perfstringindexer DROP COLUMN use_case_id;\n                    ",
+                     hints={"tables": ["sentry_perfstringindexer"]},
+@@ -9599,7 +9606,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_rulesnooze" ADD COLUMN "date_added" timestamp NOT NULL;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_rulesnooze" DROP COLUMN "date_added";\n                    ',
+                     hints={"tables": ["sentry_rulesnooze"]},
+@@ -9677,74 +9684,83 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_groupsnooze" DROP COLUMN "until_escalating";\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_groupsnooze" ADD COLUMN "until_escalating" BOOLEAN DEFAULT false\n                    ',
+                     hints={"tables": ["sentry_groupsnooze"]},
+                 ),
+             ],
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql='ALTER TABLE "sentry_actor" DROP CONSTRAINT IF EXISTS "sentry_actor_team_id_6ca8eba5_fk_sentry_team_id";',
+             reverse_sql="",
+             hints={"tables": ["sentry_actor"]},
++            use_statement_timeout=False,
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql='ALTER TABLE "sentry_actor" DROP CONSTRAINT IF EXISTS "sentry_actor_team_id_6ca8eba5_uniq";',
+             reverse_sql="",
+             hints={"tables": ["sentry_actor"]},
++            use_statement_timeout=False,
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql='DROP INDEX CONCURRENTLY IF EXISTS "sentry_actor_team_id_6ca8eba5";',
+             reverse_sql="",
+             hints={"tables": ["sentry_actor"]},
++            use_statement_timeout=False,
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql='DROP INDEX CONCURRENTLY IF EXISTS "sentry_actor_team_id_6ca8eba5_uniq";',
+             reverse_sql="",
+             hints={"tables": ["sentry_actor"]},
++            use_statement_timeout=False,
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql='CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "sentry_actor_team_id_6ca8eba5_uniq" ON "sentry_actor" ("team_id");',
+             reverse_sql="",
+             hints={"tables": ["sentry_actor"]},
++            use_statement_timeout=False,
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql='ALTER TABLE "sentry_actor" ADD CONSTRAINT "sentry_actor_team_id_6ca8eba5_fk_sentry_team_id" FOREIGN KEY ("team_id") REFERENCES "sentry_team" ("id") DEFERRABLE INITIALLY DEFERRED NOT VALID;',
+             reverse_sql="",
+             hints={"tables": ["sentry_actor"]},
++            use_statement_timeout=False,
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql='ALTER TABLE "sentry_actor" VALIDATE CONSTRAINT "sentry_actor_team_id_6ca8eba5_fk_sentry_team_id";',
+             reverse_sql="",
+             hints={"tables": ["sentry_actor"]},
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql='ALTER TABLE "sentry_actor" DROP CONSTRAINT IF EXISTS "sentry_actor_user_id_c832ff63_uniq";',
+             reverse_sql="",
+             hints={"tables": ["sentry_actor"]},
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql='DROP INDEX CONCURRENTLY IF EXISTS "sentry_actor_user_id_c832ff63";',
+             reverse_sql="",
+             hints={"tables": ["sentry_actor"]},
++            use_statement_timeout=False,
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql='DROP INDEX CONCURRENTLY IF EXISTS "sentry_actor_user_id_c832ff63_uniq";',
+             reverse_sql="",
+             hints={"tables": ["sentry_actor"]},
++            use_statement_timeout=False,
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql='CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "sentry_actor_user_id_c832ff63_uniq" ON "sentry_actor" ("user_id");',
+             reverse_sql="",
+             hints={"tables": ["sentry_actor"]},
++            use_statement_timeout=False,
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql="SELECT 1",
+             reverse_sql='\nALTER TABLE "sentry_actor" ADD CONSTRAINT "sentry_actor_team_id_6ca8eba5_uniq" UNIQUE USING INDEX "sentry_actor_team_id_6ca8eba5_uniq";\n            ',
+             hints={"tables": ["sentry_actor"]},
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql="SELECT 1",
+             reverse_sql='\nALTER TABLE "sentry_actor" ADD CONSTRAINT "sentry_actor_user_id_c832ff63_uniq" UNIQUE USING INDEX "sentry_actor_user_id_c832ff63_uniq";\n            ',
+             hints={"tables": ["sentry_actor"]},
+@@ -9794,7 +9810,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_rule" ADD COLUMN "source" integer NOT NULL DEFAULT 0;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_rule" DROP COLUMN "source";\n                    ',
+                     hints={"tables": ["sentry_rule"]},
+@@ -9808,7 +9824,7 @@ class Migration(CheckedMigration):
+                 ),
+             ],
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql="ALTER TABLE IF EXISTS sentry_notificationsetting DROP CONSTRAINT IF EXISTS sentry_notifications_target_id_f3923c98_fk_sentry_ac",
+             reverse_sql="ALTER TABLE IF EXISTS sentry_notificationsetting ADD CONSTRAINT sentry_notifications_target_id_f3923c98_fk_sentry_ac FOREIGN KEY (target_id) REFERENCES sentry_actor (id) DEFERRABLE INITIALLY DEFERRED",
+             hints={"tables": ["sentry_notificationsetting"]},
+@@ -9868,12 +9884,12 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_option" ADD COLUMN "last_updated_by" VARCHAR(16) NOT NULL DEFAULT \'unknown\';\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_option" DROP COLUMN "last_updated_by";\n                    ',
+                     hints={"tables": ["sentry_option"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_controloption" ADD COLUMN "last_updated_by" VARCHAR(16) NOT NULL DEFAULT \'unknown\';\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_controloption" DROP COLUMN "last_updated_by";\n                    ',
+                     hints={"tables": ["sentry_controloption"]},
+@@ -10013,7 +10029,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_organizationmember" ADD COLUMN "user_is_active" BOOLEAN NOT NULL DEFAULT TRUE;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_organizationmember" DROP COLUMN "user_is_active";\n                    ',
+                     hints={"tables": ["sentry_organizationmember"]},
+@@ -10094,7 +10110,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='\n                    ALTER TABLE "sentry_organizationmember" ADD COLUMN "user_email" VARCHAR(75) NULL;\n                    ',
+                     reverse_sql='\n                    ALTER TABLE "sentry_organizationmember" DROP COLUMN "user_email";\n                    ',
+                     hints={"tables": ["sentry_organizationmember"]},
+diff --git a/src/sentry/migrations/0490_add_is_test_to_org.py b/src/sentry/migrations/0490_add_is_test_to_org.py
+index 398394ba140..659b7cdc2a9 100644
+--- a/src/sentry/migrations/0490_add_is_test_to_org.py
++++ b/src/sentry/migrations/0490_add_is_test_to_org.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0489_index_checkin_timeout"),
+     ]
+@@ -27,7 +26,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_organization" ADD COLUMN "is_test" BOOLEAN NOT NULL DEFAULT FALSE;
+                     """,
+diff --git a/src/sentry/migrations/0491_remove_orgmemmap_unique_constraints.py b/src/sentry/migrations/0491_remove_orgmemmap_unique_constraints.py
+index 4e30ad2812a..a207d7b90d6 100644
+--- a/src/sentry/migrations/0491_remove_orgmemmap_unique_constraints.py
++++ b/src/sentry/migrations/0491_remove_orgmemmap_unique_constraints.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,14 +19,12 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0490_add_is_test_to_org"),
+     ]
+ 
+     operations = [
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql="""
+             ALTER TABLE "sentry_organizationmembermapping" DROP CONSTRAINT "sentry_organizationmembe_organization_id_email_66a560fc_uniq";
+             ALTER TABLE "sentry_organizationmembermapping" DROP CONSTRAINT "sentry_organizationmembe_organization_id_user_id_feb6bdf0_uniq";
+diff --git a/src/sentry/migrations/0505_debugfile_date_accessed.py b/src/sentry/migrations/0505_debugfile_date_accessed.py
+index ff60d15fe6b..d1c37d54d9a 100644
+--- a/src/sentry/migrations/0505_debugfile_date_accessed.py
++++ b/src/sentry/migrations/0505_debugfile_date_accessed.py
+@@ -4,6 +4,7 @@ import django.utils.timezone
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -19,8 +20,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0504_add_artifact_bundle_index"),
+     ]
+@@ -36,7 +35,7 @@ class Migration(CheckedMigration):
+                 # Also according to <https://www.postgresql.org/docs/current/xfunc-volatility.html>:
+                 # > Another important example is that the current_timestamp family of functions qualify as STABLE,
+                 # > since their values do not change within a transaction.
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_projectdsymfile" ADD COLUMN "date_accessed" timestamptz NOT NULL DEFAULT CURRENT_TIMESTAMP;
+                     """,
+diff --git a/src/sentry/migrations/0526_pr_comment_type_column.py b/src/sentry/migrations/0526_pr_comment_type_column.py
+index 1791094fdec..c6dbf5a67dc 100644
+--- a/src/sentry/migrations/0526_pr_comment_type_column.py
++++ b/src/sentry/migrations/0526_pr_comment_type_column.py
+@@ -6,6 +6,7 @@ from django.db import migrations
+ import sentry.db.models.fields.bounded
+ import sentry.db.models.fields.foreignkey
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -21,8 +22,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0525_add_next_checkin_latest"),
+     ]
+@@ -30,7 +29,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_pullrequest_comment" ADD COLUMN "comment_type" integer NOT NULL DEFAULT 0;
+                     """,
+diff --git a/src/sentry/migrations/0535_add_created_date_to_outbox_model.py b/src/sentry/migrations/0535_add_created_date_to_outbox_model.py
+index abff5766528..d2cb6424316 100644
+--- a/src/sentry/migrations/0535_add_created_date_to_outbox_model.py
++++ b/src/sentry/migrations/0535_add_created_date_to_outbox_model.py
+@@ -4,6 +4,7 @@ import django.utils.timezone
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -19,8 +20,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0534_add_notification_uuid_to_rule_fire_history"),
+     ]
+@@ -28,7 +27,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="""
+                     ALTER TABLE "sentry_controloutbox" ADD COLUMN "date_added" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+                     """,
+@@ -37,7 +36,7 @@ class Migration(CheckedMigration):
+                     """,
+                     hints={"tables": ["sentry_controloutbox"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="""
+                     ALTER TABLE "sentry_regionoutbox" ADD COLUMN "date_added" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
+                     """,
+diff --git a/src/sentry/migrations/0544_remove_groupsubscription_columns.py b/src/sentry/migrations/0544_remove_groupsubscription_columns.py
+index bc6ad90444e..c98c5dce10f 100644
+--- a/src/sentry/migrations/0544_remove_groupsubscription_columns.py
++++ b/src/sentry/migrations/0544_remove_groupsubscription_columns.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0543_add_team_id_to_groupsubscription"),
+     ]
+@@ -43,7 +42,7 @@ class Migration(CheckedMigration):
+                 ),
+             ],
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     reverse_sql="""
+                     ALTER TABLE sentry_groupsubscription ADD COLUMN team_id BIGINT NULL;
+                     ALTER TABLE sentry_groupsubscription ADD CONSTRAINT "subscription_team_or_user_check" CHECK (team_id IS NOT NULL AND user_id IS NULL OR team_id IS NULL AND user_id IS NOT NULL);
+diff --git a/src/sentry/migrations/0545_add_last_verified_auth_ident_replica.py b/src/sentry/migrations/0545_add_last_verified_auth_ident_replica.py
+index 71a4ebafc20..117b0c225c0 100644
+--- a/src/sentry/migrations/0545_add_last_verified_auth_ident_replica.py
++++ b/src/sentry/migrations/0545_add_last_verified_auth_ident_replica.py
+@@ -4,6 +4,7 @@ import django.utils.timezone
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -19,8 +20,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0544_remove_groupsubscription_columns"),
+     ]
+@@ -28,7 +27,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_authidentityreplica" ADD COLUMN IF NOT EXISTS "last_verified" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW();
+                     """,
+diff --git a/src/sentry/migrations/0548_add_is_unclaimed_boolean_to_user.py b/src/sentry/migrations/0548_add_is_unclaimed_boolean_to_user.py
+index 6e2ae095940..ec5dd6100f2 100644
+--- a/src/sentry/migrations/0548_add_is_unclaimed_boolean_to_user.py
++++ b/src/sentry/migrations/0548_add_is_unclaimed_boolean_to_user.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0547_add_commitfilechange_language_column"),
+     ]
+@@ -27,7 +26,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "auth_user" ADD COLUMN "is_unclaimed" boolean NOT NULL DEFAULT FALSE;
+                     """,
+diff --git a/src/sentry/migrations/0549_re_add_groupsubscription_columns.py b/src/sentry/migrations/0549_re_add_groupsubscription_columns.py
+index 4468a981c60..3aa4616f6a2 100644
+--- a/src/sentry/migrations/0549_re_add_groupsubscription_columns.py
++++ b/src/sentry/migrations/0549_re_add_groupsubscription_columns.py
+@@ -5,6 +5,7 @@ from django.db import migrations, models
+ 
+ import sentry.db.models.fields.foreignkey
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = True
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0548_add_is_unclaimed_boolean_to_user"),
+     ]
+@@ -45,7 +44,7 @@ class Migration(CheckedMigration):
+                 ),
+             ],
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     reverse_sql="""
+                     ALTER TABLE "sentry_groupsubscription" ALTER COLUMN "user_id" SET NOT NULL;
+                     """,
+diff --git a/src/sentry/migrations/0556_organizationmapping_replicate_require_2fa.py b/src/sentry/migrations/0556_organizationmapping_replicate_require_2fa.py
+index 3185e6373b8..ae3ad768608 100644
+--- a/src/sentry/migrations/0556_organizationmapping_replicate_require_2fa.py
++++ b/src/sentry/migrations/0556_organizationmapping_replicate_require_2fa.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0555_set_neglectedrule_email_date_columns_nullable"),
+     ]
+@@ -27,7 +26,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_organizationmapping" ADD COLUMN "require_2fa" boolean NOT NULL DEFAULT FALSE;
+                     """,
+diff --git a/src/sentry/migrations/0564_commitfilechange_delete_language_column.py b/src/sentry/migrations/0564_commitfilechange_delete_language_column.py
+index 9a5cc11a0d9..3b070ea7dfb 100644
+--- a/src/sentry/migrations/0564_commitfilechange_delete_language_column.py
++++ b/src/sentry/migrations/0564_commitfilechange_delete_language_column.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0563_commitfilechange_drop_language_column"),
+     ]
+@@ -27,7 +26,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_commitfilechange" DROP COLUMN "language";
+                     """,
+diff --git a/src/sentry/migrations/0570_repository_add_languages_column.py b/src/sentry/migrations/0570_repository_add_languages_column.py
+index 9b7cd953831..70fdbe01152 100644
+--- a/src/sentry/migrations/0570_repository_add_languages_column.py
++++ b/src/sentry/migrations/0570_repository_add_languages_column.py
+@@ -4,6 +4,7 @@ from django.db import migrations
+ 
+ import sentry.db.models.fields.array
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -19,8 +20,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0569_dashboard_widgets_indicator"),
+     ]
+@@ -28,7 +27,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_repository" ADD COLUMN "languages" TEXT[] NULL;
+                     """,
+diff --git a/src/sentry/migrations/0583_add_early_adopter_to_organization_mapping.py b/src/sentry/migrations/0583_add_early_adopter_to_organization_mapping.py
+index 5641c4e1d47..9ea81ccfc9c 100644
+--- a/src/sentry/migrations/0583_add_early_adopter_to_organization_mapping.py
++++ b/src/sentry/migrations/0583_add_early_adopter_to_organization_mapping.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0582_add_status_indexes_checkins"),
+     ]
+@@ -37,7 +36,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     f"""
+                     ALTER TABLE "sentry_organizationmapping" ADD COLUMN "{column}" BOOLEAN NOT NULL DEFAULT false;
+                     """,
+diff --git a/src/sentry/migrations/0590_add_metadata_to_sentry_app.py b/src/sentry/migrations/0590_add_metadata_to_sentry_app.py
+index 17c605b63b6..d682d4a1c77 100644
+--- a/src/sentry/migrations/0590_add_metadata_to_sentry_app.py
++++ b/src/sentry/migrations/0590_add_metadata_to_sentry_app.py
+@@ -4,6 +4,7 @@ from django.db import migrations
+ 
+ import sentry.db.models.fields.jsonfield
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -19,8 +20,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0589_add_commit_date_added_indices"),
+     ]
+@@ -35,7 +34,7 @@ class Migration(CheckedMigration):
+                 ),
+             ],
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_sentryapp" ADD COLUMN "metadata" json NOT NULL DEFAULT '{}';
+                     """,
+diff --git a/src/sentry/migrations/0591_remove_relocation_hybrid_cloud_foreign_keys.py b/src/sentry/migrations/0591_remove_relocation_hybrid_cloud_foreign_keys.py
+index d4702555a72..ab3384b0e04 100644
+--- a/src/sentry/migrations/0591_remove_relocation_hybrid_cloud_foreign_keys.py
++++ b/src/sentry/migrations/0591_remove_relocation_hybrid_cloud_foreign_keys.py
+@@ -4,6 +4,7 @@ from django.db import migrations
+ 
+ import sentry.db.models.fields.bounded
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -19,8 +20,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0590_add_metadata_to_sentry_app"),
+     ]
+@@ -28,7 +27,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_relocation" ADD COLUMN "creator_id" bigint NOT NULL;
+                     ALTER TABLE "sentry_relocation" ADD COLUMN "owner_id" bigint NOT NULL;
+diff --git a/src/sentry/migrations/0592_delete_relocation_hybrid_cloud_foreign_keys.py b/src/sentry/migrations/0592_delete_relocation_hybrid_cloud_foreign_keys.py
+index 6ce84ad9f21..cc3f79bf1af 100644
+--- a/src/sentry/migrations/0592_delete_relocation_hybrid_cloud_foreign_keys.py
++++ b/src/sentry/migrations/0592_delete_relocation_hybrid_cloud_foreign_keys.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0591_remove_relocation_hybrid_cloud_foreign_keys"),
+     ]
+@@ -27,7 +26,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_relocation" DROP COLUMN "creator";
+                     ALTER TABLE "sentry_relocation" DROP COLUMN "owner";
+diff --git a/src/sentry/migrations/0607_drop_externalactor_actorid.py b/src/sentry/migrations/0607_drop_externalactor_actorid.py
+index 6052d52bb1a..5ea0e2b37cf 100644
+--- a/src/sentry/migrations/0607_drop_externalactor_actorid.py
++++ b/src/sentry/migrations/0607_drop_externalactor_actorid.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0606_update_user_to_optional_organization_slug_reservation"),
+     ]
+@@ -28,7 +27,7 @@ class Migration(CheckedMigration):
+         migrations.SeparateDatabaseAndState(
+             state_operations=[],
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="""
+                     ALTER TABLE "sentry_externalactor" DROP COLUMN actor_id;
+                     """,
+diff --git a/src/sentry/migrations/0610_remove_notification_setting_table.py b/src/sentry/migrations/0610_remove_notification_setting_table.py
+index e88cf1a990e..f350b0ff91d 100644
+--- a/src/sentry/migrations/0610_remove_notification_setting_table.py
++++ b/src/sentry/migrations/0610_remove_notification_setting_table.py
+@@ -1,8 +1,6 @@
+ # Generated by Django 3.2.23 on 2023-11-29 16:33
+-
+-from django.db import migrations
+-
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,14 +16,12 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0609_remove_notification_setting_model"),
+     ]
+ 
+     operations = [
+-        migrations.RunSQL(
++        SafeRunSQL(
+             """
+                 DROP TABLE IF EXISTS "sentry_notificationsetting";
+                 """,
+diff --git a/src/sentry/migrations/0617_monitor_boolean_fields_muted_disabled.py b/src/sentry/migrations/0617_monitor_boolean_fields_muted_disabled.py
+index 040d95c6bfc..3d33168b517 100644
+--- a/src/sentry/migrations/0617_monitor_boolean_fields_muted_disabled.py
++++ b/src/sentry/migrations/0617_monitor_boolean_fields_muted_disabled.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0616_drop_event_user_id_from_userreport_table_step_1"),
+     ]
+@@ -27,7 +26,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_monitor" ADD COLUMN "is_muted" boolean NOT NULL DEFAULT false;
+                     """,
+diff --git a/src/sentry/migrations/0618_drop_event_user_id_from_userreport_table_step_2.py b/src/sentry/migrations/0618_drop_event_user_id_from_userreport_table_step_2.py
+index 60c5c7d3c10..8db08921566 100644
+--- a/src/sentry/migrations/0618_drop_event_user_id_from_userreport_table_step_2.py
++++ b/src/sentry/migrations/0618_drop_event_user_id_from_userreport_table_step_2.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0617_monitor_boolean_fields_muted_disabled"),
+     ]
+@@ -27,7 +26,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                 ALTER TABLE "sentry_userreport" DROP COLUMN "event_user_id";
+                 """,
+diff --git a/src/sentry/migrations/0624_add_is_muted_monitorenvironment.py b/src/sentry/migrations/0624_add_is_muted_monitorenvironment.py
+index 28437b53203..105568b245c 100644
+--- a/src/sentry/migrations/0624_add_is_muted_monitorenvironment.py
++++ b/src/sentry/migrations/0624_add_is_muted_monitorenvironment.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0623_increase_regression_fingerprint_length"),
+     ]
+@@ -27,7 +26,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_monitorenvironment" ADD COLUMN "is_muted" boolean NOT NULL DEFAULT FALSE;
+                     """,
+diff --git a/src/sentry/migrations/0631_add_priority_columns_to_groupedmessage.py b/src/sentry/migrations/0631_add_priority_columns_to_groupedmessage.py
+index 6dffdce9d51..7170ad986f6 100644
+--- a/src/sentry/migrations/0631_add_priority_columns_to_groupedmessage.py
++++ b/src/sentry/migrations/0631_add_priority_columns_to_groupedmessage.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0630_better_monitor_latest_index"),
+     ]
+@@ -27,7 +26,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_groupedmessage" ADD COLUMN "priority" int NULL;
+                     ALTER TABLE "sentry_groupedmessage" ADD COLUMN "priority_locked" bool NOT NULL default false;
+diff --git a/src/sentry/migrations/0633_add_priority_locked_at_to_groupedmessage.py b/src/sentry/migrations/0633_add_priority_locked_at_to_groupedmessage.py
+index 25c185d4151..2bc4a1ef43c 100644
+--- a/src/sentry/migrations/0633_add_priority_locked_at_to_groupedmessage.py
++++ b/src/sentry/migrations/0633_add_priority_locked_at_to_groupedmessage.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0632_apitoken_backfill_last_chars"),
+     ]
+@@ -27,7 +26,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_groupedmessage" DROP COLUMN "priority_locked";
+                     ALTER TABLE "sentry_groupedmessage" ADD COLUMN "priority_locked_at" timestamp with time zone NULL;
+diff --git a/src/sentry/migrations/0637_remove_pr_comment_pr_id_constraint.py b/src/sentry/migrations/0637_remove_pr_comment_pr_id_constraint.py
+index c06a425026c..6577b5244ff 100644
+--- a/src/sentry/migrations/0637_remove_pr_comment_pr_id_constraint.py
++++ b/src/sentry/migrations/0637_remove_pr_comment_pr_id_constraint.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0636_monitor_incident_env_resolving_index"),
+     ]
+@@ -27,7 +26,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     hints={"tables": ["sentry_pullrequest_comment"]},
+                     sql="ALTER TABLE IF EXISTS sentry_pullrequest_comment DROP CONSTRAINT IF EXISTS sentry_pullrequest_comment_pull_request_id_key",
+                     reverse_sql="",
+diff --git a/src/sentry/migrations/0638_add_date_added_to_dashboard_widget_on_demand.py b/src/sentry/migrations/0638_add_date_added_to_dashboard_widget_on_demand.py
+index b759ff0f296..9d23126b8a4 100644
+--- a/src/sentry/migrations/0638_add_date_added_to_dashboard_widget_on_demand.py
++++ b/src/sentry/migrations/0638_add_date_added_to_dashboard_widget_on_demand.py
+@@ -4,6 +4,7 @@ import django.utils.timezone
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -19,8 +20,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0637_remove_pr_comment_pr_id_constraint"),
+     ]
+@@ -28,7 +27,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="""
+                     ALTER TABLE "sentry_dashboardwidgetqueryondemand" ADD COLUMN "date_added" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP;
+                     """,
+diff --git a/src/sentry/migrations/0643_add_date_modified_col_dashboard_widget_query.py b/src/sentry/migrations/0643_add_date_modified_col_dashboard_widget_query.py
+index 09068d38850..7c3362ee474 100644
+--- a/src/sentry/migrations/0643_add_date_modified_col_dashboard_widget_query.py
++++ b/src/sentry/migrations/0643_add_date_modified_col_dashboard_widget_query.py
+@@ -4,6 +4,7 @@ import django.utils.timezone
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -19,8 +20,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0642_index_together_release"),
+     ]
+@@ -28,7 +27,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="""
+                     ALTER TABLE "sentry_dashboardwidgetquery" ADD COLUMN "date_modified" TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP;
+                     """,
+diff --git a/src/sentry/migrations/0651_enable_activated_alert_rules.py b/src/sentry/migrations/0651_enable_activated_alert_rules.py
+index 4e1d2640b9e..fe7b2245dce 100644
+--- a/src/sentry/migrations/0651_enable_activated_alert_rules.py
++++ b/src/sentry/migrations/0651_enable_activated_alert_rules.py
+@@ -8,6 +8,7 @@ import sentry.db.models.fields.bounded
+ import sentry.db.models.fields.foreignkey
+ import sentry.incidents.models.alert_rule
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -23,8 +24,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0650_create_sentryshot"),
+     ]
+@@ -32,7 +31,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_alertrule" ADD COLUMN "monitor_type" integer NOT NULL DEFAULT 0;
+                     """,
+diff --git a/src/sentry/migrations/0657_add_status_column_for_alert_rule_trigger_action.py b/src/sentry/migrations/0657_add_status_column_for_alert_rule_trigger_action.py
+index 31fbdf83276..c0e686ab98c 100644
+--- a/src/sentry/migrations/0657_add_status_column_for_alert_rule_trigger_action.py
++++ b/src/sentry/migrations/0657_add_status_column_for_alert_rule_trigger_action.py
+@@ -4,6 +4,7 @@ from django.db import migrations
+ 
+ import sentry.db.models.fields.bounded
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -19,8 +20,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0656_add_discover_dataset_split_dashboard"),
+     ]
+@@ -28,7 +27,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_alertruletriggeraction" ADD COLUMN "status" integer NOT NULL DEFAULT 0;
+                     """,
+diff --git a/src/sentry/migrations/0658_projectkey_usecase.py b/src/sentry/migrations/0658_projectkey_usecase.py
+index 84964091d4a..579f441bed3 100644
+--- a/src/sentry/migrations/0658_projectkey_usecase.py
++++ b/src/sentry/migrations/0658_projectkey_usecase.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0657_add_status_column_for_alert_rule_trigger_action"),
+     ]
+@@ -28,7 +27,7 @@ class Migration(CheckedMigration):
+         # See https://develop.sentry.dev/database-migrations/#adding-columns-with-a-default.
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_projectkey" ADD COLUMN "use_case" VARCHAR(32) NOT NULL DEFAULT 'user';
+                     """,
+diff --git a/src/sentry/migrations/0663_artifactbundleindex_cleanup_step3.py b/src/sentry/migrations/0663_artifactbundleindex_cleanup_step3.py
+index 670b5d9aa5b..8f192177f9c 100644
+--- a/src/sentry/migrations/0663_artifactbundleindex_cleanup_step3.py
++++ b/src/sentry/migrations/0663_artifactbundleindex_cleanup_step3.py
+@@ -1,8 +1,6 @@
+ # Generated by Django 5.0.2 on 2024-03-04 10:50
+-
+-from django.db import migrations
+-
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,14 +16,12 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0662_monitor_drop_last_state_change"),
+     ]
+ 
+     operations = [
+-        migrations.RunSQL(
++        SafeRunSQL(
+             """
+             DROP TABLE "sentry_artifactbundleflatfileindex";
+             """,
+@@ -33,7 +29,7 @@ class Migration(CheckedMigration):
+             reverse_sql="CREATE TABLE sentry_artifactbundleflatfileindex (fake_col int);",
+             hints={"tables": ["sentry_artifactbundleflatfileindex"]},
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             """
+             DROP TABLE "sentry_flatfileindexstate";
+             """,
+@@ -41,7 +37,7 @@ class Migration(CheckedMigration):
+             reverse_sql="CREATE TABLE sentry_flatfileindexstate (fake_col int);",
+             hints={"tables": ["sentry_flatfileindexstate"]},
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             """
+                 ALTER TABLE "sentry_artifactbundleindex" DROP COLUMN "release_name";
+                 ALTER TABLE "sentry_artifactbundleindex" DROP COLUMN "dist_name";
+diff --git a/src/sentry/migrations/0665_monitor_drop_last_state_change_db.py b/src/sentry/migrations/0665_monitor_drop_last_state_change_db.py
+index 56e9a741d80..d61b83d3f6e 100644
+--- a/src/sentry/migrations/0665_monitor_drop_last_state_change_db.py
++++ b/src/sentry/migrations/0665_monitor_drop_last_state_change_db.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0664_create_new_broken_monitor_detection_table"),
+     ]
+@@ -27,7 +26,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                 ALTER TABLE "sentry_monitorenvironment" DROP COLUMN "last_state_change";
+                 """,
+diff --git a/src/sentry/migrations/0678_add_is_hidden_dashboard_widget_query.py b/src/sentry/migrations/0678_add_is_hidden_dashboard_widget_query.py
+index 6f6fb4a0725..20a6f59d920 100644
+--- a/src/sentry/migrations/0678_add_is_hidden_dashboard_widget_query.py
++++ b/src/sentry/migrations/0678_add_is_hidden_dashboard_widget_query.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0677_unpickle_project_options_again"),
+     ]
+@@ -27,7 +26,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_dashboardwidgetquery" ADD COLUMN "is_hidden" BOOLEAN NOT NULL DEFAULT false;
+                     """,
+diff --git a/src/sentry/migrations/0682_monitors_constrain_to_project_id_slug.py b/src/sentry/migrations/0682_monitors_constrain_to_project_id_slug.py
+index 1bf094a1582..070f304fe3d 100644
+--- a/src/sentry/migrations/0682_monitors_constrain_to_project_id_slug.py
++++ b/src/sentry/migrations/0682_monitors_constrain_to_project_id_slug.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = True
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0681_unpickle_authenticator_again"),
+     ]
+@@ -27,7 +26,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     [
+                         'CREATE UNIQUE INDEX CONCURRENTLY "sentry_monitor_project_id_slug_1f4d3dc3_uniq" ON "sentry_monitor" ("project_id", "slug");',
+                         'ALTER TABLE "sentry_monitor" ADD CONSTRAINT "sentry_monitor_project_id_slug_1f4d3dc3_uniq" UNIQUE USING INDEX "sentry_monitor_project_id_slug_1f4d3dc3_uniq";',
+@@ -41,6 +40,7 @@ class Migration(CheckedMigration):
+                         'DROP INDEX CONCURRENTLY "sentry_moni_organiz_a62466_idx";',
+                     ],
+                     hints={"tables": ["sentry_monitor"]},
++                    use_statement_timeout=False,
+                 ),
+             ],
+             state_operations=[
+diff --git a/src/sentry/migrations/0689_drop_config_from_cron_checkin.py b/src/sentry/migrations/0689_drop_config_from_cron_checkin.py
+index e2165fe3b04..7d978615707 100644
+--- a/src/sentry/migrations/0689_drop_config_from_cron_checkin.py
++++ b/src/sentry/migrations/0689_drop_config_from_cron_checkin.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -18,8 +19,6 @@ class Migration(CheckedMigration):
+     #   change, it's completely safe to run the operation after the code has deployed.
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0688_add_project_flag_high_priority_alerts"),
+     ]
+@@ -27,7 +26,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                 ALTER TABLE "sentry_monitorcheckin" DROP COLUMN "config";
+                 """,
+diff --git a/src/sentry/migrations/0697_remove_monitor_owner_actor_id_db.py b/src/sentry/migrations/0697_remove_monitor_owner_actor_id_db.py
+index 837d74f0dd3..1f9bfbc4bd9 100644
+--- a/src/sentry/migrations/0697_remove_monitor_owner_actor_id_db.py
++++ b/src/sentry/migrations/0697_remove_monitor_owner_actor_id_db.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0696_remove_monitor_owner_actor_id"),
+     ]
+@@ -29,7 +28,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                 ALTER TABLE "sentry_monitor" DROP COLUMN "owner_actor_id";
+                 """,
+diff --git a/src/sentry/migrations/0700_drop_fileid_controlavatar.py b/src/sentry/migrations/0700_drop_fileid_controlavatar.py
+index 2e0607e5677..5b00f9e3a0e 100644
+--- a/src/sentry/migrations/0700_drop_fileid_controlavatar.py
++++ b/src/sentry/migrations/0700_drop_fileid_controlavatar.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0699_update_monitor_owner_team_id_cascsade"),
+     ]
+@@ -30,17 +29,17 @@ class Migration(CheckedMigration):
+         migrations.SeparateDatabaseAndState(
+             state_operations=[],
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     "ALTER TABLE sentry_docintegrationavatar DROP COLUMN file_id",
+                     reverse_sql="ALTER TABLE sentry_docintegrationavatar ADD COLUMN file_id BIGINT NULL",
+                     hints={"tables": ["sentry_docintegrationavatar"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     "ALTER TABLE sentry_sentryappavatar DROP COLUMN file_id",
+                     reverse_sql="ALTER TABLE sentry_sentryappavatar ADD COLUMN file_id BIGINT NULL",
+                     hints={"tables": ["sentry_sentryappavatar"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     "ALTER TABLE sentry_useravatar DROP COLUMN file_id",
+                     reverse_sql="ALTER TABLE sentry_useravatar ADD COLUMN file_id BIGINT NULL",
+                     hints={"tables": ["sentry_useravatar"]},
+diff --git a/src/sentry/migrations/0707_alert_rule_activations_incidents_fk.py b/src/sentry/migrations/0707_alert_rule_activations_incidents_fk.py
+index 084f37f4732..b4e6b6a6496 100644
+--- a/src/sentry/migrations/0707_alert_rule_activations_incidents_fk.py
++++ b/src/sentry/migrations/0707_alert_rule_activations_incidents_fk.py
+@@ -5,6 +5,7 @@ from django.db import migrations, models
+ 
+ import sentry.db.models.fields.foreignkey
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -22,8 +23,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0706_grouphistory_userteam_backfill"),
+     ]
+@@ -31,7 +30,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_alertruleactivations" ADD COLUMN "activator" VARCHAR(250) NOT NULL DEFAULT 'default_activator';
+                     """,
+@@ -40,7 +39,7 @@ class Migration(CheckedMigration):
+                     """,
+                     hints={"tables": ["sentry_alertruleactivations"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_alertruleactivations" ADD COLUMN "condition_type" SMALLINT NOT NULL DEFAULT 0;
+                     """,
+diff --git a/src/sentry/migrations/0709_alertrule_remove_owner_state.py b/src/sentry/migrations/0709_alertrule_remove_owner_state.py
+index 8123ffc5f80..f439f77abab 100644
+--- a/src/sentry/migrations/0709_alertrule_remove_owner_state.py
++++ b/src/sentry/migrations/0709_alertrule_remove_owner_state.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0708_rule_remove_owner_state"),
+     ]
+@@ -29,20 +28,22 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="""
+                     ALTER TABLE "sentry_alertrule" DROP CONSTRAINT IF EXISTS "sentry_alertrule_owner_id_477ec831_fk_sentry_actor_id"
+                     """,
+                     reverse_sql="",
+                     hints={"tables": ["sentry_alertrule"]},
++                    use_statement_timeout=False,
+                 ),
+                 # Follow up from 0708
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="""
+                     ALTER TABLE "sentry_rule" DROP CONSTRAINT IF EXISTS "sentry_rule_owner_id_aa4e908b_fk_sentry_actor_id"
+                     """,
+                     reverse_sql="",
+                     hints={"tables": ["sentry_rule"]},
++                    use_statement_timeout=False,
+                 ),
+             ],
+             state_operations=[
+diff --git a/src/sentry/migrations/0710_grouphistory_remove_actor_state.py b/src/sentry/migrations/0710_grouphistory_remove_actor_state.py
+index 59e4bdb5806..f11e601eefd 100644
+--- a/src/sentry/migrations/0710_grouphistory_remove_actor_state.py
++++ b/src/sentry/migrations/0710_grouphistory_remove_actor_state.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0709_alertrule_remove_owner_state"),
+     ]
+@@ -30,12 +29,13 @@ class Migration(CheckedMigration):
+         # Remove the foreign key constraint from schema and remove the field from django metadata
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="""
+                     ALTER TABLE "sentry_grouphistory" DROP CONSTRAINT IF EXISTS "sentry_grouphistory_actor_id_085453d6_fk_sentry_actor_id"
+                     """,
+                     reverse_sql="",
+                     hints={"tables": ["sentry_grouphistory"]},
++                    use_statement_timeout=False,
+                 )
+             ],
+             state_operations=[
+diff --git a/src/sentry/migrations/0713_team_remove_actor_state.py b/src/sentry/migrations/0713_team_remove_actor_state.py
+index f4c773750cf..28b9cc79369 100644
+--- a/src/sentry/migrations/0713_team_remove_actor_state.py
++++ b/src/sentry/migrations/0713_team_remove_actor_state.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0712_create_tombstone_compound_indexes"),
+     ]
+@@ -35,12 +34,13 @@ class Migration(CheckedMigration):
+                 ),
+             ],
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="""
+                     ALTER TABLE "sentry_team" DROP CONSTRAINT IF EXISTS "sentry_team_actor_idx_fk_sentry_actor_id"
+                     """,
+                     reverse_sql="",
+                     hints={"tables": ["sentry_team"]},
++                    use_statement_timeout=False,
+                 )
+             ],
+         )
+diff --git a/src/sentry/migrations/0714_drop_project_team_avatar.py b/src/sentry/migrations/0714_drop_project_team_avatar.py
+index 7e3a5b66233..67d9e89d3ba 100644
+--- a/src/sentry/migrations/0714_drop_project_team_avatar.py
++++ b/src/sentry/migrations/0714_drop_project_team_avatar.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0713_team_remove_actor_state"),
+     ]
+@@ -29,12 +28,12 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='DROP TABLE IF EXISTS "sentry_projectavatar"',
+                     reverse_sql="CREATE TABLE sentry_projectavatar (id BIGSERIAL)",
+                     hints={"tables": ["sentry_teamavatar"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql='DROP TABLE IF EXISTS "sentry_teamavatar"',
+                     reverse_sql="CREATE TABLE sentry_teamavatar (id BIGSERIAL)",
+                     hints={"tables": ["sentry_teamavatar"]},
+diff --git a/src/sentry/migrations/0715_remove_actormodel_constraints.py b/src/sentry/migrations/0715_remove_actormodel_constraints.py
+index 9b9eb125d0a..d2ad4c7ba95 100644
+--- a/src/sentry/migrations/0715_remove_actormodel_constraints.py
++++ b/src/sentry/migrations/0715_remove_actormodel_constraints.py
+@@ -5,6 +5,7 @@ from django.db import migrations, models
+ 
+ import sentry.db.models.fields.foreignkey
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -22,8 +23,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0714_drop_project_team_avatar"),
+     ]
+@@ -31,7 +30,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     -- drop team_id index & constraint
+                     ALTER TABLE "sentry_actor" DROP CONSTRAINT IF EXISTS "sentry_actor_team_id_6ca8eba5_fk_sentry_team_id";
+@@ -43,6 +42,7 @@ class Migration(CheckedMigration):
+                     """,
+                     reverse_sql="",
+                     hints={"tables": ["sentry_actor"]},
++                    use_statement_timeout=False,
+                 ),
+             ],
+             state_operations=[
+diff --git a/src/sentry/migrations/0719_querysubscription_timebox_column_deletion_db.py b/src/sentry/migrations/0719_querysubscription_timebox_column_deletion_db.py
+index 718648afa84..8fae5fcc709 100644
+--- a/src/sentry/migrations/0719_querysubscription_timebox_column_deletion_db.py
++++ b/src/sentry/migrations/0719_querysubscription_timebox_column_deletion_db.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0718_delete_timebox_columns"),
+     ]
+@@ -29,7 +28,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                 ALTER TABLE "sentry_querysubscription" DROP COLUMN "timebox_start";
+                 ALTER TABLE "sentry_querysubscription" DROP COLUMN "timebox_end";
+diff --git a/src/sentry/migrations/0720_remove_actor_columns.py b/src/sentry/migrations/0720_remove_actor_columns.py
+index add6252e7b4..51ee6b8f343 100644
+--- a/src/sentry/migrations/0720_remove_actor_columns.py
++++ b/src/sentry/migrations/0720_remove_actor_columns.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0719_querysubscription_timebox_column_deletion_db"),
+     ]
+@@ -30,22 +29,22 @@ class Migration(CheckedMigration):
+         migrations.SeparateDatabaseAndState(
+             state_operations=[],
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="ALTER TABLE sentry_team DROP COLUMN actor_id",
+                     reverse_sql="ALTER TABLE sentry_team ADD COLUMN actor_id BIGINT NULL",
+                     hints={"tables": ["sentry_team"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="ALTER TABLE sentry_rule DROP COLUMN owner_id",
+                     reverse_sql="ALTER TABLE sentry_rule ADD COLUMN owner_id BIGINT NULL",
+                     hints={"tables": ["sentry_rule"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="ALTER TABLE sentry_alertrule DROP COLUMN owner_id",
+                     reverse_sql="ALTER TABLE sentry_alertrule ADD COLUMN owner_id BIGINT NULL",
+                     hints={"tables": ["sentry_alertrule"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="ALTER TABLE sentry_grouphistory DROP COLUMN actor_id",
+                     reverse_sql="ALTER TABLE sentry_grouphistory ADD COLUMN actor_id BIGINT NULL",
+                     hints={"tables": ["sentry_grouphistory"]},
+diff --git a/src/sentry/migrations/0722_drop_sentryfunctions.py b/src/sentry/migrations/0722_drop_sentryfunctions.py
+index bf0357c3fb9..0594c0f778c 100644
+--- a/src/sentry/migrations/0722_drop_sentryfunctions.py
++++ b/src/sentry/migrations/0722_drop_sentryfunctions.py
+@@ -1,8 +1,6 @@
+ # Generated by Django 5.0.4 on 2024-05-14 12:52
+-
+-from django.db import migrations
+-
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,14 +18,12 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0721_delete_sentryfunctions"),
+     ]
+ 
+     operations = [
+-        migrations.RunSQL(
++        SafeRunSQL(
+             'DROP TABLE IF EXISTS "sentry_sentryfunction";',
+             reverse_sql="CREATE TABLE sentry_sentryfunction (fake_col int)",
+             hints={"tables": ["sentry_sentryfunction"]},
+diff --git a/src/sentry/migrations/0724_discover_saved_query_dataset.py b/src/sentry/migrations/0724_discover_saved_query_dataset.py
+index 0dbf432449a..34afd228394 100644
+--- a/src/sentry/migrations/0724_discover_saved_query_dataset.py
++++ b/src/sentry/migrations/0724_discover_saved_query_dataset.py
+@@ -4,6 +4,7 @@ from django.db import migrations
+ 
+ import sentry.db.models.fields.bounded
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -21,8 +22,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0723_project_template_models"),
+     ]
+@@ -30,7 +29,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_discoversavedquery" ADD COLUMN "dataset" integer NOT NULL DEFAULT 0;
+                     """,
+diff --git a/src/sentry/migrations/0725_create_sentry_groupsearchview_table.py b/src/sentry/migrations/0725_create_sentry_groupsearchview_table.py
+index eecb7007bca..baa7a264a3f 100644
+--- a/src/sentry/migrations/0725_create_sentry_groupsearchview_table.py
++++ b/src/sentry/migrations/0725_create_sentry_groupsearchview_table.py
+@@ -9,6 +9,7 @@ import sentry.db.models.fields.bounded
+ import sentry.db.models.fields.foreignkey
+ import sentry.db.models.fields.hybrid_cloud_foreign_key
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -26,8 +27,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0724_discover_saved_query_dataset"),
+     ]
+@@ -67,17 +66,19 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="""
+                         CREATE UNIQUE INDEX CONCURRENTLY "sentry_issueviews_unique_view_position_per_org_user" ON "sentry_groupsearchview" ("user_id", "organization_id", "position");
+                     """,
+                     hints={"tables": ["sentry_groupsearchview"]},
++                    use_statement_timeout=False,
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     sql="""
+                         ALTER TABLE "sentry_groupsearchview" ADD CONSTRAINT "sentry_issueviews_unique_view_position_per_org_user" UNIQUE USING INDEX "sentry_issueviews_unique_view_position_per_org_user" DEFERRABLE INITIALLY DEFERRED;
+                     """,
+                     hints={"tables": ["sentry_groupsearchview"]},
++                    use_statement_timeout=False,
+                 ),
+             ],
+             state_operations=[
+diff --git a/src/sentry/migrations/0733_relocation_provenance.py b/src/sentry/migrations/0733_relocation_provenance.py
+index 72626606c5c..5aa79b9fef3 100644
+--- a/src/sentry/migrations/0733_relocation_provenance.py
++++ b/src/sentry/migrations/0733_relocation_provenance.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0732_add_span_attribute_extraction_rules"),
+     ]
+@@ -29,7 +28,7 @@ class Migration(CheckedMigration):
+     operations = (
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                         ALTER TABLE "sentry_relocation" ADD COLUMN "provenance" integer NOT NULL DEFAULT 0;
+                         """,
+diff --git a/src/sentry/migrations/0737_add_discover_saved_query_dataset_source.py b/src/sentry/migrations/0737_add_discover_saved_query_dataset_source.py
+index 02ea18a44e3..53d5a90375a 100644
+--- a/src/sentry/migrations/0737_add_discover_saved_query_dataset_source.py
++++ b/src/sentry/migrations/0737_add_discover_saved_query_dataset_source.py
+@@ -4,6 +4,7 @@ from django.db import migrations
+ 
+ import sentry.db.models.fields.bounded
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -21,8 +22,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0736_rm_reprocessing_step2"),
+     ]
+@@ -30,7 +29,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_discoversavedquery" ADD COLUMN "dataset_source" integer NOT NULL DEFAULT 0;
+                     """,
+diff --git a/src/sentry/migrations/0738_rm_reprocessing_step3.py b/src/sentry/migrations/0738_rm_reprocessing_step3.py
+index de7cde8e770..b478648b358 100644
+--- a/src/sentry/migrations/0738_rm_reprocessing_step3.py
++++ b/src/sentry/migrations/0738_rm_reprocessing_step3.py
+@@ -1,8 +1,6 @@
+ # Generated by Django 5.0.6 on 2024-07-10 07:36
+-
+-from django.db import migrations
+-
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,29 +18,27 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0737_add_discover_saved_query_dataset_source"),
+     ]
+ 
+     operations = [
+-        migrations.RunSQL(
++        SafeRunSQL(
+             'DROP TABLE "sentry_eventprocessingissue";',
+             reverse_sql="CREATE TABLE sentry_eventprocessingissue (fake_col int)",
+             hints={"tables": ["sentry_eventprocessingissue"]},
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             'DROP TABLE "sentry_processingissue";',
+             reverse_sql="CREATE TABLE sentry_processingissue (fake_col int)",
+             hints={"tables": ["sentry_processingissue"]},
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             'DROP TABLE "sentry_rawevent";',
+             reverse_sql="CREATE TABLE sentry_rawevent (fake_col int)",
+             hints={"tables": ["sentry_rawevent"]},
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             'DROP TABLE "sentry_reprocessingreport";',
+             reverse_sql="CREATE TABLE sentry_reprocessingreport (fake_col int)",
+             hints={"tables": ["sentry_reprocessingreport"]},
+diff --git a/src/sentry/migrations/0741_metric_alert_anomaly_detection.py b/src/sentry/migrations/0741_metric_alert_anomaly_detection.py
+index 86eb1ba2692..5633459ee0b 100644
+--- a/src/sentry/migrations/0741_metric_alert_anomaly_detection.py
++++ b/src/sentry/migrations/0741_metric_alert_anomaly_detection.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0740_one_relocation_file_kind_per_relocation"),
+     ]
+@@ -39,7 +38,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_alertrule" ADD COLUMN "detection_type" VARCHAR(32) NOT NULL DEFAULT 'static';
+                     """,
+diff --git a/src/sentry/migrations/0744_add_dataset_source_field_to_dashboards.py b/src/sentry/migrations/0744_add_dataset_source_field_to_dashboards.py
+index de09cf3ff0a..f1400760f3b 100644
+--- a/src/sentry/migrations/0744_add_dataset_source_field_to_dashboards.py
++++ b/src/sentry/migrations/0744_add_dataset_source_field_to_dashboards.py
+@@ -4,6 +4,7 @@ from django.db import migrations
+ 
+ import sentry.db.models.fields.bounded
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -21,8 +22,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0743_backfill_broken_monitor_notification_setting_option"),
+     ]
+@@ -30,7 +29,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_dashboardwidget" ADD COLUMN "dataset_source" integer NOT NULL DEFAULT 0;
+                     """,
+diff --git a/src/sentry/migrations/0746_add_bitflags_to_hybrid_cloud.py b/src/sentry/migrations/0746_add_bitflags_to_hybrid_cloud.py
+index 9dad268ac93..3c4abc4bc17 100644
+--- a/src/sentry/migrations/0746_add_bitflags_to_hybrid_cloud.py
++++ b/src/sentry/migrations/0746_add_bitflags_to_hybrid_cloud.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0745_add_prevent_superuser_access_bitflag"),
+     ]
+@@ -29,7 +28,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_organizationmapping"
+                     ADD COLUMN "disable_member_project_creation" boolean NOT NULL DEFAULT false,
+diff --git a/src/sentry/migrations/0750_disable_member_invite_in_hybrid_cloud.py b/src/sentry/migrations/0750_disable_member_invite_in_hybrid_cloud.py
+index 3eb750ff9d4..46741b5bb54 100644
+--- a/src/sentry/migrations/0750_disable_member_invite_in_hybrid_cloud.py
++++ b/src/sentry/migrations/0750_disable_member_invite_in_hybrid_cloud.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0749_disable_member_invite"),
+     ]
+@@ -29,7 +28,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_organizationmapping"
+                     ADD COLUMN "disable_member_invite" boolean NOT NULL DEFAULT false;
+diff --git a/src/sentry/migrations/0757_add_scopes_to_apiapplication.py b/src/sentry/migrations/0757_add_scopes_to_apiapplication.py
+index 074c9ce950d..20029da000a 100644
+--- a/src/sentry/migrations/0757_add_scopes_to_apiapplication.py
++++ b/src/sentry/migrations/0757_add_scopes_to_apiapplication.py
+@@ -4,6 +4,7 @@ from django.db import migrations, models
+ 
+ import sentry.db.models.fields.array
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -21,8 +22,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0756_grouprelease_represented_in_django"),
+     ]
+@@ -30,7 +29,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_apiapplication"
+                     ADD COLUMN "scopes" TEXT[] NULL,
+diff --git a/src/sentry/migrations/0759_remove_spanattributeextraction_tables.py b/src/sentry/migrations/0759_remove_spanattributeextraction_tables.py
+index aba74fb7c58..7ab218b3a6d 100644
+--- a/src/sentry/migrations/0759_remove_spanattributeextraction_tables.py
++++ b/src/sentry/migrations/0759_remove_spanattributeextraction_tables.py
+@@ -1,8 +1,6 @@
+ # Generated by Django 5.0.8 on 2024-09-09 09:02
+-
+-from django.db import migrations
+-
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,14 +18,12 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0758_remove_spanattributeextraction_models"),
+     ]
+ 
+     operations = [
+-        migrations.RunSQL(
++        SafeRunSQL(
+             """
+             DROP TABLE "sentry_spanattributeextractionrulecondition";
+             """,
+@@ -35,7 +31,7 @@ class Migration(CheckedMigration):
+             hints={"tables": ["sentry_spanattributeextractionrulecondition"]},
+             # We just create a fake table here so that the DROP will work if we roll back the migration.
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             """
+             DROP TABLE "sentry_spanattributeextractionruleconfig";
+             """,
+diff --git a/src/sentry/migrations/0760_remove_appstore_connect_integration_tables.py b/src/sentry/migrations/0760_remove_appstore_connect_integration_tables.py
+index 5383ebc03a6..2cd9dde7c74 100644
+--- a/src/sentry/migrations/0760_remove_appstore_connect_integration_tables.py
++++ b/src/sentry/migrations/0760_remove_appstore_connect_integration_tables.py
+@@ -1,8 +1,6 @@
+ # Generated by Django 5.0.6 on 2024-07-10 22:56
+-
+-from django.db import migrations
+-
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,19 +18,17 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0759_remove_spanattributeextraction_tables"),
+     ]
+ 
+     operations = [
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql='DROP TABLE IF EXISTS "sentry_latestappconnectbuildscheck"',
+             reverse_sql="CREATE TABLE sentry_latestappconnectbuildscheck (id BIGSERIAL)",
+             hints={"tables": ["sentry_latestappconnectbuildscheck"]},
+         ),
+-        migrations.RunSQL(
++        SafeRunSQL(
+             sql='DROP TABLE IF EXISTS "sentry_appconnectbuild"',
+             reverse_sql="CREATE TABLE sentry_appconnectbuild (id BIGSERIAL)",
+             hints={"tables": ["sentry_appconnectbuild"]},
+diff --git a/src/sentry/migrations/0776_drop_group_score_in_database.py b/src/sentry/migrations/0776_drop_group_score_in_database.py
+index 2a9f36dd7e9..78ef7f1c4d4 100644
+--- a/src/sentry/migrations/0776_drop_group_score_in_database.py
++++ b/src/sentry/migrations/0776_drop_group_score_in_database.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = True
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0775_add_dashboard_permissions_model"),
+     ]
+@@ -29,7 +28,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                 ALTER TABLE "sentry_groupedmessage" DROP COLUMN "score";
+                 """,
+diff --git a/src/sentry/migrations/0785_add_new_field_to_dashboard_permissions.py b/src/sentry/migrations/0785_add_new_field_to_dashboard_permissions.py
+index bae928a544d..8b7c539f495 100644
+--- a/src/sentry/migrations/0785_add_new_field_to_dashboard_permissions.py
++++ b/src/sentry/migrations/0785_add_new_field_to_dashboard_permissions.py
+@@ -6,6 +6,7 @@ from django.db import migrations, models
+ import sentry.db.models.fields.bounded
+ import sentry.db.models.fields.foreignkey
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -23,8 +24,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0784_remove_broadcasts_cta_column"),
+     ]
+@@ -32,7 +31,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_dashboardpermissions" ADD COLUMN "is_editable_by_everyone" boolean NOT NULL DEFAULT true;
+                     """,
+diff --git a/src/sentry/migrations/0786_drop_broadcasts_cta_column.py b/src/sentry/migrations/0786_drop_broadcasts_cta_column.py
+index c8cac50728a..33ae48ba8a2 100644
+--- a/src/sentry/migrations/0786_drop_broadcasts_cta_column.py
++++ b/src/sentry/migrations/0786_drop_broadcasts_cta_column.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0785_add_new_field_to_dashboard_permissions"),
+     ]
+@@ -29,7 +28,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_broadcast" DROP COLUMN "cta";
+                     """,
+diff --git a/src/sentry/migrations/0790_delete_dashboard_perms_col.py b/src/sentry/migrations/0790_delete_dashboard_perms_col.py
+index 38e17ab6fda..0bc1a349384 100644
+--- a/src/sentry/migrations/0790_delete_dashboard_perms_col.py
++++ b/src/sentry/migrations/0790_delete_dashboard_perms_col.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0789_add_unique_constraint_to_rollbackorganization"),
+     ]
+@@ -29,7 +28,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "sentry_dashboardpermissions" DROP COLUMN "is_creator_only_editable";
+                     """,
+diff --git a/src/sentry/remote_subscriptions/migrations/0003_drop_remote_subscription.py b/src/sentry/remote_subscriptions/migrations/0003_drop_remote_subscription.py
+index 32b828597f4..21c5d0a12a4 100644
+--- a/src/sentry/remote_subscriptions/migrations/0003_drop_remote_subscription.py
++++ b/src/sentry/remote_subscriptions/migrations/0003_drop_remote_subscription.py
+@@ -1,8 +1,6 @@
+ # Generated by Django 5.0.6 on 2024-06-21 22:01
+-
+-from django.db import migrations
+-
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,15 +18,13 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("remote_subscriptions", "0002_remove_separate_remote_subscription"),
+         ("uptime", "0003_drop_remote_subscription"),
+     ]
+ 
+     operations = [
+-        migrations.RunSQL(
++        SafeRunSQL(
+             """
+             DROP TABLE "sentry_remotesubscription";
+             """,
+diff --git a/src/sentry/uptime/migrations/0002_remove_separate_remote_subscription.py b/src/sentry/uptime/migrations/0002_remove_separate_remote_subscription.py
+index cee3dbc032f..7135d12fd7d 100644
+--- a/src/sentry/uptime/migrations/0002_remove_separate_remote_subscription.py
++++ b/src/sentry/uptime/migrations/0002_remove_separate_remote_subscription.py
+@@ -5,6 +5,7 @@ from django.db import migrations, models
+ 
+ import sentry.db.models.fields.foreignkey
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -22,8 +23,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("uptime", "0001_uptime_subscriptions"),
+         ("remote_subscriptions", "0001_remote_subscription"),
+@@ -59,7 +58,7 @@ class Migration(CheckedMigration):
+                         unique=True,
+                     ),
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "uptime_uptimesubscription" ADD COLUMN "type" text NOT NULL;
+                     """,
+@@ -68,7 +67,7 @@ class Migration(CheckedMigration):
+                         """,
+                     hints={"tables": ["uptime_uptimesubscription"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "uptime_uptimesubscription" ADD COLUMN "status" smallint NOT NULL DEFAULT 0;
+                     """,
+diff --git a/src/sentry/uptime/migrations/0003_drop_remote_subscription.py b/src/sentry/uptime/migrations/0003_drop_remote_subscription.py
+index baaa9f57d0b..b8f4b473b8a 100644
+--- a/src/sentry/uptime/migrations/0003_drop_remote_subscription.py
++++ b/src/sentry/uptime/migrations/0003_drop_remote_subscription.py
+@@ -1,8 +1,6 @@
+ # Generated by Django 5.0.6 on 2024-06-21 22:03
+-
+-from django.db import migrations
+-
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,14 +18,12 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("uptime", "0002_remove_separate_remote_subscription"),
+     ]
+ 
+     operations = [
+-        migrations.RunSQL(
++        SafeRunSQL(
+             """
+                     ALTER TABLE "uptime_uptimesubscription" DROP COLUMN "remote_subscription_id";
+                     """,
+diff --git a/src/sentry/uptime/migrations/0004_projectuptimesubscription_mode.py b/src/sentry/uptime/migrations/0004_projectuptimesubscription_mode.py
+index 7c45752c8c0..9bbc5fc56dd 100644
+--- a/src/sentry/uptime/migrations/0004_projectuptimesubscription_mode.py
++++ b/src/sentry/uptime/migrations/0004_projectuptimesubscription_mode.py
+@@ -5,6 +5,7 @@ from django.db import migrations, models
+ 
+ import sentry.db.models.fields.foreignkey
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -22,8 +23,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0731_add_insight_project_flags"),
+         ("uptime", "0003_drop_remote_subscription"),
+@@ -36,7 +35,7 @@ class Migration(CheckedMigration):
+         ),
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     'ALTER TABLE "uptime_projectuptimesubscription" ADD COLUMN "mode" smallint NOT NULL DEFAULT 1;',
+                     reverse_sql='ALTER TABLE "uptime_projectuptimesubscription" DROP COLUMN "mode";',
+                     hints={"tables": ["uptime_projectuptimesubscription"]},
+diff --git a/src/sentry/uptime/migrations/0005_uptime_status.py b/src/sentry/uptime/migrations/0005_uptime_status.py
+index 5402acf8352..7a39f767751 100644
+--- a/src/sentry/uptime/migrations/0005_uptime_status.py
++++ b/src/sentry/uptime/migrations/0005_uptime_status.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("uptime", "0004_projectuptimesubscription_mode"),
+     ]
+@@ -29,7 +28,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     'ALTER TABLE "uptime_projectuptimesubscription" ADD COLUMN "uptime_status" smallint DEFAULT 1 NOT NULL CHECK ("uptime_status" >= 0);',
+                     reverse_sql='ALTER TABLE "uptime_projectuptimesubscription" DROP COLUMN "uptime_status";',
+                     hints={"tables": ["uptime_projectuptimesubscription"]},
+diff --git a/src/sentry/uptime/migrations/0006_projectuptimesubscription_name_owner.py b/src/sentry/uptime/migrations/0006_projectuptimesubscription_name_owner.py
+index 61a26021ead..9a3c4be95ca 100644
+--- a/src/sentry/uptime/migrations/0006_projectuptimesubscription_name_owner.py
++++ b/src/sentry/uptime/migrations/0006_projectuptimesubscription_name_owner.py
+@@ -6,6 +6,7 @@ from django.db import migrations, models
+ import sentry.db.models.fields.foreignkey
+ import sentry.db.models.fields.hybrid_cloud_foreign_key
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -23,8 +24,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("sentry", "0742_backfill_alertrule_detection_type"),
+         ("uptime", "0005_uptime_status"),
+@@ -33,7 +32,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "uptime_projectuptimesubscription" ADD COLUMN "name" text NOT NULL;
+                     """,
+diff --git a/src/sentry/uptime/migrations/0008_uptime_url_suffix.py b/src/sentry/uptime/migrations/0008_uptime_url_suffix.py
+index 57ffe779e50..d87774fd575 100644
+--- a/src/sentry/uptime/migrations/0008_uptime_url_suffix.py
++++ b/src/sentry/uptime/migrations/0008_uptime_url_suffix.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("uptime", "0007_update_detected_subscription_interval"),
+     ]
+@@ -29,7 +28,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "uptime_uptimesubscription" ADD COLUMN "url_domain" character varying(255) NOT NULL DEFAULT '';
+                     """,
+@@ -38,7 +37,7 @@ class Migration(CheckedMigration):
+                 """,
+                     hints={"tables": ["uptime_uptimesubscription"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "uptime_uptimesubscription" ADD COLUMN "url_domain_suffix" character varying(255) NOT NULL DEFAULT '';
+                     """,
+@@ -47,7 +46,7 @@ class Migration(CheckedMigration):
+                 """,
+                     hints={"tables": ["uptime_uptimesubscription"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "uptime_uptimesubscription" ADD COLUMN "host_whois_orgname" character varying(255) NOT NULL DEFAULT '';
+                     """,
+@@ -56,7 +55,7 @@ class Migration(CheckedMigration):
+                 """,
+                     hints={"tables": ["uptime_uptimesubscription"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "uptime_uptimesubscription" ADD COLUMN "host_whois_orgid" character varying(255) NOT NULL DEFAULT '';
+                     """,
+diff --git a/src/sentry/uptime/migrations/0011_remove_uptime_whois_columns_db.py b/src/sentry/uptime/migrations/0011_remove_uptime_whois_columns_db.py
+index 529f7f7731c..6ebba7a9a2b 100644
+--- a/src/sentry/uptime/migrations/0011_remove_uptime_whois_columns_db.py
++++ b/src/sentry/uptime/migrations/0011_remove_uptime_whois_columns_db.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("uptime", "0010_remove_uptime_whois_columns_state"),
+     ]
+@@ -29,7 +28,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "uptime_uptimesubscription" DROP COLUMN "host_whois_orgname";
+                     ALTER TABLE "uptime_uptimesubscription" DROP COLUMN "host_whois_orgid";
+diff --git a/src/sentry/uptime/migrations/0012_uptime_subscription_request_fields.py b/src/sentry/uptime/migrations/0012_uptime_subscription_request_fields.py
+index 882fdca1fe9..d0af4529bac 100644
+--- a/src/sentry/uptime/migrations/0012_uptime_subscription_request_fields.py
++++ b/src/sentry/uptime/migrations/0012_uptime_subscription_request_fields.py
+@@ -3,6 +3,7 @@ from django.db import migrations, models
+ 
+ import sentry.db.models.fields.jsonfield
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("uptime", "0011_remove_uptime_whois_columns_db"),
+     ]
+@@ -29,17 +28,17 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """ALTER TABLE "uptime_uptimesubscription" ADD COLUMN "body" text NULL;""",
+                     reverse_sql="""ALTER TABLE "uptime_uptimesubscription" DROP COLUMN "body";""",
+                     hints={"tables": ["uptime_uptimesubscription"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """ALTER TABLE "uptime_uptimesubscription" ADD COLUMN "headers" text DEFAULT '{}' NOT NULL;""",
+                     reverse_sql="""ALTER TABLE "uptime_uptimesubscription" DROP COLUMN "headers";""",
+                     hints={"tables": ["uptime_uptimesubscription"]},
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """ALTER TABLE "uptime_uptimesubscription" ADD COLUMN "method" varchar(20) DEFAULT 'GET' NOT NULL;""",
+                     reverse_sql="""ALTER TABLE "uptime_uptimesubscription" DROP COLUMN "method";""",
+                     hints={"tables": ["uptime_uptimesubscription"]},
+diff --git a/src/sentry/uptime/migrations/0018_add_trace_sampling_field_to_uptime.py b/src/sentry/uptime/migrations/0018_add_trace_sampling_field_to_uptime.py
+index d16374639f1..c459c971742 100644
+--- a/src/sentry/uptime/migrations/0018_add_trace_sampling_field_to_uptime.py
++++ b/src/sentry/uptime/migrations/0018_add_trace_sampling_field_to_uptime.py
+@@ -3,6 +3,7 @@
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -20,8 +21,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("uptime", "0017_unique_on_timeout"),
+     ]
+@@ -29,7 +28,7 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """
+                     ALTER TABLE "uptime_uptimesubscription" ADD COLUMN IF NOT EXISTS "trace_sampling" boolean NOT NULL DEFAULT false;
+                     """,
+diff --git a/src/sentry/workflow_engine/migrations/0010_detector_state_unique_group.py b/src/sentry/workflow_engine/migrations/0010_detector_state_unique_group.py
+index 821655e8655..19f95583b14 100644
+--- a/src/sentry/workflow_engine/migrations/0010_detector_state_unique_group.py
++++ b/src/sentry/workflow_engine/migrations/0010_detector_state_unique_group.py
+@@ -4,6 +4,7 @@ import django.db.models.functions.comparison
+ from django.db import migrations, models
+ 
+ from sentry.new_migrations.migrations import CheckedMigration
++from sentry.new_migrations.monkey.special import SafeRunSQL
+ 
+ 
+ class Migration(CheckedMigration):
+@@ -21,8 +22,6 @@ class Migration(CheckedMigration):
+ 
+     is_post_deployment = False
+ 
+-    allow_run_sql = True
+-
+     dependencies = [
+         ("workflow_engine", "0009_detector_type"),
+     ]
+@@ -30,14 +29,16 @@ class Migration(CheckedMigration):
+     operations = [
+         migrations.SeparateDatabaseAndState(
+             database_operations=[
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """DROP INDEX CONCURRENTLY IF EXISTS "detector_state_unique_group_key";""",
+                     hints={"tables": ["workflow_engine_detectorstate"]},
++                    use_statement_timeout=False,
+                 ),
+-                migrations.RunSQL(
++                SafeRunSQL(
+                     """CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "detector_state_unique_group_key"
+                     ON "workflow_engine_detectorstate" ("detector_id", (COALESCE("detector_group_key", '')))""",
+                     hints={"tables": ["workflow_engine_detectorstate"]},
++                    use_statement_timeout=False,
+                 ),
+             ],
+             state_operations=[

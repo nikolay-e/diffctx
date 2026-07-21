@@ -1,0 +1,61 @@
+repo: react-native
+base_commit: b06c2d7050e91491b653444d749cef3da6e86a75
+commit: 42d67452eb9a507651078882d00df44dd6720049
+patch_stored: true
+gold:
+- path: packages/react-native/Libraries/AppDelegate/RCTAppDelegate.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/Libraries/AppDelegate/React-RCTAppDelegate.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/React-Core.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/React/CoreModules/React-CoreModules.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/bridgeless/React-BridgelessApple.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/bridgeless/React-BridgelessCore.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/bridgeless/React-BridgelessHermes.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/bridgeless/platform/ios/Core/RCTInstance.mm
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/cocoapods/bridgeless.rb
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/react_native_pods.rb
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/react-native/Libraries/Image/RCTImageUtils.mm
+- path: packages/react-native/Libraries/NativeAnimation/RCTAnimationUtils.mm
+- path: packages/rn-tester/Podfile.lock
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Real diff.stat is only 187 insertions/72 deletions across 79 files (a mechanical .m -> .mm rename
+  plus a handful of podspec/include-path edits), but ctx.md renders 49013 tokens across 140 files because
+  non-tree-sitter-friendly file types (Ruby podspecs, .mm) collapse into a single ''chunk'' fragment spanning
+  the entire file, so a 1-line podspec edit drags in a 124-line full dump, and a renamed .mm file with
+  a tiny header tweak drags in its full 387-line body. The 1001-1480 line dump of the generated Podfile.lock
+  is pure noise with zero semantic value for a reader. File-level selection recall is good (renamed files
+  are all listed) but content-level precision is poor: comprehension-per-token is far below what a rename-focused
+  diff should need.'

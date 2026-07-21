@@ -1,0 +1,75 @@
+repo: react-native
+base_commit: 83716298f8dd6a1f3128965225858b4c6d3b2477
+commit: 2932c0f71f1882607d9e579e5c09db28e131a4c9
+patch_stored: true
+gold:
+- path: packages/react-native/ReactCommon/react/renderer/components/text/ParagraphShadowNode.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/components/textinput/platform/android/react/renderer/components/androidtextinput/AndroidTextInputShadowNode.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/components/textinput/platform/ios/react/renderer/components/iostextinput/TextInputShadowNode.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/components/view/YogaLayoutableShadowNode.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/core/LayoutableShadowNode.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/core/LayoutableShadowNode.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/textlayoutmanager/TextMeasureCache.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/android/react/renderer/textlayoutmanager/TextLayoutManager.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/renderer/textlayoutmanager/platform/ios/react/renderer/textlayoutmanager/RCTTextLayoutManager.mm
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/yoga/yoga/algorithm/Baseline.cpp
+  tier: essential
+  role: unspecified
+  in_diff: false
+- path: packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/js/examples/Text/TextExample.android.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/js/examples/Text/TextExample.ios.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 1
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'Unlike RN-008, the file selection here is largely on-target: the 60 ctx_files include the 40 diff
+  files plus a genuinely relevant extra 20 (ShadowNodeFamily.h, ComponentDescriptor.h, AttributedString.h,
+  yoga''s Baseline.cpp, test files) that a reader would want to understand baseline alignment on shadow
+  nodes. The defect is token bloat, not file selection: React Native''s generated feature-flag files (Kt/C++/JS
+  accessor/provider boilerplate) get rendered as large near-complete file dumps or long runs of near-identical
+  16-line ''changed'' chunks despite the actual code change being a single new flag threaded through ~1-2
+  lines per file. That inflates 628 lines of real diff into 47k tokens. A tool optimizing comprehension-per-token
+  should collapse repetitive generated-flag boilerplate to just the new/changed entries rather than re-rendering
+  entire accessor tables.'

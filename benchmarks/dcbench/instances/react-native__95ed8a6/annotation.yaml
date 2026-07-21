@@ -1,0 +1,50 @@
+repo: react-native
+base_commit: 95113e9dfd0ee2c68b7e21b29ca6982f22647619
+commit: 95ed8a6123024afd03227358ab4b165fdf87b270
+patch_stored: true
+gold:
+- path: packages/react-native-codegen/src/generators/modules/GenerateModuleJniH.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/React/React-RCTFBReactNativeSpec.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/React/React-RCTFabric.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/fabric/CoreComponentsRegistry.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/newarchdefaults/DefaultComponentsRegistry.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactAndroid/src/main/jni/react/newarchdefaults/rncore.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/codegen/generate-artifacts-executor/generateFBReactNativeSpecIOS.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/codegen/generate-artifacts-executor/generateNativeCode.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: packages/react-native/ReactCommon/jsinspector-modern/tests/DebuggerSessionObserverTest.cpp
+- path: packages/react-native/ReactCommon/react/nativemodule/idlecallbacks/NativeIdleCallbacks.cpp
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: diff.stat shows 276 insertions/444 deletions across 47 files (a codegen-target merge), but diffctx
+  pulled in 115 ctx_files (68 more than the changed set) for 48288 tokens. Spot-checked two pulled-in
+  files (NativeIdleCallbacks.cpp, DebuggerSessionObserverTest.cpp) against truth.diff and confirmed zero
+  occurrences there -- they are unrelated co-located files, not touched by this commit, consistent with
+  the over-selection failure mode (#65). Recall on the genuinely-changed set looks solid; the problem
+  is added noise inflating token cost roughly 1.7x beyond the necessary file set.

@@ -1,0 +1,60 @@
+repo: react-native
+base_commit: 5df92e184332066a9345f9a73cb8eb7227a8f90f
+commit: 8ccaf007eed227c2a0d89b6259ced1db71375654
+patch_stored: true
+gold:
+- path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlags.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/featureflags/ReactNativeFeatureFlagsAccessor.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/nativemodule/intersectionobserver/NativeIntersectionObserver.h
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/react/nativemodule/intersectionobserver/React-intersectionobservernativemodule.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/featureflags/ReactNativeFeatureFlags.config.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/src/private/featureflags/ReactNativeFeatureFlags.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/src/private/setup/setUpDefaultReactNativeEnvironment.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/js/examples/IntersectionObserver/IntersectionObserverIndex.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/js/utils/RNTesterList.android.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/rn-tester/js/utils/RNTesterList.ios.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: none identified within the read portion — nearly all included fragments are genuinely changed
+    (184/195 changed_frags), so the extra ~11 co-located fragments are a small, plausible fraction
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: Despite meta labeling this over_dump (md_tokens=47,131 > the 15k threshold), the underlying diff
+  is genuinely 2,230 lines across 42 files, including 8 brand-new example files (IntersectionObserverClippingParent.js
+  at 404 lines, IntersectionObserverClippingRoot.js at 400 lines) that must be shown in full to understand
+  the PR's demos — so the token count tracks diff size rather than reflecting noise. 184 of 195 total
+  fragments are marked changed, i.e. very little unrequested co-located material was pulled in. This looks
+  like a case where the over_dump status flag (a blunt token-count threshold) over-fires on a legitimately
+  large but well-targeted selection; recommend the benchmark's status classifier weight changed_frags/total_frags
+  ratio, not just absolute token count.

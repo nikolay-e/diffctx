@@ -1,0 +1,15 @@
+repo: gitpod
+base_commit: dcdf9293c253626c24cf01430c0d4f242987eca2
+commit: 1f06a5330f6f1c10bc9aed536561b2f41efffea3
+patch_stored: false
+gold: []
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: Hang on a broad go.mod/go.sum dependency bump across 90 modules. The diff itself is fully self-explanatory
+  (version string changes only, no external code context needed), so the ideal output is near-empty, but
+  the tool times out and returns zero output rather than recognizing these are plain-text manifest diffs.
+  Concerning because this is a very common CI-bot-style commit shape (dependabot/renovate) that should
+  be trivially fast.

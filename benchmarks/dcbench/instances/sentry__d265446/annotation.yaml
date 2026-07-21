@@ -1,0 +1,38 @@
+repo: sentry
+base_commit: 1d57d16832418829cac32135a25233709e31c0dc
+commit: d26544689bfbbb81b0c2873f98e592920dcc91ec
+patch_stored: true
+gold:
+- path: .pre-commit-config.yaml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .vscode/extensions.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .vscode/settings.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: pyproject.toml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: setup.cfg
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: essentially all 675 other touched files — almost every one is a mechanical ruff-format/isort reformat
+    (blank-line removal after `class Migration(CheckedMigration):`, import-order swaps like `from devenv
+    import constants`) with no independent logical content beyond 'ruff reformatted this file'
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'The most extreme stress test in the sample: 680 files, purely a tooling migration (black/isort/flake8
+  -> ruff) where >99% of files are whitespace/import-order noise and only 5 config files carry real signal.
+  status=hang confirms the algorithm cannot terminate at this scale (#70). This is exactly the shape of
+  commit a correct tool must special-case: detect ''homogeneous mechanical diff across N files'' and summarize
+  rather than attempt per-fragment ranking on all 680.'

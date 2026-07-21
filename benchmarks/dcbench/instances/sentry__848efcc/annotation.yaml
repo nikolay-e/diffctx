@@ -1,0 +1,44 @@
+repo: sentry
+base_commit: c56bd7cd5c90d0c805d7d7e12f741bb9835b3c60
+commit: 848efccd2e32cc75bd13195b072f6f289a2c08e5
+patch_stored: true
+gold:
+- path: jest.config.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: knip.config.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: package.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/components/pageFilters/actions.spec.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/dashboards/detail.spec.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/views/onboarding/onboarding.spec.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: tests/js/setup.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: pnpm-lock.yaml
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: Hang on a 54-file Jest-config migration (Babel -> SWC transform, plus systematic spec-file mocking
+  updates). pnpm-lock.yaml alone carries a 1906-line diff in this commit and is the prime suspect for
+  the hang, echoing the generated/lockfile-triggered pattern seen elsewhere (gitpod's regenerated protobufs).
+  The real, small, highly relevant jest.config.ts/package.json/knip.config.ts changes never get surfaced
+  at all.

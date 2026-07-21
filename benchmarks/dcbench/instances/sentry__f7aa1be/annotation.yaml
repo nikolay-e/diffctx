@@ -1,0 +1,45 @@
+repo: sentry
+base_commit: 86311d455059b17c3e2c19d92db0299f429a135e
+commit: f7aa1bea12e128a3e48e8b9edb630a945aaeb8f8
+patch_stored: true
+gold:
+- path: .github/workflows/backend.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .github/workflows/frontend.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .npmrc
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: .volta.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: Makefile
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: api-docs/package.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: package.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: api-docs/pnpm-lock.yaml
+- path: pnpm-lock.yaml
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: status=hang on a 28-file Yarn v1→pnpm migration (27503 truth.diff lines, dominated by generated
+  pnpm-lock.yaml content). The real signal is in package.json/.npmrc/.volta.json/Makefile/CI workflow
+  files reflecting the tool-chain switch; the giant lockfiles are mechanical and shouldn't be included
+  even in a correct run. ctx.md is empty — total failure to produce any output regardless of the fact
+  the underlying semantic diff (excluding lockfiles) is actually quite small.

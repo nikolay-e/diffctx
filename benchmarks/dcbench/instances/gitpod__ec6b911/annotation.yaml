@@ -1,0 +1,47 @@
+repo: gitpod
+base_commit: 0656a3841da7081a28bd5a5ad6b08c57f2e2a987
+commit: ec6b911f24e91a6c0aeffca6d4bead72270369f1
+patch_stored: true
+gold:
+- path: components/image-builder-mk3/cmd/setup.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/image-builder-mk3/leeway.Dockerfile
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/registry-facade/cmd/setup.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/registry-facade/leeway.Dockerfile
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager/pkg/manager/manager.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/installer/pkg/components/image-builder-mk3/deployment.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/installer/pkg/components/registry-facade/configmap.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: install/installer/pkg/components/registry-facade/daemonset.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'status=hang on a comparatively small diff: only 38 files, 3696 lines of truth.diff, and the core
+  change is a straightforward move/inline of an init-container CA-update script into two new cmd/setup.go
+  files plus deployment/daemonset wiring. This is the smallest-diff hang in the gitpod batch, which is
+  strong evidence the hang is not simply a function of diff size — the tool should handle this trivially
+  yet produced zero output. Completely fails the tool''s stated goal for this commit.'

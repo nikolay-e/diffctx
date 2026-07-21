@@ -1,0 +1,79 @@
+repo: gitpod
+base_commit: 90f15c44732218b62fbc1f4c2555a1ac1afb3ab4
+commit: e9aae6e49730d30e6142ca2e241bd211beef3087
+patch_stored: true
+gold:
+- path: components/dashboard/src/repositories/detail/variables/ConfigurationVariableList.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/repositories/detail/variables/EnableDockerdAuthentication.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/docker-up/docker-up/main.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/docker-up/dockerd/args.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/docker-up/dockerd/args_test.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-protocol/src/protocol.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/image-builder-bob/pkg/proxy/auth.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/image-builder-bob/pkg/proxy/auth_test.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/gitpod/v1/configuration.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/projects/projects-service.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/user/env-var-service.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/workspace/workspace-starter.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/supervisor/pkg/supervisor/config.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/supervisor/pkg/supervisor/docker.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/supervisor/pkg/supervisor/docker_test.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: components/ide-metrics.../ConfigurationOuterClass.java
+- path: components/public-api/go/v1/configuration.pb.go
+- path: components/public-api/typescript/src/gitpod/v1/configuration_pb.ts (all three are mechanically
+    regenerated from the .proto and don't add independent signal)
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'status=hang despite only 27 files and a self-contained feature (auto-login dockerd via GITPOD_IMAGE_AUTH:
+  new dockerd/args.go parser, new supervisor docker.go, new dashboard toggle). Notably this repo hangs
+  even on its smallest commit in the sample, suggesting the hang is triggered by something structural
+  (e.g. the large generated protobuf files: 441-line .pb.go, 405-line .java) rather than pure file count
+  — worth investigating as a distinct trigger from sheer scale.'

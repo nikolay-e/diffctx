@@ -1,0 +1,71 @@
+repo: gitpod
+base_commit: 2b13aea5f9a37461d1a0c866035c56dc1792ba93
+commit: 6b2187ae23158d7be5666370d9aa7445f0505420
+patch_stored: true
+gold:
+- path: components/dashboard/src/repositories/detail/ConfigurationDetailPrebuilds.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/dashboard/src/repositories/detail/prebuilds/PrebuildSettingsForm.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/gitpod-protocol/src/teams-projects-protocol.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/gitpod/v1/configuration.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/typescript-common/src/public-api-converter.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/public-api/typescript/src/gitpod/v1/configuration_pb.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/prebuilds/constants.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/prebuilds/github-enterprise-app.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/prebuilds/gitlab-app.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/prebuilds/prebuild-manager.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/projects/projects-service.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/scm/scm-service.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/server/src/workspace/workspace-service.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: components/public-api/go/v1/configuration.pb.go
+- path: components/public-api/java/src/main/java/io/gitpod/publicapi/v1/ConfigurationOuterClass.java
+- path: components/public-api/java/src/main/java/io/gitpod/publicapi/v1/Error.java
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: status=hang on a moderate 39-file commit ('activity-based prebuilds') mixing a real product change
+  (UI form + protocol + backend service edits) with several large generated files (610-line configuration.pb.go,
+  544-line ConfigurationOuterClass.java, 322-line Error.java from a single proto edit). This is squarely
+  the kind of diff diffctx should handle well (well under 200 real changed lines outside codegen) yet
+  it produced zero output, again pointing to codegen-heavy diffs as a hang trigger rather than genuine
+  algorithmic complexity.

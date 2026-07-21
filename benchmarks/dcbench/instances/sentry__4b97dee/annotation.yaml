@@ -1,0 +1,48 @@
+repo: sentry
+base_commit: c7a6cc498e118e69cf7ff1a9f1d08857da5ec277
+commit: 4b97dee4eba0a4d1be919f1ca3213153a6c83db5
+patch_stored: true
+gold:
+- path: .github/workflows/frontend.yml
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: knip.config.ts
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: package.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/components/issues/compactIssue.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/components/segmentedLoadingBar.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/components/workflowEngine/form/section.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/components/workflowEngine/ui/collapsibleSection.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: static/app/utils/useDimensionsMultiple.tsx
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: Hang on a 56-file commit enabling Knip dead-code detection in CI and deleting the dead components/hooks
+  it found (compactIssue.tsx, segmentedLoadingBar.tsx + its stories, collapsibleSection.tsx + stories,
+  useDimensionsMultiple.tsx, automations/hooks/utils.tsx, deprecatedAsyncView.tsx). This is not a pure
+  deletion-only diff (knip.config.ts, package.json, and several files with small import-removal edits
+  are also touched), so the 'deletions need no fragments' exception does not fully apply here; the tool
+  should surface the CI config change plus the deleted files' former call sites, but instead returns nothing.

@@ -1,0 +1,52 @@
+repo: react-native
+base_commit: 6d5b524f876a33b883128714e016052c620e1b41
+commit: f140c4906b286a85772d0b7d97eecd0798805fcd
+patch_stored: true
+gold:
+- path: gradle.properties
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/internal/PrivateReactExtension.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/DependencyUtils.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/gradle-plugin/react-native-gradle-plugin/src/main/kotlin/com/facebook/react/utils/ProjectUtils.kt
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/ReactCommon/hermes/executor/HermesExecutorFactory.cpp
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/ios-prebuild/hermes.js
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/scripts/react_native_pods.rb
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/sdks/hermes-engine/hermes-engine.podspec
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: packages/react-native/sdks/hermes-engine/hermes-utils.rb
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden: []
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'This is the most damning hang in the batch: only 14 files, 103 insertions/39 deletions (a flag
+  flip from hermesV1Enabled=false to true plus a few callsite updates across Kotlin/Ruby/JS/C++). This
+  is a small, ordinary, realistic commit shape with no oversized generated files -- yet diffctx still
+  times out and returns zero output. Combined with the other hangs across wildly different file counts
+  (14 to 2397), this points to a systemic non-size-dependent trigger (#70) rather than a scale-only issue,
+  which should be the highest-priority bug to chase.'

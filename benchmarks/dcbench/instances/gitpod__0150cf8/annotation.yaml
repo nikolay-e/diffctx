@@ -1,0 +1,47 @@
+repo: gitpod
+base_commit: 47376bb372f7a914c5770256e4a30791179efe36
+commit: 0150cf8cce4b65e8c1efcdb461e30481bed8c2da
+patch_stored: true
+gold:
+- path: components/ws-manager-api/core.proto
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager-api/go/config/config.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager-api/go/core.pb.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager/pkg/manager/create.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager/pkg/manager/manager.go
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager/pkg/manager/testdata/cdwp_class.golden
+  tier: essential
+  role: unspecified
+  in_diff: true
+- path: components/ws-manager/pkg/manager/testdata/cdwp_class.json
+  tier: essential
+  role: unspecified
+  in_diff: true
+forbidden:
+- path: components/ws-manager-api/typescript/src/core_pb.d.ts
+- path: components/ws-manager-api/typescript/src/core_pb.js
+nontrivial_gold_count: 0
+annotator: legacy-review-2026-06
+candidates_from:
+- review
+notes: 'status=hang on only 15 files / 1947 lines — the smallest commit in the entire 11-commit batch
+  — introducing WorkspaceSpec.class and refactoring Configuration.Container into a WorkspaceClasses map
+  (core.proto, config.go, create.go are the semantic heart of the change). ctx.md is empty. This is the
+  strongest single data point that the hang is a structural/pathological bug unrelated to diff size: a
+  trivial well-scoped proto+Go feature addition should be diffctx''s easiest case, yet it produces nothing.
+  TypeScript generated bindings (core_pb.d.ts/.js) are mechanical codegen mirrors of core.pb.go and not
+  needed to understand the change.'
