@@ -584,7 +584,7 @@ Two external file-level baselines run the same protocol (same manifests, same bu
 \begin{table}[h]
 \centering
 \small
-\caption{diffctx (EGO, deployed default) vs.\ external baselines at $B{=}8000$ tokens. Method columns are intent-to-treat means over all $n{=}500$ per test set; $\Delta$ is the per-instance paired delta in file recall on the both-OK subset per the preregistered P1 protocol ($n_{\mathrm{both\text{-}OK}}{=}1460$ pooled for BM25), positive favors diffctx. 95\% paired-bootstrap percentile CI on $\Delta$ ($B{=}10{,}000$ resamples, seed $=42$); $p$-value from the permutation sign-flip test (\texttt{permutation\_paired}, one-sided, $10^5$ permutations, add-one corrected; $1.0\mathrm{e}{-5}$ is the add-one floor). Both columns from the consolidated rerun at commit \texttt{9eed77aa}; the Aider cells are still executing and marked TBD.}
+\caption{diffctx (EGO, deployed default) vs.\ external baselines at $B{=}8000$ tokens. Method columns are intent-to-treat means over all $n{=}500$ per test set; $\Delta$ is the per-instance paired delta in file recall on the both-OK subset per the preregistered P1 protocol ($n_{\mathrm{both\text{-}OK}}{=}1460$ pooled for BM25), positive favors diffctx. 95\% paired-bootstrap percentile CI on $\Delta$ ($B{=}10{,}000$ resamples, seed $=42$); $p$-value from the permutation sign-flip test (\texttt{permutation\_paired}, one-sided, $10^5$ permutations, add-one corrected; $1.0\mathrm{e}{-5}$ is the add-one floor). Both columns from the consolidated rerun at commit \texttt{9eed77aa} ($n_{\mathrm{both\text{-}OK}}{=}1421$ pooled for Aider fair-input, measured with the helper stderr-deadlock fix); the Aider oracle-mentioned stress test is still executing.}
 \label{tab:prelim-baselines}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lrlllc}
@@ -600,10 +600,10 @@ SWE-bench Verified     & 500 & 0.998 & 0.540 & $+0.457$ [$+0.415, +0.499$] & $1.
 \midrule
 \multicolumn{6}{l}{\emph{vs.\ Aider repo-map (fair-input mode)}} \\
 \midrule
-ContextBench Verified            & 500  & 0.816 & TBD & TBD & TBD \\
-PolyBench-500                    & 500  & 0.942 & TBD & TBD & TBD \\
-SWE-bench Verified               & 500  & 0.998 & TBD & TBD & TBD \\
-\textbf{Pooled}                  & \textbf{1500} & \textbf{0.919} & TBD & TBD & TBD \\
+ContextBench Verified            & 500  & 0.816 & 0.468 & $+0.353$ [$+0.315, +0.391$] & $1.0\mathrm{e}{-5}$ \\
+PolyBench-500                    & 500  & 0.942 & 0.316 & $+0.635$ [$+0.595, +0.674$] & $1.0\mathrm{e}{-5}$ \\
+SWE-bench Verified               & 500  & 0.998 & 0.694 & $+0.304$ [$+0.266, +0.344$] & $1.0\mathrm{e}{-5}$ \\
+\textbf{Pooled}                  & \textbf{1500} & \textbf{0.919} & \textbf{0.493} & $\mathbf{+0.423\ [+0.399,\ +0.447]}$ & $\mathbf{1.0\mathrm{e}{-5}}$ \\
 \bottomrule
 \end{tabular}}
 \end{table}
@@ -728,7 +728,7 @@ For comparison, Table~\ref{tab:aider-budget-curve} reports the Aider repo-map fa
 \textbf{Budget $B$} & \textbf{n} & \textbf{ContextBench Verified} & \textbf{PolyBench-500} & \textbf{SWE-bench Verified} & \textbf{Pooled} \\
 \midrule
 $0$         & 1500 & 0.000 & 0.000 & 0.000 & 0.000 \\
-$8{,}000$ (rerun)   & 1500 & TBD & TBD & TBD & TBD \\
+$8{,}000$ (rerun)   & 1500 & 0.468 [0.432, 0.505] & 0.316 [0.280, 0.353] & 0.694 [0.655, 0.733] & 0.493 [0.470, 0.515] \\
 \midrule
 \multicolumn{6}{l}{\emph{previous snapshot (indicative only):}} \\
 $16{,}000$  & 1500 & \textcolor{gray}{0.509} & \textcolor{gray}{0.356} & \textcolor{gray}{0.766} & \textcolor{gray}{0.544} \\
@@ -782,6 +782,7 @@ Random packing floor                        & 0.012 \\
 PPR                                         & 0.244 \\
 EGO without lexical component ($\epsilon{=}0$) & 0.310 \\
 EGO (deployed default)                      & 0.352 \\
+Aider repo-map (fair-input, external)       & 0.354 \\
 BM25 (internal)                             & 0.402 \\
 \midrule
 Union EGO $\cup$ BM25 (oracle bound)        & 0.473 \\
@@ -790,7 +791,7 @@ Union EGO$_{\epsilon=0}$ $\cup$ BM25 (oracle bound) & 0.475 \\
 \end{tabular}
 \end{table}
 
-Three readings follow. First, all methods clear the trivial floors by an order of magnitude --- context retrieval is real. Second, the lexical signal is currently the strongest single retrieval signal ($0.402$ for internal BM25): the deployed default EGO, selected by recall-oriented calibration, trails the plain lexical mode on the very ability the calibration intended to optimize. Third --- and most consequential for the method --- the signals are \emph{complementary}, not redundant: EGO finds 41 nontrivial gold files that BM25 misses (BM25 finds 63 that EGO misses), and the oracle union reaches $0.473$--$0.475$, seven points above the best single method. The deployed EGO mode, which mixes graph and lexical signals with hand-set weights, lands \emph{below} its own best component ($0.352 < 0.402$) --- the classic signature of a miscalibrated mixture. This measurement motivates the per-edge-category weight calibration of Section~\ref{sec:weight-calibration} as the highest-leverage open item: the gap between the deployed mixture and the oracle union ($0.352 \to 0.473$) is the available headroom. The budget curve on the nontrivial subset also differs qualitatively from the headline: nontrivial recall for EGO grows from $0.352$ at $8\mathrm{k}$ to $0.503$ at $32\mathrm{k}$ and $0.581$ at $128\mathrm{k}$ --- larger budgets do buy genuine context, but headline precision falls faster than nontrivial recall rises, so the added context arrives buried in noise.
+Three readings follow. First, all methods clear the trivial floors by an order of magnitude --- context retrieval is real --- and the external Aider repo-map lands within measurement noise of the deployed EGO mode ($0.354$ vs.\ $0.352$): despite the wide headline gap (Table~\ref{tab:prelim-baselines}, driven almost entirely by Aider's weaker changed-file retention), the two systems' genuine retrieval ability is indistinguishable. Second, the lexical signal is currently the strongest single retrieval signal ($0.402$ for internal BM25): the deployed default EGO, selected by recall-oriented calibration, trails the plain lexical mode on the very ability the calibration intended to optimize. Third --- and most consequential for the method --- the signals are \emph{complementary}, not redundant: EGO finds 41 nontrivial gold files that BM25 misses (BM25 finds 63 that EGO misses), and the oracle union reaches $0.473$--$0.475$, seven points above the best single method. The deployed EGO mode, which mixes graph and lexical signals with hand-set weights, lands \emph{below} its own best component ($0.352 < 0.402$) --- the classic signature of a miscalibrated mixture. This measurement motivates the per-edge-category weight calibration of Section~\ref{sec:weight-calibration} as the highest-leverage open item: the gap between the deployed mixture and the oracle union ($0.352 \to 0.473$) is the available headroom. The budget curve on the nontrivial subset also differs qualitatively from the headline: nontrivial recall for EGO grows from $0.352$ at $8\mathrm{k}$ to $0.503$ at $32\mathrm{k}$ and $0.581$ at $128\mathrm{k}$ --- larger budgets do buy genuine context, but headline precision falls faster than nontrivial recall rises, so the added context arrives buried in noise.
 
 \subsection{Limitations of the Current Empirical Snapshot}
 \label{sec:limitations}
