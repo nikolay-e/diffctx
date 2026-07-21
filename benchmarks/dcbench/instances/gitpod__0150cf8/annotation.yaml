@@ -7,30 +7,37 @@ gold:
   tier: essential
   role: unspecified
   in_diff: true
+  hop: 0
 - path: components/ws-manager-api/go/config/config.go
   tier: essential
   role: unspecified
   in_diff: true
+  hop: 0
 - path: components/ws-manager-api/go/core.pb.go
   tier: essential
   role: unspecified
   in_diff: true
+  hop: -1
 - path: components/ws-manager/pkg/manager/create.go
   tier: essential
   role: unspecified
   in_diff: true
+  hop: 0
 - path: components/ws-manager/pkg/manager/manager.go
   tier: essential
   role: unspecified
   in_diff: true
+  hop: 0
 - path: components/ws-manager/pkg/manager/testdata/cdwp_class.golden
   tier: essential
   role: unspecified
   in_diff: true
+  hop: -1
 - path: components/ws-manager/pkg/manager/testdata/cdwp_class.json
   tier: essential
   role: unspecified
   in_diff: true
+  hop: 0
 forbidden:
 - path: components/ws-manager-api/typescript/src/core_pb.d.ts
 - path: components/ws-manager-api/typescript/src/core_pb.js
@@ -45,3 +52,4 @@ notes: 'status=hang on only 15 files / 1947 lines — the smallest commit in the
   trivial well-scoped proto+Go feature addition should be diffctx''s easiest case, yet it produces nothing.
   TypeScript generated bindings (core_pb.d.ts/.js) are mechanical codegen mirrors of core.pb.go and not
   needed to understand the change.'
+max_gold_hop: 0
