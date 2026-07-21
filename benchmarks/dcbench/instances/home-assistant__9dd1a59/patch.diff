@@ -1,0 +1,166 @@
+From 9dd1a59d50740a45166ba48674b7b4ef87fc41bf Mon Sep 17 00:00:00 2001
+From: Ariel Ebersberger <31776703+justanotherariel@users.noreply.github.com>
+Date: Mon, 29 Jun 2026 13:14:01 +0200
+Subject: [PATCH] Rename "advanced" step to "additional" in Anthropic (#175101)
+
+---
+ .../components/anthropic/config_flow.py       |  8 +++----
+ .../components/anthropic/strings.json         | 12 +++++-----
+ .../components/anthropic/test_config_flow.py  | 24 +++++++++----------
+ 3 files changed, 22 insertions(+), 22 deletions(-)
+
+diff --git a/homeassistant/components/anthropic/config_flow.py b/homeassistant/components/anthropic/config_flow.py
+index 6c62cf4f7e..f3e575c14a 100644
+--- a/homeassistant/components/anthropic/config_flow.py
++++ b/homeassistant/components/anthropic/config_flow.py
+@@ -298,7 +298,7 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
+                 ):
+                     self.options.pop(CONF_LLM_HASS_API)
+                 if not errors:
+-                    return await self.async_step_advanced()
++                    return await self.async_step_additional()
+ 
+         return self.async_show_form(
+             step_id="init",
+@@ -308,10 +308,10 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
+             errors=errors or None,
+         )
+ 
+-    async def async_step_advanced(
++    async def async_step_additional(
+         self, user_input: dict[str, Any] | None = None
+     ) -> SubentryFlowResult:
+-        """Manage advanced options."""
++        """Manage additional options."""
+         errors: dict[str, str] = {}
+         description_placeholders: dict[str, str] = {}
+ 
+@@ -360,7 +360,7 @@ class ConversationSubentryFlowHandler(ConfigSubentryFlow):
+                 return await self.async_step_model()
+ 
+         return self.async_show_form(
+-            step_id="advanced",
++            step_id="additional",
+             data_schema=self.add_suggested_values_to_schema(
+                 vol.Schema(step_schema), self.options
+             ),
+diff --git a/homeassistant/components/anthropic/strings.json b/homeassistant/components/anthropic/strings.json
+index 7d41ced440..1916293e1e 100644
+--- a/homeassistant/components/anthropic/strings.json
++++ b/homeassistant/components/anthropic/strings.json
+@@ -48,16 +48,16 @@
+         "user": "Add AI task"
+       },
+       "step": {
+-        "advanced": {
++        "additional": {
+           "data": {
+             "chat_model": "[%key:common::generic::model%]",
+-            "prompt_caching": "[%key:component::anthropic::config_subentries::conversation::step::advanced::data::prompt_caching%]"
++            "prompt_caching": "[%key:component::anthropic::config_subentries::conversation::step::additional::data::prompt_caching%]"
+           },
+           "data_description": {
+-            "chat_model": "[%key:component::anthropic::config_subentries::conversation::step::advanced::data_description::chat_model%]",
+-            "prompt_caching": "[%key:component::anthropic::config_subentries::conversation::step::advanced::data_description::prompt_caching%]"
++            "chat_model": "[%key:component::anthropic::config_subentries::conversation::step::additional::data_description::chat_model%]",
++            "prompt_caching": "[%key:component::anthropic::config_subentries::conversation::step::additional::data_description::prompt_caching%]"
+           },
+-          "title": "[%key:component::anthropic::config_subentries::conversation::step::advanced::title%]"
++          "title": "[%key:component::anthropic::config_subentries::conversation::step::additional::title%]"
+         },
+         "init": {
+           "data": {
+@@ -115,7 +115,7 @@
+         "user": "Add conversation agent"
+       },
+       "step": {
+-        "advanced": {
++        "additional": {
+           "data": {
+             "chat_model": "[%key:common::generic::model%]",
+             "prompt_caching": "Caching strategy"
+diff --git a/tests/components/anthropic/test_config_flow.py b/tests/components/anthropic/test_config_flow.py
+index d26036d721..b8140115f8 100644
+--- a/tests/components/anthropic/test_config_flow.py
++++ b/tests/components/anthropic/test_config_flow.py
+@@ -275,9 +275,9 @@ async def test_subentry_options_thinking_budget_more_than_max(
+         },
+     )
+     assert options["type"] is FlowResultType.FORM
+-    assert options["step_id"] == "advanced"
++    assert options["step_id"] == "additional"
+ 
+-    # Configure advanced step
++    # Configure additional step
+     options = await hass.config_entries.subentries.async_configure(
+         options["flow_id"],
+         {"chat_model": "claude-sonnet-4-5"},
+@@ -330,9 +330,9 @@ async def test_subentry_web_search_user_location(
+         },
+     )
+     assert options["type"] is FlowResultType.FORM
+-    assert options["step_id"] == "advanced"
++    assert options["step_id"] == "additional"
+ 
+-    # Configure advanced step
++    # Configure additional step
+     options = await hass.config_entries.subentries.async_configure(
+         options["flow_id"],
+         {
+@@ -424,7 +424,7 @@ async def test_model_list(
+         },
+     )
+     assert options["type"] is FlowResultType.FORM
+-    assert options["step_id"] == "advanced"
++    assert options["step_id"] == "additional"
+     assert options["data_schema"].schema["chat_model"].config["options"] == snapshot
+ 
+ 
+@@ -447,9 +447,9 @@ async def test_invalid_model(
+         },
+     )
+     assert options["type"] is FlowResultType.FORM
+-    assert options["step_id"] == "advanced"
++    assert options["step_id"] == "additional"
+ 
+-    # Configure advanced step but with api error
++    # Configure additional step but with api error
+     with patch(
+         "homeassistant.components.anthropic.config_flow.anthropic.resources.models.AsyncModels.retrieve",
+         new_callable=AsyncMock,
+@@ -877,12 +877,12 @@ async def test_ai_task_subentry_not_loaded(
+     assert result.get("reason") == "entry_not_loaded"
+ 
+ 
+-async def test_creating_ai_task_subentry_advanced(
++async def test_creating_ai_task_subentry_additional(
+     hass: HomeAssistant,
+     mock_config_entry: MockConfigEntry,
+     mock_init_component,
+ ) -> None:
+-    """Test creating an AI task subentry with advanced settings."""
++    """Test creating an AI task subentry with additional settings."""
+     result = await hass.config_entries.subentries.async_init(
+         (mock_config_entry.entry_id, "ai_task_data"),
+         context={"source": config_entries.SOURCE_USER},
+@@ -891,7 +891,7 @@ async def test_creating_ai_task_subentry_advanced(
+     assert result.get("type") is FlowResultType.FORM
+     assert result.get("step_id") == "init"
+ 
+-    # Go to advanced settings
++    # Go to additional settings
+     result2 = await hass.config_entries.subentries.async_configure(
+         result["flow_id"],
+         {
+@@ -901,9 +901,9 @@ async def test_creating_ai_task_subentry_advanced(
+     )
+ 
+     assert result2.get("type") is FlowResultType.FORM
+-    assert result2.get("step_id") == "advanced"
++    assert result2.get("step_id") == "additional"
+ 
+-    # Configure advanced settings
++    # Configure additional settings
+     result3 = await hass.config_entries.subentries.async_configure(
+         result["flow_id"],
+         {

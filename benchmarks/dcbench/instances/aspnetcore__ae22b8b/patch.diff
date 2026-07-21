@@ -1,0 +1,800 @@
+From ae22b8b45bc3aad18767daa262e544b94a3250e7 Mon Sep 17 00:00:00 2001
+From: Copilot <198982749+Copilot@users.noreply.github.com>
+Date: Wed, 24 Jun 2026 17:18:26 +0200
+Subject: [PATCH] Remove long-obsolete MVC APIs targeted for removal (#67077)
+
+* Remove long-obsolete MVC compatibility and metadata APIs
+
+Co-authored-by: Youssef1313 <31348972+Youssef1313@users.noreply.github.com>
+
+* Refactor BindAttributeTest to avoid non-public reflection
+
+Co-authored-by: Youssef1313 <31348972+Youssef1313@users.noreply.github.com>
+
+* Polish BindAttribute test coverage after review
+
+Co-authored-by: Youssef1313 <31348972+Youssef1313@users.noreply.github.com>
+
+* Move removed ModelMetadataIdentity API to unshipped baseline
+
+Co-authored-by: Youssef1313 <31348972+Youssef1313@users.noreply.github.com>
+
+* Move removed MVC.Core APIs to unshipped baseline
+
+Co-authored-by: Youssef1313 <31348972+Youssef1313@users.noreply.github.com>
+
+* Revert shipped API baselines and record removals in unshipped
+
+Co-authored-by: Youssef1313 <31348972+Youssef1313@users.noreply.github.com>
+
+* Remove obsolete metadata identity test
+
+Co-authored-by: Youssef1313 <31348972+Youssef1313@users.noreply.github.com>
+
+---------
+
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+Co-authored-by: Youssef1313 <31348972+Youssef1313@users.noreply.github.com>
+---
+ .../Metadata/ModelMetadataIdentity.cs         |  20 ---
+ .../src/PublicAPI.Unshipped.txt               |   1 +
+ src/Mvc/Mvc.Core/src/CompatibilityVersion.cs  |  92 --------------
+ .../MvcCoreMvcBuilderExtensions.cs            |  18 ---
+ .../MvcCoreMvcCoreBuilderExtensions.cs        |  17 ---
+ .../src/Infrastructure/CompatibilitySwitch.cs |   2 +-
+ .../ConfigureCompatibilityOptions.cs          | 103 ---------------
+ .../Infrastructure/ICompatibilitySwitch.cs    |   2 +-
+ .../Infrastructure/MvcCompatibilityOptions.cs |  28 ----
+ src/Mvc/Mvc.Core/src/PublicAPI.Unshipped.txt  |  17 +++
+ src/Mvc/Mvc.Core/test/BindAttributeTest.cs    |  26 +++-
+ .../ConfigureCompatibilityOptionsTest.cs      | 120 ------------------
+ .../Metadata/DefaultModelMetadataTest.cs      |  32 +++--
+ .../DataAnnotationsMetadataProviderTest.cs    |  21 ---
+ src/Mvc/Mvc.TagHelpers/src/ImageTagHelper.cs  |  40 ------
+ .../src/PublicAPI.Unshipped.txt               |   3 +
+ 16 files changed, 64 insertions(+), 478 deletions(-)
+ delete mode 100644 src/Mvc/Mvc.Core/src/CompatibilityVersion.cs
+ delete mode 100644 src/Mvc/Mvc.Core/src/Infrastructure/ConfigureCompatibilityOptions.cs
+ delete mode 100644 src/Mvc/Mvc.Core/src/Infrastructure/MvcCompatibilityOptions.cs
+ delete mode 100644 src/Mvc/Mvc.Core/test/Infrastructure/ConfigureCompatibilityOptionsTest.cs
+
+diff --git a/src/Mvc/Mvc.Abstractions/src/ModelBinding/Metadata/ModelMetadataIdentity.cs b/src/Mvc/Mvc.Abstractions/src/ModelBinding/Metadata/ModelMetadataIdentity.cs
+index 8397093bb6..3f6c4bf018 100644
+--- a/src/Mvc/Mvc.Abstractions/src/ModelBinding/Metadata/ModelMetadataIdentity.cs
++++ b/src/Mvc/Mvc.Abstractions/src/ModelBinding/Metadata/ModelMetadataIdentity.cs
+@@ -36,26 +36,6 @@ public readonly struct ModelMetadataIdentity : IEquatable<ModelMetadataIdentity>
+         return new ModelMetadataIdentity(modelType);
+     }
+ 
+-    /// <summary>
+-    /// Creates a <see cref="ModelMetadataIdentity"/> for the provided property.
+-    /// </summary>
+-    /// <param name="modelType">The model type.</param>
+-    /// <param name="name">The name of the property.</param>
+-    /// <param name="containerType">The container type of the model property.</param>
+-    /// <returns>A <see cref="ModelMetadataIdentity"/>.</returns>
+-    [Obsolete("This API is obsolete and may be removed in a future release. Please use the overload that takes a PropertyInfo object.")] // Remove after .NET 6.
+-    public static ModelMetadataIdentity ForProperty(
+-        Type modelType,
+-        string name,
+-        Type containerType)
+-    {
+-        ArgumentNullException.ThrowIfNull(modelType);
+-        ArgumentNullException.ThrowIfNull(containerType);
+-        ArgumentException.ThrowIfNullOrEmpty(name);
+-
+-        return new ModelMetadataIdentity(modelType, name, containerType);
+-    }
+-
+     /// <summary>
+     /// Creates a <see cref="ModelMetadataIdentity"/> for the provided property.
+     /// </summary>
+diff --git a/src/Mvc/Mvc.Abstractions/src/PublicAPI.Unshipped.txt b/src/Mvc/Mvc.Abstractions/src/PublicAPI.Unshipped.txt
+index 012d03ae8f..dbf4d1a549 100644
+--- a/src/Mvc/Mvc.Abstractions/src/PublicAPI.Unshipped.txt
++++ b/src/Mvc/Mvc.Abstractions/src/PublicAPI.Unshipped.txt
+@@ -1,3 +1,4 @@
+ #nullable enable
++*REMOVED*static Microsoft.AspNetCore.Mvc.ModelBinding.Metadata.ModelMetadataIdentity.ForProperty(System.Type! modelType, string! name, System.Type! containerType) -> Microsoft.AspNetCore.Mvc.ModelBinding.Metadata.ModelMetadataIdentity
+ Microsoft.AspNetCore.Mvc.ApiExplorer.ApiDescription.RoutePattern.get -> Microsoft.AspNetCore.Routing.Patterns.RoutePattern?
+ Microsoft.AspNetCore.Mvc.ApiExplorer.ApiDescription.RoutePattern.set -> void
+diff --git a/src/Mvc/Mvc.Core/src/CompatibilityVersion.cs b/src/Mvc/Mvc.Core/src/CompatibilityVersion.cs
+deleted file mode 100644
+index 372d8b7133..0000000000
+--- a/src/Mvc/Mvc.Core/src/CompatibilityVersion.cs
++++ /dev/null
+@@ -1,92 +0,0 @@
+-// Licensed to the .NET Foundation under one or more agreements.
+-// The .NET Foundation licenses this file to you under the MIT license.
+-
+-using Microsoft.Extensions.DependencyInjection;
+-
+-namespace Microsoft.AspNetCore.Mvc;
+-
+-/// <summary>
+-/// Specifies the version compatibility of runtime behaviors configured by <see cref="MvcOptions"/>.
+-/// </summary>
+-/// <remarks>
+-/// <para>
+-/// The best way to set a compatibility version is by using
+-/// <see cref="MvcCoreMvcBuilderExtensions.SetCompatibilityVersion"/> or
+-/// <see cref="MvcCoreMvcCoreBuilderExtensions.SetCompatibilityVersion"/> in your application's
+-/// <c>ConfigureServices</c> method.
+-/// <example>
+-/// Setting the compatibility version using <see cref="IMvcBuilder"/>:
+-/// <code>
+-/// public class Startup
+-/// {
+-///     ...
+-///
+-///     public void ConfigureServices(IServiceCollection services)
+-///     {
+-///         services.AddMvc().SetCompatibilityVersion(CompatibilityVersion.Version_3_0);
+-///     }
+-///
+-///     ...
+-/// }
+-/// </code>
+-/// </example>
+-/// </para>
+-/// <para>
+-/// Setting compatibility version to a specific version will change the default values of various
+-/// settings to match a particular minor release of ASP.NET Core MVC.
+-/// </para>
+-/// </remarks>
+-// Remove after .NET 6.
+-[Obsolete("This API is obsolete and will be removed in a future version. Consider removing usages.",
+-    DiagnosticId = "ASP5001",
+-    UrlFormat = "https://aka.ms/aspnetcore-warnings/{0}")]
+-public enum CompatibilityVersion
+-{
+-    /// <summary>
+-    /// Sets the default value of settings on <see cref="MvcOptions"/> to match the behavior of
+-    /// ASP.NET Core MVC 2.0.
+-    /// </summary>
+-    [Obsolete("This " + nameof(CompatibilityVersion) + " value is obsolete.")]
+-    Version_2_0,
+-
+-    /// <summary>
+-    /// Sets the default value of settings on <see cref="MvcOptions"/> to match the behavior of
+-    /// ASP.NET Core MVC 2.1.
+-    /// </summary>
+-    /// <remarks>
+-    /// ASP.NET Core MVC 2.1 introduced a compatibility switch for
+-    /// <c>MvcJsonOptions.AllowInputFormatterExceptionMessages</c>. This is now a regular property.
+-    /// </remarks>
+-    [Obsolete("This " + nameof(CompatibilityVersion) + " value is obsolete.")]
+-    Version_2_1,
+-
+-    /// <summary>
+-    /// Sets the default value of settings on <see cref="MvcOptions"/> to match the behavior of
+-    /// ASP.NET Core MVC 2.2.
+-    /// </summary>
+-    /// <remarks>
+-    /// ASP.NET Core MVC 2.2 introduced compatibility switches for the following:
+-    /// <list type="bullet">
+-    ///     <item><description><c>ApiBehaviorOptions.SuppressMapClientErrors</c></description></item>
+-    ///     <item><description><see cref="MvcOptions.EnableEndpointRouting" /></description></item>
+-    ///     <item><description><see cref="MvcOptions.MaxValidationDepth" /></description></item>
+-    /// </list>
+-    /// All of the above are now regular properties.
+-    /// </remarks>
+-    [Obsolete("This " + nameof(CompatibilityVersion) + " value is obsolete.")]
+-    Version_2_2,
+-
+-    /// <summary>
+-    /// Sets the default value of settings on <see cref="MvcOptions"/> and other <c>Options</c> types to match
+-    /// the behavior of ASP.NET Core MVC 3.0.
+-    /// </summary>
+-    [Obsolete("This " + nameof(CompatibilityVersion) + " value is obsolete.")]
+-    Version_3_0,
+-
+-    /// <summary>
+-    /// Sets the default value of settings on <see cref="MvcOptions"/> to match the latest release. Use this
+-    /// value with care, upgrading minor versions will cause breaking changes when using <see cref="Latest"/>.
+-    /// </summary>
+-    [Obsolete("This " + nameof(CompatibilityVersion) + " value is obsolete.")]
+-    Latest = int.MaxValue,
+-}
+diff --git a/src/Mvc/Mvc.Core/src/DependencyInjection/MvcCoreMvcBuilderExtensions.cs b/src/Mvc/Mvc.Core/src/DependencyInjection/MvcCoreMvcBuilderExtensions.cs
+index c8f4e72cef..21552fa196 100644
+--- a/src/Mvc/Mvc.Core/src/DependencyInjection/MvcCoreMvcBuilderExtensions.cs
++++ b/src/Mvc/Mvc.Core/src/DependencyInjection/MvcCoreMvcBuilderExtensions.cs
+@@ -7,7 +7,6 @@ using Microsoft.AspNetCore.Mvc;
+ using Microsoft.AspNetCore.Mvc.ApplicationParts;
+ using Microsoft.AspNetCore.Mvc.Controllers;
+ using Microsoft.AspNetCore.Mvc.Formatters;
+-using Microsoft.AspNetCore.Mvc.Infrastructure;
+ using Microsoft.Extensions.DependencyInjection.Extensions;
+ 
+ namespace Microsoft.Extensions.DependencyInjection;
+@@ -134,23 +133,6 @@ public static class MvcCoreMvcBuilderExtensions
+         return builder;
+     }
+ 
+-    /// <summary>
+-    /// Sets the <see cref="CompatibilityVersion"/> for ASP.NET Core MVC for the application.
+-    /// </summary>
+-    /// <param name="builder">The <see cref="IMvcBuilder"/>.</param>
+-    /// <param name="version">The <see cref="CompatibilityVersion"/> value to configure.</param>
+-    /// <returns>The <see cref="IMvcBuilder"/>.</returns>
+-    [Obsolete("This API is obsolete and will be removed in a future version. Consider removing usages.",
+-        DiagnosticId = "ASP5001",
+-        UrlFormat = "https://aka.ms/aspnetcore-warnings/{0}")]
+-    public static IMvcBuilder SetCompatibilityVersion(this IMvcBuilder builder, CompatibilityVersion version)
+-    {
+-        ArgumentNullException.ThrowIfNull(builder);
+-
+-        builder.Services.Configure<MvcCompatibilityOptions>(o => o.CompatibilityVersion = version);
+-        return builder;
+-    }
+-
+     /// <summary>
+     /// Configures <see cref="ApiBehaviorOptions"/>.
+     /// </summary>
+diff --git a/src/Mvc/Mvc.Core/src/DependencyInjection/MvcCoreMvcCoreBuilderExtensions.cs b/src/Mvc/Mvc.Core/src/DependencyInjection/MvcCoreMvcCoreBuilderExtensions.cs
+index 10bdc9e6ac..10ef2cc32c 100644
+--- a/src/Mvc/Mvc.Core/src/DependencyInjection/MvcCoreMvcCoreBuilderExtensions.cs
++++ b/src/Mvc/Mvc.Core/src/DependencyInjection/MvcCoreMvcCoreBuilderExtensions.cs
+@@ -9,7 +9,6 @@ using Microsoft.AspNetCore.Mvc.ApplicationModels;
+ using Microsoft.AspNetCore.Mvc.ApplicationParts;
+ using Microsoft.AspNetCore.Mvc.Controllers;
+ using Microsoft.AspNetCore.Mvc.Formatters;
+-using Microsoft.AspNetCore.Mvc.Infrastructure;
+ using Microsoft.Extensions.DependencyInjection.Extensions;
+ 
+ namespace Microsoft.Extensions.DependencyInjection;
+@@ -212,20 +211,4 @@ public static class MvcCoreMvcCoreBuilderExtensions
+         return builder;
+     }
+ 
+-    /// <summary>
+-    /// Sets the <see cref="CompatibilityVersion"/> for ASP.NET Core MVC for the application.
+-    /// </summary>
+-    /// <param name="builder">The <see cref="IMvcCoreBuilder"/>.</param>
+-    /// <param name="version">The <see cref="CompatibilityVersion"/> value to configure.</param>
+-    /// <returns>The <see cref="IMvcCoreBuilder"/>.</returns>
+-    [Obsolete("This API is obsolete and will be removed in a future version. Consider removing usages.",
+-        DiagnosticId = "ASP5001",
+-        UrlFormat = "https://aka.ms/aspnetcore-warnings/{0}")]
+-    public static IMvcCoreBuilder SetCompatibilityVersion(this IMvcCoreBuilder builder, CompatibilityVersion version)
+-    {
+-        ArgumentNullException.ThrowIfNull(builder);
+-
+-        builder.Services.Configure<MvcCompatibilityOptions>(o => o.CompatibilityVersion = version);
+-        return builder;
+-    }
+ }
+diff --git a/src/Mvc/Mvc.Core/src/Infrastructure/CompatibilitySwitch.cs b/src/Mvc/Mvc.Core/src/Infrastructure/CompatibilitySwitch.cs
+index 93fe44a301..bbfad269fa 100644
+--- a/src/Mvc/Mvc.Core/src/Infrastructure/CompatibilitySwitch.cs
++++ b/src/Mvc/Mvc.Core/src/Infrastructure/CompatibilitySwitch.cs
+@@ -46,7 +46,7 @@ namespace Microsoft.AspNetCore.Mvc.Infrastructure;
+ // property. If you just added this class, register it as an IPostConfigureOptions<TOptions> in DI.
+ //
+ /// <summary>
+-/// Infrastructure supporting the implementation of <see cref="CompatibilityVersion"/>. This is an
++/// Infrastructure supporting compatibility switches. This is an
+ /// implementation of <see cref="ICompatibilitySwitch"/> suitable for use with the <see cref="IOptions{T}"/>
+ /// pattern. This is framework infrastructure and should not be used by application code.
+ /// </summary>
+diff --git a/src/Mvc/Mvc.Core/src/Infrastructure/ConfigureCompatibilityOptions.cs b/src/Mvc/Mvc.Core/src/Infrastructure/ConfigureCompatibilityOptions.cs
+deleted file mode 100644
+index 42a57c0325..0000000000
+--- a/src/Mvc/Mvc.Core/src/Infrastructure/ConfigureCompatibilityOptions.cs
++++ /dev/null
+@@ -1,103 +0,0 @@
+-// Licensed to the .NET Foundation under one or more agreements.
+-// The .NET Foundation licenses this file to you under the MIT license.
+-
+-using Microsoft.Extensions.Logging;
+-using Microsoft.Extensions.Options;
+-
+-namespace Microsoft.AspNetCore.Mvc.Infrastructure;
+-
+-/// <summary>
+-/// A base class for infrastructure that implements ASP.NET Core MVC's support for
+-/// <see cref="CompatibilityVersion"/>. This is framework infrastructure and should not be used
+-/// by application code.
+-/// </summary>
+-/// <typeparam name="TOptions"></typeparam>
+-[Obsolete("This API is obsolete and will be removed in a future version. Consider removing usages.",
+-    DiagnosticId = "ASP5001",
+-    UrlFormat = "https://aka.ms/aspnetcore-warnings/{0}")]
+-public abstract class ConfigureCompatibilityOptions<TOptions> : IPostConfigureOptions<TOptions>
+-    where TOptions : class, IEnumerable<ICompatibilitySwitch>
+-{
+-    private readonly ILogger _logger;
+-
+-    /// <summary>
+-    /// Creates a new <see cref="ConfigureCompatibilityOptions{TOptions}"/>.
+-    /// </summary>
+-    /// <param name="loggerFactory">The <see cref="ILoggerFactory"/>.</param>
+-    /// <param name="compatibilityOptions">The <see cref="IOptions{MvcCompatibilityOptions}"/>.</param>
+-    protected ConfigureCompatibilityOptions(
+-        ILoggerFactory loggerFactory,
+-        IOptions<MvcCompatibilityOptions> compatibilityOptions)
+-    {
+-        ArgumentNullException.ThrowIfNull(loggerFactory);
+-
+-        Version = compatibilityOptions.Value.CompatibilityVersion;
+-        _logger = loggerFactory.CreateLogger<TOptions>();
+-    }
+-
+-    /// <summary>
+-    /// Gets the default values of compatibility switches associated with the applications configured
+-    /// <see cref="CompatibilityVersion"/>.
+-    /// </summary>
+-    protected abstract IReadOnlyDictionary<string, object> DefaultValues { get; }
+-
+-    /// <summary>
+-    /// Gets the <see cref="CompatibilityVersion"/> configured for the application.
+-    /// </summary>
+-    protected CompatibilityVersion Version { get; }
+-
+-    /// <inheritdoc />
+-    public virtual void PostConfigure(string? name, TOptions options)
+-    {
+-        ArgumentNullException.ThrowIfNull(name);
+-        ArgumentNullException.ThrowIfNull(options);
+-
+-        // Evaluate DefaultValues once so subclasses don't have to cache.
+-        var defaultValues = DefaultValues;
+-
+-        foreach (var @switch in options)
+-        {
+-            ConfigureSwitch(@switch, defaultValues);
+-        }
+-    }
+-
+-    private void ConfigureSwitch(ICompatibilitySwitch @switch, IReadOnlyDictionary<string, object> defaultValues)
+-    {
+-        if (@switch.IsValueSet)
+-        {
+-            if (_logger.IsEnabled(LogLevel.Debug))
+-            {
+-                _logger.LogDebug(
+-                    "Compatibility switch {SwitchName} in type {OptionsType} is using explicitly configured value {Value}",
+-                    @switch.Name,
+-                    typeof(TOptions).Name,
+-                    @switch.Value);
+-            }
+-            return;
+-        }
+-
+-        if (!defaultValues.TryGetValue(@switch.Name, out var value))
+-        {
+-            if (_logger.IsEnabled(LogLevel.Debug))
+-            {
+-                _logger.LogDebug(
+-                "Compatibility switch {SwitchName} in type {OptionsType} is using default value {Value}",
+-                @switch.Name,
+-                typeof(TOptions).Name,
+-                @switch.Value);
+-            }
+-            return;
+-        }
+-
+-        @switch.Value = value;
+-        if (_logger.IsEnabled(LogLevel.Debug))
+-        {
+-            _logger.LogDebug(
+-                "Compatibility switch {SwitchName} in type {OptionsType} is using compatibility value {Value} for version {Version}",
+-                @switch.Name,
+-                typeof(TOptions).Name,
+-                @switch.Value,
+-                Version);
+-        }
+-    }
+-}
+diff --git a/src/Mvc/Mvc.Core/src/Infrastructure/ICompatibilitySwitch.cs b/src/Mvc/Mvc.Core/src/Infrastructure/ICompatibilitySwitch.cs
+index 143b62f645..cfa5621f55 100644
+--- a/src/Mvc/Mvc.Core/src/Infrastructure/ICompatibilitySwitch.cs
++++ b/src/Mvc/Mvc.Core/src/Infrastructure/ICompatibilitySwitch.cs
+@@ -29,7 +29,7 @@ public interface ICompatibilitySwitch
+     /// <remarks>
+     /// Setting the switch value using <see cref="Value"/> will not set <see cref="IsValueSet"/> to <c>true</c>.
+     /// This should be used by the compatibility infrastructure when <see cref="IsValueSet"/> is <c>false</c>
+-    /// to apply a compatibility value based on <see cref="CompatibilityVersion"/>.
++    /// to apply a framework-defined compatibility value.
+     /// </remarks>
+     object Value { get; set; }
+ }
+diff --git a/src/Mvc/Mvc.Core/src/Infrastructure/MvcCompatibilityOptions.cs b/src/Mvc/Mvc.Core/src/Infrastructure/MvcCompatibilityOptions.cs
+deleted file mode 100644
+index 03104a318c..0000000000
+--- a/src/Mvc/Mvc.Core/src/Infrastructure/MvcCompatibilityOptions.cs
++++ /dev/null
+@@ -1,28 +0,0 @@
+-// Licensed to the .NET Foundation under one or more agreements.
+-// The .NET Foundation licenses this file to you under the MIT license.
+-
+-#nullable enable
+-
+-using Microsoft.Extensions.DependencyInjection;
+-
+-namespace Microsoft.AspNetCore.Mvc.Infrastructure;
+-
+-/// <summary>
+-/// An options type for configuring the application <see cref="Mvc.CompatibilityVersion"/>.
+-/// </summary>
+-/// <remarks>
+-/// The primary way to configure the application's <see cref="Mvc.CompatibilityVersion"/> is by
+-/// calling <see cref="MvcCoreMvcBuilderExtensions.SetCompatibilityVersion(IMvcBuilder, CompatibilityVersion)"/>
+-/// or <see cref="MvcCoreMvcCoreBuilderExtensions.SetCompatibilityVersion(IMvcCoreBuilder, CompatibilityVersion)"/>.
+-/// </remarks>
+-[Obsolete("This API is obsolete and will be removed in a future version. Consider removing usages.",
+-    DiagnosticId = "ASP5001",
+-    UrlFormat = "https://aka.ms/aspnetcore-warnings/{0}")]
+-public class MvcCompatibilityOptions
+-{
+-    /// <summary>
+-    /// Gets or sets the application's configured <see cref="Mvc.CompatibilityVersion"/>.
+-    /// </summary>
+-    /// <value>the default value is <see cref="CompatibilityVersion.Version_3_0"/>.</value>
+-    public CompatibilityVersion CompatibilityVersion { get; set; } = CompatibilityVersion.Version_3_0;
+-}
+diff --git a/src/Mvc/Mvc.Core/src/PublicAPI.Unshipped.txt b/src/Mvc/Mvc.Core/src/PublicAPI.Unshipped.txt
+index 7dc5c58110..aff0c7c0f5 100644
+--- a/src/Mvc/Mvc.Core/src/PublicAPI.Unshipped.txt
++++ b/src/Mvc/Mvc.Core/src/PublicAPI.Unshipped.txt
+@@ -1 +1,18 @@
+ #nullable enable
++*REMOVED*abstract Microsoft.AspNetCore.Mvc.Infrastructure.ConfigureCompatibilityOptions<TOptions>.DefaultValues.get -> System.Collections.Generic.IReadOnlyDictionary<string!, object!>!
++*REMOVED*Microsoft.AspNetCore.Mvc.CompatibilityVersion
++*REMOVED*Microsoft.AspNetCore.Mvc.CompatibilityVersion.Latest = 2147483647 -> Microsoft.AspNetCore.Mvc.CompatibilityVersion
++*REMOVED*Microsoft.AspNetCore.Mvc.CompatibilityVersion.Version_2_0 = 0 -> Microsoft.AspNetCore.Mvc.CompatibilityVersion
++*REMOVED*Microsoft.AspNetCore.Mvc.CompatibilityVersion.Version_2_1 = 1 -> Microsoft.AspNetCore.Mvc.CompatibilityVersion
++*REMOVED*Microsoft.AspNetCore.Mvc.CompatibilityVersion.Version_2_2 = 2 -> Microsoft.AspNetCore.Mvc.CompatibilityVersion
++*REMOVED*Microsoft.AspNetCore.Mvc.CompatibilityVersion.Version_3_0 = 3 -> Microsoft.AspNetCore.Mvc.CompatibilityVersion
++*REMOVED*Microsoft.AspNetCore.Mvc.Infrastructure.ConfigureCompatibilityOptions<TOptions>
++*REMOVED*Microsoft.AspNetCore.Mvc.Infrastructure.ConfigureCompatibilityOptions<TOptions>.ConfigureCompatibilityOptions(Microsoft.Extensions.Logging.ILoggerFactory! loggerFactory, Microsoft.Extensions.Options.IOptions<Microsoft.AspNetCore.Mvc.Infrastructure.MvcCompatibilityOptions!>! compatibilityOptions) -> void
++*REMOVED*Microsoft.AspNetCore.Mvc.Infrastructure.ConfigureCompatibilityOptions<TOptions>.Version.get -> Microsoft.AspNetCore.Mvc.CompatibilityVersion
++*REMOVED*Microsoft.AspNetCore.Mvc.Infrastructure.MvcCompatibilityOptions
++*REMOVED*Microsoft.AspNetCore.Mvc.Infrastructure.MvcCompatibilityOptions.CompatibilityVersion.get -> Microsoft.AspNetCore.Mvc.CompatibilityVersion
++*REMOVED*Microsoft.AspNetCore.Mvc.Infrastructure.MvcCompatibilityOptions.CompatibilityVersion.set -> void
++*REMOVED*Microsoft.AspNetCore.Mvc.Infrastructure.MvcCompatibilityOptions.MvcCompatibilityOptions() -> void
++*REMOVED*static Microsoft.Extensions.DependencyInjection.MvcCoreMvcBuilderExtensions.SetCompatibilityVersion(this Microsoft.Extensions.DependencyInjection.IMvcBuilder! builder, Microsoft.AspNetCore.Mvc.CompatibilityVersion version) -> Microsoft.Extensions.DependencyInjection.IMvcBuilder!
++*REMOVED*static Microsoft.Extensions.DependencyInjection.MvcCoreMvcCoreBuilderExtensions.SetCompatibilityVersion(this Microsoft.Extensions.DependencyInjection.IMvcCoreBuilder! builder, Microsoft.AspNetCore.Mvc.CompatibilityVersion version) -> Microsoft.Extensions.DependencyInjection.IMvcCoreBuilder!
++*REMOVED*virtual Microsoft.AspNetCore.Mvc.Infrastructure.ConfigureCompatibilityOptions<TOptions>.PostConfigure(string? name, TOptions! options) -> void
+diff --git a/src/Mvc/Mvc.Core/test/BindAttributeTest.cs b/src/Mvc/Mvc.Core/test/BindAttributeTest.cs
+index a9cbf69793..c3d2a82072 100644
+--- a/src/Mvc/Mvc.Core/test/BindAttributeTest.cs
++++ b/src/Mvc/Mvc.Core/test/BindAttributeTest.cs
+@@ -14,19 +14,19 @@ public class BindAttributeTest
+     [InlineData("Password", false)]
+     [InlineData("LastName", true)]
+     [InlineData("MiddleName", true)]
+-    [InlineData(" ", false)]
+-    [InlineData("foo", true)]
+-    [InlineData("bar", true)]
++    // Include list contains a whitespace token; this verifies unrelated properties remain excluded.
++    [InlineData("TestProperty", false)]
++    [InlineData("Foo", true)]
++    [InlineData("Bar", true)]
+     public void BindAttribute_Include(string property, bool isIncluded)
+     {
+         // Arrange
+-        var bind = new BindAttribute(new string[] { "UserName", "FirstName", "LastName, MiddleName,  ,foo,bar " });
++        var bind = new BindAttribute(new string[] { "UserName", "FirstName", "LastName, MiddleName,  ,Foo,Bar " });
+ 
+         var context = new DefaultModelBindingContext();
+ 
+-#pragma warning disable CS0618 // Type or member is obsolete
+-        var identity = ModelMetadataIdentity.ForProperty(typeof(int), property, typeof(string));
+-#pragma warning restore CS0618 // Type or member is obsolete
++        var propertyInfo = typeof(TestContainer).GetProperty(property);
++        var identity = ModelMetadataIdentity.ForProperty(propertyInfo!, typeof(int), typeof(TestContainer));
+         context.ModelMetadata = new Mock<ModelMetadata>(identity).Object;
+ 
+         // Act
+@@ -35,4 +35,16 @@ public class BindAttributeTest
+         // Assert
+         Assert.Equal(isIncluded, propertyFilter(context.ModelMetadata));
+     }
++
++    private sealed class TestContainer
++    {
++        public int UserName { get; set; }
++        public int Username { get; set; }
++        public int Password { get; set; }
++        public int LastName { get; set; }
++        public int MiddleName { get; set; }
++        public int Foo { get; set; }
++        public int Bar { get; set; }
++        public int TestProperty { get; set; }
++    }
+ }
+diff --git a/src/Mvc/Mvc.Core/test/Infrastructure/ConfigureCompatibilityOptionsTest.cs b/src/Mvc/Mvc.Core/test/Infrastructure/ConfigureCompatibilityOptionsTest.cs
+deleted file mode 100644
+index b3200da25f..0000000000
+--- a/src/Mvc/Mvc.Core/test/Infrastructure/ConfigureCompatibilityOptionsTest.cs
++++ /dev/null
+@@ -1,120 +0,0 @@
+-// Licensed to the .NET Foundation under one or more agreements.
+-// The .NET Foundation licenses this file to you under the MIT license.
+-
+-using System.Collections;
+-using Microsoft.Extensions.Logging;
+-using Microsoft.Extensions.Logging.Abstractions;
+-using Microsoft.Extensions.Options;
+-
+-#pragma warning disable ASP5001 // Type or member is obsolete
+-namespace Microsoft.AspNetCore.Mvc.Infrastructure;
+-
+-[System.Obsolete]
+-public class ConfigureCompatibilityOptionsTest
+-{
+-    [Fact]
+-    public void PostConfigure_NoValueForProperty_DoesNothing()
+-    {
+-        // Arrange
+-        var configure = Create(CompatibilityVersion.Version_3_0, new Dictionary<string, object>());
+-
+-        var options = new TestOptions();
+-
+-        // Act
+-        configure.PostConfigure(Options.DefaultName, options);
+-
+-        // Assert
+-        Assert.False(options.TestProperty);
+-    }
+-
+-    [Fact]
+-    public void PostConfigure_ValueIsSet_DoesNothing()
+-    {
+-        // Arrange
+-        var configure = Create(
+-            CompatibilityVersion.Version_3_0,
+-            new Dictionary<string, object>
+-            {
+-                    { nameof(TestOptions.TestProperty), true },
+-            });
+-
+-        var options = new TestOptions()
+-        {
+-            TestProperty = false,
+-        };
+-
+-        // Act
+-        configure.PostConfigure(Options.DefaultName, options);
+-
+-        // Assert
+-        Assert.False(options.TestProperty);
+-    }
+-
+-    [Fact]
+-    public void PostConfigure_ValueNotSet_SetsValue()
+-    {
+-        // Arrange
+-        var configure = Create(
+-            CompatibilityVersion.Version_3_0,
+-            new Dictionary<string, object>
+-            {
+-                    { nameof(TestOptions.TestProperty), true },
+-            });
+-
+-        var options = new TestOptions();
+-
+-        // Act
+-        configure.PostConfigure(Options.DefaultName, options);
+-
+-        // Assert
+-        Assert.True(options.TestProperty);
+-    }
+-
+-    private static ConfigureCompatibilityOptions<TestOptions> Create(
+-        CompatibilityVersion version,
+-        IReadOnlyDictionary<string, object> defaultValues)
+-    {
+-        var compatibilityOptions = Options.Create(new MvcCompatibilityOptions() { CompatibilityVersion = version });
+-        return new TestConfigure(NullLoggerFactory.Instance, compatibilityOptions, defaultValues);
+-    }
+-
+-    private class TestOptions : IEnumerable<ICompatibilitySwitch>
+-    {
+-        private readonly CompatibilitySwitch<bool> _testProperty;
+-
+-        private readonly ICompatibilitySwitch[] _switches;
+-
+-        public TestOptions()
+-        {
+-            _testProperty = new CompatibilitySwitch<bool>(nameof(TestProperty));
+-            _switches = new ICompatibilitySwitch[] { _testProperty };
+-        }
+-
+-        public bool TestProperty
+-        {
+-            get => _testProperty.Value;
+-            set => _testProperty.Value = value;
+-        }
+-
+-        public IEnumerator<ICompatibilitySwitch> GetEnumerator()
+-        {
+-            return ((IEnumerable<ICompatibilitySwitch>)_switches).GetEnumerator();
+-        }
+-
+-        IEnumerator IEnumerable.GetEnumerator() => _switches.GetEnumerator();
+-    }
+-
+-    private class TestConfigure : ConfigureCompatibilityOptions<TestOptions>
+-    {
+-        public TestConfigure(
+-            ILoggerFactory loggerFactory,
+-            IOptions<MvcCompatibilityOptions> compatibilityOptions,
+-            IReadOnlyDictionary<string, object> defaultValues)
+-            : base(loggerFactory, compatibilityOptions)
+-        {
+-            DefaultValues = defaultValues;
+-        }
+-
+-        protected override IReadOnlyDictionary<string, object> DefaultValues { get; }
+-    }
+-}
+diff --git a/src/Mvc/Mvc.Core/test/ModelBinding/Metadata/DefaultModelMetadataTest.cs b/src/Mvc/Mvc.Core/test/ModelBinding/Metadata/DefaultModelMetadataTest.cs
+index a5d639ef8c..c2e958403c 100644
+--- a/src/Mvc/Mvc.Core/test/ModelBinding/Metadata/DefaultModelMetadataTest.cs
++++ b/src/Mvc/Mvc.Core/test/ModelBinding/Metadata/DefaultModelMetadataTest.cs
+@@ -542,13 +542,11 @@ public class DefaultModelMetadataTest
+         foreach (var originalName in originalNames)
+         {
+             expectedProperties.Add(new DefaultModelMetadata(
+-                provider.Object,
+-                detailsProvider,
+-                new DefaultMetadataDetails(
+-#pragma warning disable CS0618 // Using the obsolete overload does not affect the intent of this test, but fixing it requires a lot of code churn.
+-                        ModelMetadataIdentity.ForProperty(typeof(int), originalName, typeof(string)),
+-#pragma warning restore CS0618 // Type or member is obsolete
+-                        attributes: new ModelAttributes(new object[0], new object[0], null))));
++            provider.Object,
++            detailsProvider,
++            new DefaultMetadataDetails(
++                    ModelMetadataIdentity.ForProperty(typeof(PropertyNamesContainer).GetProperty(originalName)!, typeof(int), typeof(PropertyNamesContainer)),
++                    attributes: new ModelAttributes(new object[0], new object[0], null))));
+         }
+ 
+         provider
+@@ -647,9 +645,7 @@ public class DefaultModelMetadataTest
+         foreach (var kvp in originalNamesAndOrders)
+         {
+             var propertyCache = new DefaultMetadataDetails(
+-#pragma warning disable CS0618 // Using the obsolete overload does not affect the intent of this test, but fixing it requires a lot of code churn.
+-                        ModelMetadataIdentity.ForProperty(typeof(int), kvp.Key, typeof(string)),
+-#pragma warning restore CS0618 // Type or member is obsolete
++                        ModelMetadataIdentity.ForProperty(typeof(PropertyNamesContainer).GetProperty(kvp.Key)!, typeof(int), typeof(PropertyNamesContainer)),
+                         attributes: new ModelAttributes(new object[0], new object[0], null))
+             {
+                 DisplayMetadata = new DisplayMetadata(),
+@@ -1614,6 +1610,22 @@ public class DefaultModelMetadataTest
+         public int PublicGetPublicSetProperty { get; set; }
+     }
+ 
++    private class PropertyNamesContainer
++    {
++        public int Property1 { get; set; }
++        public int Property2 { get; set; }
++        public int Property3 { get; set; }
++        public int Property4 { get; set; }
++        public int Alpha { get; set; }
++        public int Bravo { get; set; }
++        public int Charlie { get; set; }
++        public int Delta { get; set; }
++        public int John { get; set; }
++        public int Jonathan { get; set; }
++        public int Jon { get; set; }
++        public int Joan { get; set; }
++    }
++
+     private class TypeWithInvalidTryParse
+     {
+         public static bool TryParse(string s)
+diff --git a/src/Mvc/Mvc.DataAnnotations/test/DataAnnotationsMetadataProviderTest.cs b/src/Mvc/Mvc.DataAnnotations/test/DataAnnotationsMetadataProviderTest.cs
+index 3bd2eb3599..fa37dcebd1 100644
+--- a/src/Mvc/Mvc.DataAnnotations/test/DataAnnotationsMetadataProviderTest.cs
++++ b/src/Mvc/Mvc.DataAnnotations/test/DataAnnotationsMetadataProviderTest.cs
+@@ -1418,27 +1418,6 @@ public class DataAnnotationsMetadataProviderTest
+         Assert.Contains(context.ValidationMetadata.ValidatorMetadata, m => m is RequiredAttribute);
+     }
+ 
+-    [Fact]
+-    public void CreateValidationMetadata_WithOldModelIdentity_DoesNotInferValueBasedOnContext()
+-    {
+-        // Arrange
+-        var provider = CreateProvider();
+-
+-        var modelType = typeof(TypeWithAllNonNullProperties);
+-        var property = modelType.GetProperty(nameof(TypeWithAllNonNullProperties.Property1));
+-#pragma warning disable CS0618 // Type or member is obsolete
+-        var key = ModelMetadataIdentity.ForProperty(property.PropertyType, property.Name, modelType);
+-#pragma warning restore CS0618 // Type or member is obsolete
+-        var context = new ValidationMetadataProviderContext(key, ModelAttributes.GetAttributesForProperty(modelType, property));
+-
+-        // Act
+-        provider.CreateValidationMetadata(context);
+-
+-        // Assert
+-        Assert.Null(context.ValidationMetadata.IsRequired);
+-        Assert.DoesNotContain(context.ValidationMetadata.ValidatorMetadata, m => m is RequiredAttribute);
+-    }
+-
+     [Fact]
+     public void CreateValidationMetadata_WillAddValidationAttributes_From_ValidationProviderAttribute()
+     {
+diff --git a/src/Mvc/Mvc.TagHelpers/src/ImageTagHelper.cs b/src/Mvc/Mvc.TagHelpers/src/ImageTagHelper.cs
+index 6c590e7cff..dd9db68854 100644
+--- a/src/Mvc/Mvc.TagHelpers/src/ImageTagHelper.cs
++++ b/src/Mvc/Mvc.TagHelpers/src/ImageTagHelper.cs
+@@ -2,13 +2,10 @@
+ // The .NET Foundation licenses this file to you under the MIT license.
+ 
+ using System.Text.Encodings.Web;
+-using Microsoft.AspNetCore.Hosting;
+-using Microsoft.AspNetCore.Mvc.Razor.Infrastructure;
+ using Microsoft.AspNetCore.Mvc.Razor.TagHelpers;
+ using Microsoft.AspNetCore.Mvc.Routing;
+ using Microsoft.AspNetCore.Mvc.ViewFeatures;
+ using Microsoft.AspNetCore.Razor.TagHelpers;
+-using Microsoft.Extensions.Caching.Memory;
+ using Microsoft.Extensions.DependencyInjection;
+ 
+ namespace Microsoft.AspNetCore.Mvc.TagHelpers;
+@@ -46,29 +43,6 @@ public class ImageTagHelper : UrlResolutionTagHelper
+         FileVersionProvider = fileVersionProvider;
+     }
+ 
+-    /// <summary>
+-    /// Creates a new <see cref="ImageTagHelper"/>.
+-    /// This constructor is obsolete and will be removed in a future version.
+-    /// </summary>
+-    /// <param name="hostingEnvironment">The <see cref="IHostingEnvironment"/>.</param>
+-    /// <param name="cacheProvider">The <see cref="TagHelperMemoryCacheProvider"/>.</param>
+-    /// <param name="fileVersionProvider">The <see cref="IFileVersionProvider"/>.</param>
+-    /// <param name="htmlEncoder">The <see cref="HtmlEncoder"/> to use.</param>
+-    /// <param name="urlHelperFactory">The <see cref="IUrlHelperFactory"/>.</param>
+-    [Obsolete("This constructor is obsolete and will be removed in a future version.")]
+-    public ImageTagHelper(
+-        IWebHostEnvironment hostingEnvironment,
+-        TagHelperMemoryCacheProvider cacheProvider,
+-        IFileVersionProvider fileVersionProvider,
+-        HtmlEncoder htmlEncoder,
+-        IUrlHelperFactory urlHelperFactory)
+-        : base(urlHelperFactory, htmlEncoder)
+-    {
+-        HostingEnvironment = hostingEnvironment;
+-        Cache = cacheProvider.Cache;
+-        FileVersionProvider = fileVersionProvider;
+-    }
+-
+     /// <inheritdoc />
+     public override int Order => -1000;
+ 
+@@ -90,20 +64,6 @@ public class ImageTagHelper : UrlResolutionTagHelper
+     [HtmlAttributeName(AppendVersionAttributeName)]
+     public bool AppendVersion { get; set; }
+ 
+-    /// <summary>
+-    /// Gets the <see cref="IWebHostEnvironment"/> for the application.
+-    /// This property is obsolete and will be removed in a future version.
+-    /// </summary>
+-    [Obsolete("This property is obsolete and will be removed in a future version.")] // Remove after .NET 6.
+-    protected internal IWebHostEnvironment HostingEnvironment { get; }
+-
+-    /// <summary>
+-    /// Gets the <see cref="IMemoryCache"/> used to store globbed urls.
+-    /// This property is obsolete and will be removed in a future version.
+-    /// </summary>
+-    [Obsolete("This property is obsolete and will be removed in a future version.")] // Remove after .NET 6.
+-    protected internal IMemoryCache Cache { get; }
+-
+     internal IFileVersionProvider FileVersionProvider { get; private set; }
+ 
+     /// <inheritdoc />
+diff --git a/src/Mvc/Mvc.TagHelpers/src/PublicAPI.Unshipped.txt b/src/Mvc/Mvc.TagHelpers/src/PublicAPI.Unshipped.txt
+index 7dc5c58110..7c334a262b 100644
+--- a/src/Mvc/Mvc.TagHelpers/src/PublicAPI.Unshipped.txt
++++ b/src/Mvc/Mvc.TagHelpers/src/PublicAPI.Unshipped.txt
+@@ -1 +1,4 @@
+ #nullable enable
++*REMOVED*~Microsoft.AspNetCore.Mvc.TagHelpers.ImageTagHelper.Cache.get -> Microsoft.Extensions.Caching.Memory.IMemoryCache
++*REMOVED*~Microsoft.AspNetCore.Mvc.TagHelpers.ImageTagHelper.HostingEnvironment.get -> Microsoft.AspNetCore.Hosting.IWebHostEnvironment
++*REMOVED*~Microsoft.AspNetCore.Mvc.TagHelpers.ImageTagHelper.ImageTagHelper(Microsoft.AspNetCore.Hosting.IWebHostEnvironment hostingEnvironment, Microsoft.AspNetCore.Mvc.Razor.Infrastructure.TagHelperMemoryCacheProvider cacheProvider, Microsoft.AspNetCore.Mvc.ViewFeatures.IFileVersionProvider fileVersionProvider, System.Text.Encodings.Web.HtmlEncoder htmlEncoder, Microsoft.AspNetCore.Mvc.Routing.IUrlHelperFactory urlHelperFactory) -> void

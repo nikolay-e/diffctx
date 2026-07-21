@@ -1,0 +1,1013 @@
+From a07aaa67eb4a81aa0b83d5737dc4a19d8e61bba7 Mon Sep 17 00:00:00 2001
+From: Adrian Gruntkowski <adrian.gruntkowski@gmail.com>
+Date: Tue, 4 Nov 2025 17:33:44 +0100
+Subject: [PATCH] Add ability to enforce 2FA for all members of the team
+ (#5855)
+
+* Introduce `force_2fa` team policy and add API for toggling it
+
+* Implement 2FA enforcement
+
+* Make team policy available to CE too
+
+* Improve copy (h/t @metmarkosaric)
+
+* Send email to all team members when enforcing 2FA is enabled
+
+* Only owners can enable and disable enforcing 2FA
+
+* Don't send email to the user who enabled enforcing 2FA
+
+* Add team selection screen to 2FA enforce exceptions
+
+* Fix email URL
+
+* Add tests
+
+* Hide the Force 2FA section for non-owners completely
+
+* Improve e-mail formatting
+
+* Point at 2FA docs page for now
+
+* Add changelog entry
+
+* Reverse the exception to make dialyzer happy
+
+* Fix a typo
+
+Co-authored-by: Uku Taht <Uku.taht@gmail.com>
+
+* Fix typespec :clown_face: (h/t @ukutaht)
+
+* Deliver force 2FA email notifications asynchronously
+
+* Fix a typo in AlpineJS variable name (h/t @ukutaht)
+
+* Put parameter in path helper instead of concatenating it as a string
+
+* Improve and test audit logging of toggling 2FA enforcement
+
+* Introduce 3 second delay before redirect
+
+* Test audit logging only on EE
+
+---------
+
+Co-authored-by: Uku Taht <Uku.taht@gmail.com>
+---
+ CHANGELOG.md                                  |   1 +
+ lib/plausible/teams.ex                        |  48 +++
+ lib/plausible/teams/memberships.ex            |  12 +-
+ lib/plausible/teams/policy.ex                 |  12 +-
+ lib/plausible/teams/team.ex                   |   6 +-
+ .../controllers/auth_controller.ex            |  14 +-
+ .../controllers/settings_controller.ex        |  53 +++-
+ lib/plausible_web/email.ex                    |   7 +
+ lib/plausible_web/plugs/require_account.ex    |  34 +++
+ lib/plausible_web/router.ex                   |   3 +
+ .../auth/force_initiate_2fa_setup.html.heex   |  30 ++
+ .../auth/initiate_2fa_setup.html.heex         |   5 +-
+ .../email/force_2fa_enabled.html.heex         |  10 +
+ .../templates/settings/team_general.html.heex |  80 +++++
+ .../controllers/auth_controller_test.exs      |   8 +
+ .../controllers/settings_controller_test.exs  | 279 ++++++++++++++++++
+ .../plugs/require_account_plug_test.exs       |  81 +++++
+ 17 files changed, 671 insertions(+), 12 deletions(-)
+ create mode 100644 lib/plausible_web/templates/auth/force_initiate_2fa_setup.html.heex
+ create mode 100644 lib/plausible_web/templates/email/force_2fa_enabled.html.heex
+ create mode 100644 test/plausible_web/plugs/require_account_plug_test.exs
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 8d8f7f03e..0d5213696 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
+ - The new tracker script automatically updates to respect the following configuration options available in "New site" flows and "Review installation" flows: whether to track outbound links, file downloads, form submissions
+ - The new tracker script allows overriding almost all options by changing the snippet on the website, with the function `plausible.init({ ...your overrides... })` - this can be unique page-by-page
+ - A new `@plausible-analytics/tracker` ESM module is available on NPM - it has near-identical configuration API and identical tracking logic as the script and it receives bugfixes and updates concurrently with the new tracker script
++- Ability to enforce enabling 2FA by all team members
+ 
+ ### Removed
+ 
+diff --git a/lib/plausible/teams.ex b/lib/plausible/teams.ex
+index 45c671e17..853dbdc87 100644
+--- a/lib/plausible/teams.ex
++++ b/lib/plausible/teams.ex
+@@ -320,6 +320,54 @@ defmodule Plausible.Teams do
+     )
+   end
+ 
++  @spec force_2fa_enabled?(Teams.Team.t() | nil) :: boolean()
++  def force_2fa_enabled?(nil), do: false
++
++  def force_2fa_enabled?(team) do
++    team.policy.force_2fa
++  end
++
++  @spec enable_force_2fa(Teams.Team.t(), Auth.User.t()) ::
++          {:ok, Teams.Team.t()} | {:error, Ecto.Changeset.t()}
++  def enable_force_2fa(team, user) do
++    with {:ok, team} <- set_force_2fa(team, true) do
++      team
++      |> Teams.Memberships.all(exclude_guests?: true)
++      |> Enum.each(fn membership ->
++        if membership.user.id != user.id do
++          team
++          |> PlausibleWeb.Email.force_2fa_enabled(membership.user, user)
++          |> Plausible.Mailer.deliver_later()
++        end
++      end)
++
++      {:ok, team}
++    end
++  end
++
++  @spec disable_force_2fa(Teams.Team.t(), Auth.User.t(), String.t()) ::
++          {:ok, Teams.Team.t()} | {:error, :invalid_password | Ecto.Changeset.t()}
++  def disable_force_2fa(team, user, password) do
++    if Auth.Password.match?(password, user.password_hash) do
++      set_force_2fa(team, false)
++    else
++      {:error, :invalid_password}
++    end
++  end
++
++  defp set_force_2fa(team, enabled?) do
++    params = %{policy: %{force_2fa: enabled?}}
++
++    audit_entry_name = if(enabled?, do: "force_2fa_enabled", else: "force_2fa_disabled")
++
++    team
++    |> Ecto.Changeset.cast(params, [])
++    |> Ecto.Changeset.cast_embed(:policy,
++      with: &Teams.Policy.force_2fa_changeset(&1, &2.force_2fa)
++    )
++    |> Repo.update_with_audit(audit_entry_name, %{team_id: team.id})
++  end
++
+   # Exposed for use in tests
+   @doc false
+   def get_owned_team(user, opts \\ []) do
+diff --git a/lib/plausible/teams/memberships.ex b/lib/plausible/teams/memberships.ex
+index 501993c50..00d84f3de 100644
+--- a/lib/plausible/teams/memberships.ex
++++ b/lib/plausible/teams/memberships.ex
+@@ -7,7 +7,10 @@ defmodule Plausible.Teams.Memberships do
+   alias Plausible.Repo
+   alias Plausible.Teams
+ 
+-  def all(team) do
++  @spec all(Teams.Team.t(), Keyword.t()) :: [Teams.Membership.t()]
++  def all(team, opts \\ []) do
++    exclude_guests? = Keyword.get(opts, :exclude_guests?, false)
++
+     query =
+       from tm in Teams.Membership,
+         inner_join: u in assoc(tm, :user),
+@@ -15,6 +18,13 @@ defmodule Plausible.Teams.Memberships do
+         order_by: [asc: u.id],
+         preload: [user: u]
+ 
++    query =
++      if exclude_guests? do
++        from tm in query, where: tm.role != :guest
++      else
++        query
++      end
++
+     Repo.all(query)
+   end
+ 
+diff --git a/lib/plausible/teams/policy.ex b/lib/plausible/teams/policy.ex
+index e726e7bfa..e0e16dc6d 100644
+--- a/lib/plausible/teams/policy.ex
++++ b/lib/plausible/teams/policy.ex
+@@ -25,7 +25,7 @@ defmodule Plausible.Teams.Policy do
+ 
+   on_ee do
+     @derive {Plausible.Audit.Encoder,
+-             only: [:force_sso, :sso_default_role, :sso_session_timeout_minutes]}
++             only: [:force_2fa, :force_sso, :sso_default_role, :sso_session_timeout_minutes]}
+   end
+ 
+   @primary_key false
+@@ -47,6 +47,9 @@ defmodule Plausible.Teams.Policy do
+     # Default session timeout for SSO-enabled accounts. We might also
+     # consider accepting session timeout from assertion, if present.
+     field :sso_session_timeout_minutes, :integer, default: @default_timeout_minutes
++
++    # Enforce enabling 2FA for all users
++    field :force_2fa, :boolean, default: false
+   end
+ 
+   @spec sso_member_roles() :: [sso_member_role()]
+@@ -69,4 +72,11 @@ defmodule Plausible.Teams.Policy do
+     |> cast(%{force_sso: mode}, [:force_sso])
+     |> validate_required(:force_sso)
+   end
++
++  @spec force_2fa_changeset(t(), boolean()) :: Ecto.Changeset.t()
++  def force_2fa_changeset(policy, enabled?) when is_boolean(enabled?) do
++    policy
++    |> cast(%{force_2fa: enabled?}, [:force_2fa])
++    |> validate_required(:force_2fa)
++  end
+ end
+diff --git a/lib/plausible/teams/team.ex b/lib/plausible/teams/team.ex
+index 921c39e1a..5f0591624 100644
+--- a/lib/plausible/teams/team.ex
++++ b/lib/plausible/teams/team.ex
+@@ -55,10 +55,8 @@ defmodule Plausible.Teams.Team do
+     # Field for purely informational purposes in CRM context
+     field :notes, :string
+ 
+-    on_ee do
+-      # Embed for storing team-wide policies
+-      embeds_one :policy, Plausible.Teams.Policy, on_replace: :update, defaults_to_struct: true
+-    end
++    # Embed for storing team-wide policies
++    embeds_one :policy, Plausible.Teams.Policy, on_replace: :update, defaults_to_struct: true
+ 
+     embeds_one :grace_period, Plausible.Teams.GracePeriod, on_replace: :update
+ 
+diff --git a/lib/plausible_web/controllers/auth_controller.ex b/lib/plausible_web/controllers/auth_controller.ex
+index 650be1e0b..9fbd62376 100644
+--- a/lib/plausible_web/controllers/auth_controller.ex
++++ b/lib/plausible_web/controllers/auth_controller.ex
+@@ -32,6 +32,7 @@ defmodule PlausibleWeb.AuthController do
+            :activate_form,
+            :activate,
+            :request_activation_code,
++           :force_initiate_2fa_setup,
+            :initiate_2fa_setup,
+            :verify_2fa_setup_form,
+            :verify_2fa_setup,
+@@ -365,10 +366,19 @@ defmodule PlausibleWeb.AuthController do
+     end
+   end
+ 
+-  def initiate_2fa_setup(conn, _params) do
++  def force_initiate_2fa_setup(conn, _params) do
++    render(conn, "force_initiate_2fa_setup.html")
++  end
++
++  def initiate_2fa_setup(conn, params) do
+     case Auth.TOTP.initiate(conn.assigns.current_user) do
+       {:ok, user, %{totp_uri: totp_uri, secret: secret}} ->
+-        render(conn, "initiate_2fa_setup.html", user: user, totp_uri: totp_uri, secret: secret)
++        render(conn, "initiate_2fa_setup.html",
++          user: user,
++          totp_uri: totp_uri,
++          secret: secret,
++          forced?: params["force"] == "true"
++        )
+ 
+       {:error, :already_setup} ->
+         conn
+diff --git a/lib/plausible_web/controllers/settings_controller.ex b/lib/plausible_web/controllers/settings_controller.ex
+index 2d077b80b..87c750369 100644
+--- a/lib/plausible_web/controllers/settings_controller.ex
++++ b/lib/plausible_web/controllers/settings_controller.ex
+@@ -9,13 +9,20 @@ defmodule PlausibleWeb.SettingsController do
+   require Logger
+ 
+   plug Plausible.Plugs.AuthorizeTeamAccess,
+-       [:owner, :admin] when action in [:update_team_name]
++       [:owner, :admin]
++       when action in [:update_team_name]
+ 
+   plug Plausible.Plugs.AuthorizeTeamAccess,
+        [:owner, :billing] when action in [:subscription, :invoices]
+ 
+   plug Plausible.Plugs.AuthorizeTeamAccess,
+-       [:owner] when action in [:team_danger_zone, :delete_team]
++       [:owner]
++       when action in [
++              :team_danger_zone,
++              :delete_team,
++              :enable_team_force_2fa,
++              :disable_team_force_2fa
++            ]
+ 
+   plug Plausible.Plugs.RestrictUserType,
+        [deny: :sso] when action in [:update_name, :update_email, :update_password]
+@@ -48,11 +55,12 @@ defmodule PlausibleWeb.SettingsController do
+         Keyword.get(
+           opts,
+           :team_name_changeset,
+-          Plausible.Teams.Team.name_changeset(conn.assigns.current_team)
++          Teams.Team.name_changeset(conn.assigns.current_team)
+         )
+ 
+       render(conn, :team_general,
+         team_name_changeset: name_changeset,
++        force_2fa_enabled?: Teams.force_2fa_enabled?(conn.assigns.current_team),
+         layout: {PlausibleWeb.LayoutView, :settings},
+         connect_live_socket: true
+       )
+@@ -62,6 +70,45 @@ defmodule PlausibleWeb.SettingsController do
+     end
+   end
+ 
++  def enable_team_force_2fa(conn, _params) do
++    team = conn.assigns.current_team
++    user = conn.assigns.current_user
++
++    case Teams.enable_force_2fa(team, user) do
++      {:ok, _} ->
++        conn
++        |> put_flash(:success, "2FA is now required for all team members.")
++        |> redirect(to: Routes.settings_path(conn, :team_general))
++
++      {:error, _} ->
++        conn
++        |> put_flash(:error, "Failed to enforce 2FA for all team members.")
++        |> redirect(to: Routes.settings_path(conn, :team_general))
++    end
++  end
++
++  def disable_team_force_2fa(conn, %{"password" => password}) do
++    team = conn.assigns.current_team
++    user = conn.assigns.current_user
++
++    case Teams.disable_force_2fa(team, user, password) do
++      {:ok, _} ->
++        conn
++        |> put_flash(:success, "2FA is no longer enforced for team members.")
++        |> redirect(to: Routes.settings_path(conn, :team_general))
++
++      {:error, :invalid_password} ->
++        conn
++        |> put_flash(:error, "Incorrect password provided.")
++        |> redirect(to: Routes.settings_path(conn, :team_general))
++
++      {:error, _} ->
++        conn
++        |> put_flash(:error, "Failed to disable enforcing 2FA for all team members.")
++        |> redirect(to: Routes.settings_path(conn, :team_general))
++    end
++  end
++
+   def leave_team(conn, _params) do
+     case Teams.Memberships.Leave.leave(conn.assigns.current_team, conn.assigns.current_user) do
+       {:ok, _} ->
+diff --git a/lib/plausible_web/email.ex b/lib/plausible_web/email.ex
+index b6359b661..90769b7b0 100644
+--- a/lib/plausible_web/email.ex
++++ b/lib/plausible_web/email.ex
+@@ -571,6 +571,13 @@ defmodule PlausibleWeb.Email do
+     end
+   end
+ 
++  def force_2fa_enabled(team, user, enabling_user) do
++    priority_email()
++    |> to(user.email)
++    |> subject("Your team now requires 2FA")
++    |> render("force_2fa_enabled.html", team: team, enabling_user: enabling_user)
++  end
++
+   @doc """
+     Unlike the default 'base' emails, priority emails cannot be unsubscribed from. This is achieved
+     by sending them through a dedicated 'priority' message stream in Postmark.
+diff --git a/lib/plausible_web/plugs/require_account.ex b/lib/plausible_web/plugs/require_account.ex
+index e69eb2904..53b7a88cb 100644
+--- a/lib/plausible_web/plugs/require_account.ex
++++ b/lib/plausible_web/plugs/require_account.ex
+@@ -9,11 +9,24 @@ defmodule PlausibleWeb.RequireAccountPlug do
+     ["me"]
+   ]
+ 
++  @force_2fa_exceptions [
++    ["2fa", "setup", "force-initiate"],
++    ["2fa", "setup", "initiate"],
++    ["2fa", "setup", "verify"],
++    ["team", "select"]
++  ]
++
+   def init(options) do
+     options
+   end
+ 
+   def call(conn, _opts) do
++    conn
++    |> require_verified_user()
++    |> maybe_force_2fa()
++  end
++
++  defp require_verified_user(conn) do
+     user = conn.assigns[:current_user]
+ 
+     cond do
+@@ -33,6 +46,21 @@ defmodule PlausibleWeb.RequireAccountPlug do
+     end
+   end
+ 
++  defp maybe_force_2fa(%{halted: true} = conn), do: conn
++
++  defp maybe_force_2fa(conn) do
++    user = conn.assigns[:current_user]
++    team = conn.assigns[:current_team]
++
++    if conn.path_info not in @force_2fa_exceptions and must_enable_2fa?(user, team) do
++      conn
++      |> Phoenix.Controller.redirect(to: Routes.auth_path(conn, :force_initiate_2fa_setup))
++      |> halt()
++    else
++      conn
++    end
++  end
++
+   defp redirect_to(%Plug.Conn{method: "GET"} = conn) do
+     return_to =
+       if conn.query_string && String.length(conn.query_string) > 0 do
+@@ -45,4 +73,10 @@ defmodule PlausibleWeb.RequireAccountPlug do
+   end
+ 
+   defp redirect_to(conn), do: Routes.auth_path(conn, :login_form)
++
++  defp must_enable_2fa?(user, team) when is_nil(user) or is_nil(team), do: false
++
++  defp must_enable_2fa?(user, team) do
++    not Plausible.Auth.TOTP.enabled?(user) and Plausible.Teams.force_2fa_enabled?(team)
++  end
+ end
+diff --git a/lib/plausible_web/router.ex b/lib/plausible_web/router.ex
+index 386e849f0..dadd32857 100644
+--- a/lib/plausible_web/router.ex
++++ b/lib/plausible_web/router.ex
+@@ -439,6 +439,7 @@ defmodule PlausibleWeb.Router do
+     post "/login", AuthController, :login
+     get "/password/request-reset", AuthController, :password_reset_request_form
+     post "/password/request-reset", AuthController, :password_reset_request
++    get "/2fa/setup/force-initiate", AuthController, :force_initiate_2fa_setup
+     post "/2fa/setup/initiate", AuthController, :initiate_2fa_setup
+     get "/2fa/setup/verify", AuthController, :verify_2fa_setup_form
+     post "/2fa/setup/verify", AuthController, :verify_2fa_setup
+@@ -490,6 +491,8 @@ defmodule PlausibleWeb.Router do
+     get "/team/general", SettingsController, :team_general
+     post "/team/general/name", SettingsController, :update_team_name
+     post "/team/leave", SettingsController, :leave_team
++    post "/team/force_2fa/enable", SettingsController, :enable_team_force_2fa
++    post "/team/force_2fa/disable", SettingsController, :disable_team_force_2fa
+ 
+     on_ee do
+       get "/sso/info", SSOController, :cta
+diff --git a/lib/plausible_web/templates/auth/force_initiate_2fa_setup.html.heex b/lib/plausible_web/templates/auth/force_initiate_2fa_setup.html.heex
+new file mode 100644
+index 000000000..562f84b97
+--- /dev/null
++++ b/lib/plausible_web/templates/auth/force_initiate_2fa_setup.html.heex
+@@ -0,0 +1,30 @@
++<script>
++  document.addEventListener("DOMContentLoaded", function () {
++    setInterval(function() {
++      document.getElementById("initiate-2fa-form").submit();
++    }, 3000)
++  });
++</script>
++
++<.focus_box>
++  <:title>
++    Setup Two-Factor Authentication
++  </:title>
++
++  <:subtitle>
++    Redirecting to 2FA setup. Click below if it doesn't happen automatically.
++  </:subtitle>
++
++  <div class="w-full">
++    <.form
++      id="initiate-2fa-form"
++      action={Routes.auth_path(@conn, :initiate_2fa_setup, force: "true")}
++      for={@conn.params}
++      method="post"
++    >
++      <.button type="submit" class="w-full" mt?={false}>
++        Proceed
++      </.button>
++    </.form>
++  </div>
++</.focus_box>
+diff --git a/lib/plausible_web/templates/auth/initiate_2fa_setup.html.heex b/lib/plausible_web/templates/auth/initiate_2fa_setup.html.heex
+index 753102c3f..1b67b37db 100644
+--- a/lib/plausible_web/templates/auth/initiate_2fa_setup.html.heex
++++ b/lib/plausible_web/templates/auth/initiate_2fa_setup.html.heex
+@@ -4,10 +4,13 @@
+   </:title>
+ 
+   <:subtitle>
++    <.notice :if={@forced?} class="mb-2" theme={:gray} title="Team requires 2FA setup">
++      You've been redirected here because your team enforces 2FA. Please complete the setup or switch to another team.
++    </.notice>
+     Link your Plausible account to the authenticator app you have installed either on your phone or computer.
+   </:subtitle>
+ 
+-  <:footer>
++  <:footer :if={not @forced?}>
+     <.focus_list>
+       <:item>
+         Changed your mind?
+diff --git a/lib/plausible_web/templates/email/force_2fa_enabled.html.heex b/lib/plausible_web/templates/email/force_2fa_enabled.html.heex
+new file mode 100644
+index 000000000..87da4c6c6
+--- /dev/null
++++ b/lib/plausible_web/templates/email/force_2fa_enabled.html.heex
+@@ -0,0 +1,10 @@
++{@enabling_user.email} has enabled a 2FA requirement for the "{@team.name}" team.<br /><br />
++Please
++<a href={
++  Routes.auth_url(PlausibleWeb.Endpoint, :force_initiate_2fa_setup, __team: @team.identifier)
++}>
++  set up 2FA now
++</a>
++to keep access to your team on Plausible. The setup takes about a minute with any authenticator app.<br /><br />
++Need help? Read our <a href="https://plausible.io/docs/2fa">2FA guide</a>
++or reply to this email.
+diff --git a/lib/plausible_web/templates/settings/team_general.html.heex b/lib/plausible_web/templates/settings/team_general.html.heex
+index 3a291fed4..f084bb19a 100644
+--- a/lib/plausible_web/templates/settings/team_general.html.heex
++++ b/lib/plausible_web/templates/settings/team_general.html.heex
+@@ -43,6 +43,86 @@
+       session: %{"mode" => "team-management"}
+     )}
+   </.tile>
++  <.tile :if={@current_team_role == :owner} docs="2fa">
++    <:title>
++      <a id="force-2fa">Force Two-Factor Authentication (2FA)</a>
++    </:title>
++    <:subtitle>
++      Increase account security by requiring all team members to enable 2FA.
++    </:subtitle>
++
++    <div
++      :if={@force_2fa_enabled? and @current_team_role == :owner}
++      id="disable-force-2fa"
++      x-data="{disableTeamForce2FAOpen: false}"
++    >
++      <.form
++        action={Routes.settings_path(@conn, :disable_team_force_2fa)}
++        for={@conn.params}
++        method="post"
++      >
++        <.button
++          theme="danger"
++          x-on:click="disableTeamForce2FAOpen = true; $refs.disableTeamForce2FAPassword.value = ''"
++          mt?={false}
++        >
++          Stop Forcing 2FA
++        </.button>
++
++        <PlausibleWeb.Components.TwoFactor.modal
++          id="disable-force-2fa-modal"
++          state_param="disableTeamForce2FAOpen"
++          form_data={@conn.params}
++          form_target={Routes.settings_path(@conn, :disable_team_force_2fa)}
++          title="Stop enforcing 2FA?"
++        >
++          <:icon>
++            <Heroicons.shield_exclamation class="h-6 w-6" />
++          </:icon>
++          <:buttons>
++            <.button type="submit" class="w-full sm:w-auto">
++              Stop enforcing 2FA
++            </.button>
++          </:buttons>
++
++          <div class="text-sm mt-2">
++            This will remove the 2FA requirement for all team members.
++          </div>
++
++          <div class="text-sm mt-2">
++            Enter your password to stop enforcing 2FA.
++          </div>
++
++          <div class="mt-3">
++            <.input
++              type="password"
++              id="disable_team_force_2fa_password"
++              name="password"
++              value=""
++              placeholder="Enter password"
++              x-ref="disableTeamForce2FAPassword"
++            />
++          </div>
++        </PlausibleWeb.Components.TwoFactor.modal>
++      </.form>
++    </div>
++
++    <div :if={not @force_2fa_enabled? and @current_team_role == :owner} id="enable-force-2fa">
++      <.form
++        action={Routes.settings_path(@conn, :enable_team_force_2fa)}
++        for={@conn.params}
++        method="post"
++      >
++        <.button
++          data-confirm="All team members, including you, will need to set up 2FA. Are you sure you want to enforce it?"
++          type="submit"
++          mt?={false}
++        >
++          Enforce 2FA
++        </.button>
++      </.form>
++    </div>
++  </.tile>
+   <.tile docs="users-roles#leaving-team">
+     <:title>Leave team</:title>
+     <:subtitle>Remove yourself from this team as a member.</:subtitle>
+diff --git a/test/plausible_web/controllers/auth_controller_test.exs b/test/plausible_web/controllers/auth_controller_test.exs
+index 7b274133b..34427cf00 100644
+--- a/test/plausible_web/controllers/auth_controller_test.exs
++++ b/test/plausible_web/controllers/auth_controller_test.exs
+@@ -1147,6 +1147,14 @@ defmodule PlausibleWeb.AuthControllerTest do
+ 
+       assert element_exists?(html, "svg")
+       assert html =~ secret
++      refute html =~ "You've been redirected here because your team enforces 2FA."
++    end
++
++    test "shows additional notice when `force` parameter set", %{conn: conn} do
++      conn = post(conn, Routes.auth_path(conn, :initiate_2fa_setup, force: "true"))
++
++      assert html = html_response(conn, 200)
++      assert html =~ "You've been redirected here because your team enforces 2FA."
+     end
+ 
+     test "redirects back to settings if 2FA is already setup", %{conn: conn, user: user} do
+diff --git a/test/plausible_web/controllers/settings_controller_test.exs b/test/plausible_web/controllers/settings_controller_test.exs
+index 1d97a5fe7..1e305c4be 100644
+--- a/test/plausible_web/controllers/settings_controller_test.exs
++++ b/test/plausible_web/controllers/settings_controller_test.exs
+@@ -1703,6 +1703,285 @@ defmodule PlausibleWeb.SettingsControllerTest do
+     end
+   end
+ 
++  describe "POST /team/force_2fa/enable" do
++    setup [:create_user, :log_in, :create_team, :setup_team]
++
++    test "enables enforcing 2FA", %{conn: conn, team: team} do
++      refute team.policy.force_2fa
++
++      conn = post(conn, Routes.settings_path(conn, :enable_team_force_2fa))
++
++      assert redirected_to(conn, 302) == Routes.settings_path(conn, :team_general)
++
++      assert Phoenix.Flash.get(conn.assigns.flash, :success) =~
++               "2FA is now required for all team members"
++
++      assert Repo.reload!(team).policy.force_2fa
++    end
++
++    on_ee do
++      test "adds entry to audit log", %{conn: conn, team: team, user: user} do
++        conn = post(conn, Routes.settings_path(conn, :enable_team_force_2fa))
++
++        assert redirected_to(conn, 302) == Routes.settings_path(conn, :team_general)
++
++        assert_matches [
++                         %{
++                           name: "force_2fa_enabled",
++                           user_id: ^user.id,
++                           team_id: ^team.id,
++                           actor_type: :user,
++                           change: %{
++                             "before" => %{"policy" => %{"force_2fa" => false}},
++                             "after" => %{"policy" => %{"after" => %{"force_2fa" => true}}}
++                           }
++                         }
++                       ] =
++                         Plausible.Audit.list_entries(
++                           entity: "Plausible.Teams.Team",
++                           entity_id: "#{team.id}"
++                         )
++      end
++    end
++
++    test "sends e-mail to all other team members", %{conn: conn, team: team, user: user} do
++      site = new_site(team: team)
++
++      member1 = add_member(team, role: :viewer)
++      member2 = add_member(team, role: :owner)
++      guest = add_guest(site, role: :viewer)
++
++      conn = post(conn, Routes.settings_path(conn, :enable_team_force_2fa))
++
++      assert redirected_to(conn, 302) == Routes.settings_path(conn, :team_general)
++
++      assert_email_delivered_with(
++        subject: "Your team now requires 2FA",
++        to: [nil: member1.email]
++      )
++
++      assert_email_delivered_with(
++        subject: "Your team now requires 2FA",
++        to: [nil: member2.email]
++      )
++
++      # guests are not notified because they are not affected
++      refute_email_delivered_with(
++        subject: "Your team now requires 2FA",
++        to: [nil: guest.email]
++      )
++
++      # the user enabling the enforcement is not notified
++      refute_email_delivered_with(
++        subject: "Your team now requires 2FA",
++        to: [nil: user.email]
++      )
++    end
++
++    test "is idempotent", %{conn: conn, user: user, team: team} do
++      {:ok, team} = Plausible.Teams.disable_force_2fa(team, user, "password")
++
++      conn = post(conn, Routes.settings_path(conn, :enable_team_force_2fa))
++
++      assert redirected_to(conn, 302) == Routes.settings_path(conn, :team_general)
++      assert Repo.reload!(team).policy.force_2fa
++    end
++
++    test "can't be enabled by anyone other than owner", %{conn: conn, team: team} do
++      admin = add_member(team, role: :admin)
++      {:ok, ctx} = log_in(%{conn: conn, user: admin})
++
++      conn =
++        ctx
++        |> Keyword.fetch!(:conn)
++        |> set_current_team(team)
++
++      conn = post(conn, Routes.settings_path(conn, :enable_team_force_2fa))
++
++      assert redirected_to(conn, 302) == Routes.site_path(conn, :index)
++      refute Repo.reload!(team).policy.force_2fa
++    end
++  end
++
++  describe "POST /team/force_2fa/disable" do
++    setup [:create_user, :log_in, :create_team, :setup_team]
++
++    setup %{user: user} do
++      # enable 2FA
++      {:ok, user, _} = Plausible.Auth.TOTP.initiate(user)
++      code = NimbleTOTP.verification_code(user.totp_secret)
++      {:ok, _user, _} = Plausible.Auth.TOTP.enable(user, code)
++
++      {:ok, user: user}
++    end
++
++    test "disables enforcing 2FA", %{conn: conn, team: team, user: user} do
++      {:ok, team} = Plausible.Teams.enable_force_2fa(team, user)
++
++      conn =
++        post(conn, Routes.settings_path(conn, :disable_team_force_2fa), %{
++          "password" => "password"
++        })
++
++      assert redirected_to(conn, 302) == Routes.settings_path(conn, :team_general)
++
++      assert Phoenix.Flash.get(conn.assigns.flash, :success) =~
++               "2FA is no longer enforced for team members"
++
++      refute Repo.reload!(team).policy.force_2fa
++    end
++
++    on_ee do
++      test "adds entry to audit log", %{conn: conn, user: user, team: team} do
++        {:ok, team} = Plausible.Teams.enable_force_2fa(team, user)
++
++        conn =
++          post(conn, Routes.settings_path(conn, :disable_team_force_2fa), %{
++            "password" => "password"
++          })
++
++        assert redirected_to(conn, 302) == Routes.settings_path(conn, :team_general)
++
++        assert_matches [
++                         %{
++                           name: "force_2fa_disabled",
++                           user_id: ^user.id,
++                           team_id: ^team.id,
++                           actor_type: :user,
++                           change: %{
++                             "before" => %{"policy" => %{"force_2fa" => true}},
++                             "after" => %{"policy" => %{"after" => %{"force_2fa" => false}}}
++                           }
++                         },
++                         _
++                       ] =
++                         Plausible.Audit.list_entries(
++                           entity: "Plausible.Teams.Team",
++                           entity_id: "#{team.id}"
++                         )
++      end
++    end
++
++    test "is idempotent", %{conn: conn, team: team} do
++      conn =
++        post(conn, Routes.settings_path(conn, :disable_team_force_2fa), %{
++          "password" => "password"
++        })
++
++      assert redirected_to(conn, 302) == Routes.settings_path(conn, :team_general)
++      refute Repo.reload!(team).policy.force_2fa
++    end
++
++    test "returns error on invalid password", %{conn: conn} do
++      conn =
++        post(conn, Routes.settings_path(conn, :disable_team_force_2fa), %{"password" => "invalid"})
++
++      assert redirected_to(conn, 302) == Routes.settings_path(conn, :team_general)
++      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "Incorrect password provided"
++    end
++
++    test "can't be disabled by anyone other than owner", %{conn: conn, team: team, user: user} do
++      {:ok, team} = Plausible.Teams.enable_force_2fa(team, user)
++
++      admin = add_member(team, role: :admin)
++
++      # enable TOTP for admin
++      {:ok, admin, _} = Plausible.Auth.TOTP.initiate(admin)
++      code = NimbleTOTP.verification_code(admin.totp_secret)
++      {:ok, _admin, _} = Plausible.Auth.TOTP.enable(admin, code)
++
++      {:ok, ctx} = log_in(%{conn: conn, user: admin})
++
++      conn =
++        ctx
++        |> Keyword.fetch!(:conn)
++        |> set_current_team(team)
++
++      conn =
++        post(conn, Routes.settings_path(conn, :disable_team_force_2fa), %{
++          "password" => "password"
++        })
++
++      assert redirected_to(conn, 302) == Routes.site_path(conn, :index)
++      assert Repo.reload!(team).policy.force_2fa
++    end
++  end
++
++  describe "GET /settings/team/general - enforce 2FA disabled" do
++    setup [:create_user, :log_in, :create_team, :setup_team]
++
++    test "is visible to owner", %{conn: conn} do
++      conn = get(conn, Routes.settings_path(conn, :team_general))
++      html = html_response(conn, 200)
++
++      assert element_exists?(html, "div#enable-force-2fa")
++      refute element_exists?(html, "div#disable-force-2fa")
++    end
++
++    test "is not visible to anyone other than owner", %{conn: conn, team: team} do
++      admin = add_member(team, role: :admin)
++      {:ok, ctx} = log_in(%{conn: conn, user: admin})
++
++      conn =
++        ctx
++        |> Keyword.fetch!(:conn)
++        |> set_current_team(team)
++
++      conn = get(conn, Routes.settings_path(conn, :team_general))
++      html = html_response(conn, 200)
++
++      refute element_exists?(html, "div#force-2fa")
++      refute element_exists?(html, "div#enable-force-2fa")
++      refute element_exists?(html, "div#disable-force-2fa")
++    end
++  end
++
++  describe "GET /settings/team/general - enforce 2FA enabled" do
++    setup [:create_user, :log_in, :create_team, :setup_team]
++
++    setup %{user: user, team: team} do
++      # enable 2FA
++      {:ok, user, _} = Plausible.Auth.TOTP.initiate(user)
++      code = NimbleTOTP.verification_code(user.totp_secret)
++      {:ok, _user, _} = Plausible.Auth.TOTP.enable(user, code)
++
++      {:ok, team} = Plausible.Teams.enable_force_2fa(team, user)
++
++      {:ok, user: user, team: team}
++    end
++
++    test "is visible to owner", %{conn: conn} do
++      conn = get(conn, Routes.settings_path(conn, :team_general))
++      html = html_response(conn, 200)
++
++      refute element_exists?(html, "div#enable-force-2fa")
++      assert element_exists?(html, "div#disable-force-2fa")
++    end
++
++    test "is not visible to anyone other than owner", %{conn: conn, team: team} do
++      admin = add_member(team, role: :admin)
++
++      # enable TOTP for admin
++      {:ok, admin, _} = Plausible.Auth.TOTP.initiate(admin)
++      code = NimbleTOTP.verification_code(admin.totp_secret)
++      {:ok, _admin, _} = Plausible.Auth.TOTP.enable(admin, code)
++
++      {:ok, ctx} = log_in(%{conn: conn, user: admin})
++
++      conn =
++        ctx
++        |> Keyword.fetch!(:conn)
++        |> set_current_team(team)
++
++      conn = get(conn, Routes.settings_path(conn, :team_general))
++      html = html_response(conn, 200)
++
++      refute element_exists?(html, "div#force-2fa")
++      refute element_exists?(html, "div#enable-force-2fa")
++      refute element_exists?(html, "div#disable-force-2fa")
++    end
++  end
++
+   describe "account dropdown menu (_header.html)" do
+     setup [:create_user, :log_in]
+ 
+diff --git a/test/plausible_web/plugs/require_account_plug_test.exs b/test/plausible_web/plugs/require_account_plug_test.exs
+new file mode 100644
+index 000000000..eb5e775b4
+--- /dev/null
++++ b/test/plausible_web/plugs/require_account_plug_test.exs
+@@ -0,0 +1,81 @@
++defmodule PlausibleWeb.RequireAccountPlugTest do
++  use PlausibleWeb.ConnCase, async: true
++  use Plausible.Teams.Test
++
++  import Plug.Conn
++
++  alias PlausibleWeb.RequireAccountPlug
++  alias PlausibleWeb.Router.Helpers, as: Routes
++
++  describe "enforcing 2FA" do
++    test "passes when 2FA enforcement is disabled" do
++      user = new_user()
++      team = new_site(owner: user).team
++      team = Plausible.Teams.complete_setup(team)
++
++      conn =
++        build_conn()
++        |> assign(:current_user, user)
++        |> assign(:current_team, team)
++        |> RequireAccountPlug.call(nil)
++
++      refute conn.halted
++    end
++
++    test "redirects when 2FA enforcement is enabled" do
++      user = new_user()
++      team = new_site(owner: user).team
++      team = Plausible.Teams.complete_setup(team)
++      {:ok, team} = Plausible.Teams.enable_force_2fa(team, user)
++
++      conn =
++        build_conn()
++        |> assign(:current_user, user)
++        |> assign(:current_team, team)
++        |> RequireAccountPlug.call(nil)
++
++      assert conn.halted
++      assert redirected_to(conn, 302) == Routes.auth_path(conn, :force_initiate_2fa_setup)
++    end
++
++    test "does not override for unverified account" do
++      user = new_user(email_verified: false)
++      team = new_site(owner: user).team
++      team = Plausible.Teams.complete_setup(team)
++      {:ok, team} = Plausible.Teams.enable_force_2fa(team, user)
++
++      conn =
++        build_conn()
++        |> assign(:current_user, user)
++        |> assign(:current_team, team)
++        |> RequireAccountPlug.call(nil)
++
++      assert conn.halted
++      assert redirected_to(conn, 302) == Routes.auth_path(conn, :activate_form)
++    end
++
++    @force_2fa_exceptions [
++      "/2fa/setup/force-initiate",
++      "/2fa/setup/initiate",
++      "/2fa/setup/verify",
++      "/team/select"
++    ]
++
++    for path <- @force_2fa_exceptions do
++      test "does not redirect if the path is #{path}" do
++        user = new_user()
++        team = new_site(owner: user).team
++        team = Plausible.Teams.complete_setup(team)
++        {:ok, team} = Plausible.Teams.enable_force_2fa(team, user)
++
++        conn =
++          build_conn(:get, unquote(path))
++          |> assign(:current_user, user)
++          |> assign(:current_team, team)
++          |> RequireAccountPlug.call(nil)
++
++        refute conn.halted
++      end
++    end
++  end
++end

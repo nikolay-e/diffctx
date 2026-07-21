@@ -1,0 +1,804 @@
+From 87dcc1641f953be97c43d83936112eba85d8e126 Mon Sep 17 00:00:00 2001
+From: "roux g. buciu" <11182210+adudenamedruby@users.noreply.github.com>
+Date: Tue, 21 Apr 2026 10:01:56 -0400
+Subject: [PATCH] Refactor FXIOS-15232 [FeatureFlags] Remove position feature
+ flag, and migrate addressBarMenu (#33208)
+
+* migrate addressBarMenu and searchBarSettings
+
+* Fix tests
+
+* figuring out top/bottom default logic
+---
+ firefox-ios/Client.xcodeproj/project.pbxproj  |  4 ---
+ .../Client/AccessoryViewProvider.swift        |  8 +++--
+ .../Coordinators/SettingsCoordinator.swift    |  7 ++--
+ .../Client/FeatureFlags/FeatureFlagID.swift   |  2 --
+ .../LegacyFeatureFlagsManager.swift           |  6 ----
+ .../FeatureFlags/NimbusFlaggableFeature.swift | 21 +++---------
+ .../UserFeaturePreferenceManager.swift        |  7 ++--
+ .../Views/BrowserViewController.swift         |  3 +-
+ .../Toolbars/SearchBarLocationSaver.swift     | 15 ++++-----
+ .../ContextualHintEligibilityUtility.swift    |  3 +-
+ .../ContextualHintViewProvider.swift          |  4 ++-
+ .../Protocols/OnboardingService.swift         |  6 ++--
+ .../Views/IntroViewController.swift           |  6 ++--
+ .../AddressBarSettingsView.swift              |  4 +--
+ .../Main/AppSettingsTableViewController.swift |  2 +-
+ .../SearchBarSettingsViewModel.swift          | 32 +++++--------------
+ .../Nimbus/NimbusFeatureFlagLayer.swift       | 14 --------
+ firefox-ios/Client/Nimbus/NimbusManager.swift | 14 +-------
+ .../Client/Nimbus/NimbusSearchBarLayer.swift  | 13 --------
+ .../ClientTests/FeatureFlagManagerTests.swift | 27 ----------------
+ .../ClientTests/NimbusFeatureFlagsTests.swift | 10 +-----
+ .../SearchBarLocationSaverTests.swift         |  2 +-
+ .../SearchBarSettingsViewModelTests.swift     |  6 ++--
+ .../ClientTests/StatusBarOverlayTests.swift   |  4 ++-
+ .../nimbus-features/searchFeature.yaml        | 29 -----------------
+ 25 files changed, 57 insertions(+), 192 deletions(-)
+ delete mode 100644 firefox-ios/Client/Nimbus/NimbusSearchBarLayer.swift
+
+diff --git a/firefox-ios/Client.xcodeproj/project.pbxproj b/firefox-ios/Client.xcodeproj/project.pbxproj
+index 28a822fc9..5b0d6d921 100644
+--- a/firefox-ios/Client.xcodeproj/project.pbxproj
++++ b/firefox-ios/Client.xcodeproj/project.pbxproj
+@@ -1690,7 +1690,6 @@
+ 		C820439A2523DC4500740B71 /* libStorage.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 2FCAE21A1ABB51F800877008 /* libStorage.a */; };
+ 		C82043AE2523DC8B00740B71 /* Sync.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2827315E1ABC9BE600AA1954 /* Sync.framework */; };
+ 		C82043C32523DD6A00740B71 /* Sync.framework in Copy Frameworks */ = {isa = PBXBuildFile; fileRef = 2827315E1ABC9BE600AA1954 /* Sync.framework */; };
+-		C825E9832832A425006CB811 /* NimbusSearchBarLayer.swift in Sources */ = {isa = PBXBuildFile; fileRef = C825E9822832A425006CB811 /* NimbusSearchBarLayer.swift */; };
+ 		C82A94F2269F68ED00624AA7 /* LegacyFeatureFlagsManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C82A94E6269CB77F00624AA7 /* LegacyFeatureFlagsManager.swift */; };
+ 		C82A94F3269F68F300624AA7 /* CoreFlaggableFeature.swift in Sources */ = {isa = PBXBuildFile; fileRef = C82A94E4269CB77500624AA7 /* CoreFlaggableFeature.swift */; };
+ 		C82CDD47233E8996002E2743 /* Tab+ChangeUserAgent.swift in Sources */ = {isa = PBXBuildFile; fileRef = C82CDD45233E8996002E2743 /* Tab+ChangeUserAgent.swift */; };
+@@ -10430,7 +10429,6 @@
+ 		C81A8F2426D3ED1900EBA539 /* UIWindow+Extension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "UIWindow+Extension.swift"; sourceTree = "<group>"; };
+ 		C81B78A3280752A20000C15F /* NimbusFeatureFlagLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NimbusFeatureFlagLayer.swift; sourceTree = "<group>"; };
+ 		C81C66C329F00D1000F6422F /* UserActivityRouteTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserActivityRouteTests.swift; sourceTree = "<group>"; };
+-		C825E9822832A425006CB811 /* NimbusSearchBarLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NimbusSearchBarLayer.swift; sourceTree = "<group>"; };
+ 		C82A94E4269CB77500624AA7 /* CoreFlaggableFeature.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CoreFlaggableFeature.swift; sourceTree = "<group>"; };
+ 		C82A94E6269CB77F00624AA7 /* LegacyFeatureFlagsManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LegacyFeatureFlagsManager.swift; sourceTree = "<group>"; };
+ 		C82CDD45233E8996002E2743 /* Tab+ChangeUserAgent.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = "Tab+ChangeUserAgent.swift"; sourceTree = "<group>"; };
+@@ -15269,7 +15267,6 @@
+ 				254B76092B7B44EE00AB8526 /* NimbusFirefoxSuggestFeatureLayer.swift */,
+ 				C81B78A3280752A20000C15F /* NimbusFeatureFlagLayer.swift */,
+ 				C87D8B7F2818333F00A6307D /* NimbusManager.swift */,
+-				C825E9822832A425006CB811 /* NimbusSearchBarLayer.swift */,
+ 				C88E7A5E2A0554FC0072E638 /* OnboardingFeatureLayer */,
+ 				E1AF27422A17BCF700CE5991 /* TestData */,
+ 			);
+@@ -18884,7 +18881,6 @@
+ 				8A9B7A8A2F1A120100ABCDEF /* NewsAffordanceHeaderView.swift in Sources */,
+ 				8A91D4112F7D6C7800A1B2C3 /* NewsTransitionHeaderCell.swift in Sources */,
+ 				8A91D4132F7D6C7900A1B2C3 /* StoryCategoryPickerView.swift in Sources */,
+-				C825E9832832A425006CB811 /* NimbusSearchBarLayer.swift in Sources */,
+ 				8AF347DE2CADD1B200624036 /* HomepageState.swift in Sources */,
+ 				8A75AF9C2DE8A1CF00B2C592 /* StartAtHomeMiddleware.swift in Sources */,
+ 				C8DC90C92A0675E70008832B /* MarkupParsingUtility.swift in Sources */,
+diff --git a/firefox-ios/Client/AccessoryViewProvider.swift b/firefox-ios/Client/AccessoryViewProvider.swift
+index c063332fd..7106bf11e 100644
+--- a/firefox-ios/Client/AccessoryViewProvider.swift
++++ b/firefox-ios/Client/AccessoryViewProvider.swift
+@@ -10,7 +10,11 @@ enum AccessoryType {
+     case standard, creditCard, address, login, passwordGenerator, relayEmailMask
+ }
+ 
+-final class AccessoryViewProvider: UIView, Themeable, InjectedThemeUUIDIdentifiable, LegacyFeatureFlaggable, Notifiable {
++final class AccessoryViewProvider: UIView,
++                                   Themeable,
++                                   InjectedThemeUUIDIdentifiable,
++                                   HasUserFeaturePreferences,
++                                   Notifiable {
+     // MARK: - Constants
+     private struct UX {
+         static let accessoryViewHeight: CGFloat = 56
+@@ -42,7 +46,7 @@ final class AccessoryViewProvider: UIView, Themeable, InjectedThemeUUIDIdentifia
+     var useRelayMaskClosure: (() -> Void)?
+ 
+     private var searchBarPosition: SearchBarPosition {
+-        return featureFlags.getCustomState(for: .searchBarPosition) ?? .bottom
++        return userPreferences.searchBarPosition
+     }
+ 
+     var toolbarItems: [UIBarButtonItem] {
+diff --git a/firefox-ios/Client/Coordinators/SettingsCoordinator.swift b/firefox-ios/Client/Coordinators/SettingsCoordinator.swift
+index 52b5b7432..c1d15cafd 100644
+--- a/firefox-ios/Client/Coordinators/SettingsCoordinator.swift
++++ b/firefox-ios/Client/Coordinators/SettingsCoordinator.swift
+@@ -32,7 +32,8 @@ final class SettingsCoordinator: BaseCoordinator,
+                                  BrowsingSettingsDelegate,
+                                  AppearanceSettingsDelegate,
+                                  TranslationPickerSettingsDelegate,
+-                                 LegacyFeatureFlaggable {
++                                 LegacyFeatureFlaggable, // TODO: ROUX remove post Feature Flag Migration
++                                 FeatureFlaggable {
+     var settingsViewController: AppSettingsScreen?
+     private let wallpaperManager: WallpaperManagerInterface
+     private let profile: Profile
+@@ -202,7 +203,7 @@ final class SettingsCoordinator: BaseCoordinator,
+ 
+         case .toolbar:
+             let viewModel = SearchBarSettingsViewModel(prefs: profile.prefs)
+-            return LegacyFeatureFlagsManager.shared.isFeatureEnabled(.addressBarMenu, checking: .buildOnly)
++            return featureFlagsProvider.isEnabled(.addressBarMenu)
+             ? UIHostingController(
+                 rootView: AddressBarSettingsView(
+                     windowUUID: windowUUID,
+@@ -431,7 +432,7 @@ final class SettingsCoordinator: BaseCoordinator,
+ 
+     func pressedToolbar() {
+         let viewModel = SearchBarSettingsViewModel(prefs: profile.prefs)
+-        if LegacyFeatureFlagsManager.shared.isFeatureEnabled(.addressBarMenu, checking: .buildOnly) {
++        if featureFlagsProvider.isEnabled(.addressBarMenu) {
+             let viewController = UIHostingController(
+                 rootView: AddressBarSettingsView(
+                 windowUUID: windowUUID,
+diff --git a/firefox-ios/Client/FeatureFlags/FeatureFlagID.swift b/firefox-ios/Client/FeatureFlags/FeatureFlagID.swift
+index add35b092..f52ddb4c5 100644
+--- a/firefox-ios/Client/FeatureFlags/FeatureFlagID.swift
++++ b/firefox-ios/Client/FeatureFlags/FeatureFlagID.swift
+@@ -15,7 +15,6 @@ enum FeatureFlagID: String, CaseIterable {
+     case appIconSelection
+     case badCertDomainErrorPage
+     case bookmarksSearchFeature
+-    case bottomSearchBar
+     case deeplinkOptimizationRefactor
+     case downloadLiveActivities
+     case firefoxJpGuideDefaultSite
+@@ -108,6 +107,5 @@ enum FeatureFlagID: String, CaseIterable {
+ /// This enum is a constraint for any feature flag options that have more than
+ /// just an ON or OFF setting. These option must also be added to `FeatureFlagID`
+ enum FeatureFlagIDWithCustomOptions {
+-    case searchBarPosition
+     case startAtHome
+ }
+diff --git a/firefox-ios/Client/FeatureFlags/LegacyFeatureFlagsManager.swift b/firefox-ios/Client/FeatureFlags/LegacyFeatureFlagsManager.swift
+index 4ca961193..107189a0f 100644
+--- a/firefox-ios/Client/FeatureFlags/LegacyFeatureFlagsManager.swift
++++ b/firefox-ios/Client/FeatureFlags/LegacyFeatureFlagsManager.swift
+@@ -87,14 +87,12 @@ class LegacyFeatureFlagsManager: HasNimbusFeatureFlagLayer, @unchecked Sendable
+         guard let userSetting = feature.getUserPreference(using: nimbusFlags) else { return nil }
+ 
+         switch featureID {
+-        case .searchBarPosition: return SearchBarPosition(rawValue: userSetting) as? T
+         case .startAtHome: return StartAtHome(rawValue: userSetting) as? T
+         }
+     }
+ 
+     private func convertCustomIDToStandard(_ featureID: FeatureFlagIDWithCustomOptions) -> FeatureFlagID {
+         switch featureID {
+-        case .searchBarPosition: return .bottomSearchBar
+         case .startAtHome: return .startAtHome
+         }
+     }
+@@ -132,10 +130,6 @@ class LegacyFeatureFlagsManager: HasNimbusFeatureFlagLayer, @unchecked Sendable
+         let feature = NimbusFlaggableFeature(withID: convertCustomIDToStandard(featureID),
+                                              and: profile)
+         switch featureID {
+-        case .searchBarPosition:
+-            if let option = desiredState as? SearchBarPosition {
+-                feature.setUserPreference(to: option.rawValue)
+-            }
+         case .startAtHome:
+             if let option = desiredState as? StartAtHome {
+                 feature.setUserPreference(to: option.rawValue)
+diff --git a/firefox-ios/Client/FeatureFlags/NimbusFlaggableFeature.swift b/firefox-ios/Client/FeatureFlags/NimbusFlaggableFeature.swift
+index 2a8a8be7f..7fcfe2f1f 100644
+--- a/firefox-ios/Client/FeatureFlags/NimbusFlaggableFeature.swift
++++ b/firefox-ios/Client/FeatureFlags/NimbusFlaggableFeature.swift
+@@ -7,7 +7,7 @@ import Foundation
+ import Shared
+ import UIKit
+ 
+-struct NimbusFlaggableFeature: HasNimbusSearchBar {
++struct NimbusFlaggableFeature {
+     // MARK: - Variables
+     private let profile: Profile
+     private var featureID: FeatureFlagID
+@@ -18,8 +18,6 @@ struct NimbusFlaggableFeature: HasNimbusSearchBar {
+         switch featureID {
+         case .aiKillSwitch:
+             return PrefsKeys.Settings.aiKillSwitchFeature
+-        case .bottomSearchBar:
+-            return FlagKeys.SearchBarPosition
+         case .firefoxSuggestFeature:
+             return FlagKeys.FirefoxSuggest
+         case .homepageBookmarksSectionDefault:
+@@ -134,10 +132,8 @@ struct NimbusFlaggableFeature: HasNimbusSearchBar {
+         }
+ 
+         switch featureID {
+-        case .bottomSearchBar:
+-            return nimbusSearchBar.getDefaultPosition().rawValue
+         case .splashScreen:
+-            return nimbusSearchBar.getDefaultPosition().rawValue
++            return SearchBarPosition.bottom.rawValue
+         case .startAtHome:
+             return FxNimbus.shared.features.startAtHomeFeature.value().setting.rawValue
+         default: return nil
+@@ -168,15 +164,8 @@ struct NimbusFlaggableFeature: HasNimbusSearchBar {
+     /// in the `featureKey()` function - with which to write to UserDefaults, then the
+     /// feature cannot be turned on/off.
+     public func setUserPreference(to option: String) {
+-        guard !option.isEmpty,
+-              let optionsKey = featureKey
+-        else { return }
+-
+-        switch featureID {
+-        case .bottomSearchBar:
+-            profile.prefs.setString(option, forKey: optionsKey)
+-
+-        default: break
+-        }
++        guard !option.isEmpty else { return }
++        // TODO: to be removed with 15192
++        // no-op for now
+     }
+ }
+diff --git a/firefox-ios/Client/FeatureFlags/UserFeaturePreferenceManager.swift b/firefox-ios/Client/FeatureFlags/UserFeaturePreferenceManager.swift
+index b800cf834..565b2d955 100644
+--- a/firefox-ios/Client/FeatureFlags/UserFeaturePreferenceManager.swift
++++ b/firefox-ios/Client/FeatureFlags/UserFeaturePreferenceManager.swift
+@@ -34,16 +34,13 @@ protocol UserFeaturePreferring: Sendable {
+ final class UserFeaturePreferenceManager: UserFeaturePreferring, @unchecked Sendable {
+     private let prefs: Prefs
+     private let nimbusLayer: NimbusFeatureFlagLayer
+-    private let nimbusSearchBar: NimbusSearchBarLayer
+ 
+     init(
+         prefs: Prefs,
+-        nimbusLayer: NimbusFeatureFlagLayer = NimbusManager.shared.featureFlagLayer,
+-        nimbusSearchBar: NimbusSearchBarLayer = NimbusManager.shared.bottomSearchBarLayer
++        nimbusLayer: NimbusFeatureFlagLayer = NimbusManager.shared.featureFlagLayer
+     ) {
+         self.prefs = prefs
+         self.nimbusLayer = nimbusLayer
+-        self.nimbusSearchBar = nimbusSearchBar
+     }
+ 
+     // MARK: - Bool preferences
+@@ -85,7 +82,7 @@ final class UserFeaturePreferenceManager: UserFeaturePreferring, @unchecked Send
+            let position = SearchBarPosition(rawValue: raw) {
+             return position
+         }
+-        return nimbusSearchBar.getDefaultPosition()
++        return .top
+     }
+ 
+     var startAtHomeSetting: StartAtHome {
+diff --git a/firefox-ios/Client/Frontend/Browser/BrowserViewController/Views/BrowserViewController.swift b/firefox-ios/Client/Frontend/Browser/BrowserViewController/Views/BrowserViewController.swift
+index 972c68d64..e1ed5468e 100644
+--- a/firefox-ios/Client/Frontend/Browser/BrowserViewController/Views/BrowserViewController.swift
++++ b/firefox-ios/Client/Frontend/Browser/BrowserViewController/Views/BrowserViewController.swift
+@@ -350,7 +350,6 @@ class BrowserViewController: UIViewController,
+     // MARK: Computed vars
+ 
+     lazy var isBottomSearchBar: Bool = {
+-        guard isSearchBarLocationFeatureEnabled else { return false }
+         return searchBarPosition == .bottom
+     }()
+ 
+@@ -700,7 +699,7 @@ class BrowserViewController: UIViewController,
+     }
+ 
+     private func updateAddressToolbarContainerPosition(for traitCollection: UITraitCollection) {
+-        guard searchBarPosition == .bottom, isSearchBarLocationFeatureEnabled else { return }
++        guard searchBarPosition == .bottom else { return }
+ 
+         let isNavToolbar = toolbarHelper.shouldShowNavigationToolbar(for: traitCollection)
+         let newPosition: SearchBarPosition = isNavToolbar ? .bottom : .top
+diff --git a/firefox-ios/Client/Frontend/Browser/Toolbars/SearchBarLocationSaver.swift b/firefox-ios/Client/Frontend/Browser/Toolbars/SearchBarLocationSaver.swift
+index 7a87d22a4..a462a48ff 100644
+--- a/firefox-ios/Client/Frontend/Browser/Toolbars/SearchBarLocationSaver.swift
++++ b/firefox-ios/Client/Frontend/Browser/Toolbars/SearchBarLocationSaver.swift
+@@ -9,7 +9,7 @@ protocol SearchBarLocationSaverProtocol {
+     func saveUserSearchBarLocation(profile: Profile, userInterfaceIdiom: UIUserInterfaceIdiom)
+ }
+ 
+-struct SearchBarLocationSaver: SearchBarLocationProvider, LegacyFeatureFlaggable, SearchBarLocationSaverProtocol {
++struct SearchBarLocationSaver: SearchBarLocationProvider, HasUserFeaturePreferences, SearchBarLocationSaverProtocol {
+     /// Saves the search bar location position to user preferences for existing users
+     /// that didn't have the position saved yet. For users on iPhone with version1 or version2 as layout the
+     /// search bar location position is set to bottom, otherwise the default is used.
+@@ -17,8 +17,10 @@ struct SearchBarLocationSaver: SearchBarLocationProvider, LegacyFeatureFlaggable
+     ///   - profile: the user's profile
+     ///   - userInterfaceIdiom: the interface type for the device
+     @MainActor
+-    func saveUserSearchBarLocation(profile: Profile,
+-                                   userInterfaceIdiom: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom) {
++    func saveUserSearchBarLocation(
++        profile: Profile,
++        userInterfaceIdiom: UIUserInterfaceIdiom = UIDevice.current.userInterfaceIdiom
++    ) {
+         let isFreshInstall = profile.prefs.stringForKey(PrefsKeys.AppVersion.Latest) == nil
+         let hasSearchBarPosition = profile.prefs.stringForKey(PrefsKeys.FeatureFlags.SearchBarPosition) != nil
+ 
+@@ -26,13 +28,10 @@ struct SearchBarLocationSaver: SearchBarLocationProvider, LegacyFeatureFlaggable
+         guard !isFreshInstall && !hasSearchBarPosition else { return }
+ 
+         guard userInterfaceIdiom != .pad else {
+-            let isAtBottom = isBottomSearchBar
+-            let searchBarPosition: SearchBarPosition = isAtBottom ? .bottom : .top
+-            featureFlags.set(feature: .searchBarPosition, to: searchBarPosition)
++            userPreferences.setSearchBarPosition(.top)
+             return
+         }
+ 
+-        // Set the address bar to the bottom for new users enrolled in `version1` or `version2` toolbar experiment.
+-        featureFlags.set(feature: .searchBarPosition, to: SearchBarPosition.bottom)
++        userPreferences.setSearchBarPosition(.bottom)
+     }
+ }
+diff --git a/firefox-ios/Client/Frontend/ContextualHint/ContextualHintEligibilityUtility.swift b/firefox-ios/Client/Frontend/ContextualHint/ContextualHintEligibilityUtility.swift
+index 22b054b39..d11eb58ba 100644
+--- a/firefox-ios/Client/Frontend/ContextualHint/ContextualHintEligibilityUtility.swift
++++ b/firefox-ios/Client/Frontend/ContextualHint/ContextualHintEligibilityUtility.swift
+@@ -13,7 +13,8 @@ protocol ContextualHintEligibilityUtilityProtocol {
+ 
+ struct ContextualHintEligibilityUtility: ContextualHintEligibilityUtilityProtocol,
+                                          ContextualHintPrefsKeysProvider,
+-                                         SearchBarLocationProvider {
++                                         SearchBarLocationProvider,
++                                         LegacyFeatureFlaggable {
+     var profile: Profile
+     // For contextual hints shown in Homepage that can overlap with keyboard being raised by user interaction
+     private var overlayState: OverlayStateProtocol?
+diff --git a/firefox-ios/Client/Frontend/ContextualHint/ContextualHintViewProvider.swift b/firefox-ios/Client/Frontend/ContextualHint/ContextualHintViewProvider.swift
+index 986592aad..7554be441 100644
+--- a/firefox-ios/Client/Frontend/ContextualHint/ContextualHintViewProvider.swift
++++ b/firefox-ios/Client/Frontend/ContextualHint/ContextualHintViewProvider.swift
+@@ -25,7 +25,9 @@ enum ContextualHintType: String {
+ }
+ 
+ @MainActor
+-class ContextualHintViewProvider: ContextualHintPrefsKeysProvider, SearchBarLocationProvider {
++class ContextualHintViewProvider: ContextualHintPrefsKeysProvider,
++                                  SearchBarLocationProvider,
++                                  LegacyFeatureFlaggable {
+     typealias CFRPrefsKeys = PrefsKeys.ContextualHints
+     typealias CFRStrings = String.ContextualHints
+ 
+diff --git a/firefox-ios/Client/Frontend/Onboarding/Protocols/OnboardingService.swift b/firefox-ios/Client/Frontend/Onboarding/Protocols/OnboardingService.swift
+index 1d4855f46..50f8e1547 100644
+--- a/firefox-ios/Client/Frontend/Onboarding/Protocols/OnboardingService.swift
++++ b/firefox-ios/Client/Frontend/Onboarding/Protocols/OnboardingService.swift
+@@ -10,7 +10,7 @@ import ComponentLibrary
+ import OnboardingKit
+ 
+ @MainActor
+-final class OnboardingService: LegacyFeatureFlaggable {
++final class OnboardingService: HasUserFeaturePreferences {
+     // MARK: - Properties
+     private weak var delegate: OnboardingServiceDelegate?
+     private weak var navigationDelegate: OnboardingNavigationDelegate?
+@@ -153,11 +153,11 @@ final class OnboardingService: LegacyFeatureFlaggable {
+         case .themeSystemDefault:
+             themeManager.setSystemTheme(isOn: true)
+         case .toolbarBottom:
+-            featureFlags.set(feature: .searchBarPosition, to: SearchBarPosition.bottom)
++            userPreferences.setSearchBarPosition(.bottom)
+             let notificationObject = [PrefsKeys.FeatureFlags.SearchBarPosition: SearchBarPosition.bottom]
+             notificationCenter.post(name: .SearchBarPositionDidChange, withObject: notificationObject)
+         case .toolbarTop:
+-            featureFlags.set(feature: .searchBarPosition, to: SearchBarPosition.top)
++            userPreferences.setSearchBarPosition(.top)
+             let notificationObject = [PrefsKeys.FeatureFlags.SearchBarPosition: SearchBarPosition.top]
+             notificationCenter.post(name: .SearchBarPositionDidChange, withObject: notificationObject)
+         }
+diff --git a/firefox-ios/Client/Frontend/Onboarding/Views/IntroViewController.swift b/firefox-ios/Client/Frontend/Onboarding/Views/IntroViewController.swift
+index b5ff71bcf..9f93a6a22 100644
+--- a/firefox-ios/Client/Frontend/Onboarding/Views/IntroViewController.swift
++++ b/firefox-ios/Client/Frontend/Onboarding/Views/IntroViewController.swift
+@@ -12,7 +12,7 @@ class IntroViewController: UIViewController,
+                            OnboardingViewControllerProtocol,
+                            Themeable,
+                            Notifiable,
+-                           LegacyFeatureFlaggable,
++                           HasUserFeaturePreferences,
+                            StoreSubscriber {
+     struct UX {
+         static let closeButtonSize: CGFloat = 30
+@@ -376,11 +376,11 @@ extension IntroViewController: OnboardingCardDelegate {
+         case .themeSystemDefault:
+             turnSystemTheme(on: true)
+         case .toolbarBottom:
+-            featureFlags.set(feature: .searchBarPosition, to: SearchBarPosition.bottom)
++            userPreferences.setSearchBarPosition(.bottom)
+             let notificationObject = [PrefsKeys.FeatureFlags.SearchBarPosition: SearchBarPosition.bottom]
+             notificationCenter.post(name: .SearchBarPositionDidChange, withObject: notificationObject)
+         case .toolbarTop:
+-            featureFlags.set(feature: .searchBarPosition, to: SearchBarPosition.top)
++            userPreferences.setSearchBarPosition(.top)
+             let notificationObject = [PrefsKeys.FeatureFlags.SearchBarPosition: SearchBarPosition.top]
+             notificationCenter.post(name: .SearchBarPositionDidChange, withObject: notificationObject)
+         }
+diff --git a/firefox-ios/Client/Frontend/Settings/AppearanceSettings/AddressBarSettingsView.swift b/firefox-ios/Client/Frontend/Settings/AppearanceSettings/AddressBarSettingsView.swift
+index 21740a7b8..ab0c9d2b1 100644
+--- a/firefox-ios/Client/Frontend/Settings/AppearanceSettings/AddressBarSettingsView.swift
++++ b/firefox-ios/Client/Frontend/Settings/AppearanceSettings/AddressBarSettingsView.swift
+@@ -7,7 +7,7 @@ import Common
+ import Shared
+ 
+ /// The main view displaying the settings for the address bar position menu.
+-struct AddressBarSettingsView: View, LegacyFeatureFlaggable {
++struct AddressBarSettingsView: View, HasUserFeaturePreferences {
+     let windowUUID: WindowUUID
+     /// NOTE: To avoid duplication, the old view model is reused in the new address bar setting menu.
+     /// TODO(FXIOS-12000): Once the experiment is done, we can remove the old viewmodel and move it to here.
+@@ -30,7 +30,7 @@ struct AddressBarSettingsView: View, LegacyFeatureFlaggable {
+     }
+ 
+     private var addressBarPosition: SearchBarPosition {
+-        LegacyFeatureFlagsManager.shared.getCustomState(for: .searchBarPosition) ?? .bottom
++        userPreferences.searchBarPosition
+     }
+ 
+     private var viewBackground: Color {
+diff --git a/firefox-ios/Client/Frontend/Settings/Main/AppSettingsTableViewController.swift b/firefox-ios/Client/Frontend/Settings/Main/AppSettingsTableViewController.swift
+index 3a7518290..e764c16fa 100644
+--- a/firefox-ios/Client/Frontend/Settings/Main/AppSettingsTableViewController.swift
++++ b/firefox-ios/Client/Frontend/Settings/Main/AppSettingsTableViewController.swift
+@@ -379,7 +379,7 @@ class AppSettingsTableViewController: SettingsTableViewController,
+             ThemeSetting(settings: self, settingsDelegate: parentCoordinator)
+         ]
+ 
+-        if isSearchBarLocationFeatureEnabled, let profile {
++        if let profile {
+             generalSettings.append(
+                 SearchBarSetting(settings: self, profile: profile, settingsDelegate: parentCoordinator)
+             )
+diff --git a/firefox-ios/Client/Frontend/Settings/SearchBar/SearchBarSettingsViewModel.swift b/firefox-ios/Client/Frontend/Settings/SearchBar/SearchBarSettingsViewModel.swift
+index 7f88ae29c..29e4d7bd9 100644
+--- a/firefox-ios/Client/Frontend/Settings/SearchBar/SearchBarSettingsViewModel.swift
++++ b/firefox-ios/Client/Frontend/Settings/SearchBar/SearchBarSettingsViewModel.swift
+@@ -48,37 +48,25 @@ protocol SearchBarPreferenceDelegate: AnyObject {
+ }
+ 
+ /// This protocol provides access to search bar location properties related to `FeatureFlagsManager`.
+-protocol SearchBarLocationProvider: LegacyFeatureFlaggable {
+-    var isSearchBarLocationFeatureEnabled: Bool { get }
++protocol SearchBarLocationProvider: HasUserFeaturePreferences {
+     var searchBarPosition: SearchBarPosition { get }
+     @MainActor
+     var isBottomSearchBar: Bool { get }
+ }
+ 
+ extension SearchBarLocationProvider {
+-    var isSearchBarLocationFeatureEnabled: Bool {
+-        let isiPad = UIDeviceDetails.userInterfaceIdiom == .pad
+-        let isFeatureEnabled = featureFlags.isFeatureEnabled(.bottomSearchBar, checking: .buildOnly)
+-
+-        return isFeatureEnabled && !isiPad
+-    }
+-
+     var searchBarPosition: SearchBarPosition {
+-        guard let position: SearchBarPosition = featureFlags.getCustomState(for: .searchBarPosition) else {
+-            return .bottom
+-        }
+-
+-        return position
++        userPreferences.searchBarPosition
+     }
+ 
+     var isBottomSearchBar: Bool {
+-        guard isSearchBarLocationFeatureEnabled else { return false }
++        guard UIDeviceDetails.userInterfaceIdiom != .pad else { return false }
+ 
+         return searchBarPosition == .bottom
+     }
+ }
+ 
+-final class SearchBarSettingsViewModel: LegacyFeatureFlaggable {
++final class SearchBarSettingsViewModel: FeatureFlaggable, HasUserFeaturePreferences {
+     weak var delegate: SearchBarPreferenceDelegate?
+ 
+     private let prefs: Prefs
+@@ -89,7 +77,7 @@ final class SearchBarSettingsViewModel: LegacyFeatureFlaggable {
+     }
+ 
+     var isNewAddressBarOn: Bool {
+-        featureFlags.isFeatureEnabled(.addressBarMenu, checking: .buildOnly)
++        featureFlagsProvider.isEnabled(.addressBarMenu)
+     }
+ 
+     var title: String {
+@@ -101,11 +89,7 @@ final class SearchBarSettingsViewModel: LegacyFeatureFlaggable {
+     }
+ 
+     var searchBarPosition: SearchBarPosition {
+-        guard let position: SearchBarPosition = featureFlags.getCustomState(for: .searchBarPosition) else {
+-            return .bottom
+-        }
+-
+-        return position
++        userPreferences.searchBarPosition
+     }
+ 
+     // TODO: FXIOS-12830 view models should not contain Views that require main actor isolation
+@@ -133,9 +117,9 @@ final class SearchBarSettingsViewModel: LegacyFeatureFlaggable {
+ extension SearchBarSettingsViewModel {
+     @MainActor
+     func saveSearchBarPosition(_ searchBarPosition: SearchBarPosition) {
+-        let previousPosition: SearchBarPosition? = featureFlags.getCustomState(for: .searchBarPosition)
++        let previousPosition = userPreferences.searchBarPosition
+ 
+-        featureFlags.set(feature: .searchBarPosition, to: searchBarPosition)
++        userPreferences.setSearchBarPosition(searchBarPosition)
+         delegate?.didUpdateSearchBarPositionPreference()
+         recordPreferenceChange(searchBarPosition, previousPosition: previousPosition)
+ 
+diff --git a/firefox-ios/Client/Nimbus/NimbusFeatureFlagLayer.swift b/firefox-ios/Client/Nimbus/NimbusFeatureFlagLayer.swift
+index 0d798a53d..333812a1c 100644
+--- a/firefox-ios/Client/Nimbus/NimbusFeatureFlagLayer.swift
++++ b/firefox-ios/Client/Nimbus/NimbusFeatureFlagLayer.swift
+@@ -31,9 +31,6 @@ final class NimbusFeatureFlagLayer: Sendable {
+         case .addressBarMenu:
+             return checkAddressBarMenuFeature(from: nimbus)
+ 
+-        case .bottomSearchBar:
+-            return checkAwesomeBarFeature(for: featureID, from: nimbus)
+-
+         case .bookmarksSearchFeature:
+             return checkBookmarksSearchFeature(from: nimbus)
+ 
+@@ -199,17 +196,6 @@ final class NimbusFeatureFlagLayer: Sendable {
+         return config.isTreatmentA
+     }
+ 
+-    private func checkAwesomeBarFeature(for featureID: FeatureFlagID,
+-                                        from nimbus: FxNimbus
+-    ) -> Bool {
+-        let config = nimbus.features.search.value().awesomeBar
+-
+-        switch featureID {
+-        case .bottomSearchBar: return config.position.isPositionFeatureEnabled
+-        default: return false
+-        }
+-    }
+-
+     private func checkHNTSponsoredShortcutsFeature(from nimbus: FxNimbus) -> Bool {
+         return nimbus.features.hntSponsoredShortcutsFeature.value().enabled
+     }
+diff --git a/firefox-ios/Client/Nimbus/NimbusManager.swift b/firefox-ios/Client/Nimbus/NimbusManager.swift
+index 0333e80eb..7eef88a56 100644
+--- a/firefox-ios/Client/Nimbus/NimbusManager.swift
++++ b/firefox-ios/Client/Nimbus/NimbusManager.swift
+@@ -12,14 +12,6 @@ extension HasNimbusFeatureFlagLayer {
+     }
+ }
+ 
+-protocol HasNimbusSearchBar { }
+-
+-extension HasNimbusSearchBar {
+-    var nimbusSearchBar: NimbusSearchBarLayer {
+-        return NimbusManager.shared.bottomSearchBarLayer
+-    }
+-}
+-
+ final class NimbusManager: Sendable {
+     // MARK: - Singleton
+ 
+@@ -29,12 +21,8 @@ final class NimbusManager: Sendable {
+ 
+     // MARK: - Properties
+     let featureFlagLayer: NimbusFeatureFlagLayer
+-    let bottomSearchBarLayer: NimbusSearchBarLayer
+ 
+-    init(with featureFlagLayer: NimbusFeatureFlagLayer = NimbusFeatureFlagLayer(),
+-         bottomSearchBarLayer: NimbusSearchBarLayer = NimbusSearchBarLayer()
+-    ) {
++    init(with featureFlagLayer: NimbusFeatureFlagLayer = NimbusFeatureFlagLayer()) {
+         self.featureFlagLayer = featureFlagLayer
+-        self.bottomSearchBarLayer = bottomSearchBarLayer
+     }
+ }
+diff --git a/firefox-ios/Client/Nimbus/NimbusSearchBarLayer.swift b/firefox-ios/Client/Nimbus/NimbusSearchBarLayer.swift
+deleted file mode 100644
+index ef85a59a4..000000000
+--- a/firefox-ios/Client/Nimbus/NimbusSearchBarLayer.swift
++++ /dev/null
+@@ -1,13 +0,0 @@
+-// This Source Code Form is subject to the terms of the Mozilla Public
+-// License, v. 2.0. If a copy of the MPL was not distributed with this
+-// file, You can obtain one at http://mozilla.org/MPL/2.0/
+-
+-import Foundation
+-
+-final class NimbusSearchBarLayer: Sendable {
+-    // MARK: - Public methods
+-    public func getDefaultPosition(from nimbus: FxNimbus = FxNimbus.shared) -> SearchBarPosition {
+-        let isAtBottom = nimbus.features.search.value().awesomeBar.position.isBottom
+-        return isAtBottom ? .bottom : .top
+-    }
+-}
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/FeatureFlagManagerTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/FeatureFlagManagerTests.swift
+index 5d084ee11..b3a95f7cd 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/FeatureFlagManagerTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/FeatureFlagManagerTests.swift
+@@ -32,34 +32,7 @@ final class FeatureFlagManagerTests: XCTestCase, LegacyFeatureFlaggable {
+         // Tests for default settings should be performed on both build and user
+         // prefs separately to ensure that we are getting the expected results on both.
+         // Technically, at this stage, these should be the same.
+-        XCTAssertTrue(featureFlags.isFeatureEnabled(.bottomSearchBar, checking: .buildOnly))
+-        XCTAssertTrue(featureFlags.isFeatureEnabled(.bottomSearchBar, checking: .userOnly))
+         XCTAssertTrue(featureFlags.isFeatureEnabled(.reportSiteIssue, checking: .buildOnly))
+         XCTAssertTrue(featureFlags.isFeatureEnabled(.reportSiteIssue, checking: .userOnly))
+     }
+-
+-    func testDefaultNimbusCustomFlags() {
+-        XCTAssertEqual(featureFlags.getCustomState(for: .searchBarPosition), SearchBarPosition.top)
+-    }
+-
+-    // Changing the prefs manually, to make sure settings are respected through
+-    // the FFMs interface
+-    func testManagerRespectsProfileChangesForCustomSettings() {
+-        let mockProfile = MockProfile(databasePrefix: "FeatureFlagsManagerTests_")
+-        mockProfile.prefs.clearAll()
+-        LegacyFeatureFlagsManager.shared.initializeDeveloperFeatures(with: mockProfile)
+-
+-        // Search Bar position
+-        XCTAssertEqual(featureFlags.getCustomState(for: .searchBarPosition), SearchBarPosition.top)
+-        mockProfile.prefs.setString(SearchBarPosition.bottom.rawValue,
+-                                    forKey: PrefsKeys.FeatureFlags.SearchBarPosition)
+-        XCTAssertEqual(featureFlags.getCustomState(for: .searchBarPosition), SearchBarPosition.bottom)
+-    }
+-
+-    func testManagerInterfaceForUpdatingCustomFlags() {
+-        // Search Bar
+-        XCTAssertEqual(featureFlags.getCustomState(for: .searchBarPosition), SearchBarPosition.top)
+-        featureFlags.set(feature: .searchBarPosition, to: SearchBarPosition.bottom)
+-        XCTAssertEqual(featureFlags.getCustomState(for: .searchBarPosition), SearchBarPosition.bottom)
+-    }
+ }
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/NimbusFeatureFlagsTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/NimbusFeatureFlagsTests.swift
+index 65b69aabf..f4c78d9f3 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/NimbusFeatureFlagsTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/NimbusFeatureFlagsTests.swift
+@@ -26,13 +26,6 @@ final class NimbusFeatureFlagsTests: XCTestCase {
+ 
+     // MARK: - Tests
+ 
+-    func testIsEnabled_delegatesToNimbusLayer() {
+-        // The layer returns Nimbus defaults (from FxNimbus.shared).
+-        // bottomSearchBar defaults to true in Nimbus config for developer builds.
+-        let result = subject.isEnabled(.bottomSearchBar)
+-        XCTAssertTrue(result)
+-    }
+-
+     func testIsEnabled_withDebugOverrideSet_returnsOverride() {
+         // On developer builds, debug overrides take precedence.
+         // .translation has a debugKey, so we can override it.
+@@ -65,9 +58,8 @@ final class NimbusFeatureFlagsTests: XCTestCase {
+ 
+     func testMockConformance() {
+         let mock = MockNimbusFeatureFlags()
+-        mock.enabledFlags = [.bottomSearchBar, .translation]
++        mock.enabledFlags = [.translation]
+ 
+-        XCTAssertTrue(mock.isEnabled(.bottomSearchBar))
+         XCTAssertTrue(mock.isEnabled(.translation))
+         XCTAssertFalse(mock.isEnabled(.reportSiteIssue))
+     }
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/SearchBarLocationSaverTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/SearchBarLocationSaverTests.swift
+index c27e5449b..e7c2962d4 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/SearchBarLocationSaverTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/SearchBarLocationSaverTests.swift
+@@ -14,7 +14,7 @@ class SearchBarLocationSaverTests: XCTestCase {
+     override func setUp() async throws {
+         try await super.setUp()
+         profile = MockProfile()
+-        await DependencyHelperMock().bootstrapDependencies()
++        await DependencyHelperMock().bootstrapDependencies(injectedProfile: profile)
+         LegacyFeatureFlagsManager.shared.initializeDeveloperFeatures(with: profile)
+     }
+ 
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Settings/SearchBarSettingsViewModelTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Settings/SearchBarSettingsViewModelTests.swift
+index 42e66371d..7f58be425 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Settings/SearchBarSettingsViewModelTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Settings/SearchBarSettingsViewModelTests.swift
+@@ -20,19 +20,21 @@ class SearchBarSettingsViewModelTests: XCTestCase {
+         prefs = profile.prefs
+         prefs.clearAll()
+         mockNotificationCenter = MockNotificationCenter()
++        DependencyHelperMock().bootstrapDependencies()
+     }
+ 
+     override func tearDown() async throws {
+         prefs.clearAll()
+         prefs = nil
+         mockNotificationCenter = nil
++        DependencyHelperMock().reset()
+         try await super.tearDown()
+     }
+ 
+     // MARK: Default
+     func testDefaultSearchPosition() {
+         let viewModel = createViewModel()
+-        XCTAssertEqual(viewModel.searchBarPosition, .top)
++        XCTAssertEqual(viewModel.searchBarPosition, .bottom)
+     }
+ 
+     // MARK: Saved
+@@ -99,7 +101,7 @@ class SearchBarSettingsViewModelTests: XCTestCase {
+         let viewModel = createViewModel()
+         let searchBarPosition = viewModel.searchBarPosition
+ 
+-        XCTAssertEqual(searchBarPosition, .top)
++        XCTAssertEqual(searchBarPosition, .bottom)
+         XCTAssertEqual(mockNotificationCenter.postCallCount, 0)
+     }
+ 
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/StatusBarOverlayTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/StatusBarOverlayTests.swift
+index 348036037..4b002ac5a 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/StatusBarOverlayTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/StatusBarOverlayTests.swift
+@@ -20,15 +20,17 @@ final class StatusBarOverlayTests: XCTestCase {
+     override func setUp() async throws {
+         try await super.setUp()
+         self.profile = MockProfile()
+-        LegacyFeatureFlagsManager.shared.initializeDeveloperFeatures(with: profile)
+         self.wallpaperManager = WallpaperManagerMock()
+         self.notificationCenter = MockNotificationCenter()
++        LegacyFeatureFlagsManager.shared.initializeDeveloperFeatures(with: profile)
++        DependencyHelperMock().bootstrapDependencies(injectedProfile: profile)
+     }
+ 
+     override func tearDown() async throws {
+         self.profile = nil
+         self.wallpaperManager = nil
+         self.notificationCenter = nil
++        DependencyHelperMock().reset()
+         try await super.tearDown()
+     }
+ 
+diff --git a/firefox-ios/nimbus-features/searchFeature.yaml b/firefox-ios/nimbus-features/searchFeature.yaml
+index f82862a0f..fc881812d 100644
+--- a/firefox-ios/nimbus-features/searchFeature.yaml
++++ b/firefox-ios/nimbus-features/searchFeature.yaml
+@@ -13,23 +13,14 @@ features:
+           awesome-bar:
+             use-page-content: false
+             search-highlights: false
+-            position:
+-              is-position-feature-enabled: true
+-              is-bottom: false
+       - channel: developer
+         value:
+           awesome-bar:
+             search-highlights: false
+-            position:
+-              is-position-feature-enabled: true
+-              is-bottom: false
+       - channel: beta
+         value:
+           awesome-bar:
+             search-highlights: false
+-            position:
+-              is-position-feature-enabled: true
+-              is-bottom: false
+ 
+ objects:
+   AwesomeBar:
+@@ -47,23 +38,3 @@ objects:
+         description: "Whether or not search highlights are enabled"
+         type: Boolean
+         default: false
+-      position:
+-        description: >
+-          This property defines whether or not the feature is
+-          enabled, and the position of the search bar
+-        type: SearchBarPositionFeature
+-        default:
+-          is-position-feature-enabled: true
+-          is-bottom: true
+-
+-  SearchBarPositionFeature:
+-    description: "The configuration for the bottom search bar on the homescreen"
+-    fields:
+-      is-position-feature-enabled:
+-        type: Boolean
+-        description: Whether or not the feature is enabled
+-        default: true
+-      is-bottom:
+-        type: Boolean
+-        description: Whether or not the default position is at the bottom
+-        default: true

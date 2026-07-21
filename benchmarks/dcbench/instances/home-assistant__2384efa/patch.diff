@@ -1,0 +1,302 @@
+From 2384efae2690d59b3a54c051df1e223e33aeecac Mon Sep 17 00:00:00 2001
+From: Paulus Schoutsen <balloob@gmail.com>
+Date: Fri, 3 Jul 2026 12:18:04 +0200
+Subject: [PATCH] Add LLM integration (#174253)
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ .core_files.yaml                           |   1 +
+ CODEOWNERS                                 |   2 +
+ homeassistant/components/llm/__init__.py   |  79 ++++++++++++++
+ homeassistant/components/llm/const.py      |   3 +
+ homeassistant/components/llm/manifest.json |   9 ++
+ script/hassfest/quality_scale.py           |   1 +
+ tests/components/llm/__init__.py           |   1 +
+ tests/components/llm/test_init.py          | 121 +++++++++++++++++++++
+ 8 files changed, 217 insertions(+)
+ create mode 100644 homeassistant/components/llm/__init__.py
+ create mode 100644 homeassistant/components/llm/const.py
+ create mode 100644 homeassistant/components/llm/manifest.json
+ create mode 100644 tests/components/llm/__init__.py
+ create mode 100644 tests/components/llm/test_init.py
+
+diff --git a/.core_files.yaml b/.core_files.yaml
+index ea08fd4a53..dd3fd828fc 100644
+--- a/.core_files.yaml
++++ b/.core_files.yaml
+@@ -95,6 +95,7 @@ components: &components
+   - homeassistant/components/input_select/**
+   - homeassistant/components/input_text/**
+   - homeassistant/components/labs/**
++  - homeassistant/components/llm/**
+   - homeassistant/components/logbook/**
+   - homeassistant/components/logger/**
+   - homeassistant/components/lovelace/**
+diff --git a/CODEOWNERS b/CODEOWNERS
+index 2a13b7d1f6..409c3e54bd 100644
+--- a/CODEOWNERS
++++ b/CODEOWNERS
+@@ -1026,6 +1026,8 @@ CLAUDE.md @home-assistant/core
+ /tests/components/litterrobot/ @natekspencer @tkdrob
+ /homeassistant/components/livisi/ @StefanIacobLivisi @planbnet
+ /tests/components/livisi/ @StefanIacobLivisi @planbnet
++/homeassistant/components/llm/ @home-assistant/core
++/tests/components/llm/ @home-assistant/core
+ /homeassistant/components/local_calendar/ @allenporter
+ /tests/components/local_calendar/ @allenporter
+ /homeassistant/components/local_ip/ @issacg
+diff --git a/homeassistant/components/llm/__init__.py b/homeassistant/components/llm/__init__.py
+new file mode 100644
+index 0000000000..0fdd1783e0
+--- /dev/null
++++ b/homeassistant/components/llm/__init__.py
+@@ -0,0 +1,79 @@
++"""The LLM integration.
++
++Owns the LLM tools platform: integrations contribute tools to the LLM APIs
++through an ``<integration>/llm.py`` platform with an ``async_get_tools`` hook.
++The platforms are loaded lazily and queried per request. The framework
++(``Tool``, the APIs) lives in ``homeassistant.helpers.llm``.
++"""
++
++from dataclasses import dataclass
++import logging
++from typing import Protocol
++
++from homeassistant.core import HomeAssistant, callback
++from homeassistant.helpers import config_validation as cv
++from homeassistant.helpers.integration_platform import LazyIntegrationPlatforms
++from homeassistant.helpers.llm import LLMContext, Tool
++from homeassistant.helpers.typing import ConfigType
++from homeassistant.util.hass_dict import HassKey
++
++from .const import DOMAIN
++
++_LOGGER = logging.getLogger(__name__)
++
++CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
++
++DATA_PLATFORMS: HassKey[LazyIntegrationPlatforms[LLMToolsPlatformProtocol]] = HassKey(
++    "llm_platforms"
++)
++
++
++@dataclass(slots=True)
++class LLMTools:
++    """Tools and an optional prompt fragment contributed by a platform."""
++
++    tools: list[Tool]
++    prompt: str | None = None
++
++
++class LLMToolsPlatformProtocol(Protocol):
++    """Define the format that LLM tools platforms can have."""
++
++    @callback
++    def async_get_tools(self, hass: HomeAssistant, llm_context: LLMContext) -> LLMTools:
++        """Return the integration's LLM tools for the given context."""
++
++
++async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
++    """Set up the LLM integration."""
++    hass.data[DATA_PLATFORMS] = LazyIntegrationPlatforms(
++        hass, DOMAIN, _process_llm_tools_platform
++    )
++    return True
++
++
++@callback
++def _process_llm_tools_platform(
++    hass: HomeAssistant, domain: str, platform: LLMToolsPlatformProtocol
++) -> LLMToolsPlatformProtocol:
++    """Process an integration's LLM tools platform."""
++    return platform
++
++
++async def async_get_tools(hass: HomeAssistant, llm_context: LLMContext) -> LLMTools:
++    """Return the tools and merged prompt from all integration platforms."""
++    platforms = await hass.data[DATA_PLATFORMS].async_get_platforms()
++
++    tools: list[Tool] = []
++    prompts: list[str] = []
++    # Sort by domain so the tool and prompt order is independent of load order.
++    for domain, platform in sorted(platforms.items()):
++        try:
++            result = platform.async_get_tools(hass, llm_context)
++        except Exception:
++            _LOGGER.exception("Error getting tools from LLM platform %s", domain)
++            continue
++        tools.extend(result.tools)
++        if result.prompt:
++            prompts.append(result.prompt)
++    return LLMTools(tools=tools, prompt="\n".join(prompts) if prompts else None)
+diff --git a/homeassistant/components/llm/const.py b/homeassistant/components/llm/const.py
+new file mode 100644
+index 0000000000..4a9d96c3ec
+--- /dev/null
++++ b/homeassistant/components/llm/const.py
+@@ -0,0 +1,3 @@
++"""Constants for the LLM integration."""
++
++DOMAIN = "llm"
+diff --git a/homeassistant/components/llm/manifest.json b/homeassistant/components/llm/manifest.json
+new file mode 100644
+index 0000000000..c58559a460
+--- /dev/null
++++ b/homeassistant/components/llm/manifest.json
+@@ -0,0 +1,9 @@
++{
++  "domain": "llm",
++  "name": "LLM",
++  "codeowners": ["@home-assistant/core"],
++  "documentation": "https://www.home-assistant.io/integrations/llm",
++  "integration_type": "system",
++  "iot_class": "calculated",
++  "quality_scale": "internal"
++}
+diff --git a/script/hassfest/quality_scale.py b/script/hassfest/quality_scale.py
+index db650a140f..4a46a5ca06 100644
+--- a/script/hassfest/quality_scale.py
++++ b/script/hassfest/quality_scale.py
+@@ -2056,6 +2056,7 @@ NO_QUALITY_SCALE = [
+     "intent_script",
+     "intent",
+     "labs",
++    "llm",
+     "logbook",
+     "logger",
+     "lovelace",
+diff --git a/tests/components/llm/__init__.py b/tests/components/llm/__init__.py
+new file mode 100644
+index 0000000000..79662320e4
+--- /dev/null
++++ b/tests/components/llm/__init__.py
+@@ -0,0 +1 @@
++"""Tests for the LLM integration."""
+diff --git a/tests/components/llm/test_init.py b/tests/components/llm/test_init.py
+new file mode 100644
+index 0000000000..88169df80d
+--- /dev/null
++++ b/tests/components/llm/test_init.py
+@@ -0,0 +1,121 @@
++"""Tests for the LLM integration."""
++
++from unittest.mock import Mock
++
++import pytest
++
++from homeassistant.components.llm import DATA_PLATFORMS, LLMTools, async_get_tools
++from homeassistant.core import HomeAssistant
++from homeassistant.helpers import llm
++from homeassistant.setup import async_setup_component
++from homeassistant.util.json import JsonObjectType
++
++from tests.common import mock_platform
++
++
++class _StubTool(llm.Tool):
++    """Minimal tool for registry tests."""
++
++    def __init__(self, name: str) -> None:
++        """Initialize the stub tool."""
++        self.name = name
++        self.description = f"{name} description"
++
++    async def async_call(
++        self,
++        hass: HomeAssistant,
++        tool_input: llm.ToolInput,
++        llm_context: llm.LLMContext,
++    ) -> JsonObjectType:
++        """Return an empty result."""
++        return {}
++
++
++@pytest.fixture
++def llm_context() -> llm.LLMContext:
++    """Return an LLM context."""
++    return llm.LLMContext(
++        platform="test",
++        context=None,
++        language="*",
++        assistant="conversation",
++        device_id=None,
++    )
++
++
++def _mock_tools_platform(
++    hass: HomeAssistant, domain: str, tools: LLMTools | Exception
++) -> None:
++    """Register a mock <integration>/llm.py platform returning the given tools."""
++    if isinstance(tools, Exception):
++        async_get_tools = Mock(side_effect=tools)
++    else:
++        async_get_tools = Mock(return_value=tools)
++    hass.config.components.add(domain)
++    mock_platform(hass, f"{domain}.llm", Mock(async_get_tools=async_get_tools))
++
++
++async def test_setup(hass: HomeAssistant) -> None:
++    """Test the integration sets up."""
++    assert await async_setup_component(hass, "llm", {})
++    assert DATA_PLATFORMS in hass.data
++
++
++async def test_get_tools(hass: HomeAssistant, llm_context: llm.LLMContext) -> None:
++    """Test that tools from an integration platform are returned."""
++    tool = _StubTool("my_tool")
++    _mock_tools_platform(
++        hass, "test", LLMTools(tools=[tool], prompt="use my_tool wisely")
++    )
++
++    assert await async_setup_component(hass, "llm", {})
++
++    result = await async_get_tools(hass, llm_context)
++    assert result.tools == [tool]
++    assert result.prompt == "use my_tool wisely"
++
++
++async def test_get_tools_empty(
++    hass: HomeAssistant, llm_context: llm.LLMContext
++) -> None:
++    """Test that no platforms yields no tools."""
++    assert await async_setup_component(hass, "llm", {})
++
++    result = await async_get_tools(hass, llm_context)
++    assert result.tools == []
++    assert result.prompt is None
++
++
++async def test_get_tools_merges_sorted(
++    hass: HomeAssistant, llm_context: llm.LLMContext
++) -> None:
++    """Test that tools and prompts are merged in a load-order-independent order."""
++    tool_a = _StubTool("tool_a")
++    tool_b = _StubTool("tool_b")
++    # Register "test_b" before "test_a" to prove the result is sorted by domain.
++    _mock_tools_platform(hass, "test_b", LLMTools(tools=[tool_b], prompt="prompt b"))
++    _mock_tools_platform(hass, "test_a", LLMTools(tools=[tool_a], prompt="prompt a"))
++
++    assert await async_setup_component(hass, "llm", {})
++
++    result = await async_get_tools(hass, llm_context)
++    assert result.tools == [tool_a, tool_b]
++    assert result.prompt == "prompt a\nprompt b"
++
++
++async def test_get_tools_isolates_failing_platform(
++    hass: HomeAssistant,
++    llm_context: llm.LLMContext,
++    caplog: pytest.LogCaptureFixture,
++) -> None:
++    """Test that one failing platform does not drop the others' tools."""
++    tool = _StubTool("good_tool")
++    _mock_tools_platform(hass, "test_bad", ValueError("boom"))
++    _mock_tools_platform(hass, "test_good", LLMTools(tools=[tool], prompt="prompt"))
++
++    assert await async_setup_component(hass, "llm", {})
++
++    result = await async_get_tools(hass, llm_context)
++    assert result.tools == [tool]
++    assert result.prompt == "prompt"
++    assert "Error getting tools from LLM platform test_bad" in caplog.text

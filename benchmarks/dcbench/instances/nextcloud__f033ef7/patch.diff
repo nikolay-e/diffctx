@@ -1,0 +1,434 @@
+From f033ef7c18f87284c15a55321ec727b41836132c Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=B4me=20Chilliet?= <come.chilliet@nextcloud.com>
+Date: Mon, 3 Mar 2025 11:38:39 +0100
+Subject: [PATCH] fix: Migrate all uses of OCP\Template to
+ OCP\Template\ITemplateManager
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Signed-off-by: Côme Chilliet <come.chilliet@nextcloud.com>
+---
+ .../lib/Provider/BackupCodesProvider.php      | 10 +++--
+ .../lib/Settings/Personal.php                 |  9 ++--
+ .../Unit/Provider/BackupCodesProviderTest.php | 41 ++++++++++---------
+ apps/user_ldap/lib/Settings/Admin.php         | 11 +++--
+ apps/user_ldap/tests/Settings/AdminTest.php   | 21 ++++++----
+ lib/base.php                                  |  2 +-
+ lib/private/Template/TemplateManager.php      |  6 +--
+ .../AppFramework/Http/TemplateResponse.php    |  8 +++-
+ .../TwoFactorAuth/ILoginSetupProvider.php     |  7 ++--
+ .../IPersonalProviderSettings.php             |  8 ++--
+ .../TwoFactorAuth/IProvider.php               |  8 ++--
+ .../TwoFactorChallengeControllerTest.php      |  6 +--
+ 12 files changed, 75 insertions(+), 62 deletions(-)
+
+diff --git a/apps/twofactor_backupcodes/lib/Provider/BackupCodesProvider.php b/apps/twofactor_backupcodes/lib/Provider/BackupCodesProvider.php
+index 8bb044448c..12959f57e9 100644
+--- a/apps/twofactor_backupcodes/lib/Provider/BackupCodesProvider.php
++++ b/apps/twofactor_backupcodes/lib/Provider/BackupCodesProvider.php
+@@ -17,7 +17,8 @@ use OCP\Authentication\TwoFactorAuth\IProvidesPersonalSettings;
+ use OCP\IInitialStateService;
+ use OCP\IL10N;
+ use OCP\IUser;
+-use OCP\Template;
++use OCP\Template\ITemplate;
++use OCP\Template\ITemplateManager;
+ 
+ class BackupCodesProvider implements IDeactivatableByAdmin, IProvidesPersonalSettings {
+ 
+@@ -36,6 +37,7 @@ class BackupCodesProvider implements IDeactivatableByAdmin, IProvidesPersonalSet
+ 		private IL10N $l10n,
+ 		AppManager $appManager,
+ 		private IInitialStateService $initialStateService,
++		private ITemplateManager $templateManager,
+ 	) {
+ 		$this->appManager = $appManager;
+ 	}
+@@ -71,10 +73,10 @@ class BackupCodesProvider implements IDeactivatableByAdmin, IProvidesPersonalSet
+ 	 * Get the template for rending the 2FA provider view
+ 	 *
+ 	 * @param IUser $user
+-	 * @return Template
++	 * @return ITemplate
+ 	 */
+-	public function getTemplate(IUser $user): Template {
+-		return new Template('twofactor_backupcodes', 'challenge');
++	public function getTemplate(IUser $user): ITemplate {
++		return $this->templateManager->getTemplate('twofactor_backupcodes', 'challenge');
+ 	}
+ 
+ 	/**
+diff --git a/apps/twofactor_backupcodes/lib/Settings/Personal.php b/apps/twofactor_backupcodes/lib/Settings/Personal.php
+index 894597dd05..e03c3d303d 100644
+--- a/apps/twofactor_backupcodes/lib/Settings/Personal.php
++++ b/apps/twofactor_backupcodes/lib/Settings/Personal.php
+@@ -6,13 +6,16 @@ declare(strict_types=1);
+  * SPDX-FileCopyrightText: 2016 Nextcloud GmbH and Nextcloud contributors
+  * SPDX-License-Identifier: AGPL-3.0-or-later
+  */
++
+ namespace OCA\TwoFactorBackupCodes\Settings;
+ 
+ use OCP\Authentication\TwoFactorAuth\IPersonalProviderSettings;
+-use OCP\Template;
++use OCP\Server;
++use OCP\Template\ITemplate;
++use OCP\Template\ITemplateManager;
+ 
+ class Personal implements IPersonalProviderSettings {
+-	public function getBody(): Template {
+-		return new Template('twofactor_backupcodes', 'personal');
++	public function getBody(): ITemplate {
++		return Server::get(ITemplateManager::class)->getTemplate('twofactor_backupcodes', 'personal');
+ 	}
+ }
+diff --git a/apps/twofactor_backupcodes/tests/Unit/Provider/BackupCodesProviderTest.php b/apps/twofactor_backupcodes/tests/Unit/Provider/BackupCodesProviderTest.php
+index 24e986710c..cef3e07a36 100644
+--- a/apps/twofactor_backupcodes/tests/Unit/Provider/BackupCodesProviderTest.php
++++ b/apps/twofactor_backupcodes/tests/Unit/Provider/BackupCodesProviderTest.php
+@@ -14,28 +14,21 @@ use OCA\TwoFactorBackupCodes\Service\BackupCodeStorage;
+ use OCP\IInitialStateService;
+ use OCP\IL10N;
+ use OCP\IUser;
+-use OCP\Template;
++use OCP\Server;
++use OCP\Template\ITemplateManager;
++use PHPUnit\Framework\MockObject\MockObject;
+ use Test\TestCase;
+ 
+ class BackupCodesProviderTest extends TestCase {
++	private string $appName;
+ 
+-	/** @var string */
+-	private $appName;
++	private BackupCodeStorage&MockObject $storage;
++	private IL10N&MockObject $l10n;
++	private AppManager&MockObject $appManager;
++	private IInitialStateService&MockObject $initialState;
+ 
+-	/** @var BackupCodeStorage|\PHPUnit\Framework\MockObject\MockObject */
+-	private $storage;
+-
+-	/** @var IL10N|\PHPUnit\Framework\MockObject\MockObject */
+-	private $l10n;
+-
+-	/** @var AppManager|\PHPUnit\Framework\MockObject\MockObject */
+-	private $appManager;
+-
+-	/** @var IInitialStateService|\PHPUnit\Framework\MockObject\MockObject */
+-	private $initialState;
+-
+-	/** @var BackupCodesProvider */
+-	private $provider;
++	private ITemplateManager $templateManager;
++	private BackupCodesProvider $provider;
+ 
+ 	protected function setUp(): void {
+ 		parent::setUp();
+@@ -45,8 +38,16 @@ class BackupCodesProviderTest extends TestCase {
+ 		$this->l10n = $this->createMock(IL10N::class);
+ 		$this->appManager = $this->createMock(AppManager::class);
+ 		$this->initialState = $this->createMock(IInitialStateService::class);
+-
+-		$this->provider = new BackupCodesProvider($this->appName, $this->storage, $this->l10n, $this->appManager, $this->initialState);
++		$this->templateManager = Server::get(ITemplateManager::class);
++
++		$this->provider = new BackupCodesProvider(
++			$this->appName,
++			$this->storage,
++			$this->l10n,
++			$this->appManager,
++			$this->initialState,
++			$this->templateManager,
++		);
+ 	}
+ 
+ 	public function testGetId(): void {
+@@ -71,7 +72,7 @@ class BackupCodesProviderTest extends TestCase {
+ 
+ 	public function testGetTempalte(): void {
+ 		$user = $this->getMockBuilder(IUser::class)->getMock();
+-		$expected = new Template('twofactor_backupcodes', 'challenge');
++		$expected = $this->templateManager->getTemplate('twofactor_backupcodes', 'challenge');
+ 
+ 		$this->assertEquals($expected, $this->provider->getTemplate($user));
+ 	}
+diff --git a/apps/user_ldap/lib/Settings/Admin.php b/apps/user_ldap/lib/Settings/Admin.php
+index bf75d3ce37..014210ca8f 100644
+--- a/apps/user_ldap/lib/Settings/Admin.php
++++ b/apps/user_ldap/lib/Settings/Admin.php
+@@ -13,14 +13,12 @@ use OCP\IDBConnection;
+ use OCP\IL10N;
+ use OCP\Server;
+ use OCP\Settings\IDelegatedSettings;
+-use OCP\Template;
++use OCP\Template\ITemplateManager;
+ 
+ class Admin implements IDelegatedSettings {
+-	/**
+-	 * @param IL10N $l
+-	 */
+ 	public function __construct(
+ 		private IL10N $l,
++		private ITemplateManager $templateManager,
+ 	) {
+ 	}
+ 
+@@ -40,11 +38,12 @@ class Admin implements IDelegatedSettings {
+ 
+ 		$hosts = $helper->getServerConfigurationHosts();
+ 
+-		$wControls = new Template('user_ldap', 'part.wizardcontrols');
++		$wControls = $this->templateManager->getTemplate('user_ldap', 'part.wizardcontrols');
+ 		$wControls = $wControls->fetchPage();
+-		$sControls = new Template('user_ldap', 'part.settingcontrols');
++		$sControls = $this->templateManager->getTemplate('user_ldap', 'part.settingcontrols');
+ 		$sControls = $sControls->fetchPage();
+ 
++		$parameters = [];
+ 		$parameters['serverConfigurationPrefixes'] = $prefixes;
+ 		$parameters['serverConfigurationHosts'] = $hosts;
+ 		$parameters['settingControls'] = $sControls;
+diff --git a/apps/user_ldap/tests/Settings/AdminTest.php b/apps/user_ldap/tests/Settings/AdminTest.php
+index 099cc09c06..05b9697e4c 100644
+--- a/apps/user_ldap/tests/Settings/AdminTest.php
++++ b/apps/user_ldap/tests/Settings/AdminTest.php
+@@ -9,7 +9,9 @@ use OCA\User_LDAP\Configuration;
+ use OCA\User_LDAP\Settings\Admin;
+ use OCP\AppFramework\Http\TemplateResponse;
+ use OCP\IL10N;
+-use OCP\Template;
++use OCP\Server;
++use OCP\Template\ITemplateManager;
++use PHPUnit\Framework\MockObject\MockObject;
+ use Test\TestCase;
+ 
+ /**
+@@ -17,17 +19,19 @@ use Test\TestCase;
+  * @package OCA\User_LDAP\Tests\Settings
+  */
+ class AdminTest extends TestCase {
+-	/** @var Admin */
+-	private $admin;
+-	/** @var IL10N */
+-	private $l10n;
++	private IL10N&MockObject $l10n;
++
++	private ITemplateManager $templateManager;
++	private Admin $admin;
+ 
+ 	protected function setUp(): void {
+ 		parent::setUp();
+ 		$this->l10n = $this->getMockBuilder(IL10N::class)->getMock();
++		$this->templateManager = Server::get(ITemplateManager::class);
+ 
+ 		$this->admin = new Admin(
+-			$this->l10n
++			$this->l10n,
++			$this->templateManager,
+ 		);
+ 	}
+ 
+@@ -38,11 +42,12 @@ class AdminTest extends TestCase {
+ 		$prefixes = ['s01'];
+ 		$hosts = ['s01' => ''];
+ 
+-		$wControls = new Template('user_ldap', 'part.wizardcontrols');
++		$wControls = $this->templateManager->getTemplate('user_ldap', 'part.wizardcontrols');
+ 		$wControls = $wControls->fetchPage();
+-		$sControls = new Template('user_ldap', 'part.settingcontrols');
++		$sControls = $this->templateManager->getTemplate('user_ldap', 'part.settingcontrols');
+ 		$sControls = $sControls->fetchPage();
+ 
++		$parameters = [];
+ 		$parameters['serverConfigurationPrefixes'] = $prefixes;
+ 		$parameters['serverConfigurationHosts'] = $hosts;
+ 		$parameters['settingControls'] = $sControls;
+diff --git a/lib/base.php b/lib/base.php
+index 618b392e33..65cb632875 100644
+--- a/lib/base.php
++++ b/lib/base.php
+@@ -824,7 +824,7 @@ class OC {
+ 					]
+ 				);
+ 
+-				$tmpl = new OCP\Template('core', 'untrustedDomain', 'guest');
++				$tmpl = Server::get(ITemplateManager::class)->getTemplate('core', 'untrustedDomain', 'guest');
+ 				$tmpl->assign('docUrl', Server::get(IURLGenerator::class)->linkToDocs('admin-trusted-domains'));
+ 				$tmpl->printPage();
+ 
+diff --git a/lib/private/Template/TemplateManager.php b/lib/private/Template/TemplateManager.php
+index f4bd1d1646..e57203ba2d 100644
+--- a/lib/private/Template/TemplateManager.php
++++ b/lib/private/Template/TemplateManager.php
+@@ -40,7 +40,7 @@ class TemplateManager implements ITemplateManager {
+ 	 * @param array $parameters Parameters for the template
+ 	 */
+ 	public function printGuestPage(string $application, string $name, array $parameters = []): void {
+-		$content = new Template($application, $name, $name === 'error' ? $name : 'guest');
++		$content = $this->getTemplate($application, $name, $name === 'error' ? $name : 'guest');
+ 		foreach ($parameters as $key => $value) {
+ 			$content->assign($key, $value);
+ 		}
+@@ -85,7 +85,7 @@ class TemplateManager implements ITemplateManager {
+ 
+ 			try {
+ 				// Try rendering unthemed html error page
+-				$content = new Template('', 'error', 'error', false);
++				$content = $this->getTemplate('', 'error', 'error', false);
+ 				$content->assign('errors', $errors);
+ 				$content->printPage();
+ 			} catch (\Exception $e2) {
+@@ -113,7 +113,7 @@ class TemplateManager implements ITemplateManager {
+ 			$debug = (bool)Server::get(\OC\SystemConfig::class)->getValue('debug', false);
+ 			$serverLogsDocumentation = Server::get(\OC\SystemConfig::class)->getValue('documentation_url.server_logs', '');
+ 			$request = Server::get(IRequest::class);
+-			$content = new Template('', 'exception', 'error', false);
++			$content = $this->getTemplate('', 'exception', 'error', false);
+ 			$content->assign('errorClass', get_class($exception));
+ 			$content->assign('errorMsg', $exception->getMessage());
+ 			$content->assign('errorCode', $exception->getCode());
+diff --git a/lib/public/AppFramework/Http/TemplateResponse.php b/lib/public/AppFramework/Http/TemplateResponse.php
+index 55b9f2b06a..af37a1a231 100644
+--- a/lib/public/AppFramework/Http/TemplateResponse.php
++++ b/lib/public/AppFramework/Http/TemplateResponse.php
+@@ -1,13 +1,19 @@
+ <?php
+ 
++declare(strict_types=1);
++
++
+ /**
+  * SPDX-FileCopyrightText: 2016-2024 Nextcloud GmbH and Nextcloud contributors
+  * SPDX-FileCopyrightText: 2016 ownCloud, Inc.
+  * SPDX-License-Identifier: AGPL-3.0-only
+  */
++
+ namespace OCP\AppFramework\Http;
+ 
+ use OCP\AppFramework\Http;
++use OCP\Server;
++use OCP\Template\ITemplateManager;
+ 
+ /**
+  * Response for a normal template
+@@ -180,7 +186,7 @@ class TemplateResponse extends Response {
+ 			$renderAs = $this->renderAs;
+ 		}
+ 
+-		$template = new \OCP\Template($this->appName, $this->templateName, $renderAs);
++		$template = Server::get(ITemplateManager::class)->getTemplate($this->appName, $this->templateName, $renderAs);
+ 
+ 		foreach ($this->params as $key => $value) {
+ 			$template->assign($key, $value);
+diff --git a/lib/public/Authentication/TwoFactorAuth/ILoginSetupProvider.php b/lib/public/Authentication/TwoFactorAuth/ILoginSetupProvider.php
+index 84b0a9066f..32ede4f385 100644
+--- a/lib/public/Authentication/TwoFactorAuth/ILoginSetupProvider.php
++++ b/lib/public/Authentication/TwoFactorAuth/ILoginSetupProvider.php
+@@ -8,16 +8,15 @@ declare(strict_types=1);
+  */
+ namespace OCP\Authentication\TwoFactorAuth;
+ 
+-use OCP\Template;
++use OCP\Template\ITemplate;
+ 
+ /**
+  * @since 17.0.0
+  */
+ interface ILoginSetupProvider {
+ 	/**
+-	 * @return Template
+-	 *
+ 	 * @since 17.0.0
++	 * @since 32.0.0 Broader return type ITemplate instead of \OCP\Template
+ 	 */
+-	public function getBody(): Template;
++	public function getBody(): ITemplate;
+ }
+diff --git a/lib/public/Authentication/TwoFactorAuth/IPersonalProviderSettings.php b/lib/public/Authentication/TwoFactorAuth/IPersonalProviderSettings.php
+index 610f299c52..3cf7946272 100644
+--- a/lib/public/Authentication/TwoFactorAuth/IPersonalProviderSettings.php
++++ b/lib/public/Authentication/TwoFactorAuth/IPersonalProviderSettings.php
+@@ -6,9 +6,10 @@ declare(strict_types=1);
+  * SPDX-FileCopyrightText: 2016 Nextcloud GmbH and Nextcloud contributors
+  * SPDX-License-Identifier: AGPL-3.0-or-later
+  */
++
+ namespace OCP\Authentication\TwoFactorAuth;
+ 
+-use OCP\Template;
++use OCP\Template\ITemplate;
+ 
+ /**
+  * Interface IPersonalProviderSettings
+@@ -17,9 +18,8 @@ use OCP\Template;
+  */
+ interface IPersonalProviderSettings {
+ 	/**
+-	 * @return Template
+-	 *
+ 	 * @since 15.0.0
++	 * @since 32.0.0 Broader return type ITemplate instead of \OCP\Template
+ 	 */
+-	public function getBody(): Template;
++	public function getBody(): ITemplate;
+ }
+diff --git a/lib/public/Authentication/TwoFactorAuth/IProvider.php b/lib/public/Authentication/TwoFactorAuth/IProvider.php
+index f1dd24ff0a..27c4121f4a 100644
+--- a/lib/public/Authentication/TwoFactorAuth/IProvider.php
++++ b/lib/public/Authentication/TwoFactorAuth/IProvider.php
+@@ -9,7 +9,7 @@ declare(strict_types=1);
+ namespace OCP\Authentication\TwoFactorAuth;
+ 
+ use OCP\IUser;
+-use OCP\Template;
++use OCP\Template\ITemplate;
+ 
+ /**
+  * @since 9.1.0
+@@ -50,11 +50,9 @@ interface IProvider {
+ 	 * Get the template for rending the 2FA provider view
+ 	 *
+ 	 * @since 9.1.0
+-	 *
+-	 * @param IUser $user
+-	 * @return Template
++	 * @since 32.0.0 Broader return type ITemplate instead of \OCP\Template.
+ 	 */
+-	public function getTemplate(IUser $user): Template;
++	public function getTemplate(IUser $user): ITemplate;
+ 
+ 	/**
+ 	 * Verify the given challenge
+diff --git a/tests/Core/Controller/TwoFactorChallengeControllerTest.php b/tests/Core/Controller/TwoFactorChallengeControllerTest.php
+index 11e18bd622..7498abb9a9 100644
+--- a/tests/Core/Controller/TwoFactorChallengeControllerTest.php
++++ b/tests/Core/Controller/TwoFactorChallengeControllerTest.php
+@@ -22,7 +22,7 @@ use OCP\ISession;
+ use OCP\IURLGenerator;
+ use OCP\IUser;
+ use OCP\IUserSession;
+-use OCP\Template;
++use OCP\Template\ITemplate;
+ use Psr\Log\LoggerInterface;
+ use Test\TestCase;
+ 
+@@ -115,7 +115,7 @@ class TwoFactorChallengeControllerTest extends TestCase {
+ 		$provider->method('getId')->willReturn('myprovider');
+ 		$backupProvider = $this->createMock(IProvider::class);
+ 		$backupProvider->method('getId')->willReturn('backup_codes');
+-		$tmpl = $this->createMock(Template::class);
++		$tmpl = $this->createMock(ITemplate::class);
+ 		$providerSet = new ProviderSet([$provider, $backupProvider], true);
+ 
+ 		$this->userSession->expects($this->once())
+@@ -399,7 +399,7 @@ class TwoFactorChallengeControllerTest extends TestCase {
+ 			->method('getLoginSetup')
+ 			->with($user)
+ 			->willReturn($loginSetup);
+-		$tmpl = $this->createMock(Template::class);
++		$tmpl = $this->createMock(ITemplate::class);
+ 		$loginSetup->expects($this->once())
+ 			->method('getBody')
+ 			->willReturn($tmpl);

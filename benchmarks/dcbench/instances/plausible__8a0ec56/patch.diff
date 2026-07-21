@@ -1,0 +1,807 @@
+From 8a0ec566aaddd1d144772c54bdb22e6540f2ad7f Mon Sep 17 00:00:00 2001
+From: Adrian Gruntkowski <adrian.gruntkowski@gmail.com>
+Date: Thu, 2 Apr 2026 19:27:43 +0200
+Subject: [PATCH] Add ability to skip site members and invitations during
+ transfer (#6184)
+
+* Add ability to skip site members and invitations during transfer
+
+* Expose button to skip members during transfer if over team members limit
+
+* Make options to plan limits check more consistent
+
+* Fix a typo
+
+* Extend tests for `Quota.ensure_with_plan_limits`
+
+* Extend tests for `Invitations.Accept` service
+
+* Merge two buttons into a dropdown
+
+- Instead of displaying "Accept without members" and "Upgrade to accept" buttons, we now show it in an "Accept" dropdown with these options
+- Hide notice icon on mobile
+
+* Test invitation controller case when passing the parameter
+
+* Apply formatting to notice component
+
+* Extend invitation notice component tests
+
+* Make some of the tests EE-only
+
+* Fix a typo
+
+Co-authored-by: Uku Taht <Uku.taht@gmail.com>
+
+* Apply z-index to dropdown menu instead of the wrapping slot
+
+---------
+
+Co-authored-by: Sanne de Vries <sannedv@protonmail.com>
+Co-authored-by: Uku Taht <Uku.taht@gmail.com>
+---
+ lib/plausible/billing/qouta/quota.ex          |  39 ++++--
+ lib/plausible/teams/billing.ex                |   2 +-
+ lib/plausible/teams/invitations.ex            | 116 ++++++++++--------
+ lib/plausible/teams/invitations/accept.ex     |  15 +++
+ lib/plausible/teams/sites/transfer.ex         |   8 +-
+ .../components/billing/plan_box.ex            |   2 +-
+ lib/plausible_web/components/generic.ex       |   3 +-
+ .../components/prima_dropdown.ex              |   2 +-
+ lib/plausible_web/components/team/notice.ex   |  58 +++++++--
+ .../controllers/invitation_controller.ex      |  11 +-
+ test/plausible/billing/quota_test.exs         |  28 ++++-
+ .../teams/invitations/accept_test.exs         |  95 ++++++++++++++
+ .../components/team/notice_test.exs           |  52 ++++++++
+ .../invitation_controller_test.exs            |  31 +++++
+ 14 files changed, 382 insertions(+), 80 deletions(-)
+
+diff --git a/lib/plausible/billing/qouta/quota.ex b/lib/plausible/billing/qouta/quota.ex
+index b12af4c34..570195c84 100644
+--- a/lib/plausible/billing/qouta/quota.ex
++++ b/lib/plausible/billing/qouta/quota.ex
+@@ -22,9 +22,13 @@ defmodule Plausible.Billing.Quota do
+   Ensures that the given usage map is within the limits
+   of the given plan.
+ 
+-  An `opts` argument can be passed with `ignore_pageview_limit: true`
++  An `opts` argument can be passed with `skip_pageview_limit_check?: true`
+   which bypasses the pageview limit check and returns `:ok` as long as
+   the other limits are not exceeded.
++
++  There are also `skip_site_limit_check?` and `skip_team_member_limit_check?` 
++  options which behave the same way but apply to site and team member 
++  limits, respectively.
+   """
+   @spec ensure_within_plan_limits(map(), struct() | atom() | nil, Keyword.t()) ::
+           :ok | {:error, Limits.over_limits_error()}
+@@ -99,11 +103,24 @@ defmodule Plausible.Billing.Quota do
+         not within_limit?(usage.sites, plan.site_limit)
+       end
+ 
++    team_member_limit_exceeded? =
++      if opts[:skip_team_member_limit_check?] do
++        false
++      else
++        not within_limit?(usage.team_members, plan.team_member_limit)
++      end
++
++    pageview_limit_exceeded? =
++      if opts[:skip_pageview_limit_check?] do
++        false
++      else
++        exceeds_monthly_pageview_limit?(usage.monthly_pageviews, plan, opts)
++      end
++
+     for {limit, exceeded?} <- [
+-          {:team_member_limit, not within_limit?(usage.team_members, plan.team_member_limit)},
++          {:team_member_limit, team_member_limit_exceeded?},
+           {:site_limit, site_limit_exceeded?},
+-          {:monthly_pageview_limit,
+-           exceeds_monthly_pageview_limit?(usage.monthly_pageviews, plan, opts)}
++          {:monthly_pageview_limit, pageview_limit_exceeded?}
+         ],
+         exceeded? do
+       limit
+@@ -111,16 +128,12 @@ defmodule Plausible.Billing.Quota do
+   end
+ 
+   defp exceeds_monthly_pageview_limit?(usage, plan, opts) do
+-    if Keyword.get(opts, :ignore_pageview_limit) do
+-      false
++    if has_billing_cycles?(usage) do
++      exceeds_last_two_usage_cycles?(usage, plan.monthly_pageview_limit)
+     else
+-      if has_billing_cycles?(usage) do
+-        exceeds_last_two_usage_cycles?(usage, plan.monthly_pageview_limit)
+-      else
+-        margin = Keyword.get(opts, :pageview_allowance_margin)
+-        limit = Limits.pageview_limit_with_margin(plan.monthly_pageview_limit, margin)
+-        !within_limit?(usage.last_30_days.total, limit)
+-      end
++      margin = Keyword.get(opts, :pageview_allowance_margin)
++      limit = Limits.pageview_limit_with_margin(plan.monthly_pageview_limit, margin)
++      !within_limit?(usage.last_30_days.total, limit)
+     end
+   end
+ 
+diff --git a/lib/plausible/teams/billing.ex b/lib/plausible/teams/billing.ex
+index b483d56c1..da06e0eaa 100644
+--- a/lib/plausible/teams/billing.ex
++++ b/lib/plausible/teams/billing.ex
+@@ -51,7 +51,7 @@ defmodule Plausible.Teams.Billing do
+ 
+     limit_checking_opts =
+       if team.allow_next_upgrade_override do
+-        [ignore_pageview_limit: true]
++        [skip_pageview_limit_check?: true]
+       else
+         []
+       end
+diff --git a/lib/plausible/teams/invitations.ex b/lib/plausible/teams/invitations.ex
+index 53f1846d8..1cac3517f 100644
+--- a/lib/plausible/teams/invitations.ex
++++ b/lib/plausible/teams/invitations.ex
+@@ -250,10 +250,12 @@ defmodule Plausible.Teams.Invitations do
+     )
+   end
+ 
+-  def accept_site_transfer(site_transfer, team) do
++  def accept_site_transfer(site_transfer, team, opts \\ []) do
+     {:ok, _} =
+       Repo.transaction(fn ->
+-        :ok = transfer_site_ownership(site_transfer.site, team, NaiveDateTime.utc_now(:second))
++        :ok =
++          transfer_site_ownership(site_transfer.site, team, NaiveDateTime.utc_now(:second), opts)
++
+         Repo.delete_all(from st in Teams.SiteTransfer, where: st.id == ^site_transfer.id)
+       end)
+ 
+@@ -396,7 +398,9 @@ defmodule Plausible.Teams.Invitations do
+     :ok
+   end
+ 
+-  defp transfer_site_ownership(site, team, now) do
++  defp transfer_site_ownership(site, team, now, opts \\ []) do
++    skip_site_members_transfer? = Keyword.get(opts, :skip_site_members_transfer?, false)
++
+     site =
+       Repo.preload(site, [
+         :team,
+@@ -411,56 +415,77 @@ defmodule Plausible.Teams.Invitations do
+     |> Ecto.Changeset.change(team_id: team.id)
+     |> Repo.update!()
+ 
+-    {_old_team_invitations, old_guest_invitations} =
+-      site.guest_invitations
+-      |> Enum.map(fn old_guest_invitation ->
+-        old_team_invitation = old_guest_invitation.team_invitation
+-
+-        {:ok, new_team_invitation} =
+-          create_team_invitation(team, old_team_invitation.email, old_team_invitation.inviter)
++    old_guest_invitations = site.guest_invitations
+ 
+-        {:ok, _new_guest_invitation} =
+-          create_guest_invitation(new_team_invitation, site, old_guest_invitation.role)
+-
+-        {old_team_invitation, old_guest_invitation}
++    if not skip_site_members_transfer? do
++      Enum.each(old_guest_invitations, fn old_guest_invitation ->
++        recreate_guest_invitation(site, team, old_guest_invitation)
+       end)
+-      |> Enum.unzip()
++    end
+ 
+     old_guest_ids = Enum.map(old_guest_invitations, & &1.id)
+     Repo.delete_all(from gi in Teams.GuestInvitation, where: gi.id in ^old_guest_ids)
+     :ok = prune_guest_invitations(prior_team)
+ 
+-    {_old_team_memberships, old_guest_memberships} =
+-      site.guest_memberships
+-      |> Enum.map(fn old_guest_membership ->
+-        old_team_membership = old_guest_membership.team_membership
+-
+-        {:ok, new_team_membership} =
+-          create_team_membership(team, :guest, old_team_membership.user, now)
+-
+-        if new_team_membership.role == :guest do
+-          {:ok, _} =
+-            new_team_membership
+-            |> Teams.GuestMembership.changeset(site, old_guest_membership.role)
+-            |> Repo.insert(
+-              on_conflict: [set: [updated_at: now, role: old_guest_membership.role]],
+-              conflict_target: [:team_membership_id, :site_id],
+-              returning: true
+-            )
+-        end
++    old_guest_memberships = site.guest_memberships
+ 
+-        {old_team_membership, old_guest_membership}
++    if not skip_site_members_transfer? do
++      Enum.each(old_guest_memberships, fn old_guest_membership ->
++        recreate_guest_membership(site, team, old_guest_membership, now)
+       end)
+-      |> Enum.unzip()
++    end
+ 
+     old_guest_ids = Enum.map(old_guest_memberships, & &1.id)
+     Repo.delete_all(from gm in Teams.GuestMembership, where: gm.id in ^old_guest_ids)
+     :ok = Teams.Memberships.prune_guests(prior_team)
+ 
++    if not skip_site_members_transfer? do
++      add_prior_owners_as_site_editors(prior_team, team, site, now)
++    end
++
++    on_ee do
++      Billing.SiteLocker.update_for(prior_team, send_email?: false)
++      :unlocked = Billing.SiteLocker.update_for(team, send_email?: false)
++      Plausible.ConsolidatedView.reset_if_enabled(prior_team)
++    end
++
++    :ok
++  end
++
++  defp recreate_guest_invitation(site, new_team, old_guest_invitation) do
++    old_team_invitation = old_guest_invitation.team_invitation
++
++    {:ok, new_team_invitation} =
++      create_team_invitation(new_team, old_team_invitation.email, old_team_invitation.inviter)
++
++    {:ok, _new_guest_invitation} =
++      create_guest_invitation(new_team_invitation, site, old_guest_invitation.role)
++  end
++
++  defp recreate_guest_membership(site, new_team, old_guest_membership, now) do
++    old_team_membership = old_guest_membership.team_membership
++
++    {:ok, new_team_membership} =
++      create_team_membership(new_team, :guest, old_team_membership.user, now)
++
++    if new_team_membership.role == :guest do
++      {:ok, _} =
++        new_team_membership
++        |> Teams.GuestMembership.changeset(site, old_guest_membership.role)
++        |> Repo.insert(
++          on_conflict: [set: [updated_at: now, role: old_guest_membership.role]],
++          conflict_target: [:team_membership_id, :site_id],
++          returning: true
++        )
++    end
++  end
++
++  defp add_prior_owners_as_site_editors(prior_team, new_team, site, now) do
+     prior_owners = Repo.preload(prior_team, :owners).owners
+ 
+     for prior_owner <- prior_owners do
+-      {:ok, prior_owner_team_membership} = create_team_membership(team, :guest, prior_owner, now)
++      {:ok, prior_owner_team_membership} =
++        create_team_membership(new_team, :guest, prior_owner, now)
+ 
+       if prior_owner_team_membership.role == :guest do
+         {:ok, _} =
+@@ -473,14 +498,6 @@ defmodule Plausible.Teams.Invitations do
+           )
+       end
+     end
+-
+-    on_ee do
+-      Billing.SiteLocker.update_for(prior_team, send_email?: false)
+-      :unlocked = Billing.SiteLocker.update_for(team, send_email?: false)
+-      Plausible.ConsolidatedView.reset_if_enabled(prior_team)
+-    end
+-
+-    :ok
+   end
+ 
+   def prune_guest_invitations(team) do
+@@ -503,10 +520,12 @@ defmodule Plausible.Teams.Invitations do
+     :ok
+   end
+ 
++  def ensure_can_take_ownership(site, team, opts \\ [])
++
+   on_ee do
+-    def ensure_can_take_ownership(_site, nil), do: {:error, :no_plan}
++    def ensure_can_take_ownership(_site, nil, _opts), do: {:error, :no_plan}
+ 
+-    def ensure_can_take_ownership(site, team) do
++    def ensure_can_take_ownership(site, team, opts) do
+       team = Teams.with_subscription(team)
+       plan = Billing.Plans.get_subscription_plan(team.subscription)
+       active_subscription? = Billing.Subscriptions.active?(team.subscription)
+@@ -515,14 +534,15 @@ defmodule Plausible.Teams.Invitations do
+         team
+         |> Teams.Billing.quota_usage(pending_ownership_site_ids: [site.id])
+         |> Billing.Quota.ensure_within_plan_limits(plan,
+-          skip_site_limit_check?: Teams.Billing.grandfathered_team?(team)
++          skip_site_limit_check?: Teams.Billing.grandfathered_team?(team),
++          skip_team_member_limit_check?: opts[:skip_site_members_transfer?] == true
+         )
+       else
+         {:error, :no_plan}
+       end
+     end
+   else
+-    def ensure_can_take_ownership(_site, _team) do
++    def ensure_can_take_ownership(_site, _team, _opts) do
+       always(:ok)
+     end
+   end
+diff --git a/lib/plausible/teams/invitations/accept.ex b/lib/plausible/teams/invitations/accept.ex
+index bcfca6e48..08b5fb937 100644
+--- a/lib/plausible/teams/invitations/accept.ex
++++ b/lib/plausible/teams/invitations/accept.ex
+@@ -42,4 +42,19 @@ defmodule Plausible.Teams.Invitations.Accept do
+       end
+     end
+   end
++
++  @spec accept_transfer_no_members(String.t(), Auth.User.t(), Teams.Team.t() | nil) ::
++          {:ok, map()} | {:error, accept_error()}
++  def accept_transfer_no_members(transfer_id, user, team \\ nil) do
++    case Teams.Invitations.find_for_user(transfer_id, user) do
++      {:ok, %Teams.SiteTransfer{} = site_transfer} ->
++        Teams.Sites.Transfer.accept(site_transfer, user, team, skip_site_members_transfer?: true)
++
++      {:ok, _} ->
++        {:error, :permission_denied}
++
++      {:error, _} = error ->
++        error
++    end
++  end
+ end
+diff --git a/lib/plausible/teams/sites/transfer.ex b/lib/plausible/teams/sites/transfer.ex
+index 34919a1a8..fe75ee92e 100644
+--- a/lib/plausible/teams/sites/transfer.ex
++++ b/lib/plausible/teams/sites/transfer.ex
+@@ -26,17 +26,17 @@ defmodule Plausible.Teams.Sites.Transfer do
+     end
+   end
+ 
+-  @spec accept(Teams.SiteTransfer.t(), Auth.User.t(), Teams.Team.t() | nil) ::
++  @spec accept(Teams.SiteTransfer.t(), Auth.User.t(), Teams.Team.t() | nil, Keyword.t()) ::
+           {:ok, %{team: Teams.Team.t(), team_memberships: [Teams.Membership.t()], site: Site.t()}}
+           | {:error, transfer_error()}
+-  def accept(site_transfer, new_owner, team) do
++  def accept(site_transfer, new_owner, team, opts \\ []) do
+     site = Repo.preload(site_transfer.site, :team)
+ 
+     with {:ok, new_team} <- maybe_get_team(new_owner, team),
+          :ok <- Teams.Invitations.ensure_transfer_valid(site.team, new_team, :owner),
+          :ok <- Teams.Invitations.check_can_transfer_site(new_team, new_owner),
+-         :ok <- Teams.Invitations.ensure_can_take_ownership(site, new_team),
+-         :ok <- Teams.Invitations.accept_site_transfer(site_transfer, new_team) do
++         :ok <- Teams.Invitations.ensure_can_take_ownership(site, new_team, opts),
++         :ok <- Teams.Invitations.accept_site_transfer(site_transfer, new_team, opts) do
+       Teams.Invitations.send_transfer_accepted_email(site_transfer, new_team)
+ 
+       site = site |> Repo.reload!() |> Repo.preload(ownerships: :user)
+diff --git a/lib/plausible_web/components/billing/plan_box.ex b/lib/plausible_web/components/billing/plan_box.ex
+index c649fc722..a5e646b30 100644
+--- a/lib/plausible_web/components/billing/plan_box.ex
++++ b/lib/plausible_web/components/billing/plan_box.ex
+@@ -331,7 +331,7 @@ defmodule PlausibleWeb.Components.Billing.PlanBox do
+     limit_checking_opts =
+       cond do
+         current_team && current_team.allow_next_upgrade_override ->
+-          [ignore_pageview_limit: true]
++          [skip_pageview_limit_check?: true]
+ 
+         trial_active_or_ended_recently? && plan.volume == "10k" ->
+           [pageview_allowance_margin: 0.3]
+diff --git a/lib/plausible_web/components/generic.ex b/lib/plausible_web/components/generic.ex
+index 1406d2e94..c6b1861c2 100644
+--- a/lib/plausible_web/components/generic.ex
++++ b/lib/plausible_web/components/generic.ex
+@@ -210,6 +210,7 @@ defmodule PlausibleWeb.Components.Generic do
+   attr(:dismissable_id, :any, default: nil)
+   attr(:show_icon, :boolean, default: true)
+   attr(:class, :string, default: "")
++  attr(:icon_class, :string, default: "")
+   attr(:rest, :global)
+   slot(:inner_block)
+   slot(:actions)
+@@ -233,7 +234,7 @@ defmodule PlausibleWeb.Components.Generic do
+           @actions != [] && "items-start flex-col md:items-center md:flex-row"
+         ]}>
+           <div class="flex gap-x-3 flex-1">
+-            <div :if={@show_icon && @title} class="shrink-0 mt-px">
++            <div :if={@show_icon && @title} class={["shrink-0 mt-px", @icon_class]}>
+               <%= if @icon != [] do %>
+                 {render_slot(@icon)}
+               <% else %>
+diff --git a/lib/plausible_web/components/prima_dropdown.ex b/lib/plausible_web/components/prima_dropdown.ex
+index 659a6f6d2..47f506be1 100644
+--- a/lib/plausible_web/components/prima_dropdown.ex
++++ b/lib/plausible_web/components/prima_dropdown.ex
+@@ -59,7 +59,7 @@ defmodule PlausibleWeb.Components.PrimaDropdown do
+       id={@id}
+       placement="bottom-end"
+       match_trigger_width={true}
+-      class="bg-white rounded-md shadow-lg ring-1 ring-black/5 focus:outline-none p-1.5 dark:bg-gray-800"
++      class="bg-white rounded-md shadow-lg ring-1 ring-black/5 focus:outline-none p-1.5 dark:bg-gray-800 relative z-10"
+     >
+       {render_slot(@inner_block)}
+     </Dropdown.dropdown_menu>
+diff --git a/lib/plausible_web/components/team/notice.ex b/lib/plausible_web/components/team/notice.ex
+index 4faa263d4..ccfc2d2de 100644
+--- a/lib/plausible_web/components/team/notice.ex
++++ b/lib/plausible_web/components/team/notice.ex
+@@ -6,6 +6,7 @@ defmodule PlausibleWeb.Team.Notice do
+   import PlausibleWeb.Components.Icons
+ 
+   alias Plausible.Teams
++  alias PlausibleWeb.Components.PrimaDropdown
+ 
+   def owner_cta_banner(assigns) do
+     ~H"""
+@@ -115,26 +116,31 @@ defmodule PlausibleWeb.Team.Notice do
+   end
+ 
+   defp site_ownership_invitation(assigns) do
+-    {can_accept?, exceeded_limits} =
++    {can_accept?, can_accept_without_members?, exceeded_limits} =
+       case assigns.invitation.ownership_check do
+         :ok ->
+-          {true, nil}
++          {true, false, nil}
+ 
+         {:error, {:over_plan_limits, limits}} ->
+-          {false, PlausibleWeb.TextHelpers.pretty_list(limits)}
++          {false, limits == [:team_member_limit], PlausibleWeb.TextHelpers.pretty_list(limits)}
+ 
+         _ ->
+-          {false, nil}
++          {false, false, nil}
+       end
+ 
+     assigns =
+-      assign(assigns, can_accept?: can_accept?, exceeded_limits: exceeded_limits)
++      assign(assigns,
++        can_accept?: can_accept?,
++        can_accept_without_members?: can_accept_without_members?,
++        exceeded_limits: exceeded_limits
++      )
+ 
+     ~H"""
+     <.notice
+       id={"site-ownership-invitation-#{@invitation.transfer_id}"}
+       title={"#{@invitation.initiator.name} has invited you to own #{@invitation.site.domain}"}
+       theme={:white}
++      icon_class="hidden md:block"
+     >
+       <:icon>
+         <div class="shrink-0 -mt-1 bg-green-100/80 dark:bg-green-900/30 rounded-lg p-1.5">
+@@ -164,7 +170,7 @@ defmodule PlausibleWeb.Team.Notice do
+           }
+           theme="ghost"
+           size="sm"
+-          class="order-2 md:order-1"
++          class="order-3 md:order-1"
+           mt?={false}
+         >
+           Reject
+@@ -186,12 +192,48 @@ defmodule PlausibleWeb.Team.Notice do
+         >
+           Accept
+         </.button_link>
++        <PrimaDropdown.dropdown
++          :if={@can_accept_without_members?}
++          id={"ownership-accept-#{@invitation.transfer_id}"}
++          class="order-1 md:order-2"
++        >
++          <PrimaDropdown.dropdown_trigger
++            id={"ownership-accept-trigger-#{@invitation.transfer_id}"}
++            theme="secondary"
++            size="sm"
++          >
++            Accept <Heroicons.chevron_down mini class="size-4 mt-0.5" />
++          </PrimaDropdown.dropdown_trigger>
++          <PrimaDropdown.dropdown_menu id={"ownership-accept-menu-#{@invitation.transfer_id}"}>
++            <PrimaDropdown.dropdown_item
++              as={&link/1}
++              id={"ownership-accept-item-upgrade-#{@invitation.transfer_id}"}
++              href={Routes.billing_path(PlausibleWeb.Endpoint, :choose_plan)}
++            >
++              Upgrade to accept
++            </PrimaDropdown.dropdown_item>
++            <PrimaDropdown.dropdown_item
++              as={fn a -> link(Map.put(a, :method, "post")) end}
++              id={"ownership-accept-item-members-#{@invitation.transfer_id}"}
++              href={
++                Routes.invitation_path(
++                  PlausibleWeb.Endpoint,
++                  :accept_invitation,
++                  @invitation.transfer_id,
++                  skip_site_members_transfer: "true"
++                )
++              }
++            >
++              Accept without members
++            </PrimaDropdown.dropdown_item>
++          </PrimaDropdown.dropdown_menu>
++        </PrimaDropdown.dropdown>
+         <.button_link
+-          :if={not @can_accept?}
++          :if={not @can_accept? and not @can_accept_without_members?}
+           href={Routes.billing_path(PlausibleWeb.Endpoint, :choose_plan)}
+           theme="secondary"
+           size="sm"
+-          class="order-1 md:order-2"
++          class="order-1 md:order-3"
+           mt?={false}
+         >
+           Upgrade to accept
+diff --git a/lib/plausible_web/controllers/invitation_controller.ex b/lib/plausible_web/controllers/invitation_controller.ex
+index d1142d5e4..5aea6bca4 100644
+--- a/lib/plausible_web/controllers/invitation_controller.ex
++++ b/lib/plausible_web/controllers/invitation_controller.ex
+@@ -8,11 +8,18 @@ defmodule PlausibleWeb.InvitationController do
+   plug PlausibleWeb.Plugs.AuthorizeSiteAccess,
+        [:owner, :admin] when action in [:remove_invitation]
+ 
+-  def accept_invitation(conn, %{"invitation_id" => invitation_id}) do
++  def accept_invitation(conn, %{"invitation_id" => invitation_id} = params) do
+     current_user = conn.assigns.current_user
+     team = conn.assigns.current_team
+ 
+-    case Teams.Invitations.Accept.accept(invitation_id, current_user, team) do
++    result =
++      if params["skip_site_members_transfer"] == "true" do
++        Teams.Invitations.Accept.accept_transfer_no_members(invitation_id, current_user, team)
++      else
++        Teams.Invitations.Accept.accept(invitation_id, current_user, team)
++      end
++
++    case result do
+       {:ok, result} ->
+         team = result.team
+ 
+diff --git a/test/plausible/billing/quota_test.exs b/test/plausible/billing/quota_test.exs
+index 2e2ee5770..cf7f0c931 100644
+--- a/test/plausible/billing/quota_test.exs
++++ b/test/plausible/billing/quota_test.exs
+@@ -156,7 +156,33 @@ defmodule Plausible.Billing.QuotaTest do
+ 
+       plan = Plans.find(@v4_1m_plan_id)
+ 
+-      assert :ok = Quota.ensure_within_plan_limits(usage, plan, ignore_pageview_limit: true)
++      assert :ok = Quota.ensure_within_plan_limits(usage, plan, skip_pageview_limit_check?: true)
++    end
++
++    test "can skip checking the team member limit" do
++      usage = %{
++        monthly_pageviews: %{last_30_days: %{total: 1000}},
++        team_members: 4,
++        sites: 2
++      }
++
++      plan = Plans.find(@v4_1m_plan_id)
++
++      assert :ok =
++               Quota.ensure_within_plan_limits(usage, plan, skip_team_member_limit_check?: true)
++    end
++
++    test "can skip checking the site limit" do
++      usage = %{
++        monthly_pageviews: %{last_30_days: %{total: 1000}},
++        team_members: 1,
++        sites: 8
++      }
++
++      plan = Plans.find(@v4_1m_plan_id)
++
++      assert :ok =
++               Quota.ensure_within_plan_limits(usage, plan, skip_site_limit_check?: true)
+     end
+ 
+     test "by the last 30 days usage, pageview limit is exceeded when more than 10% over the limit" do
+diff --git a/test/plausible/teams/invitations/accept_test.exs b/test/plausible/teams/invitations/accept_test.exs
+index b61729025..7473b1da3 100644
+--- a/test/plausible/teams/invitations/accept_test.exs
++++ b/test/plausible/teams/invitations/accept_test.exs
+@@ -609,4 +609,99 @@ defmodule Plausible.Teams.Invitations.AcceptTest do
+                )
+     end
+   end
++
++  describe "accept_invitation/3 - ownership transfers _without_ members" do
++    test "transfers ownership without carrying over existing owner as an editor, existing site guests and invitations" do
++      existing_owner = new_user()
++      site = new_site(owner: existing_owner)
++
++      prior_team = team_of(existing_owner)
++
++      new_owner = new_user() |> subscribe_to_growth_plan()
++      new_team = team_of(new_owner)
++
++      invite_guest(site, "some@example.com", role: :viewer, inviter: existing_owner)
++
++      add_guest(site, role: :viewer)
++      add_guest(site, role: :editor)
++
++      transfer = invite_transfer(site, new_owner, inviter: existing_owner)
++
++      assert {:ok, _new_membership} =
++               Accept.accept_transfer_no_members(transfer.transfer_id, new_owner)
++
++      assert_team_attached(site, new_team.id)
++
++      refute Repo.reload(transfer)
++
++      site = Repo.reload!(site)
++
++      assert Repo.preload(site, :guest_memberships).guest_memberships == []
++      assert Repo.preload(site, :guest_invitations).guest_invitations == []
++
++      prior_team = Repo.reload!(prior_team)
++
++      assert Repo.preload(prior_team, :team_invitations).team_invitations == []
++      assert [%{role: :owner}] = Repo.preload(prior_team, :team_memberships).team_memberships
++
++      assert_email_delivered_with(
++        to: [nil: existing_owner.email],
++        subject:
++          @subject_prefix <>
++            "#{new_owner.email} accepted the ownership transfer of #{site.domain}"
++      )
++    end
++
++    @tag :ee_only
++    test "allows transfer of a site which normally would make accepting user exceed team member limit" do
++      old_owner = new_user() |> subscribe_to_business_plan()
++      new_owner = new_user() |> subscribe_to_growth_plan()
++
++      site = new_site(owner: old_owner)
++
++      for _ <- 1..3, do: add_guest(site, role: :editor)
++
++      transfer = invite_transfer(site, new_owner, inviter: old_owner)
++
++      assert {:ok, _} = Accept.accept_transfer_no_members(transfer.transfer_id, new_owner)
++    end
++
++    test "returns error if provided ID resolves to a site invitation instead of transfer" do
++      existing_owner = new_user()
++      site = new_site(owner: existing_owner)
++
++      new_owner = new_user() |> subscribe_to_growth_plan()
++
++      invitation = invite_guest(site, new_owner.email, role: :viewer, inviter: existing_owner)
++
++      assert {:error, :permission_denied} =
++               Accept.accept_transfer_no_members(invitation.invitation_id, new_owner)
++    end
++
++    test "returns error if provided ID resolves to a team invitation instead of transfer" do
++      existing_owner = new_user()
++      _site = new_site(owner: existing_owner)
++      team = team_of(existing_owner)
++
++      new_owner = new_user() |> subscribe_to_growth_plan()
++
++      invitation = invite_member(team, new_owner, role: :editor, inviter: existing_owner)
++
++      assert {:error, :permission_denied} =
++               Accept.accept_transfer_no_members(invitation.invitation_id, new_owner)
++    end
++
++    @tag :ee_only
++    test "returns an error if accepting user is not subscribed to a proper plan" do
++      existing_owner = new_user()
++      site = new_site(owner: existing_owner)
++
++      new_owner = new_user()
++
++      transfer = invite_transfer(site, new_owner, inviter: existing_owner)
++
++      assert {:error, :no_plan} =
++               Accept.accept_transfer_no_members(transfer.transfer_id, new_owner)
++    end
++  end
+ end
+diff --git a/test/plausible_web/components/team/notice_test.exs b/test/plausible_web/components/team/notice_test.exs
+index e5ff3f214..f1b7376e2 100644
+--- a/test/plausible_web/components/team/notice_test.exs
++++ b/test/plausible_web/components/team/notice_test.exs
+@@ -216,5 +216,57 @@ defmodule PlausibleWeb.Team.NoticeTest do
+       assert rendered =~ "exceeds your current"
+       assert rendered =~ "site limit"
+     end
++
++    test "renders upgrade link and accept without members button when only team member limit is exceeded" do
++      transfers = [
++        %{
++          transfer_id: "tr-over",
++          initiator: %{name: "Grace"},
++          site: %{domain: "big.io"},
++          ownership_check: {:error, {:over_plan_limits, [:team_member_limit]}}
++        }
++      ]
++
++      rendered =
++        render_component(&Notice.site_ownership_invitations/1,
++          site_ownership_invitations: transfers,
++          current_team: nil
++        )
++
++      assert rendered =~ "/billing/choose-plan"
++
++      assert rendered =~
++               ~r{data-to="[^"]*invitations/tr-over/accept\?skip_site_members_transfer=true"}
++
++      assert rendered =~ ~r{href="[^"]*invitations/tr-over/reject"}
++      assert rendered =~ "exceeds your current"
++      assert rendered =~ "team member limit"
++    end
++
++    test "does not render accept without members button when other limits than team member limit are exceeded" do
++      transfers = [
++        %{
++          transfer_id: "tr-over",
++          initiator: %{name: "Grace"},
++          site: %{domain: "big.io"},
++          ownership_check: {:error, {:over_plan_limits, [:site_limit, :team_member_limit]}}
++        }
++      ]
++
++      rendered =
++        render_component(&Notice.site_ownership_invitations/1,
++          site_ownership_invitations: transfers,
++          current_team: nil
++        )
++
++      assert rendered =~ "/billing/choose-plan"
++
++      refute rendered =~
++               ~r{data-to="[^"]*invitations/tr-over/accept\?skip_site_members_transfer=true"}
++
++      assert rendered =~ ~r{href="[^"]*invitations/tr-over/reject"}
++      assert rendered =~ "exceeds your current"
++      assert rendered =~ "team member limit"
++    end
+   end
+ end
+diff --git a/test/plausible_web/controllers/invitation_controller_test.exs b/test/plausible_web/controllers/invitation_controller_test.exs
+index d76535400..ad3440f0f 100644
+--- a/test/plausible_web/controllers/invitation_controller_test.exs
++++ b/test/plausible_web/controllers/invitation_controller_test.exs
+@@ -186,6 +186,37 @@ defmodule PlausibleWeb.Site.InvitationControllerTest do
+       assert Phoenix.Flash.get(conn.assigns.flash, :error) =~
+                "Plan limits exceeded: site limit."
+     end
++
++    test "succeeds despite exceeding members limit if parameter provided", %{
++      conn: conn,
++      user: user
++    } do
++      current_owner = new_user()
++      site = new_site(owner: current_owner)
++
++      subscribe_to_growth_plan(user)
++      new_team = team_of(user)
++
++      # fill site limit quota
++      for _ <- 1..3, do: add_guest(site, role: :editor)
++
++      transfer = invite_transfer(site, user, inviter: current_owner)
++
++      conn =
++        post(
++          conn,
++          "/sites/invitations/#{transfer.transfer_id}/accept?skip_site_members_transfer=true"
++        )
++
++      assert redirected_to(conn, 302) == "/#{URI.encode_www_form(site.domain)}/"
++
++      assert Phoenix.Flash.get(conn.assigns.flash, :success) =~
++               "You now have access to"
++
++      refute Repo.reload(transfer)
++
++      assert_team_attached(site, new_team.id)
++    end
+   end
+ 
+   describe "POST /sites/invitations/:invitation_id/reject" do

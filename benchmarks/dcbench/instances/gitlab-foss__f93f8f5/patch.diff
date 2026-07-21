@@ -1,0 +1,1225 @@
+From f93f8f569d51cdc738d1653a264a762b2c08fde0 Mon Sep 17 00:00:00 2001
+From: gfyoung <gfyoung17@gmail.com>
+Date: Mon, 19 Nov 2018 18:01:13 -0800
+Subject: [PATCH] Enable even more frozen string for lib/gitlab
+
+Enables frozen string for the following:
+
+* lib/gitlab/patch/**/*.rb
+* lib/gitlab/popen/**/*.rb
+* lib/gitlab/profiler/**/*.rb
+* lib/gitlab/project_authorizations/**/*.rb
+* lib/gitlab/prometheus/**/*.rb
+* lib/gitlab/query_limiting/**/*.rb
+* lib/gitlab/quick_actions/**/*.rb
+* lib/gitlab/redis/**/*.rb
+* lib/gitlab/request_profiler/**/*.rb
+* lib/gitlab/search/**/*.rb
+* lib/gitlab/sherlock/**/*.rb
+* lib/gitlab/sidekiq_middleware/**/*.rb
+* lib/gitlab/slash_commands/**/*.rb
+* lib/gitlab/sql/**/*.rb
+* lib/gitlab/template/**/*.rb
+* lib/gitlab/testing/**/*.rb
+* lib/gitlab/utils/**/*.rb
+* lib/gitlab/webpack/**/*.rb
+
+Partially addresses gitlab-org/gitlab-ce#47424.
+---
+ .../frozen-string-lib-gitlab-even-even-even-more.yml      | 5 +++++
+ lib/gitlab/ci/config/entry/retry.rb                       | 2 ++
+ lib/gitlab/performance_bar/peek_query_tracker.rb          | 2 ++
+ lib/gitlab/popen/runner.rb                                | 2 ++
+ lib/gitlab/profiler/total_time_flat_printer.rb            | 2 ++
+ lib/gitlab/project_authorizations/with_nested_groups.rb   | 2 ++
+ .../project_authorizations/without_nested_groups.rb       | 2 ++
+ lib/gitlab/prometheus/additional_metrics_parser.rb        | 2 ++
+ lib/gitlab/prometheus/metric.rb                           | 2 ++
+ lib/gitlab/prometheus/metric_group.rb                     | 2 ++
+ lib/gitlab/prometheus/parsing_error.rb                    | 2 ++
+ .../queries/additional_metrics_deployment_query.rb        | 2 ++
+ .../queries/additional_metrics_environment_query.rb       | 2 ++
+ lib/gitlab/prometheus/queries/base_query.rb               | 2 ++
+ lib/gitlab/prometheus/queries/deployment_query.rb         | 2 ++
+ lib/gitlab/prometheus/queries/environment_query.rb        | 2 ++
+ lib/gitlab/prometheus/queries/matched_metric_query.rb     | 2 ++
+ lib/gitlab/prometheus/queries/query_additional_metrics.rb | 2 ++
+ lib/gitlab/query_limiting/active_support_subscriber.rb    | 2 ++
+ lib/gitlab/query_limiting/transaction.rb                  | 4 +++-
+ lib/gitlab/quick_actions/command_definition.rb            | 2 ++
+ lib/gitlab/quick_actions/dsl.rb                           | 2 ++
+ lib/gitlab/quick_actions/extractor.rb                     | 2 ++
+ lib/gitlab/quick_actions/spend_time_and_date_separator.rb | 2 ++
+ lib/gitlab/quick_actions/substitution_definition.rb       | 2 ++
+ lib/gitlab/redis/cache.rb                                 | 2 ++
+ lib/gitlab/redis/queues.rb                                | 2 ++
+ lib/gitlab/redis/shared_state.rb                          | 2 ++
+ lib/gitlab/redis/wrapper.rb                               | 2 ++
+ lib/gitlab/request_profiler/middleware.rb                 | 2 ++
+ lib/gitlab/request_profiler/profile.rb                    | 2 ++
+ lib/gitlab/sanitizers/svg.rb                              | 2 ++
+ lib/gitlab/sanitizers/svg/whitelist.rb                    | 2 ++
+ lib/gitlab/search/parsed_query.rb                         | 2 ++
+ lib/gitlab/search/query.rb                                | 2 ++
+ lib/gitlab/serializer/ci/variables.rb                     | 2 ++
+ lib/gitlab/serializer/pagination.rb                       | 2 ++
+ lib/gitlab/sherlock/collection.rb                         | 2 ++
+ lib/gitlab/sherlock/file_sample.rb                        | 2 ++
+ lib/gitlab/sherlock/line_profiler.rb                      | 2 ++
+ lib/gitlab/sherlock/line_sample.rb                        | 2 ++
+ lib/gitlab/sherlock/location.rb                           | 2 ++
+ lib/gitlab/sherlock/middleware.rb                         | 2 ++
+ lib/gitlab/sherlock/query.rb                              | 4 +++-
+ lib/gitlab/sherlock/transaction.rb                        | 2 ++
+ lib/gitlab/sidekiq_logging/json_formatter.rb              | 2 ++
+ lib/gitlab/sidekiq_logging/structured_logger.rb           | 2 ++
+ lib/gitlab/sidekiq_middleware/arguments_logger.rb         | 2 ++
+ lib/gitlab/sidekiq_middleware/request_store_middleware.rb | 2 ++
+ lib/gitlab/sidekiq_middleware/shutdown.rb                 | 2 ++
+ lib/gitlab/sidekiq_status/client_middleware.rb            | 2 ++
+ lib/gitlab/sidekiq_status/server_middleware.rb            | 2 ++
+ lib/gitlab/sidekiq_versioning/manager.rb                  | 2 ++
+ lib/gitlab/slash_commands/base_command.rb                 | 2 ++
+ lib/gitlab/slash_commands/command.rb                      | 2 ++
+ lib/gitlab/slash_commands/deploy.rb                       | 2 ++
+ lib/gitlab/slash_commands/help.rb                         | 2 ++
+ lib/gitlab/slash_commands/issue_command.rb                | 2 ++
+ lib/gitlab/slash_commands/issue_move.rb                   | 2 ++
+ lib/gitlab/slash_commands/issue_new.rb                    | 2 ++
+ lib/gitlab/slash_commands/issue_search.rb                 | 2 ++
+ lib/gitlab/slash_commands/issue_show.rb                   | 2 ++
+ lib/gitlab/slash_commands/presenters/access.rb            | 2 ++
+ lib/gitlab/slash_commands/presenters/base.rb              | 2 ++
+ lib/gitlab/slash_commands/presenters/deploy.rb            | 2 ++
+ lib/gitlab/slash_commands/presenters/help.rb              | 2 ++
+ lib/gitlab/slash_commands/presenters/issue_base.rb        | 2 ++
+ lib/gitlab/slash_commands/presenters/issue_move.rb        | 2 ++
+ lib/gitlab/slash_commands/presenters/issue_new.rb         | 2 ++
+ lib/gitlab/slash_commands/presenters/issue_search.rb      | 2 ++
+ lib/gitlab/slash_commands/presenters/issue_show.rb        | 8 +++++---
+ lib/gitlab/slash_commands/result.rb                       | 5 ++++-
+ lib/gitlab/sql/cte.rb                                     | 2 ++
+ lib/gitlab/sql/glob.rb                                    | 2 ++
+ lib/gitlab/sql/pattern.rb                                 | 2 ++
+ lib/gitlab/sql/recursive_cte.rb                           | 2 ++
+ lib/gitlab/sql/union.rb                                   | 2 ++
+ lib/gitlab/template/base_template.rb                      | 2 ++
+ lib/gitlab/template/dockerfile_template.rb                | 2 ++
+ lib/gitlab/template/finders/base_template_finder.rb       | 2 ++
+ lib/gitlab/template/finders/global_template_finder.rb     | 4 +++-
+ lib/gitlab/template/finders/repo_template_finder.rb       | 4 +++-
+ lib/gitlab/template/gitignore_template.rb                 | 2 ++
+ lib/gitlab/template/gitlab_ci_yml_template.rb             | 2 ++
+ lib/gitlab/template/issue_template.rb                     | 2 ++
+ lib/gitlab/template/merge_request_template.rb             | 2 ++
+ lib/gitlab/testing/request_blocker_middleware.rb          | 2 ++
+ lib/gitlab/testing/request_inspector_middleware.rb        | 4 +++-
+ lib/gitlab/utils/merge_hash.rb                            | 2 ++
+ lib/gitlab/utils/override.rb                              | 2 ++
+ lib/gitlab/utils/strong_memoize.rb                        | 2 ++
+ lib/gitlab/verify/batch_verifier.rb                       | 2 ++
+ lib/gitlab/verify/job_artifacts.rb                        | 2 ++
+ lib/gitlab/verify/lfs_objects.rb                          | 2 ++
+ lib/gitlab/verify/rake_task.rb                            | 2 ++
+ lib/gitlab/verify/uploads.rb                              | 2 ++
+ lib/gitlab/view/presenter/base.rb                         | 2 ++
+ lib/gitlab/view/presenter/delegated.rb                    | 2 ++
+ lib/gitlab/view/presenter/factory.rb                      | 2 ++
+ lib/gitlab/view/presenter/simple.rb                       | 2 ++
+ lib/gitlab/webpack/dev_server_middleware.rb               | 2 ++
+ lib/gitlab/webpack/manifest.rb                            | 2 ++
+ 102 files changed, 217 insertions(+), 9 deletions(-)
+ create mode 100644 changelogs/unreleased/frozen-string-lib-gitlab-even-even-even-more.yml
+
+diff --git a/changelogs/unreleased/frozen-string-lib-gitlab-even-even-even-more.yml b/changelogs/unreleased/frozen-string-lib-gitlab-even-even-even-more.yml
+new file mode 100644
+index 0000000000..e718d71664
+--- /dev/null
++++ b/changelogs/unreleased/frozen-string-lib-gitlab-even-even-even-more.yml
+@@ -0,0 +1,5 @@
++---
++title: Enable even more frozen string for lib/gitlab
++merge_request:
++author: gfyoung
++type: performance
+diff --git a/lib/gitlab/ci/config/entry/retry.rb b/lib/gitlab/ci/config/entry/retry.rb
+index e39cc5de22..ee82ab10f9 100644
+--- a/lib/gitlab/ci/config/entry/retry.rb
++++ b/lib/gitlab/ci/config/entry/retry.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Ci
+     class Config
+diff --git a/lib/gitlab/performance_bar/peek_query_tracker.rb b/lib/gitlab/performance_bar/peek_query_tracker.rb
+index 37ff32b129..ac39243242 100644
+--- a/lib/gitlab/performance_bar/peek_query_tracker.rb
++++ b/lib/gitlab/performance_bar/peek_query_tracker.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ # Inspired by https://github.com/peek/peek-pg/blob/master/lib/peek/views/pg.rb
+ # PEEK_DB_CLIENT is a constant set in config/initializers/peek.rb
+ module Gitlab
+diff --git a/lib/gitlab/popen/runner.rb b/lib/gitlab/popen/runner.rb
+index f44035a48b..cd9ad270cd 100644
+--- a/lib/gitlab/popen/runner.rb
++++ b/lib/gitlab/popen/runner.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Popen
+     class Runner
+diff --git a/lib/gitlab/profiler/total_time_flat_printer.rb b/lib/gitlab/profiler/total_time_flat_printer.rb
+index 2fd0ec10ba..2c105d2722 100644
+--- a/lib/gitlab/profiler/total_time_flat_printer.rb
++++ b/lib/gitlab/profiler/total_time_flat_printer.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Profiler
+     class TotalTimeFlatPrinter < RubyProf::FlatPrinter
+diff --git a/lib/gitlab/project_authorizations/with_nested_groups.rb b/lib/gitlab/project_authorizations/with_nested_groups.rb
+index 448c3f3a7d..2372a316ab 100644
+--- a/lib/gitlab/project_authorizations/with_nested_groups.rb
++++ b/lib/gitlab/project_authorizations/with_nested_groups.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module ProjectAuthorizations
+     # Calculating new project authorizations when supporting nested groups.
+diff --git a/lib/gitlab/project_authorizations/without_nested_groups.rb b/lib/gitlab/project_authorizations/without_nested_groups.rb
+index ed2287dcc7..50b41b1764 100644
+--- a/lib/gitlab/project_authorizations/without_nested_groups.rb
++++ b/lib/gitlab/project_authorizations/without_nested_groups.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module ProjectAuthorizations
+     # Calculating new project authorizations when not supporting nested groups.
+diff --git a/lib/gitlab/prometheus/additional_metrics_parser.rb b/lib/gitlab/prometheus/additional_metrics_parser.rb
+index a240d09007..bd4ca57884 100644
+--- a/lib/gitlab/prometheus/additional_metrics_parser.rb
++++ b/lib/gitlab/prometheus/additional_metrics_parser.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Prometheus
+     module AdditionalMetricsParser
+diff --git a/lib/gitlab/prometheus/metric.rb b/lib/gitlab/prometheus/metric.rb
+index 13cc59df79..7ebfc2e25a 100644
+--- a/lib/gitlab/prometheus/metric.rb
++++ b/lib/gitlab/prometheus/metric.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Prometheus
+     class Metric
+diff --git a/lib/gitlab/prometheus/metric_group.rb b/lib/gitlab/prometheus/metric_group.rb
+index d696a8fc00..8f30cdee23 100644
+--- a/lib/gitlab/prometheus/metric_group.rb
++++ b/lib/gitlab/prometheus/metric_group.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Prometheus
+     class MetricGroup
+diff --git a/lib/gitlab/prometheus/parsing_error.rb b/lib/gitlab/prometheus/parsing_error.rb
+index 49cc0e1608..20b5ef5ce5 100644
+--- a/lib/gitlab/prometheus/parsing_error.rb
++++ b/lib/gitlab/prometheus/parsing_error.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Prometheus
+     ParsingError = Class.new(StandardError)
+diff --git a/lib/gitlab/prometheus/queries/additional_metrics_deployment_query.rb b/lib/gitlab/prometheus/queries/additional_metrics_deployment_query.rb
+index fa86d2dfd6..ab6ef7d546 100644
+--- a/lib/gitlab/prometheus/queries/additional_metrics_deployment_query.rb
++++ b/lib/gitlab/prometheus/queries/additional_metrics_deployment_query.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Prometheus
+     module Queries
+diff --git a/lib/gitlab/prometheus/queries/additional_metrics_environment_query.rb b/lib/gitlab/prometheus/queries/additional_metrics_environment_query.rb
+index 09f8f1103d..34b705138b 100644
+--- a/lib/gitlab/prometheus/queries/additional_metrics_environment_query.rb
++++ b/lib/gitlab/prometheus/queries/additional_metrics_environment_query.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Prometheus
+     module Queries
+diff --git a/lib/gitlab/prometheus/queries/base_query.rb b/lib/gitlab/prometheus/queries/base_query.rb
+index 29cab6e9c1..9ff414d523 100644
+--- a/lib/gitlab/prometheus/queries/base_query.rb
++++ b/lib/gitlab/prometheus/queries/base_query.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Prometheus
+     module Queries
+diff --git a/lib/gitlab/prometheus/queries/deployment_query.rb b/lib/gitlab/prometheus/queries/deployment_query.rb
+index 3a609a795b..fc32c4353f 100644
+--- a/lib/gitlab/prometheus/queries/deployment_query.rb
++++ b/lib/gitlab/prometheus/queries/deployment_query.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Prometheus
+     module Queries
+diff --git a/lib/gitlab/prometheus/queries/environment_query.rb b/lib/gitlab/prometheus/queries/environment_query.rb
+index 4d8b136d7a..56195f85a7 100644
+--- a/lib/gitlab/prometheus/queries/environment_query.rb
++++ b/lib/gitlab/prometheus/queries/environment_query.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Prometheus
+     module Queries
+diff --git a/lib/gitlab/prometheus/queries/matched_metric_query.rb b/lib/gitlab/prometheus/queries/matched_metric_query.rb
+index d920e9a749..32294756aa 100644
+--- a/lib/gitlab/prometheus/queries/matched_metric_query.rb
++++ b/lib/gitlab/prometheus/queries/matched_metric_query.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Prometheus
+     module Queries
+diff --git a/lib/gitlab/prometheus/queries/query_additional_metrics.rb b/lib/gitlab/prometheus/queries/query_additional_metrics.rb
+index 3be35f189d..43508af96a 100644
+--- a/lib/gitlab/prometheus/queries/query_additional_metrics.rb
++++ b/lib/gitlab/prometheus/queries/query_additional_metrics.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Prometheus
+     module Queries
+diff --git a/lib/gitlab/query_limiting/active_support_subscriber.rb b/lib/gitlab/query_limiting/active_support_subscriber.rb
+index 3c4ff5d192..065862174b 100644
+--- a/lib/gitlab/query_limiting/active_support_subscriber.rb
++++ b/lib/gitlab/query_limiting/active_support_subscriber.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module QueryLimiting
+     class ActiveSupportSubscriber < ActiveSupport::Subscriber
+diff --git a/lib/gitlab/query_limiting/transaction.rb b/lib/gitlab/query_limiting/transaction.rb
+index 66d7d9275c..e8fad067fa 100644
+--- a/lib/gitlab/query_limiting/transaction.rb
++++ b/lib/gitlab/query_limiting/transaction.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module QueryLimiting
+     class Transaction
+@@ -68,7 +70,7 @@ def threshold_exceeded?
+ 
+       def error_message
+         header = 'Too many SQL queries were executed'
+-        header += " in #{action}" if action
++        header = "#{header} in #{action}" if action
+ 
+         "#{header}: a maximum of #{THRESHOLD} is allowed but #{count} SQL queries were executed"
+       end
+diff --git a/lib/gitlab/quick_actions/command_definition.rb b/lib/gitlab/quick_actions/command_definition.rb
+index c682eb2289..259345b8a9 100644
+--- a/lib/gitlab/quick_actions/command_definition.rb
++++ b/lib/gitlab/quick_actions/command_definition.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module QuickActions
+     class CommandDefinition
+diff --git a/lib/gitlab/quick_actions/dsl.rb b/lib/gitlab/quick_actions/dsl.rb
+index 192c7ec2ff..a3aab92061 100644
+--- a/lib/gitlab/quick_actions/dsl.rb
++++ b/lib/gitlab/quick_actions/dsl.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module QuickActions
+     module Dsl
+diff --git a/lib/gitlab/quick_actions/extractor.rb b/lib/gitlab/quick_actions/extractor.rb
+index 59f8dd889a..ff9bb293b4 100644
+--- a/lib/gitlab/quick_actions/extractor.rb
++++ b/lib/gitlab/quick_actions/extractor.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module QuickActions
+     # This class takes an array of commands that should be extracted from a
+diff --git a/lib/gitlab/quick_actions/spend_time_and_date_separator.rb b/lib/gitlab/quick_actions/spend_time_and_date_separator.rb
+index 7328c517a3..f5176376a6 100644
+--- a/lib/gitlab/quick_actions/spend_time_and_date_separator.rb
++++ b/lib/gitlab/quick_actions/spend_time_and_date_separator.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module QuickActions
+     # This class takes spend command argument
+diff --git a/lib/gitlab/quick_actions/substitution_definition.rb b/lib/gitlab/quick_actions/substitution_definition.rb
+index 688056e5d7..2f78ea05cf 100644
+--- a/lib/gitlab/quick_actions/substitution_definition.rb
++++ b/lib/gitlab/quick_actions/substitution_definition.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module QuickActions
+     class SubstitutionDefinition < CommandDefinition
+diff --git a/lib/gitlab/redis/cache.rb b/lib/gitlab/redis/cache.rb
+index a991933e91..6e8403ad87 100644
+--- a/lib/gitlab/redis/cache.rb
++++ b/lib/gitlab/redis/cache.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ # please require all dependencies below:
+ require_relative 'wrapper' unless defined?(::Rails) && ::Rails.root.present?
+ 
+diff --git a/lib/gitlab/redis/queues.rb b/lib/gitlab/redis/queues.rb
+index e1695aafbe..8b42c269dd 100644
+--- a/lib/gitlab/redis/queues.rb
++++ b/lib/gitlab/redis/queues.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ # please require all dependencies below:
+ require_relative 'wrapper' unless defined?(::Gitlab::Redis::Wrapper)
+ 
+diff --git a/lib/gitlab/redis/shared_state.rb b/lib/gitlab/redis/shared_state.rb
+index e5a0fdae7e..9066606ca2 100644
+--- a/lib/gitlab/redis/shared_state.rb
++++ b/lib/gitlab/redis/shared_state.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ # please require all dependencies below:
+ require_relative 'wrapper' unless defined?(::Gitlab::Redis::Wrapper)
+ 
+diff --git a/lib/gitlab/redis/wrapper.rb b/lib/gitlab/redis/wrapper.rb
+index 4178b436ac..07a1e20b07 100644
+--- a/lib/gitlab/redis/wrapper.rb
++++ b/lib/gitlab/redis/wrapper.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ # This file should only be used by sub-classes, not directly by any clients of the sub-classes
+ # please require all dependencies below:
+ require 'active_support/core_ext/hash/keys'
+diff --git a/lib/gitlab/request_profiler/middleware.rb b/lib/gitlab/request_profiler/middleware.rb
+index ef42b0557e..7615f6f443 100644
+--- a/lib/gitlab/request_profiler/middleware.rb
++++ b/lib/gitlab/request_profiler/middleware.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ require 'ruby-prof'
+ 
+ module Gitlab
+diff --git a/lib/gitlab/request_profiler/profile.rb b/lib/gitlab/request_profiler/profile.rb
+index f89d56903e..46996ef8c5 100644
+--- a/lib/gitlab/request_profiler/profile.rb
++++ b/lib/gitlab/request_profiler/profile.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module RequestProfiler
+     class Profile
+diff --git a/lib/gitlab/sanitizers/svg.rb b/lib/gitlab/sanitizers/svg.rb
+index 8304b9a482..0d4e6be212 100644
+--- a/lib/gitlab/sanitizers/svg.rb
++++ b/lib/gitlab/sanitizers/svg.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Sanitizers
+     module SVG
+diff --git a/lib/gitlab/sanitizers/svg/whitelist.rb b/lib/gitlab/sanitizers/svg/whitelist.rb
+index d50f826f92..b4da24b321 100644
+--- a/lib/gitlab/sanitizers/svg/whitelist.rb
++++ b/lib/gitlab/sanitizers/svg/whitelist.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ # Generated from:
+ # SVG element list: https://www.w3.org/TR/SVG/eltindex.html
+ # SVG Attribute list: https://www.w3.org/TR/SVG/attindex.html
+diff --git a/lib/gitlab/search/parsed_query.rb b/lib/gitlab/search/parsed_query.rb
+index 23595f23f0..c4fb019955 100644
+--- a/lib/gitlab/search/parsed_query.rb
++++ b/lib/gitlab/search/parsed_query.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Search
+     class ParsedQuery
+diff --git a/lib/gitlab/search/query.rb b/lib/gitlab/search/query.rb
+index 8583bce779..7f69083a49 100644
+--- a/lib/gitlab/search/query.rb
++++ b/lib/gitlab/search/query.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Search
+     class Query < SimpleDelegator
+diff --git a/lib/gitlab/serializer/ci/variables.rb b/lib/gitlab/serializer/ci/variables.rb
+index 292c8de622..9abf3a54f3 100644
+--- a/lib/gitlab/serializer/ci/variables.rb
++++ b/lib/gitlab/serializer/ci/variables.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Serializer
+     module Ci
+diff --git a/lib/gitlab/serializer/pagination.rb b/lib/gitlab/serializer/pagination.rb
+index 6bb00d8ae2..eb242cc7c2 100644
+--- a/lib/gitlab/serializer/pagination.rb
++++ b/lib/gitlab/serializer/pagination.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Serializer
+     class Pagination
+diff --git a/lib/gitlab/sherlock/collection.rb b/lib/gitlab/sherlock/collection.rb
+index 66bd625852..ce3a376cf7 100644
+--- a/lib/gitlab/sherlock/collection.rb
++++ b/lib/gitlab/sherlock/collection.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Sherlock
+     # A collection of transactions recorded by Sherlock.
+diff --git a/lib/gitlab/sherlock/file_sample.rb b/lib/gitlab/sherlock/file_sample.rb
+index 89072b01f2..604b6df12c 100644
+--- a/lib/gitlab/sherlock/file_sample.rb
++++ b/lib/gitlab/sherlock/file_sample.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Sherlock
+     class FileSample
+diff --git a/lib/gitlab/sherlock/line_profiler.rb b/lib/gitlab/sherlock/line_profiler.rb
+index b5f9d04004..209ba784f9 100644
+--- a/lib/gitlab/sherlock/line_profiler.rb
++++ b/lib/gitlab/sherlock/line_profiler.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Sherlock
+     # Class for profiling code on a per line basis.
+diff --git a/lib/gitlab/sherlock/line_sample.rb b/lib/gitlab/sherlock/line_sample.rb
+index eb1948eb6d..c92fa9ea1f 100644
+--- a/lib/gitlab/sherlock/line_sample.rb
++++ b/lib/gitlab/sherlock/line_sample.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Sherlock
+     class LineSample
+diff --git a/lib/gitlab/sherlock/location.rb b/lib/gitlab/sherlock/location.rb
+index 5ac265618a..4bba60f349 100644
+--- a/lib/gitlab/sherlock/location.rb
++++ b/lib/gitlab/sherlock/location.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Sherlock
+     class Location
+diff --git a/lib/gitlab/sherlock/middleware.rb b/lib/gitlab/sherlock/middleware.rb
+index 4c88e33699..747cb0f914 100644
+--- a/lib/gitlab/sherlock/middleware.rb
++++ b/lib/gitlab/sherlock/middleware.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Sherlock
+     # Rack middleware used for tracking request metrics.
+diff --git a/lib/gitlab/sherlock/query.rb b/lib/gitlab/sherlock/query.rb
+index 02ddc3f47e..11561eec32 100644
+--- a/lib/gitlab/sherlock/query.rb
++++ b/lib/gitlab/sherlock/query.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Sherlock
+     class Query
+@@ -48,7 +50,7 @@ def initialize(query, started_at, finished_at)
+         end
+ 
+         unless @query.end_with?(';')
+-          @query += ';'
++          @query = "#{@query};"
+         end
+       end
+ 
+diff --git a/lib/gitlab/sherlock/transaction.rb b/lib/gitlab/sherlock/transaction.rb
+index 400a552bf9..d04624977d 100644
+--- a/lib/gitlab/sherlock/transaction.rb
++++ b/lib/gitlab/sherlock/transaction.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Sherlock
+     class Transaction
+diff --git a/lib/gitlab/sidekiq_logging/json_formatter.rb b/lib/gitlab/sidekiq_logging/json_formatter.rb
+index 98f8222fd0..88888c5994 100644
+--- a/lib/gitlab/sidekiq_logging/json_formatter.rb
++++ b/lib/gitlab/sidekiq_logging/json_formatter.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SidekiqLogging
+     class JSONFormatter
+diff --git a/lib/gitlab/sidekiq_logging/structured_logger.rb b/lib/gitlab/sidekiq_logging/structured_logger.rb
+index 9a89ae70b9..e86db8db3a 100644
+--- a/lib/gitlab/sidekiq_logging/structured_logger.rb
++++ b/lib/gitlab/sidekiq_logging/structured_logger.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SidekiqLogging
+     class StructuredLogger
+diff --git a/lib/gitlab/sidekiq_middleware/arguments_logger.rb b/lib/gitlab/sidekiq_middleware/arguments_logger.rb
+index 82a59a7a87..2859aa5f4a 100644
+--- a/lib/gitlab/sidekiq_middleware/arguments_logger.rb
++++ b/lib/gitlab/sidekiq_middleware/arguments_logger.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SidekiqMiddleware
+     class ArgumentsLogger
+diff --git a/lib/gitlab/sidekiq_middleware/request_store_middleware.rb b/lib/gitlab/sidekiq_middleware/request_store_middleware.rb
+index b1fa0e3cb4..8824f81e8e 100644
+--- a/lib/gitlab/sidekiq_middleware/request_store_middleware.rb
++++ b/lib/gitlab/sidekiq_middleware/request_store_middleware.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SidekiqMiddleware
+     class RequestStoreMiddleware
+diff --git a/lib/gitlab/sidekiq_middleware/shutdown.rb b/lib/gitlab/sidekiq_middleware/shutdown.rb
+index b232ac4da3..19f3be83bc 100644
+--- a/lib/gitlab/sidekiq_middleware/shutdown.rb
++++ b/lib/gitlab/sidekiq_middleware/shutdown.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ require 'mutex_m'
+ 
+ module Gitlab
+diff --git a/lib/gitlab/sidekiq_status/client_middleware.rb b/lib/gitlab/sidekiq_status/client_middleware.rb
+index 00983b3284..bfd5038557 100644
+--- a/lib/gitlab/sidekiq_status/client_middleware.rb
++++ b/lib/gitlab/sidekiq_status/client_middleware.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SidekiqStatus
+     class ClientMiddleware
+diff --git a/lib/gitlab/sidekiq_status/server_middleware.rb b/lib/gitlab/sidekiq_status/server_middleware.rb
+index ceab10b830..01bc58fd2b 100644
+--- a/lib/gitlab/sidekiq_status/server_middleware.rb
++++ b/lib/gitlab/sidekiq_status/server_middleware.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SidekiqStatus
+     class ServerMiddleware
+diff --git a/lib/gitlab/sidekiq_versioning/manager.rb b/lib/gitlab/sidekiq_versioning/manager.rb
+index 308be0fdf7..e5852b4300 100644
+--- a/lib/gitlab/sidekiq_versioning/manager.rb
++++ b/lib/gitlab/sidekiq_versioning/manager.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SidekiqVersioning
+     module Manager
+diff --git a/lib/gitlab/slash_commands/base_command.rb b/lib/gitlab/slash_commands/base_command.rb
+index 0c76378d51..fcc120112f 100644
+--- a/lib/gitlab/slash_commands/base_command.rb
++++ b/lib/gitlab/slash_commands/base_command.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     class BaseCommand
+diff --git a/lib/gitlab/slash_commands/command.rb b/lib/gitlab/slash_commands/command.rb
+index c82320a603..474c09b9c4 100644
+--- a/lib/gitlab/slash_commands/command.rb
++++ b/lib/gitlab/slash_commands/command.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     class Command < BaseCommand
+diff --git a/lib/gitlab/slash_commands/deploy.rb b/lib/gitlab/slash_commands/deploy.rb
+index b308fd9637..157d924f99 100644
+--- a/lib/gitlab/slash_commands/deploy.rb
++++ b/lib/gitlab/slash_commands/deploy.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     class Deploy < BaseCommand
+diff --git a/lib/gitlab/slash_commands/help.rb b/lib/gitlab/slash_commands/help.rb
+index 81f3707e03..dbe15baa3d 100644
+--- a/lib/gitlab/slash_commands/help.rb
++++ b/lib/gitlab/slash_commands/help.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     class Help < BaseCommand
+diff --git a/lib/gitlab/slash_commands/issue_command.rb b/lib/gitlab/slash_commands/issue_command.rb
+index 3d96982b82..4c8dc4b178 100644
+--- a/lib/gitlab/slash_commands/issue_command.rb
++++ b/lib/gitlab/slash_commands/issue_command.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     class IssueCommand < BaseCommand
+diff --git a/lib/gitlab/slash_commands/issue_move.rb b/lib/gitlab/slash_commands/issue_move.rb
+index 3985e63598..d2f1f130b3 100644
+--- a/lib/gitlab/slash_commands/issue_move.rb
++++ b/lib/gitlab/slash_commands/issue_move.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     class IssueMove < IssueCommand
+diff --git a/lib/gitlab/slash_commands/issue_new.rb b/lib/gitlab/slash_commands/issue_new.rb
+index 6396b828dc..4837903153 100644
+--- a/lib/gitlab/slash_commands/issue_new.rb
++++ b/lib/gitlab/slash_commands/issue_new.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     class IssueNew < IssueCommand
+diff --git a/lib/gitlab/slash_commands/issue_search.rb b/lib/gitlab/slash_commands/issue_search.rb
+index ee78f0f832..0a705de448 100644
+--- a/lib/gitlab/slash_commands/issue_search.rb
++++ b/lib/gitlab/slash_commands/issue_search.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     class IssueSearch < IssueCommand
+diff --git a/lib/gitlab/slash_commands/issue_show.rb b/lib/gitlab/slash_commands/issue_show.rb
+index ffa5184e5c..5f5fa32ff2 100644
+--- a/lib/gitlab/slash_commands/issue_show.rb
++++ b/lib/gitlab/slash_commands/issue_show.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     class IssueShow < IssueCommand
+diff --git a/lib/gitlab/slash_commands/presenters/access.rb b/lib/gitlab/slash_commands/presenters/access.rb
+index 81f7cd3ffe..fa163cb098 100644
+--- a/lib/gitlab/slash_commands/presenters/access.rb
++++ b/lib/gitlab/slash_commands/presenters/access.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     module Presenters
+diff --git a/lib/gitlab/slash_commands/presenters/base.rb b/lib/gitlab/slash_commands/presenters/base.rb
+index e13808a272..73814aa180 100644
+--- a/lib/gitlab/slash_commands/presenters/base.rb
++++ b/lib/gitlab/slash_commands/presenters/base.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     module Presenters
+diff --git a/lib/gitlab/slash_commands/presenters/deploy.rb b/lib/gitlab/slash_commands/presenters/deploy.rb
+index ebae0f57f9..7d852eb1f9 100644
+--- a/lib/gitlab/slash_commands/presenters/deploy.rb
++++ b/lib/gitlab/slash_commands/presenters/deploy.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     module Presenters
+diff --git a/lib/gitlab/slash_commands/presenters/help.rb b/lib/gitlab/slash_commands/presenters/help.rb
+index ab85531907..480d7aa6a3 100644
+--- a/lib/gitlab/slash_commands/presenters/help.rb
++++ b/lib/gitlab/slash_commands/presenters/help.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     module Presenters
+diff --git a/lib/gitlab/slash_commands/presenters/issue_base.rb b/lib/gitlab/slash_commands/presenters/issue_base.rb
+index 31c1e97efb..b6db103b82 100644
+--- a/lib/gitlab/slash_commands/presenters/issue_base.rb
++++ b/lib/gitlab/slash_commands/presenters/issue_base.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     module Presenters
+diff --git a/lib/gitlab/slash_commands/presenters/issue_move.rb b/lib/gitlab/slash_commands/presenters/issue_move.rb
+index 0392172994..ca0644ede9 100644
+--- a/lib/gitlab/slash_commands/presenters/issue_move.rb
++++ b/lib/gitlab/slash_commands/presenters/issue_move.rb
+@@ -1,4 +1,6 @@
+ # coding: utf-8
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     module Presenters
+diff --git a/lib/gitlab/slash_commands/presenters/issue_new.rb b/lib/gitlab/slash_commands/presenters/issue_new.rb
+index 5964bfe996..ac78745ae7 100644
+--- a/lib/gitlab/slash_commands/presenters/issue_new.rb
++++ b/lib/gitlab/slash_commands/presenters/issue_new.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     module Presenters
+diff --git a/lib/gitlab/slash_commands/presenters/issue_search.rb b/lib/gitlab/slash_commands/presenters/issue_search.rb
+index 4e27d66868..0d497efec0 100644
+--- a/lib/gitlab/slash_commands/presenters/issue_search.rb
++++ b/lib/gitlab/slash_commands/presenters/issue_search.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     module Presenters
+diff --git a/lib/gitlab/slash_commands/presenters/issue_show.rb b/lib/gitlab/slash_commands/presenters/issue_show.rb
+index 562f15f403..5a2c79a928 100644
+--- a/lib/gitlab/slash_commands/presenters/issue_show.rb
++++ b/lib/gitlab/slash_commands/presenters/issue_show.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SlashCommands
+     module Presenters
+@@ -38,10 +40,10 @@ def show_issue
+         end
+ 
+         def text
+-          message = "**#{status_text(@resource)}**"
++          message = ["**#{status_text(@resource)}**"]
+ 
+           if @resource.upvotes.zero? && @resource.downvotes.zero? && @resource.user_notes_count.zero?
+-            return message
++            return message.join
+           end
+ 
+           message << " · "
+@@ -49,7 +51,7 @@ def text
+           message << ":-1: #{@resource.downvotes} " unless @resource.downvotes.zero?
+           message << ":speech_balloon: #{@resource.user_notes_count}" unless @resource.user_notes_count.zero?
+ 
+-          message
++          message.join
+         end
+ 
+         def pretext
+diff --git a/lib/gitlab/slash_commands/result.rb b/lib/gitlab/slash_commands/result.rb
+index 3669dedf0f..607c9c8dec 100644
+--- a/lib/gitlab/slash_commands/result.rb
++++ b/lib/gitlab/slash_commands/result.rb
+@@ -1,4 +1,7 @@
+-module Gitlab # rubocop:disable Naming/FileName
++# rubocop:disable Naming/FileName
++# frozen_string_literal: true
++
++module Gitlab
+   module SlashCommands
+     Result = Struct.new(:type, :message)
+   end
+diff --git a/lib/gitlab/sql/cte.rb b/lib/gitlab/sql/cte.rb
+index f357829ba3..7817a2a1ce 100644
+--- a/lib/gitlab/sql/cte.rb
++++ b/lib/gitlab/sql/cte.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SQL
+     # Class for easily building CTE statements.
+diff --git a/lib/gitlab/sql/glob.rb b/lib/gitlab/sql/glob.rb
+index 5e89e12b2b..f3421bd95d 100644
+--- a/lib/gitlab/sql/glob.rb
++++ b/lib/gitlab/sql/glob.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SQL
+     module Glob
+diff --git a/lib/gitlab/sql/pattern.rb b/lib/gitlab/sql/pattern.rb
+index 53744bad1f..9238826203 100644
+--- a/lib/gitlab/sql/pattern.rb
++++ b/lib/gitlab/sql/pattern.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SQL
+     module Pattern
+diff --git a/lib/gitlab/sql/recursive_cte.rb b/lib/gitlab/sql/recursive_cte.rb
+index 16ec002f13..ec1f00a3a9 100644
+--- a/lib/gitlab/sql/recursive_cte.rb
++++ b/lib/gitlab/sql/recursive_cte.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SQL
+     # Class for easily building recursive CTE statements.
+diff --git a/lib/gitlab/sql/union.rb b/lib/gitlab/sql/union.rb
+index c99b262f1c..d24d511616 100644
+--- a/lib/gitlab/sql/union.rb
++++ b/lib/gitlab/sql/union.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module SQL
+     # Class for building SQL UNION statements.
+diff --git a/lib/gitlab/template/base_template.rb b/lib/gitlab/template/base_template.rb
+index 699d747892..0b4cc571dc 100644
+--- a/lib/gitlab/template/base_template.rb
++++ b/lib/gitlab/template/base_template.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Template
+     class BaseTemplate
+diff --git a/lib/gitlab/template/dockerfile_template.rb b/lib/gitlab/template/dockerfile_template.rb
+index 20b054b0bd..3b516bb862 100644
+--- a/lib/gitlab/template/dockerfile_template.rb
++++ b/lib/gitlab/template/dockerfile_template.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Template
+     class DockerfileTemplate < BaseTemplate
+diff --git a/lib/gitlab/template/finders/base_template_finder.rb b/lib/gitlab/template/finders/base_template_finder.rb
+index a5105439b1..93c229af14 100644
+--- a/lib/gitlab/template/finders/base_template_finder.rb
++++ b/lib/gitlab/template/finders/base_template_finder.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Template
+     module Finders
+diff --git a/lib/gitlab/template/finders/global_template_finder.rb b/lib/gitlab/template/finders/global_template_finder.rb
+index b08d9a99e9..76bb9eb611 100644
+--- a/lib/gitlab/template/finders/global_template_finder.rb
++++ b/lib/gitlab/template/finders/global_template_finder.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ # Searches and reads file present on GitLab installation directory
+ module Gitlab
+   module Template
+@@ -21,7 +23,7 @@ def find(key)
+         end
+ 
+         def list_files_for(dir)
+-          dir << '/' unless dir.end_with?('/')
++          dir = "#{dir}/" unless dir.end_with?('/')
+           Dir.glob(File.join(dir, "*#{@extension}")).select { |f| f =~ self.class.filter_regex(@extension) }
+         end
+ 
+diff --git a/lib/gitlab/template/finders/repo_template_finder.rb b/lib/gitlab/template/finders/repo_template_finder.rb
+index 9140ace879..b92cefefb8 100644
+--- a/lib/gitlab/template/finders/repo_template_finder.rb
++++ b/lib/gitlab/template/finders/repo_template_finder.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ # Searches and reads files present on each GitLab project repository
+ module Gitlab
+   module Template
+@@ -33,7 +35,7 @@ def find(key)
+         def list_files_for(dir)
+           return [] unless @commit
+ 
+-          dir << '/' unless dir.end_with?('/')
++          dir = "#{dir}/" unless dir.end_with?('/')
+ 
+           entries = @repository.tree(:head, dir).entries
+ 
+diff --git a/lib/gitlab/template/gitignore_template.rb b/lib/gitlab/template/gitignore_template.rb
+index 8d2a9d2305..72a1b7460c 100644
+--- a/lib/gitlab/template/gitignore_template.rb
++++ b/lib/gitlab/template/gitignore_template.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Template
+     class GitignoreTemplate < BaseTemplate
+diff --git a/lib/gitlab/template/gitlab_ci_yml_template.rb b/lib/gitlab/template/gitlab_ci_yml_template.rb
+index deae53cc61..fbefb5f7f0 100644
+--- a/lib/gitlab/template/gitlab_ci_yml_template.rb
++++ b/lib/gitlab/template/gitlab_ci_yml_template.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Template
+     class GitlabCiYmlTemplate < BaseTemplate
+diff --git a/lib/gitlab/template/issue_template.rb b/lib/gitlab/template/issue_template.rb
+index c6fa8d3eaf..01b191733d 100644
+--- a/lib/gitlab/template/issue_template.rb
++++ b/lib/gitlab/template/issue_template.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Template
+     class IssueTemplate < BaseTemplate
+diff --git a/lib/gitlab/template/merge_request_template.rb b/lib/gitlab/template/merge_request_template.rb
+index f826c02f3b..357b31cd82 100644
+--- a/lib/gitlab/template/merge_request_template.rb
++++ b/lib/gitlab/template/merge_request_template.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Template
+     class MergeRequestTemplate < BaseTemplate
+diff --git a/lib/gitlab/testing/request_blocker_middleware.rb b/lib/gitlab/testing/request_blocker_middleware.rb
+index 53333b9b06..513cbe839b 100644
+--- a/lib/gitlab/testing/request_blocker_middleware.rb
++++ b/lib/gitlab/testing/request_blocker_middleware.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ # rubocop:disable Style/ClassVars
+ 
+ # This is inspired by http://www.salsify.com/blog/engineering/tearing-capybara-ajax-tests
+diff --git a/lib/gitlab/testing/request_inspector_middleware.rb b/lib/gitlab/testing/request_inspector_middleware.rb
+index c251e78f5c..36cdfebcc2 100644
+--- a/lib/gitlab/testing/request_inspector_middleware.rb
++++ b/lib/gitlab/testing/request_inspector_middleware.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ # rubocop:disable Style/ClassVars
+ 
+ module Gitlab
+@@ -35,7 +37,7 @@ def call(env)
+         request_headers = env_http_headers(env)
+         status, headers, body = @app.call(env)
+ 
+-        full_body = ''
++        full_body = +''
+         body.each { |b| full_body << b }
+ 
+         request = OpenStruct.new(
+diff --git a/lib/gitlab/utils/merge_hash.rb b/lib/gitlab/utils/merge_hash.rb
+index 385141d44d..fc237861e2 100644
+--- a/lib/gitlab/utils/merge_hash.rb
++++ b/lib/gitlab/utils/merge_hash.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Utils
+     module MergeHash
+diff --git a/lib/gitlab/utils/override.rb b/lib/gitlab/utils/override.rb
+index d00921e6cd..c412961ea3 100644
+--- a/lib/gitlab/utils/override.rb
++++ b/lib/gitlab/utils/override.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Utils
+     module Override
+diff --git a/lib/gitlab/utils/strong_memoize.rb b/lib/gitlab/utils/strong_memoize.rb
+index fe091f4611..aa1f8e2fdd 100644
+--- a/lib/gitlab/utils/strong_memoize.rb
++++ b/lib/gitlab/utils/strong_memoize.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Utils
+     module StrongMemoize
+diff --git a/lib/gitlab/verify/batch_verifier.rb b/lib/gitlab/verify/batch_verifier.rb
+index 167ba1b314..dbda19a4a6 100644
+--- a/lib/gitlab/verify/batch_verifier.rb
++++ b/lib/gitlab/verify/batch_verifier.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Verify
+     class BatchVerifier
+diff --git a/lib/gitlab/verify/job_artifacts.rb b/lib/gitlab/verify/job_artifacts.rb
+index dbadfbde9e..3b90c8b1a8 100644
+--- a/lib/gitlab/verify/job_artifacts.rb
++++ b/lib/gitlab/verify/job_artifacts.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Verify
+     class JobArtifacts < BatchVerifier
+diff --git a/lib/gitlab/verify/lfs_objects.rb b/lib/gitlab/verify/lfs_objects.rb
+index d3f58a73ac..20dbb7addf 100644
+--- a/lib/gitlab/verify/lfs_objects.rb
++++ b/lib/gitlab/verify/lfs_objects.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Verify
+     class LfsObjects < BatchVerifier
+diff --git a/lib/gitlab/verify/rake_task.rb b/lib/gitlab/verify/rake_task.rb
+index e190eaddc7..3efed31123 100644
+--- a/lib/gitlab/verify/rake_task.rb
++++ b/lib/gitlab/verify/rake_task.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Verify
+     class RakeTask
+diff --git a/lib/gitlab/verify/uploads.rb b/lib/gitlab/verify/uploads.rb
+index 201fcc7de7..875e8a120e 100644
+--- a/lib/gitlab/verify/uploads.rb
++++ b/lib/gitlab/verify/uploads.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module Verify
+     class Uploads < BatchVerifier
+diff --git a/lib/gitlab/view/presenter/base.rb b/lib/gitlab/view/presenter/base.rb
+index c3fd6d317a..5e70afe730 100644
+--- a/lib/gitlab/view/presenter/base.rb
++++ b/lib/gitlab/view/presenter/base.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module View
+     module Presenter
+diff --git a/lib/gitlab/view/presenter/delegated.rb b/lib/gitlab/view/presenter/delegated.rb
+index 387ff0f5d4..4a90ab758f 100644
+--- a/lib/gitlab/view/presenter/delegated.rb
++++ b/lib/gitlab/view/presenter/delegated.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module View
+     module Presenter
+diff --git a/lib/gitlab/view/presenter/factory.rb b/lib/gitlab/view/presenter/factory.rb
+index 570f0723e3..302697ff8e 100644
+--- a/lib/gitlab/view/presenter/factory.rb
++++ b/lib/gitlab/view/presenter/factory.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module View
+     module Presenter
+diff --git a/lib/gitlab/view/presenter/simple.rb b/lib/gitlab/view/presenter/simple.rb
+index b7653a0f3c..31dcd1d4c4 100644
+--- a/lib/gitlab/view/presenter/simple.rb
++++ b/lib/gitlab/view/presenter/simple.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ module Gitlab
+   module View
+     module Presenter
+diff --git a/lib/gitlab/webpack/dev_server_middleware.rb b/lib/gitlab/webpack/dev_server_middleware.rb
+index 529f7d6a8d..fda41da5a9 100644
+--- a/lib/gitlab/webpack/dev_server_middleware.rb
++++ b/lib/gitlab/webpack/dev_server_middleware.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ # This Rack middleware is intended to proxy the webpack assets directory to the
+ # webpack-dev-server.  It is only intended for use in development.
+ 
+diff --git a/lib/gitlab/webpack/manifest.rb b/lib/gitlab/webpack/manifest.rb
+index 0c343e5bc1..1d2aff5e5b 100644
+--- a/lib/gitlab/webpack/manifest.rb
++++ b/lib/gitlab/webpack/manifest.rb
+@@ -1,3 +1,5 @@
++# frozen_string_literal: true
++
+ require 'webpack/rails/manifest'
+ 
+ module Gitlab

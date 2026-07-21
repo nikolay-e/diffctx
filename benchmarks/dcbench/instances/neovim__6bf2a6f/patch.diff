@@ -1,0 +1,1131 @@
+From 6bf2a6fc5bb395b67c88cb26d332f882a106c7ab Mon Sep 17 00:00:00 2001
+From: luukvbaal <luukvbaal@gmail.com>
+Date: Tue, 17 Dec 2024 13:12:22 +0100
+Subject: [PATCH] refactor(api): always use TRY_WRAP #31600
+
+Problem:  Two separate try/end wrappers, that only marginally differ by
+          restoring a few variables. Wrappers that don't restore
+          previous state are dangerous to use in "api-fast" functions.
+Solution: Remove wrappers that don't restore the previous state.
+          Always use TRY_WRAP.
+---
+ src/nvim/api/buffer.c          | 346 ++++++++++++++++-----------------
+ src/nvim/api/private/helpers.c |  79 +++-----
+ src/nvim/api/private/helpers.h |  14 +-
+ src/nvim/api/tabpage.c         |   8 +-
+ src/nvim/api/vim.c             | 116 +++++------
+ src/nvim/api/vimscript.c       |  30 +--
+ src/nvim/api/window.c          |  30 ++-
+ src/nvim/ex_getln.c            |  95 +++++----
+ src/nvim/lua/stdlib.c          |  48 ++---
+ src/nvim/option.c              |   2 +-
+ 10 files changed, 359 insertions(+), 409 deletions(-)
+
+diff --git a/src/nvim/api/buffer.c b/src/nvim/api/buffer.c
+index 9480292d9..2b6aa8b37 100644
+--- a/src/nvim/api/buffer.c
++++ b/src/nvim/api/buffer.c
+@@ -360,93 +360,91 @@ void nvim_buf_set_lines(uint64_t channel_id, Buffer buffer, Integer start, Integ
+     memchrsub(lines[i], NUL, NL, l.size);
+   }
+ 
+-  try_start();
+-
+-  if (!MODIFIABLE(buf)) {
+-    api_set_error(err, kErrorTypeException, "Buffer is not 'modifiable'");
+-    goto end;
+-  }
+-
+-  if (u_save_buf(buf, (linenr_T)(start - 1), (linenr_T)end) == FAIL) {
+-    api_set_error(err, kErrorTypeException, "Failed to save undo information");
+-    goto end;
+-  }
+-
+-  bcount_t deleted_bytes = get_region_bytecount(buf, (linenr_T)start, (linenr_T)end, 0, 0);
+-
+-  // If the size of the range is reducing (ie, new_len < old_len) we
+-  // need to delete some old_len. We do this at the start, by
+-  // repeatedly deleting line "start".
+-  size_t to_delete = (new_len < old_len) ? old_len - new_len : 0;
+-  for (size_t i = 0; i < to_delete; i++) {
+-    if (ml_delete_buf(buf, (linenr_T)start, false) == FAIL) {
+-      api_set_error(err, kErrorTypeException, "Failed to delete line");
++  TRY_WRAP(err, {
++    if (!MODIFIABLE(buf)) {
++      api_set_error(err, kErrorTypeException, "Buffer is not 'modifiable'");
+       goto end;
+     }
+-  }
+ 
+-  if (to_delete > 0) {
+-    extra -= (ptrdiff_t)to_delete;
+-  }
++    if (u_save_buf(buf, (linenr_T)(start - 1), (linenr_T)end) == FAIL) {
++      api_set_error(err, kErrorTypeException, "Failed to save undo information");
++      goto end;
++    }
+ 
+-  // For as long as possible, replace the existing old_len with the
+-  // new old_len. This is a more efficient operation, as it requires
+-  // less memory allocation and freeing.
+-  size_t to_replace = old_len < new_len ? old_len : new_len;
+-  bcount_t inserted_bytes = 0;
+-  for (size_t i = 0; i < to_replace; i++) {
+-    int64_t lnum = start + (int64_t)i;
++    bcount_t deleted_bytes = get_region_bytecount(buf, (linenr_T)start, (linenr_T)end, 0, 0);
+ 
+-    VALIDATE(lnum < MAXLNUM, "%s", "Index out of bounds", {
+-      goto end;
+-    });
++    // If the size of the range is reducing (ie, new_len < old_len) we
++    // need to delete some old_len. We do this at the start, by
++    // repeatedly deleting line "start".
++    size_t to_delete = (new_len < old_len) ? old_len - new_len : 0;
++    for (size_t i = 0; i < to_delete; i++) {
++      if (ml_delete_buf(buf, (linenr_T)start, false) == FAIL) {
++        api_set_error(err, kErrorTypeException, "Failed to delete line");
++        goto end;
++      }
++    }
+ 
+-    if (ml_replace_buf(buf, (linenr_T)lnum, lines[i], false, true) == FAIL) {
+-      api_set_error(err, kErrorTypeException, "Failed to replace line");
+-      goto end;
++    if (to_delete > 0) {
++      extra -= (ptrdiff_t)to_delete;
+     }
+ 
+-    inserted_bytes += (bcount_t)strlen(lines[i]) + 1;
+-  }
++    // For as long as possible, replace the existing old_len with the
++    // new old_len. This is a more efficient operation, as it requires
++    // less memory allocation and freeing.
++    size_t to_replace = old_len < new_len ? old_len : new_len;
++    bcount_t inserted_bytes = 0;
++    for (size_t i = 0; i < to_replace; i++) {
++      int64_t lnum = start + (int64_t)i;
++
++      VALIDATE(lnum < MAXLNUM, "%s", "Index out of bounds", {
++        goto end;
++      });
++
++      if (ml_replace_buf(buf, (linenr_T)lnum, lines[i], false, true) == FAIL) {
++        api_set_error(err, kErrorTypeException, "Failed to replace line");
++        goto end;
++      }
+ 
+-  // Now we may need to insert the remaining new old_len
+-  for (size_t i = to_replace; i < new_len; i++) {
+-    int64_t lnum = start + (int64_t)i - 1;
++      inserted_bytes += (bcount_t)strlen(lines[i]) + 1;
++    }
+ 
+-    VALIDATE(lnum < MAXLNUM, "%s", "Index out of bounds", {
+-      goto end;
+-    });
++    // Now we may need to insert the remaining new old_len
++    for (size_t i = to_replace; i < new_len; i++) {
++      int64_t lnum = start + (int64_t)i - 1;
+ 
+-    if (ml_append_buf(buf, (linenr_T)lnum, lines[i], 0, false) == FAIL) {
+-      api_set_error(err, kErrorTypeException, "Failed to insert line");
+-      goto end;
+-    }
++      VALIDATE(lnum < MAXLNUM, "%s", "Index out of bounds", {
++        goto end;
++      });
+ 
+-    inserted_bytes += (bcount_t)strlen(lines[i]) + 1;
++      if (ml_append_buf(buf, (linenr_T)lnum, lines[i], 0, false) == FAIL) {
++        api_set_error(err, kErrorTypeException, "Failed to insert line");
++        goto end;
++      }
+ 
+-    extra++;
+-  }
++      inserted_bytes += (bcount_t)strlen(lines[i]) + 1;
+ 
+-  // Adjust marks. Invalidate any which lie in the
+-  // changed range, and move any in the remainder of the buffer.
+-  linenr_T adjust = end > start ? MAXLNUM : 0;
+-  mark_adjust_buf(buf, (linenr_T)start, (linenr_T)(end - 1), adjust, (linenr_T)extra,
+-                  true, true, kExtmarkNOOP);
++      extra++;
++    }
+ 
+-  extmark_splice(buf, (int)start - 1, 0, (int)(end - start), 0,
+-                 deleted_bytes, (int)new_len, 0, inserted_bytes,
+-                 kExtmarkUndo);
++    // Adjust marks. Invalidate any which lie in the
++    // changed range, and move any in the remainder of the buffer.
++    linenr_T adjust = end > start ? MAXLNUM : 0;
++    mark_adjust_buf(buf, (linenr_T)start, (linenr_T)(end - 1), adjust, (linenr_T)extra,
++                    true, true, kExtmarkNOOP);
+ 
+-  changed_lines(buf, (linenr_T)start, 0, (linenr_T)end, (linenr_T)extra, true);
++    extmark_splice(buf, (int)start - 1, 0, (int)(end - start), 0,
++                   deleted_bytes, (int)new_len, 0, inserted_bytes,
++                   kExtmarkUndo);
+ 
+-  FOR_ALL_TAB_WINDOWS(tp, win) {
+-    if (win->w_buffer == buf) {
+-      fix_cursor(win, (linenr_T)start, (linenr_T)end, (linenr_T)extra);
+-    }
+-  }
++    changed_lines(buf, (linenr_T)start, 0, (linenr_T)end, (linenr_T)extra, true);
+ 
+-end:
+-  try_end(err);
++    FOR_ALL_TAB_WINDOWS(tp, win) {
++      if (win->w_buffer == buf) {
++        fix_cursor(win, (linenr_T)start, (linenr_T)end, (linenr_T)extra);
++      }
++    }
++    end:;
++  });
+ }
+ 
+ /// Sets (replaces) a range in the buffer
+@@ -593,101 +591,99 @@ void nvim_buf_set_text(uint64_t channel_id, Buffer buffer, Integer start_row, In
+     new_byte += (bcount_t)(last_item.size) + 1;
+   }
+ 
+-  try_start();
+-
+-  if (!MODIFIABLE(buf)) {
+-    api_set_error(err, kErrorTypeException, "Buffer is not 'modifiable'");
+-    goto end;
+-  }
+-
+-  // Small note about undo states: unlike set_lines, we want to save the
+-  // undo state of one past the end_row, since end_row is inclusive.
+-  if (u_save_buf(buf, (linenr_T)start_row - 1, (linenr_T)end_row + 1) == FAIL) {
+-    api_set_error(err, kErrorTypeException, "Failed to save undo information");
+-    goto end;
+-  }
+-
+-  ptrdiff_t extra = 0;  // lines added to text, can be negative
+-  size_t old_len = (size_t)(end_row - start_row + 1);
+-
+-  // If the size of the range is reducing (ie, new_len < old_len) we
+-  // need to delete some old_len. We do this at the start, by
+-  // repeatedly deleting line "start".
+-  size_t to_delete = (new_len < old_len) ? old_len - new_len : 0;
+-  for (size_t i = 0; i < to_delete; i++) {
+-    if (ml_delete_buf(buf, (linenr_T)start_row, false) == FAIL) {
+-      api_set_error(err, kErrorTypeException, "Failed to delete line");
++  TRY_WRAP(err, {
++    if (!MODIFIABLE(buf)) {
++      api_set_error(err, kErrorTypeException, "Buffer is not 'modifiable'");
+       goto end;
+     }
+-  }
+ 
+-  if (to_delete > 0) {
+-    extra -= (ptrdiff_t)to_delete;
+-  }
+-
+-  // For as long as possible, replace the existing old_len with the
+-  // new old_len. This is a more efficient operation, as it requires
+-  // less memory allocation and freeing.
+-  size_t to_replace = old_len < new_len ? old_len : new_len;
+-  for (size_t i = 0; i < to_replace; i++) {
+-    int64_t lnum = start_row + (int64_t)i;
+-
+-    VALIDATE((lnum < MAXLNUM), "%s", "Index out of bounds", {
++    // Small note about undo states: unlike set_lines, we want to save the
++    // undo state of one past the end_row, since end_row is inclusive.
++    if (u_save_buf(buf, (linenr_T)start_row - 1, (linenr_T)end_row + 1) == FAIL) {
++      api_set_error(err, kErrorTypeException, "Failed to save undo information");
+       goto end;
+-    });
++    }
+ 
+-    if (ml_replace_buf(buf, (linenr_T)lnum, lines[i], false, true) == FAIL) {
+-      api_set_error(err, kErrorTypeException, "Failed to replace line");
+-      goto end;
++    ptrdiff_t extra = 0;  // lines added to text, can be negative
++    size_t old_len = (size_t)(end_row - start_row + 1);
++
++    // If the size of the range is reducing (ie, new_len < old_len) we
++    // need to delete some old_len. We do this at the start, by
++    // repeatedly deleting line "start".
++    size_t to_delete = (new_len < old_len) ? old_len - new_len : 0;
++    for (size_t i = 0; i < to_delete; i++) {
++      if (ml_delete_buf(buf, (linenr_T)start_row, false) == FAIL) {
++        api_set_error(err, kErrorTypeException, "Failed to delete line");
++        goto end;
++      }
+     }
+-  }
+ 
+-  // Now we may need to insert the remaining new old_len
+-  for (size_t i = to_replace; i < new_len; i++) {
+-    int64_t lnum = start_row + (int64_t)i - 1;
++    if (to_delete > 0) {
++      extra -= (ptrdiff_t)to_delete;
++    }
+ 
+-    VALIDATE((lnum < MAXLNUM), "%s", "Index out of bounds", {
+-      goto end;
+-    });
++    // For as long as possible, replace the existing old_len with the
++    // new old_len. This is a more efficient operation, as it requires
++    // less memory allocation and freeing.
++    size_t to_replace = old_len < new_len ? old_len : new_len;
++    for (size_t i = 0; i < to_replace; i++) {
++      int64_t lnum = start_row + (int64_t)i;
+ 
+-    if (ml_append_buf(buf, (linenr_T)lnum, lines[i], 0, false) == FAIL) {
+-      api_set_error(err, kErrorTypeException, "Failed to insert line");
+-      goto end;
++      VALIDATE((lnum < MAXLNUM), "%s", "Index out of bounds", {
++        goto end;
++      });
++
++      if (ml_replace_buf(buf, (linenr_T)lnum, lines[i], false, true) == FAIL) {
++        api_set_error(err, kErrorTypeException, "Failed to replace line");
++        goto end;
++      }
+     }
+ 
+-    extra++;
+-  }
++    // Now we may need to insert the remaining new old_len
++    for (size_t i = to_replace; i < new_len; i++) {
++      int64_t lnum = start_row + (int64_t)i - 1;
+ 
+-  colnr_T col_extent = (colnr_T)(end_col
+-                                 - ((end_row == start_row) ? start_col : 0));
+-
+-  // Adjust marks. Invalidate any which lie in the
+-  // changed range, and move any in the remainder of the buffer.
+-  // Do not adjust any cursors. need to use column-aware logic (below)
+-  linenr_T adjust = end_row >= start_row ? MAXLNUM : 0;
+-  mark_adjust_buf(buf, (linenr_T)start_row, (linenr_T)end_row, adjust, (linenr_T)extra,
+-                  true, true, kExtmarkNOOP);
+-
+-  extmark_splice(buf, (int)start_row - 1, (colnr_T)start_col,
+-                 (int)(end_row - start_row), col_extent, old_byte,
+-                 (int)new_len - 1, (colnr_T)last_item.size, new_byte,
+-                 kExtmarkUndo);
+-
+-  changed_lines(buf, (linenr_T)start_row, 0, (linenr_T)end_row + 1, (linenr_T)extra, true);
+-
+-  FOR_ALL_TAB_WINDOWS(tp, win) {
+-    if (win->w_buffer == buf) {
+-      if (win->w_cursor.lnum >= start_row && win->w_cursor.lnum <= end_row) {
+-        fix_cursor_cols(win, (linenr_T)start_row, (colnr_T)start_col, (linenr_T)end_row,
+-                        (colnr_T)end_col, (linenr_T)new_len, (colnr_T)last_item.size);
+-      } else {
+-        fix_cursor(win, (linenr_T)start_row, (linenr_T)end_row, (linenr_T)extra);
++      VALIDATE((lnum < MAXLNUM), "%s", "Index out of bounds", {
++        goto end;
++      });
++
++      if (ml_append_buf(buf, (linenr_T)lnum, lines[i], 0, false) == FAIL) {
++        api_set_error(err, kErrorTypeException, "Failed to insert line");
++        goto end;
+       }
++
++      extra++;
+     }
+-  }
+ 
+-end:
+-  try_end(err);
++    colnr_T col_extent = (colnr_T)(end_col
++                                   - ((end_row == start_row) ? start_col : 0));
++
++    // Adjust marks. Invalidate any which lie in the
++    // changed range, and move any in the remainder of the buffer.
++    // Do not adjust any cursors. need to use column-aware logic (below)
++    linenr_T adjust = end_row >= start_row ? MAXLNUM : 0;
++    mark_adjust_buf(buf, (linenr_T)start_row, (linenr_T)end_row, adjust, (linenr_T)extra,
++                    true, true, kExtmarkNOOP);
++
++    extmark_splice(buf, (int)start_row - 1, (colnr_T)start_col,
++                   (int)(end_row - start_row), col_extent, old_byte,
++                   (int)new_len - 1, (colnr_T)last_item.size, new_byte,
++                   kExtmarkUndo);
++
++    changed_lines(buf, (linenr_T)start_row, 0, (linenr_T)end_row + 1, (linenr_T)extra, true);
++
++    FOR_ALL_TAB_WINDOWS(tp, win) {
++      if (win->w_buffer == buf) {
++        if (win->w_cursor.lnum >= start_row && win->w_cursor.lnum <= end_row) {
++          fix_cursor_cols(win, (linenr_T)start_row, (colnr_T)start_col, (linenr_T)end_row,
++                          (colnr_T)end_col, (linenr_T)new_len, (colnr_T)last_item.size);
++        } else {
++          fix_cursor(win, (linenr_T)start_row, (linenr_T)end_row, (linenr_T)extra);
++        }
++      }
++    }
++    end:;
++  });
+ }
+ 
+ /// Gets a range from the buffer.
+@@ -965,26 +961,27 @@ void nvim_buf_set_name(Buffer buffer, String name, Error *err)
+     return;
+   }
+ 
+-  try_start();
+-
+-  const bool is_curbuf = buf == curbuf;
+-  const int save_acd = p_acd;
+-  if (!is_curbuf) {
+-    // Temporarily disable 'autochdir' when setting file name for another buffer.
+-    p_acd = false;
+-  }
++  int ren_ret = OK;
++  TRY_WRAP(err, {
++    const bool is_curbuf = buf == curbuf;
++    const int save_acd = p_acd;
++    if (!is_curbuf) {
++      // Temporarily disable 'autochdir' when setting file name for another buffer.
++      p_acd = false;
++    }
+ 
+-  // Using aucmd_*: autocommands will be executed by rename_buffer
+-  aco_save_T aco;
+-  aucmd_prepbuf(&aco, buf);
+-  int ren_ret = rename_buffer(name.data);
+-  aucmd_restbuf(&aco);
++    // Using aucmd_*: autocommands will be executed by rename_buffer
++    aco_save_T aco;
++    aucmd_prepbuf(&aco, buf);
++    ren_ret = rename_buffer(name.data);
++    aucmd_restbuf(&aco);
+ 
+-  if (!is_curbuf) {
+-    p_acd = save_acd;
+-  }
++    if (!is_curbuf) {
++      p_acd = save_acd;
++    }
++  });
+ 
+-  if (try_end(err)) {
++  if (ERROR_SET(err)) {
+     return;
+   }
+ 
+@@ -1204,15 +1201,18 @@ Object nvim_buf_call(Buffer buffer, LuaRef fun, Error *err)
+   if (!buf) {
+     return NIL;
+   }
+-  try_start();
+-  aco_save_T aco;
+-  aucmd_prepbuf(&aco, buf);
+ 
+-  Array args = ARRAY_DICT_INIT;
+-  Object res = nlua_call_ref(fun, NULL, args, kRetLuaref, NULL, err);
++  Object res = OBJECT_INIT;
++  TRY_WRAP(err, {
++    aco_save_T aco;
++    aucmd_prepbuf(&aco, buf);
++
++    Array args = ARRAY_DICT_INIT;
++    res = nlua_call_ref(fun, NULL, args, kRetLuaref, NULL, err);
++
++    aucmd_restbuf(&aco);
++  });
+ 
+-  aucmd_restbuf(&aco);
+-  try_end(err);
+   return res;
+ }
+ 
+diff --git a/src/nvim/api/private/helpers.c b/src/nvim/api/private/helpers.c
+index 5bf66a092..4389ae3b3 100644
+--- a/src/nvim/api/private/helpers.c
++++ b/src/nvim/api/private/helpers.c
+@@ -42,8 +42,10 @@
+ 
+ /// Start block that may cause Vimscript exceptions while evaluating another code
+ ///
+-/// Used when caller is supposed to be operating when other Vimscript code is being
+-/// processed and that “other Vimscript code” must not be affected.
++/// Used just in case caller is supposed to be operating when other Vimscript code
++/// is being processed and that “other Vimscript code” must not be affected.
++///
++/// @warning Avoid calling directly; use TRY_WRAP instead.
+ ///
+ /// @param[out]  tstate  Location where try state should be saved.
+ void try_enter(TryState *const tstate)
+@@ -55,75 +57,33 @@ void try_enter(TryState *const tstate)
+     .current_exception = current_exception,
+     .msg_list = (const msglist_T *const *)msg_list,
+     .private_msg_list = NULL,
+-    .trylevel = trylevel,
+     .got_int = got_int,
+     .did_throw = did_throw,
+     .need_rethrow = need_rethrow,
+     .did_emsg = did_emsg,
+   };
++  // `msg_list` controls the collection of abort-causing non-exception errors,
++  // which would otherwise be ignored.  This pattern is from do_cmdline().
+   msg_list = &tstate->private_msg_list;
+   current_exception = NULL;
+-  trylevel = 1;
+   got_int = false;
+   did_throw = false;
+   need_rethrow = false;
+   did_emsg = false;
+-}
+-
+-/// End try block, set the error message if any and restore previous state
+-///
+-/// @warning Return is consistent with most functions (false on error), not with
+-///          try_end (true on error).
+-///
+-/// @param[in]  tstate  Previous state to restore.
+-/// @param[out]  err  Location where error should be saved.
+-///
+-/// @return false if error occurred, true otherwise.
+-bool try_leave(const TryState *const tstate, Error *const err)
+-  FUNC_ATTR_NONNULL_ALL FUNC_ATTR_WARN_UNUSED_RESULT
+-{
+-  const bool ret = !try_end(err);
+-  assert(trylevel == 0);
+-  assert(!need_rethrow);
+-  assert(!got_int);
+-  assert(!did_throw);
+-  assert(!did_emsg);
+-  assert(msg_list == &tstate->private_msg_list);
+-  assert(*msg_list == NULL);
+-  assert(current_exception == NULL);
+-  msg_list = (msglist_T **)tstate->msg_list;
+-  current_exception = tstate->current_exception;
+-  trylevel = tstate->trylevel;
+-  got_int = tstate->got_int;
+-  did_throw = tstate->did_throw;
+-  need_rethrow = tstate->need_rethrow;
+-  did_emsg = tstate->did_emsg;
+-  return ret;
+-}
+-
+-/// Starts a block that may cause Vimscript exceptions; must be mirrored by `try_end()` call.
+-///
+-/// Note: use `TRY_WRAP` instead (except in `FUNC_API_FAST` functions such as nvim_get_runtime_file).
+-///
+-/// To be used as a replacement of `:try … catch … endtry` in C code, in cases
+-/// when error flag could not already be set. If there may be pending error
+-/// state at the time try_start() is executed which needs to be preserved,
+-/// try_enter()/try_leave() pair should be used instead.
+-void try_start(void)
+-{
+   trylevel++;
+ }
+ 
+-/// Ends a `try_start` block; sets error message if any and returns true if an error occurred.
++/// Ends a `try_enter` block; sets error message if any.
+ ///
+-/// Note: use `TRY_WRAP` instead (except in `FUNC_API_FAST` functions such as nvim_get_runtime_file).
++/// @warning Avoid calling directly; use TRY_WRAP instead.
+ ///
+-/// @param err Pointer to the stack-allocated error object
+-/// @return true if an error occurred
+-bool try_end(Error *err)
++/// @param[out] err Pointer to the stack-allocated error object
++void try_leave(const TryState *const tstate, Error *const err)
++  FUNC_ATTR_NONNULL_ALL
+ {
+   // Note: all globals manipulated here should be saved/restored in
+   // try_enter/try_leave.
++  assert(trylevel > 0);
+   trylevel--;
+ 
+   // Set by emsg(), affects aborting().  See also enter_cleanup().
+@@ -166,7 +126,20 @@ bool try_end(Error *err)
+     discard_current_exception();
+   }
+ 
+-  return ERROR_SET(err);
++  assert(msg_list == &tstate->private_msg_list);
++  assert(*msg_list == NULL);
++  assert(current_exception == NULL);
++  assert(!got_int);
++  assert(!did_throw);
++  assert(!need_rethrow);
++  assert(!did_emsg);
++  // Restore the exception context.
++  msg_list = (msglist_T **)tstate->msg_list;
++  current_exception = tstate->current_exception;
++  got_int = tstate->got_int;
++  did_throw = tstate->did_throw;
++  need_rethrow = tstate->need_rethrow;
++  did_emsg = tstate->did_emsg;
+ }
+ 
+ /// Recursively expands a vimscript value in a dict
+diff --git a/src/nvim/api/private/helpers.h b/src/nvim/api/private/helpers.h
+index d06f5c9c6..03ff81144 100644
+--- a/src/nvim/api/private/helpers.h
++++ b/src/nvim/api/private/helpers.h
+@@ -147,27 +147,19 @@ typedef struct {
+   except_T *current_exception;
+   msglist_T *private_msg_list;
+   const msglist_T *const *msg_list;
+-  int trylevel;
+   int got_int;
+   bool did_throw;
+   int need_rethrow;
+   int did_emsg;
+ } TryState;
+ 
+-// `msg_list` controls the collection of abort-causing non-exception errors,
+-// which would otherwise be ignored.  This pattern is from do_cmdline().
+-//
+ // TODO(bfredl): prepare error-handling at "top level" (nv_event).
+ #define TRY_WRAP(err, code) \
+   do { \
+-    msglist_T **saved_msg_list = msg_list; \
+-    msglist_T *private_msg_list; \
+-    msg_list = &private_msg_list; \
+-    private_msg_list = NULL; \
+-    try_start(); \
++    TryState tstate; \
++    try_enter(&tstate); \
+     code; \
+-    try_end(err); \
+-    msg_list = saved_msg_list;  /* Restore the exception context. */ \
++    try_leave(&tstate, err); \
+   } while (0)
+ 
+ // Execute code with cursor position saved and restored and textlock active.
+diff --git a/src/nvim/api/tabpage.c b/src/nvim/api/tabpage.c
+index 56a3f1cf2..b4d519dc9 100644
+--- a/src/nvim/api/tabpage.c
++++ b/src/nvim/api/tabpage.c
+@@ -146,11 +146,9 @@ void nvim_tabpage_set_win(Tabpage tabpage, Window win, Error *err)
+   }
+ 
+   if (tp == curtab) {
+-    try_start();
+-    win_goto(wp);
+-    if (!try_end(err) && curwin != wp) {
+-      api_set_error(err, kErrorTypeException, "Failed to switch to window %d", win);
+-    }
++    TRY_WRAP(err, {
++      win_goto(wp);
++    });
+   } else if (tp->tp_curwin != wp) {
+     tp->tp_prevwin = tp->tp_curwin;
+     tp->tp_curwin = wp;
+diff --git a/src/nvim/api/vim.c b/src/nvim/api/vim.c
+index d82f90d1d..fce7a8624 100644
+--- a/src/nvim/api/vim.c
++++ b/src/nvim/api/vim.c
+@@ -594,12 +594,10 @@ ArrayOf(String) nvim_get_runtime_file(String name, Boolean all, Arena *arena, Er
+   kvi_init(cookie.rv);
+ 
+   int flags = DIP_DIRFILE | (all ? DIP_ALL : 0);
+-  TryState tstate;
+ 
+-  // XXX: intentionally not using `TRY_WRAP`, to avoid `did_emsg=false` in `try_end`.
+-  try_enter(&tstate);
+-  do_in_runtimepath((name.size ? name.data : ""), flags, find_runtime_cb, &cookie);
+-  vim_ignored = try_leave(&tstate, err);
++  TRY_WRAP(err, {
++    do_in_runtimepath((name.size ? name.data : ""), flags, find_runtime_cb, &cookie);
++  });
+ 
+   return arena_take_arraybuilder(arena, &cookie.rv);
+ }
+@@ -952,68 +950,70 @@ void nvim_set_current_win(Window window, Error *err)
+ Buffer nvim_create_buf(Boolean listed, Boolean scratch, Error *err)
+   FUNC_API_SINCE(6)
+ {
+-  try_start();
+-  // Block autocommands for now so they don't mess with the buffer before we
+-  // finish configuring it.
+-  block_autocmds();
+-
+-  buf_T *buf = buflist_new(NULL, NULL, 0,
+-                           BLN_NOOPT | BLN_NEW | (listed ? BLN_LISTED : 0));
+-  if (buf == NULL) {
+-    unblock_autocmds();
+-    goto fail;
+-  }
++  Buffer ret = 0;
+ 
+-  // Open the memline for the buffer. This will avoid spurious autocmds when
+-  // a later nvim_buf_set_lines call would have needed to "open" the buffer.
+-  if (ml_open(buf) == FAIL) {
+-    unblock_autocmds();
+-    goto fail;
+-  }
+-
+-  // Set last_changedtick to avoid triggering a TextChanged autocommand right
+-  // after it was added.
+-  buf->b_last_changedtick = buf_get_changedtick(buf);
+-  buf->b_last_changedtick_i = buf_get_changedtick(buf);
+-  buf->b_last_changedtick_pum = buf_get_changedtick(buf);
++  TRY_WRAP(err, {
++    // Block autocommands for now so they don't mess with the buffer before we
++    // finish configuring it.
++    block_autocmds();
++
++    buf_T *buf = buflist_new(NULL, NULL, 0,
++                             BLN_NOOPT | BLN_NEW | (listed ? BLN_LISTED : 0));
++    if (buf == NULL) {
++      unblock_autocmds();
++      goto fail;
++    }
+ 
+-  // Only strictly needed for scratch, but could just as well be consistent
+-  // and do this now. Buffer is created NOW, not when it later first happens
+-  // to reach a window or aucmd_prepbuf() ..
+-  buf_copy_options(buf, BCO_ENTER | BCO_NOHELP);
++    // Open the memline for the buffer. This will avoid spurious autocmds when
++    // a later nvim_buf_set_lines call would have needed to "open" the buffer.
++    if (ml_open(buf) == FAIL) {
++      unblock_autocmds();
++      goto fail;
++    }
+ 
+-  if (scratch) {
+-    set_option_direct_for(kOptBufhidden, STATIC_CSTR_AS_OPTVAL("hide"), OPT_LOCAL, 0,
+-                          kOptScopeBuf, buf);
+-    set_option_direct_for(kOptBuftype, STATIC_CSTR_AS_OPTVAL("nofile"), OPT_LOCAL, 0,
+-                          kOptScopeBuf, buf);
+-    assert(buf->b_ml.ml_mfp->mf_fd < 0);  // ml_open() should not have opened swapfile already
+-    buf->b_p_swf = false;
+-    buf->b_p_ml = false;
+-  }
++    // Set last_changedtick to avoid triggering a TextChanged autocommand right
++    // after it was added.
++    buf->b_last_changedtick = buf_get_changedtick(buf);
++    buf->b_last_changedtick_i = buf_get_changedtick(buf);
++    buf->b_last_changedtick_pum = buf_get_changedtick(buf);
++
++    // Only strictly needed for scratch, but could just as well be consistent
++    // and do this now. Buffer is created NOW, not when it later first happens
++    // to reach a window or aucmd_prepbuf() ..
++    buf_copy_options(buf, BCO_ENTER | BCO_NOHELP);
++
++    if (scratch) {
++      set_option_direct_for(kOptBufhidden, STATIC_CSTR_AS_OPTVAL("hide"), OPT_LOCAL, 0,
++                            kOptScopeBuf, buf);
++      set_option_direct_for(kOptBuftype, STATIC_CSTR_AS_OPTVAL("nofile"), OPT_LOCAL, 0,
++                            kOptScopeBuf, buf);
++      assert(buf->b_ml.ml_mfp->mf_fd < 0);  // ml_open() should not have opened swapfile already
++      buf->b_p_swf = false;
++      buf->b_p_ml = false;
++    }
+ 
+-  unblock_autocmds();
++    unblock_autocmds();
+ 
+-  bufref_T bufref;
+-  set_bufref(&bufref, buf);
+-  if (apply_autocmds(EVENT_BUFNEW, NULL, NULL, false, buf)
+-      && !bufref_valid(&bufref)) {
+-    goto fail;
+-  }
+-  if (listed
+-      && apply_autocmds(EVENT_BUFADD, NULL, NULL, false, buf)
+-      && !bufref_valid(&bufref)) {
+-    goto fail;
+-  }
++    bufref_T bufref;
++    set_bufref(&bufref, buf);
++    if (apply_autocmds(EVENT_BUFNEW, NULL, NULL, false, buf)
++        && !bufref_valid(&bufref)) {
++      goto fail;
++    }
++    if (listed
++        && apply_autocmds(EVENT_BUFADD, NULL, NULL, false, buf)
++        && !bufref_valid(&bufref)) {
++      goto fail;
++    }
+ 
+-  try_end(err);
+-  return buf->b_fnum;
++    ret = buf->b_fnum;
++    fail:;
++  });
+ 
+-fail:
+-  if (!try_end(err)) {
++  if (ret == 0 && !ERROR_SET(err)) {
+     api_set_error(err, kErrorTypeException, "Failed to create buffer");
+   }
+-  return 0;
++  return ret;
+ }
+ 
+ /// Open a terminal instance in a buffer
+diff --git a/src/nvim/api/vimscript.c b/src/nvim/api/vimscript.c
+index 0ff2b037c..67db615b2 100644
+--- a/src/nvim/api/vimscript.c
++++ b/src/nvim/api/vimscript.c
+@@ -78,24 +78,24 @@ String exec_impl(uint64_t channel_id, String src, Dict(exec_opts) *opts, Error *
+     capture_ga = &capture_local;
+   }
+ 
+-  try_start();
+-  if (opts->output) {
+-    msg_silent++;
+-    msg_col = 0;  // prevent leading spaces
+-  }
++  TRY_WRAP(err, {
++    if (opts->output) {
++      msg_silent++;
++      msg_col = 0;  // prevent leading spaces
++    }
+ 
+-  const sctx_T save_current_sctx = api_set_sctx(channel_id);
++    const sctx_T save_current_sctx = api_set_sctx(channel_id);
+ 
+-  do_source_str(src.data, "nvim_exec2()");
+-  if (opts->output) {
+-    capture_ga = save_capture_ga;
+-    msg_silent = save_msg_silent;
+-    // Put msg_col back where it was, since nothing should have been written.
+-    msg_col = save_msg_col;
+-  }
++    do_source_str(src.data, "nvim_exec2()");
++    if (opts->output) {
++      capture_ga = save_capture_ga;
++      msg_silent = save_msg_silent;
++      // Put msg_col back where it was, since nothing should have been written.
++      msg_col = save_msg_col;
++    }
+ 
+-  current_sctx = save_current_sctx;
+-  try_end(err);
++    current_sctx = save_current_sctx;
++  });
+ 
+   if (ERROR_SET(err)) {
+     goto theend;
+diff --git a/src/nvim/api/window.c b/src/nvim/api/window.c
+index f5e8d8f08..387dad899 100644
+--- a/src/nvim/api/window.c
++++ b/src/nvim/api/window.c
+@@ -368,19 +368,16 @@ void nvim_win_hide(Window window, Error *err)
+   }
+ 
+   tabpage_T *tabpage = win_find_tabpage(win);
+-  TryState tstate;
+-  try_enter(&tstate);
+-
+-  // Never close the autocommand window.
+-  if (is_aucmd_win(win)) {
+-    emsg(_(e_autocmd_close));
+-  } else if (tabpage == curtab) {
+-    win_close(win, false, false);
+-  } else {
+-    win_close_othertab(win, false, tabpage);
+-  }
+-
+-  vim_ignored = try_leave(&tstate, err);
++  TRY_WRAP(err, {
++    // Never close the autocommand window.
++    if (is_aucmd_win(win)) {
++      emsg(_(e_autocmd_close));
++    } else if (tabpage == curtab) {
++      win_close(win, false, false);
++    } else {
++      win_close_othertab(win, false, tabpage);
++    }
++  });
+ }
+ 
+ /// Closes the window (like |:close| with a |window-ID|).
+@@ -400,10 +397,9 @@ void nvim_win_close(Window window, Boolean force, Error *err)
+   }
+ 
+   tabpage_T *tabpage = win_find_tabpage(win);
+-  TryState tstate;
+-  try_enter(&tstate);
+-  ex_win_close(force, win, tabpage == curtab ? NULL : tabpage);
+-  vim_ignored = try_leave(&tstate, err);
++  TRY_WRAP(err, {
++    ex_win_close(force, win, tabpage == curtab ? NULL : tabpage);
++  });
+ }
+ 
+ /// Calls a function with window as temporary current window.
+diff --git a/src/nvim/ex_getln.c b/src/nvim/ex_getln.c
+index 85fbdbd20..2c1653006 100644
+--- a/src/nvim/ex_getln.c
++++ b/src/nvim/ex_getln.c
+@@ -787,9 +787,7 @@ static uint8_t *command_line_enter(int firstc, int count, int indent, bool clear
+   setmouse();
+   setcursor();
+ 
+-  TryState tstate;
+   Error err = ERROR_INIT;
+-  bool tl_ret = true;
+   char firstcbuf[2];
+   firstcbuf[0] = (char)(firstc > 0 ? firstc : '-');
+   firstcbuf[1] = 0;
+@@ -802,20 +800,19 @@ static uint8_t *command_line_enter(int firstc, int count, int indent, bool clear
+     tv_dict_add_str(dict, S_LEN("cmdtype"), firstcbuf);
+     tv_dict_add_nr(dict, S_LEN("cmdlevel"), ccline.level);
+     tv_dict_set_keys_readonly(dict);
+-    try_enter(&tstate);
++    TRY_WRAP(&err, {
++      apply_autocmds(EVENT_CMDLINEENTER, firstcbuf, firstcbuf, false, curbuf);
++      restore_v_event(dict, &save_v_event);
++    });
+ 
+-    apply_autocmds(EVENT_CMDLINEENTER, firstcbuf, firstcbuf, false, curbuf);
+-    restore_v_event(dict, &save_v_event);
+-
+-    tl_ret = try_leave(&tstate, &err);
+-    if (!tl_ret && ERROR_SET(&err)) {
++    if (ERROR_SET(&err)) {
+       msg_putchar('\n');
+       msg_scroll = true;
+       msg_puts_hl(err.msg, HLF_E, true);
+       api_clear_error(&err);
+       redrawcmd();
+     }
+-    tl_ret = true;
++    err = ERROR_INIT;
+   }
+   may_trigger_modechanged();
+ 
+@@ -873,10 +870,10 @@ static uint8_t *command_line_enter(int firstc, int count, int indent, bool clear
+     // not readonly:
+     tv_dict_add_bool(dict, S_LEN("abort"),
+                      s->gotesc ? kBoolVarTrue : kBoolVarFalse);
+-    try_enter(&tstate);
+-    apply_autocmds(EVENT_CMDLINELEAVE, firstcbuf, firstcbuf, false, curbuf);
+-    // error printed below, to avoid redraw issues
+-    tl_ret = try_leave(&tstate, &err);
++    TRY_WRAP(&err, {
++      apply_autocmds(EVENT_CMDLINELEAVE, firstcbuf, firstcbuf, false, curbuf);
++      // error printed below, to avoid redraw issues
++    });
+     if (tv_dict_get_number(dict, "abort") != 0) {
+       s->gotesc = true;
+     }
+@@ -929,7 +926,7 @@ static uint8_t *command_line_enter(int firstc, int count, int indent, bool clear
+   msg_scroll = s->save_msg_scroll;
+   redir_off = false;
+ 
+-  if (!tl_ret && ERROR_SET(&err)) {
++  if (ERROR_SET(&err)) {
+     msg_putchar('\n');
+     emsg(err.msg);
+     did_emsg = false;
+@@ -937,7 +934,7 @@ static uint8_t *command_line_enter(int firstc, int count, int indent, bool clear
+   }
+ 
+   // When the command line was typed, no need for a wait-return prompt.
+-  if (s->some_key_typed && tl_ret) {
++  if (s->some_key_typed && !ERROR_SET(&err)) {
+     need_wait_return = false;
+   }
+ 
+@@ -2315,11 +2312,13 @@ static win_T *cmdpreview_open_win(buf_T *cmdpreview_buf)
+ 
+   win_T *preview_win = curwin;
+   Error err = ERROR_INIT;
++  int result = OK;
+ 
+   // Switch to preview buffer
+-  try_start();
+-  int result = do_buffer(DOBUF_GOTO, DOBUF_FIRST, FORWARD, cmdpreview_buf->handle, 0);
+-  if (try_end(&err) || result == FAIL) {
++  TRY_WRAP(&err, {
++    result = do_buffer(DOBUF_GOTO, DOBUF_FIRST, FORWARD, cmdpreview_buf->handle, 0);
++  });
++  if (ERROR_SET(&err) || result == FAIL) {
+     api_clear_error(&err);
+     return NULL;
+   }
+@@ -2600,9 +2599,10 @@ static bool cmdpreview_may_show(CommandLineState *s)
+   // open the preview window. The preview callback also handles doing the changes and highlights for
+   // the preview.
+   Error err = ERROR_INIT;
+-  try_start();
+-  cmdpreview_type = execute_cmd(&ea, &cmdinfo, true);
+-  if (try_end(&err)) {
++  TRY_WRAP(&err, {
++    cmdpreview_type = execute_cmd(&ea, &cmdinfo, true);
++  });
++  if (ERROR_SET(&err)) {
+     api_clear_error(&err);
+     cmdpreview_type = 0;
+   }
+@@ -2643,7 +2643,6 @@ end:
+ static void do_autocmd_cmdlinechanged(int firstc)
+ {
+   if (has_event(EVENT_CMDLINECHANGED)) {
+-    TryState tstate;
+     Error err = ERROR_INIT;
+     save_v_event_T save_v_event;
+     dict_T *dict = get_v_event(&save_v_event);
+@@ -2656,13 +2655,11 @@ static void do_autocmd_cmdlinechanged(int firstc)
+     tv_dict_add_str(dict, S_LEN("cmdtype"), firstcbuf);
+     tv_dict_add_nr(dict, S_LEN("cmdlevel"), ccline.level);
+     tv_dict_set_keys_readonly(dict);
+-    try_enter(&tstate);
+-
+-    apply_autocmds(EVENT_CMDLINECHANGED, firstcbuf, firstcbuf, false, curbuf);
+-    restore_v_event(dict, &save_v_event);
+-
+-    bool tl_ret = try_leave(&tstate, &err);
+-    if (!tl_ret && ERROR_SET(&err)) {
++    TRY_WRAP(&err, {
++      apply_autocmds(EVENT_CMDLINECHANGED, firstcbuf, firstcbuf, false, curbuf);
++      restore_v_event(dict, &save_v_event);
++    });
++    if (ERROR_SET(&err)) {
+       msg_putchar('\n');
+       msg_scroll = true;
+       msg_puts_hl(err.msg, HLF_E, true);
+@@ -3179,11 +3176,9 @@ static bool color_cmdline(CmdlineInfo *colored_ccline)
+   static int prev_prompt_errors = 0;
+   Callback color_cb = CALLBACK_NONE;
+   bool can_free_cb = false;
+-  TryState tstate;
+   Error err = ERROR_INIT;
+   const char *err_errmsg = e_intern2;
+   bool dgc_ret = true;
+-  bool tl_ret = true;
+ 
+   if (colored_ccline->prompt_id != prev_prompt_id) {
+     prev_prompt_errors = 0;
+@@ -3196,16 +3191,16 @@ static bool color_cmdline(CmdlineInfo *colored_ccline)
+     assert(colored_ccline->input_fn);
+     color_cb = colored_ccline->highlight_callback;
+   } else if (colored_ccline->cmdfirstc == ':') {
+-    try_enter(&tstate);
+-    err_errmsg = N_("E5408: Unable to get g:Nvim_color_cmdline callback: %s");
+-    dgc_ret = tv_dict_get_callback(&globvardict, S_LEN("Nvim_color_cmdline"),
+-                                   &color_cb);
+-    tl_ret = try_leave(&tstate, &err);
++    TRY_WRAP(&err, {
++      err_errmsg = N_("E5408: Unable to get g:Nvim_color_cmdline callback: %s");
++      dgc_ret = tv_dict_get_callback(&globvardict, S_LEN("Nvim_color_cmdline"),
++                                     &color_cb);
++    });
+     can_free_cb = true;
+   } else if (colored_ccline->cmdfirstc == '=') {
+     color_expr_cmdline(colored_ccline, ccline_colors);
+   }
+-  if (!tl_ret || !dgc_ret) {
++  if (ERROR_SET(&err) || !dgc_ret) {
+     goto color_cmdline_error;
+   }
+ 
+@@ -3226,20 +3221,22 @@ static bool color_cmdline(CmdlineInfo *colored_ccline)
+   // correct, with msg_col it just misses leading `:`. Since `redraw!` in
+   // callback lags this is least of the user problems.
+   //
+-  // Also using try_enter() because error messages may overwrite typed
++  // Also using TRY_WRAP because error messages may overwrite typed
+   // command-line which is not expected.
+   getln_interrupted_highlight = false;
+-  try_enter(&tstate);
+-  err_errmsg = N_("E5407: Callback has thrown an exception: %s");
+-  const int saved_msg_col = msg_col;
+-  msg_silent++;
+-  const bool cbcall_ret = callback_call(&color_cb, 1, &arg, &tv);
+-  msg_silent--;
+-  msg_col = saved_msg_col;
+-  if (got_int) {
+-    getln_interrupted_highlight = true;
+-  }
+-  if (!try_leave(&tstate, &err) || !cbcall_ret) {
++  bool cbcall_ret = true;
++  TRY_WRAP(&err, {
++    err_errmsg = N_("E5407: Callback has thrown an exception: %s");
++    const int saved_msg_col = msg_col;
++    msg_silent++;
++    cbcall_ret = callback_call(&color_cb, 1, &arg, &tv);
++    msg_silent--;
++    msg_col = saved_msg_col;
++    if (got_int) {
++      getln_interrupted_highlight = true;
++    }
++  });
++  if (ERROR_SET(&err) || !cbcall_ret) {
+     goto color_cmdline_error;
+   }
+   if (tv.v_type != VAR_LIST) {
+diff --git a/src/nvim/lua/stdlib.c b/src/nvim/lua/stdlib.c
+index 5ebff3a80..4de25f426 100644
+--- a/src/nvim/lua/stdlib.c
++++ b/src/nvim/lua/stdlib.c
+@@ -623,38 +623,32 @@ static int nlua_with(lua_State *L)
+   cmdmod.cmod_flags = flags;
+   apply_cmdmod(&cmdmod);
+ 
+-  if (buf || win) {
+-    try_start();
+-  }
+-
+-  aco_save_T aco;
+-  win_execute_T win_execute_args;
+   Error err = ERROR_INIT;
++  TRY_WRAP(&err, {
++    aco_save_T aco;
++    win_execute_T win_execute_args;
+ 
+-  if (win) {
+-    tabpage_T *tabpage = win_find_tabpage(win);
+-    if (!win_execute_before(&win_execute_args, win, tabpage)) {
+-      goto end;
++    if (win) {
++      tabpage_T *tabpage = win_find_tabpage(win);
++      if (!win_execute_before(&win_execute_args, win, tabpage)) {
++        goto end;
++      }
++    } else if (buf) {
++      aucmd_prepbuf(&aco, buf);
+     }
+-  } else if (buf) {
+-    aucmd_prepbuf(&aco, buf);
+-  }
+ 
+-  int s = lua_gettop(L);
+-  lua_pushvalue(L, 2);
+-  status = lua_pcall(L, 0, LUA_MULTRET, 0);
+-  rets = lua_gettop(L) - s;
++    int s = lua_gettop(L);
++    lua_pushvalue(L, 2);
++    status = lua_pcall(L, 0, LUA_MULTRET, 0);
++    rets = lua_gettop(L) - s;
+ 
+-  if (win) {
+-    win_execute_after(&win_execute_args);
+-  } else if (buf) {
+-    aucmd_restbuf(&aco);
+-  }
+-
+-end:
+-  if (buf || win) {
+-    try_end(&err);
+-  }
++    if (win) {
++      win_execute_after(&win_execute_args);
++    } else if (buf) {
++      aucmd_restbuf(&aco);
++    }
++    end:;
++  });
+ 
+   undo_cmdmod(&cmdmod);
+   cmdmod = save_cmdmod;
+diff --git a/src/nvim/option.c b/src/nvim/option.c
+index e261f06b4..9ad8256f1 100644
+--- a/src/nvim/option.c
++++ b/src/nvim/option.c
+@@ -3933,7 +3933,7 @@ static bool switch_option_context(void *const ctx, OptScope scope, void *const f
+         == FAIL) {
+       restore_win_noblock(switchwin, true);
+ 
+-      if (try_end(err)) {
++      if (ERROR_SET(err)) {
+         return false;
+       }
+       api_set_error(err, kErrorTypeException, "Problem while switching windows");

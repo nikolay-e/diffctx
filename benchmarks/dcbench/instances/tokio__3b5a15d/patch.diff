@@ -1,0 +1,770 @@
+From 3b5a15dfdfc5dc789dcb80cef0986fb2fa5cac0a Mon Sep 17 00:00:00 2001
+From: Motoyuki Kimura <moymoymox@gmail.com>
+Date: Sat, 20 Sep 2025 00:22:44 +0900
+Subject: [PATCH] fs: use the Cargo feature for io-uring support instead of cfg
+ (#7621)
+
+Co-authored-by: Emile Fugulin <code@efugulin.com>
+---
+ .github/workflows/ci.yml                      |  95 +++++-----------
+ .../workflows/uring-kernel-version-test.yml   |   4 +-
+ Cargo.toml                                    |   1 -
+ tokio/Cargo.toml                              |  18 +--
+ tokio/src/fs/mod.rs                           |   2 +-
+ tokio/src/fs/open_options.rs                  | 105 +++++++++++++++---
+ tokio/src/io/mod.rs                           |   2 +-
+ tokio/src/macros/cfg.rs                       |  23 ++--
+ tokio/src/runtime/builder.rs                  |  12 +-
+ tokio/src/runtime/driver.rs                   |   2 +-
+ tokio/src/runtime/io/driver.rs                |  42 ++++++-
+ tokio/src/runtime/io/mod.rs                   |   2 +-
+ tokio/tests/fs_try_exists.rs                  |   5 +-
+ tokio/tests/fs_uring.rs                       |   8 +-
+ 14 files changed, 207 insertions(+), 114 deletions(-)
+
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 20175e1..6121142 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -78,8 +78,10 @@ jobs:
+       - name: test tokio full
+         run: |
+           set -euxo pipefail
+-          cargo nextest run --features full
+-          cargo test --doc --features full
++          # We use `--features "full,test-util"` instead of `--all-features` since
++          # `--all-features` includes `io_uring`, which is not available on all targets.
++          cargo nextest run --features full,test-util
++          cargo test --doc --features full,test-util
+         working-directory: tokio
+ 
+   test-workspace-all-features:
+@@ -245,9 +247,12 @@ jobs:
+     strategy:
+       matrix:
+         include:
+-          - os: windows-latest
+-          - os: ubuntu-latest
+-          - os: macos-latest
++          # We use `--features "full,test-util"` instead of `--all-features` since
++          # `--all-features` includes `io_uring`, which is not available on all targets.
++          - { os: windows-latest, features: "full,test-util" }
++          - { os: ubuntu-latest, features: "full,test-util" }
++          - { os: ubuntu-latest, features: "full,test-util,io-uring" }
++          - { os: macos-latest, features: "full,test-util" }
+     steps:
+       - uses: actions/checkout@v5
+       - name: Install Rust ${{ env.rust_stable }}
+@@ -265,8 +270,8 @@ jobs:
+       - name: test tokio full --cfg unstable
+         run: |
+           set -euxo pipefail
+-          cargo nextest run --all-features
+-          cargo test --doc --all-features
++          cargo nextest run --features ${{ matrix.features }}
++          cargo test --doc --features ${{ matrix.features }}
+         working-directory: tokio
+         env:
+           RUSTFLAGS: --cfg tokio_unstable -Dwarnings
+@@ -308,50 +313,6 @@ jobs:
+           # the unstable cfg to RustDoc
+           RUSTDOCFLAGS: --cfg tokio_unstable --cfg tokio_taskdump
+ 
+-  test-uring:
+-    name: test tokio full --cfg tokio_uring
+-    needs: basics
+-    runs-on: ${{ matrix.os }}
+-    strategy:
+-      matrix:
+-        include:
+-          - os: ubuntu-latest
+-    steps:
+-      - name: check if io-uring is supported in the CI environment
+-        run: |
+-          # Try to read the io-uring setting in the kernel config file.
+-          # https://github.com/torvalds/linux/blob/75f5f23f8787c5e184fcb2fbcd02d8e9317dc5e7/init/Kconfig#L1782-L1789
+-          CONFIG_FILE="/boot/config-$(uname -r)"
+-          echo "Checking $CONFIG_FILE for io-uring support"
+-          if ! grep -q "CONFIG_IO_URING=y" "$CONFIG_FILE"; then
+-            echo "Error: io_uring is not supported"
+-            exit 1
+-          fi
+-
+-      - uses: actions/checkout@v5
+-      - name: Install Rust ${{ env.rust_stable }}
+-        uses: dtolnay/rust-toolchain@stable
+-        with:
+-            toolchain: ${{ env.rust_stable }}
+-
+-      - name: Install cargo-nextest
+-        uses: taiki-e/install-action@v2
+-        with:
+-          tool: cargo-nextest
+-
+-      - uses: Swatinem/rust-cache@v2
+-      - name: test tokio full --cfg tokio_uring
+-        run: |
+-          set -euxo pipefail
+-          cargo nextest run --all-features
+-          cargo test --doc --all-features
+-        working-directory: tokio
+-        env:
+-          RUSTFLAGS: --cfg tokio_uring -Dwarnings
+-          # in order to run doctests for unstable features, we must also pass
+-          # the unstable cfg to RustDoc
+-          RUSTDOCFLAGS: --cfg tokio_uring
+-
+   check-unstable-mt-counters:
+     name: check tokio full --internal-mt-counters
+     needs: basics
+@@ -510,7 +471,8 @@ jobs:
+           target: ${{ matrix.target }}
+ 
+       - uses: Swatinem/rust-cache@v2
+-      - run: cargo check --workspace --all-features --target ${{ matrix.target }}
++      # We don't use --all-features since io-uring will be enabled and is not supported on those targets.
++      - run: cargo check --workspace --features full,test-util --target ${{ matrix.target }}
+         env:
+           RUSTFLAGS: --cfg tokio_unstable -Dwarnings
+ 
+@@ -580,8 +542,10 @@ jobs:
+       - name: Tests run with all features (including parking_lot)
+         run: |
+           set -euxo pipefail
+-          cargo nextest run -p tokio --all-features --target ${{ matrix.target }}
+-          cargo test --doc -p tokio --all-features --target ${{ matrix.target }}
++          # We use `--features "full,test-util"` instead of `--all-features` since
++          # `--all-features` includes `io_uring`, which is not available on all targets.
++          cargo nextest run -p tokio --features full,test-util --target ${{ matrix.target }}
++          cargo test --doc -p tokio --features full,test-util --target ${{ matrix.target }}
+         env:
+           RUST_TEST_THREADS: 1
+           RUSTFLAGS: --cfg tokio_unstable -Dwarnings --cfg tokio_no_tuning_tests ${{ matrix.rustflags }}
+@@ -630,6 +594,8 @@ jobs:
+       - name: Tests run with all features (without parking_lot)
+         run: |
+           set -euxo pipefail
++          # We use `--features "full,test-util"` instead of `--all-features` since
++          # `--all-features` includes `io_uring`, which is not available on all targets.
+           cargo nextest run -p tokio --features full,test-util --target ${{ matrix.target }}
+           cargo test --doc -p tokio --features full,test-util --target ${{ matrix.target }}
+         env:
+@@ -662,8 +628,10 @@ jobs:
+       - uses: Swatinem/rust-cache@v2
+       - name: test tokio --all-features
+         run: |
+-          cargo nextest run -Zbuild-std --target target-specs/i686-unknown-linux-gnu.json -p tokio --all-features
+-          cargo test --doc -Zbuild-std --target target-specs/i686-unknown-linux-gnu.json -p tokio --all-features
++          # We use `--features "full,test-util"` instead of `--all-features` since
++          # `--all-features` includes `io_uring`, which is not available on all targets.
++          cargo nextest run -Zbuild-std --target target-specs/i686-unknown-linux-gnu.json -p tokio --features full,test-util
++          cargo test --doc -Zbuild-std --target target-specs/i686-unknown-linux-gnu.json -p tokio --features full,test-util
+         env:
+           RUST_TEST_THREADS: 1
+           RUSTFLAGS: --cfg tokio_unstable --cfg tokio_taskdump -Dwarnings --cfg tokio_no_tuning_tests
+@@ -689,7 +657,8 @@ jobs:
+       # https://github.com/tokio-rs/tokio/pull/5356
+       # https://github.com/tokio-rs/tokio/issues/5373
+       - name: Check
+-        run: cargo hack check -Zbuild-std --target target-specs/i686-unknown-linux-gnu.json -p tokio --feature-powerset --depth 2 --keep-going
++        # We use `--skip io-uring` since io-uring crate doesn't provide a binding for the i686 target.
++        run: cargo hack check -Zbuild-std --target target-specs/i686-unknown-linux-gnu.json -p tokio --feature-powerset --skip io-uring --depth 2 --keep-going
+         env:
+           RUSTFLAGS: --cfg tokio_unstable --cfg tokio_taskdump -Dwarnings
+ 
+@@ -701,12 +670,8 @@ jobs:
+       matrix:
+         include:
+           - { name: "", rustflags: "" }
+-          # Try with unstable feature flags
+           - { name: "--unstable", rustflags: "--cfg tokio_unstable -Dwarnings" }
+-          # Try with unstable and taskdump feature flags
+           - { name: "--unstable --taskdump", rustflags: "--cfg tokio_unstable -Dwarnings --cfg tokio_taskdump" }
+-          - { name: "--tokio_uring", rustflags: "-Dwarnings --cfg tokio_uring" }
+-          - { name: "--unstable --taskdump --tokio_uring", rustflags: "--cfg tokio_unstable -Dwarnings --cfg tokio_taskdump --cfg tokio_uring" }
+     steps:
+       - uses: actions/checkout@v5
+       - name: Install Rust ${{ env.rust_nightly }}
+@@ -769,7 +734,7 @@ jobs:
+           cargo hack check --all-features --ignore-private
+       - name: "check --all-features --unstable -Z minimal-versions"
+         env:
+-          RUSTFLAGS: --cfg tokio_unstable --cfg tokio_taskdump --cfg tokio_uring -Dwarnings
++          RUSTFLAGS: --cfg tokio_unstable --cfg tokio_taskdump -Dwarnings
+         run: |
+           # Remove dev-dependencies from Cargo.toml to prevent the next `cargo update`
+           # from determining minimal versions based on dev-dependencies.
+@@ -805,7 +770,7 @@ jobs:
+       matrix:
+         rustflags:
+           - ""
+-          - "--cfg tokio_unstable --cfg tokio_taskdump --cfg tokio_uring -Dwarnings"
++          - "--cfg tokio_unstable --cfg tokio_taskdump -Dwarnings"
+     steps:
+       - uses: actions/checkout@v5
+       - name: Install Rust ${{ env.rust_clippy }}
+@@ -828,8 +793,8 @@ jobs:
+         run:
+           - os: windows-latest
+           - os: ubuntu-latest
+-            RUSTFLAGS: --cfg tokio_taskdump --cfg tokio_uring
+-            RUSTDOCFLAGS: --cfg tokio_taskdump --cfg tokio_uring
++            RUSTFLAGS: --cfg tokio_taskdump
++            RUSTDOCFLAGS: --cfg tokio_taskdump
+ 
+     steps:
+       - uses: actions/checkout@v5
+diff --git a/.github/workflows/uring-kernel-version-test.yml b/.github/workflows/uring-kernel-version-test.yml
+index 29466fe..95c91c8 100644
+--- a/.github/workflows/uring-kernel-version-test.yml
++++ b/.github/workflows/uring-kernel-version-test.yml
+@@ -44,8 +44,8 @@ jobs:
+         run: |
+           # Build both integration (tokio/tests/) and unit (e.g., tokio/src/fs/file/tests.rs) tests with io_uring enabled
+           rustup target add x86_64-unknown-linux-musl
+-          RUSTFLAGS="--cfg tokio_uring" \
+-            cargo test -p tokio --features full \
++          RUSTFLAGS="--cfg tokio_unstable" \
++            cargo test -p tokio --features full,io-uring \
+             --target x86_64-unknown-linux-musl --test 'fs*' --lib --no-run
+ 
+       - name: Prepare initramfs + tests binaries
+diff --git a/Cargo.toml b/Cargo.toml
+index 6ed579b..8f1a02e 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -29,6 +29,5 @@ unexpected_cfgs = { level = "warn", check-cfg = [
+   'cfg(tokio_no_tuning_tests)',
+   'cfg(tokio_taskdump)',
+   'cfg(tokio_unstable)',
+-  'cfg(tokio_uring)',
+   'cfg(target_os, values("cygwin"))',
+ ] }
+diff --git a/tokio/Cargo.toml b/tokio/Cargo.toml
+index 52085e9..01daacd 100644
+--- a/tokio/Cargo.toml
++++ b/tokio/Cargo.toml
+@@ -84,6 +84,8 @@ signal = [
+ sync = []
+ test-util = ["rt", "sync", "time"]
+ time = []
++# Unstable feature. Requires `--cfg tokio_unstable` to enable.
++io-uring = ["dep:io-uring", "libc", "mio/os-poll", "mio/os-ext", "dep:slab"]
+ 
+ [dependencies]
+ tokio-macros = { version = "~2.5.0", path = "../tokio-macros", optional = true }
+@@ -103,11 +105,13 @@ socket2 = { version = "0.6.0", optional = true, features = ["all"] }
+ [target.'cfg(tokio_unstable)'.dependencies]
+ tracing = { version = "0.1.29", default-features = false, features = ["std"], optional = true } # Not in full
+ 
+-[target.'cfg(all(tokio_uring, target_os = "linux"))'.dependencies]
+-io-uring = { version = "0.7.6", default-features = false }
+-libc = { version = "0.2.168" }
+-mio = { version = "1.0.1", default-features = false, features = ["os-poll", "os-ext"] }
+-slab = "0.4.9"
++# Currently unstable. The API exposed by these features may be broken at any time.
++# Requires `--cfg tokio_unstable` to enable.
++[target.'cfg(all(tokio_unstable, target_os = "linux"))'.dependencies]
++io-uring = { version = "0.7.6", default-features = false, optional = true }
++libc = { version = "0.2.168", optional = true }
++mio = { version = "1.0.1", default-features = false, features = ["os-poll", "os-ext"], optional = true }
++slab = { version = "0.4.9", optional = true }
+ 
+ # Currently unstable. The API exposed by these features may be broken at any time.
+ # Requires `--cfg tokio_unstable` to enable.
+@@ -165,10 +169,10 @@ tracing-mock = "= 0.1.0-beta.1"
+ [package.metadata.docs.rs]
+ all-features = true
+ # enable unstable features in the documentation
+-rustdoc-args = ["--cfg", "docsrs", "--cfg", "tokio_unstable", "--cfg", "tokio_taskdump", "--cfg", "tokio_uring"]
++rustdoc-args = ["--cfg", "docsrs", "--cfg", "tokio_unstable", "--cfg", "tokio_taskdump"]
+ # it's necessary to _also_ pass `--cfg tokio_unstable` and `--cfg tokio_taskdump`
+ # to rustc, or else dependencies will not be enabled, and the docs build will fail.
+-rustc-args = ["--cfg", "tokio_unstable", "--cfg", "tokio_taskdump", "--cfg", "tokio_uring"]
++rustc-args = ["--cfg", "tokio_unstable", "--cfg", "tokio_taskdump"]
+ 
+ [package.metadata.playground]
+ features = ["full", "test-util"]
+diff --git a/tokio/src/fs/mod.rs b/tokio/src/fs/mod.rs
+index 7e0c35b..d677645 100644
+--- a/tokio/src/fs/mod.rs
++++ b/tokio/src/fs/mod.rs
+@@ -237,7 +237,7 @@ pub use self::metadata::metadata;
+ 
+ mod open_options;
+ pub use self::open_options::OpenOptions;
+-cfg_tokio_uring! {
++cfg_io_uring! {
+     pub(crate) use self::open_options::UringOpenOptions;
+ }
+ 
+diff --git a/tokio/src/fs/open_options.rs b/tokio/src/fs/open_options.rs
+index c10f4ee..9646dec 100644
+--- a/tokio/src/fs/open_options.rs
++++ b/tokio/src/fs/open_options.rs
+@@ -3,7 +3,7 @@ use crate::fs::{asyncify, File};
+ use std::io;
+ use std::path::Path;
+ 
+-cfg_tokio_uring! {
++cfg_io_uring! {
+     mod uring_open_options;
+     pub(crate) use uring_open_options::UringOpenOptions;
+     use crate::runtime::driver::op::Op;
+@@ -92,7 +92,13 @@ pub struct OpenOptions {
+ #[derive(Debug, Clone)]
+ enum Kind {
+     Std(StdOpenOptions),
+-    #[cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux"))]
++    #[cfg(all(
++        tokio_unstable,
++        feature = "io-uring",
++        feature = "rt",
++        feature = "fs",
++        target_os = "linux"
++    ))]
+     Uring(UringOpenOptions),
+ }
+ 
+@@ -114,9 +120,21 @@ impl OpenOptions {
+     /// let future = options.read(true).open("foo.txt");
+     /// ```
+     pub fn new() -> OpenOptions {
+-        #[cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux"))]
++        #[cfg(all(
++            tokio_unstable,
++            feature = "io-uring",
++            feature = "rt",
++            feature = "fs",
++            target_os = "linux"
++        ))]
+         let inner = Kind::Uring(UringOpenOptions::new());
+-        #[cfg(not(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux")))]
++        #[cfg(not(all(
++            tokio_unstable,
++            feature = "io-uring",
++            feature = "rt",
++            feature = "fs",
++            target_os = "linux"
++        )))]
+         let inner = Kind::Std(StdOpenOptions::new());
+ 
+         OpenOptions { inner }
+@@ -152,7 +170,13 @@ impl OpenOptions {
+             Kind::Std(opts) => {
+                 opts.read(read);
+             }
+-            #[cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux"))]
++            #[cfg(all(
++                tokio_unstable,
++                feature = "io-uring",
++                feature = "rt",
++                feature = "fs",
++                target_os = "linux"
++            ))]
+             Kind::Uring(opts) => {
+                 opts.read(read);
+             }
+@@ -190,7 +214,13 @@ impl OpenOptions {
+             Kind::Std(opts) => {
+                 opts.write(write);
+             }
+-            #[cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux"))]
++            #[cfg(all(
++                tokio_unstable,
++                feature = "io-uring",
++                feature = "rt",
++                feature = "fs",
++                target_os = "linux"
++            ))]
+             Kind::Uring(opts) => {
+                 opts.write(write);
+             }
+@@ -257,7 +287,13 @@ impl OpenOptions {
+             Kind::Std(opts) => {
+                 opts.append(append);
+             }
+-            #[cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux"))]
++            #[cfg(all(
++                tokio_unstable,
++                feature = "io-uring",
++                feature = "rt",
++                feature = "fs",
++                target_os = "linux"
++            ))]
+             Kind::Uring(opts) => {
+                 opts.append(append);
+             }
+@@ -298,7 +334,13 @@ impl OpenOptions {
+             Kind::Std(opts) => {
+                 opts.truncate(truncate);
+             }
+-            #[cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux"))]
++            #[cfg(all(
++                tokio_unstable,
++                feature = "io-uring",
++                feature = "rt",
++                feature = "fs",
++                target_os = "linux"
++            ))]
+             Kind::Uring(opts) => {
+                 opts.truncate(truncate);
+             }
+@@ -342,7 +384,13 @@ impl OpenOptions {
+             Kind::Std(opts) => {
+                 opts.create(create);
+             }
+-            #[cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux"))]
++            #[cfg(all(
++                tokio_unstable,
++                feature = "io-uring",
++                feature = "rt",
++                feature = "fs",
++                target_os = "linux"
++            ))]
+             Kind::Uring(opts) => {
+                 opts.create(create);
+             }
+@@ -393,7 +441,13 @@ impl OpenOptions {
+             Kind::Std(opts) => {
+                 opts.create_new(create_new);
+             }
+-            #[cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux"))]
++            #[cfg(all(
++                tokio_unstable,
++                feature = "io-uring",
++                feature = "rt",
++                feature = "fs",
++                target_os = "linux"
++            ))]
+             Kind::Uring(opts) => {
+                 opts.create_new(create_new);
+             }
+@@ -437,8 +491,9 @@ impl OpenOptions {
+     /// # io_uring support
+     ///
+     /// On Linux, you can also use `io_uring` for executing system calls.
+-    /// To enable `io_uring`, you need to specify the `--cfg tokio_uring` flag
+-    /// at compile time and set the `Builder::enable_io_uring` runtime option.
++    /// To enable `io_uring`, you need to specify the `--cfg tokio_unstable`
++    /// flag at compile time, enable the `io-uring` cargo feature, and set the
++    /// `Builder::enable_io_uring` runtime option.
+     ///
+     /// Support for `io_uring` is currently experimental, so its behavior may
+     /// change or it may be removed in future versions.
+@@ -465,7 +520,13 @@ impl OpenOptions {
+     pub async fn open(&self, path: impl AsRef<Path>) -> io::Result<File> {
+         match &self.inner {
+             Kind::Std(opts) => Self::std_open(opts, path).await,
+-            #[cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux"))]
++            #[cfg(all(
++                tokio_unstable,
++                feature = "io-uring",
++                feature = "rt",
++                feature = "fs",
++                target_os = "linux"
++            ))]
+             Kind::Uring(opts) => {
+                 let handle = crate::runtime::Handle::current();
+                 let driver_handle = handle.inner.driver().io();
+@@ -528,7 +589,13 @@ feature! {
+                 Kind::Std(opts) => {
+                     opts.mode(mode);
+                 }
+-                #[cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux"))]
++                #[cfg(all(
++                    tokio_unstable,
++                    feature = "io-uring",
++                    feature = "rt",
++                    feature = "fs",
++                    target_os = "linux"
++                ))]
+                 Kind::Uring(opts) => {
+                     opts.mode(mode);
+                 }
+@@ -567,7 +634,13 @@ feature! {
+                 Kind::Std(opts) => {
+                     opts.custom_flags(flags);
+                 }
+-                #[cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux"))]
++                #[cfg(all(
++                    tokio_unstable,
++                    feature = "io-uring",
++                    feature = "rt",
++                    feature = "fs",
++                    target_os = "linux"
++                ))]
+                 Kind::Uring(opts) => {
+                     opts.custom_flags(flags);
+                 }
+@@ -766,7 +839,7 @@ impl From<StdOpenOptions> for OpenOptions {
+         OpenOptions {
+             inner: Kind::Std(options),
+             // TODO: Add support for converting `StdOpenOptions` to `UringOpenOptions`
+-            // if user enables the `--cfg tokio_uring`. It is blocked by:
++            // if user enables `io-uring` cargo feature. It is blocked by:
+             // * https://github.com/rust-lang/rust/issues/74943
+             // * https://github.com/rust-lang/rust/issues/76801
+         }
+diff --git a/tokio/src/io/mod.rs b/tokio/src/io/mod.rs
+index 559ffda..8b20ea6 100644
+--- a/tokio/src/io/mod.rs
++++ b/tokio/src/io/mod.rs
+@@ -294,6 +294,6 @@ cfg_io_blocking! {
+     }
+ }
+ 
+-cfg_tokio_uring! {
++cfg_io_uring! {
+     pub(crate) mod uring;
+ }
+diff --git a/tokio/src/macros/cfg.rs b/tokio/src/macros/cfg.rs
+index 7c1dcc6..f5dfc38 100644
+--- a/tokio/src/macros/cfg.rs
++++ b/tokio/src/macros/cfg.rs
+@@ -142,7 +142,8 @@ macro_rules! cfg_io_driver {
+                 all(unix, feature = "process"),
+                 all(unix, feature = "signal"),
+                 all(
+-                    tokio_uring,
++                    tokio_unstable,
++                    feature = "io-uring",
+                     feature = "rt",
+                     feature = "fs",
+                     target_os = "linux"
+@@ -153,7 +154,8 @@ macro_rules! cfg_io_driver {
+                 all(unix, feature = "process"),
+                 all(unix, feature = "signal"),
+                 all(
+-                    tokio_uring,
++                    tokio_unstable,
++                    feature = "io-uring",
+                     feature = "rt",
+                     feature = "fs",
+                     target_os = "linux"
+@@ -172,7 +174,8 @@ macro_rules! cfg_io_driver_impl {
+                 all(unix, feature = "process"),
+                 all(unix, feature = "signal"),
+                 all(
+-                    tokio_uring,
++                    tokio_unstable,
++                    feature = "io-uring",
+                     feature = "rt",
+                     feature = "fs",
+                     target_os = "linux"
+@@ -191,7 +194,8 @@ macro_rules! cfg_not_io_driver {
+                 all(unix, feature = "process"),
+                 all(unix, feature = "signal"),
+                 all(
+-                    tokio_uring,
++                    tokio_unstable,
++                    feature = "io-uring",
+                     feature = "rt",
+                     feature = "fs",
+                     target_os = "linux"
+@@ -330,7 +334,8 @@ macro_rules! cfg_net_or_uring {
+             #[cfg(any(
+                 feature = "net",
+                 all(
+-                    tokio_uring,
++                    tokio_unstable,
++                    feature = "io-uring",
+                     feature = "rt",
+                     feature = "fs",
+                     target_os = "linux",
+@@ -341,7 +346,8 @@ macro_rules! cfg_net_or_uring {
+                 doc(cfg(any(
+                     feature = "net",
+                     all(
+-                        tokio_uring,
++                        tokio_unstable,
++                        feature = "io-uring",
+                         feature = "rt",
+                         feature = "fs",
+                         target_os = "linux",
+@@ -691,11 +697,12 @@ macro_rules! cfg_metrics_variant {
+     }
+ }
+ 
+-macro_rules! cfg_tokio_uring {
++macro_rules! cfg_io_uring {
+     ($($item:item)*) => {
+         $(
+             #[cfg(all(
+-                tokio_uring,
++                tokio_unstable,
++                feature = "io-uring",
+                 feature = "rt",
+                 feature = "fs",
+                 target_os = "linux",
+diff --git a/tokio/src/runtime/builder.rs b/tokio/src/runtime/builder.rs
+index 3fc3cfe..c11cd3b 100644
+--- a/tokio/src/runtime/builder.rs
++++ b/tokio/src/runtime/builder.rs
+@@ -339,7 +339,13 @@ impl Builder {
+         ))]
+         self.enable_io();
+ 
+-        #[cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux",))]
++        #[cfg(all(
++            tokio_unstable,
++            feature = "io-uring",
++            feature = "rt",
++            feature = "fs",
++            target_os = "linux",
++        ))]
+         self.enable_io_uring();
+ 
+         #[cfg(feature = "time")]
+@@ -1584,7 +1590,7 @@ cfg_time! {
+     }
+ }
+ 
+-cfg_tokio_uring! {
++cfg_io_uring! {
+     impl Builder {
+         /// Enables the tokio's io_uring driver.
+         ///
+@@ -1600,7 +1606,7 @@ cfg_tokio_uring! {
+         ///     .build()
+         ///     .unwrap();
+         /// ```
+-        #[cfg_attr(docsrs, doc(cfg(tokio_uring)))]
++        #[cfg_attr(docsrs, doc(cfg(feature = "io-uring")))]
+         pub fn enable_io_uring(&mut self) -> &mut Self {
+             // Currently, the uring flag is equivalent to `enable_io`.
+             self.enable_io = true;
+diff --git a/tokio/src/runtime/driver.rs b/tokio/src/runtime/driver.rs
+index f06b704..a1a6df8 100644
+--- a/tokio/src/runtime/driver.rs
++++ b/tokio/src/runtime/driver.rs
+@@ -348,6 +348,6 @@ cfg_not_time! {
+     }
+ }
+ 
+-cfg_tokio_uring! {
++cfg_io_uring! {
+     pub(crate) mod op;
+ }
+diff --git a/tokio/src/runtime/io/driver.rs b/tokio/src/runtime/io/driver.rs
+index 1a49b47..04540cf 100644
+--- a/tokio/src/runtime/io/driver.rs
++++ b/tokio/src/runtime/io/driver.rs
+@@ -2,7 +2,7 @@
+ cfg_signal_internal_and_unix! {
+     mod signal;
+ }
+-cfg_tokio_uring! {
++cfg_io_uring! {
+     mod uring;
+     use uring::UringContext;
+     use crate::loom::sync::atomic::AtomicUsize;
+@@ -51,10 +51,22 @@ pub(crate) struct Handle {
+ 
+     pub(crate) metrics: IoDriverMetrics,
+ 
+-    #[cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux",))]
++    #[cfg(all(
++        tokio_unstable,
++        feature = "io-uring",
++        feature = "rt",
++        feature = "fs",
++        target_os = "linux",
++    ))]
+     pub(crate) uring_context: Mutex<UringContext>,
+ 
+-    #[cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux",))]
++    #[cfg(all(
++        tokio_unstable,
++        feature = "io-uring",
++        feature = "rt",
++        feature = "fs",
++        target_os = "linux",
++    ))]
+     pub(crate) uring_state: AtomicUsize,
+ }
+ 
+@@ -123,9 +135,21 @@ impl Driver {
+             #[cfg(not(target_os = "wasi"))]
+             waker,
+             metrics: IoDriverMetrics::default(),
+-            #[cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux",))]
++            #[cfg(all(
++                tokio_unstable,
++                feature = "io-uring",
++                feature = "rt",
++                feature = "fs",
++                target_os = "linux",
++            ))]
+             uring_context: Mutex::new(UringContext::new()),
+-            #[cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux",))]
++            #[cfg(all(
++                tokio_unstable,
++                feature = "io-uring",
++                feature = "rt",
++                feature = "fs",
++                target_os = "linux",
++            ))]
+             uring_state: AtomicUsize::new(0),
+         };
+ 
+@@ -198,7 +222,13 @@ impl Driver {
+             }
+         }
+ 
+-        #[cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux",))]
++        #[cfg(all(
++            tokio_unstable,
++            feature = "io-uring",
++            feature = "rt",
++            feature = "fs",
++            target_os = "linux",
++        ))]
+         {
+             let mut guard = handle.get_uring().lock();
+             let ctx = &mut *guard;
+diff --git a/tokio/src/runtime/io/mod.rs b/tokio/src/runtime/io/mod.rs
+index f58dd6b..12b0783 100644
+--- a/tokio/src/runtime/io/mod.rs
++++ b/tokio/src/runtime/io/mod.rs
+@@ -1,5 +1,5 @@
+ #![cfg_attr(
+-    not(all(feature = "rt", feature = "net", tokio_uring)),
++    not(all(feature = "rt", feature = "net", feature = "io-uring", tokio_unstable)),
+     allow(dead_code)
+ )]
+ mod driver;
+diff --git a/tokio/tests/fs_try_exists.rs b/tokio/tests/fs_try_exists.rs
+index 75cd223..5e698cf 100644
+--- a/tokio/tests/fs_try_exists.rs
++++ b/tokio/tests/fs_try_exists.rs
+@@ -16,7 +16,10 @@ async fn try_exists() {
+     assert!(fs::try_exists(existing_path).await.unwrap());
+     assert!(!fs::try_exists(nonexisting_path).await.unwrap());
+     // FreeBSD root user always has permission to stat.
+-    #[cfg(all(unix, not(any(target_os = "freebsd", tokio_uring))))]
++    #[cfg(all(
++        unix,
++        not(any(target_os = "freebsd", all(tokio_unstable, feature = "io-uring")))
++    ))]
+     {
+         use std::os::unix::prelude::PermissionsExt;
+         let permission_denied_directory_path = dir.path().join("baz");
+diff --git a/tokio/tests/fs_uring.rs b/tokio/tests/fs_uring.rs
+index 04ec62c..cd0d207 100644
+--- a/tokio/tests/fs_uring.rs
++++ b/tokio/tests/fs_uring.rs
+@@ -1,6 +1,12 @@
+ //! Uring file operations tests.
+ 
+-#![cfg(all(tokio_uring, feature = "rt", feature = "fs", target_os = "linux"))]
++#![cfg(all(
++    tokio_unstable,
++    feature = "io-uring",
++    feature = "rt",
++    feature = "fs",
++    target_os = "linux"
++))]
+ 
+ use futures::future::FutureExt;
+ use std::sync::mpsc;

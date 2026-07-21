@@ -1,0 +1,331 @@
+From 566d388622fa961277f76a74c1d612c776896947 Mon Sep 17 00:00:00 2001
+From: Washi <65116802+Washiil@users.noreply.github.com>
+Date: Thu, 17 Jul 2025 10:22:52 -0400
+Subject: [PATCH] feat: Implement mean function in `arr` namespace (#23486)
+
+Co-authored-by: Orson Peters <orsonpeters@gmail.com>
+---
+ .../src/chunked_array/array/dispersion.rs     | 26 +++++++++++++++++++
+ .../src/chunked_array/array/namespace.rs      |  5 ++++
+ crates/polars-plan/dsl-schema.sha256          |  2 +-
+ crates/polars-plan/src/dsl/array.rs           |  6 +++++
+ .../src/dsl/function_expr/array.rs            |  2 ++
+ crates/polars-plan/src/dsl/plan.rs            |  2 +-
+ .../src/plans/aexpr/function_expr/array.rs    | 10 +++++++
+ .../plans/conversion/dsl_to_ir/functions.rs   |  1 +
+ .../src/plans/conversion/ir_to_dsl.rs         |  9 ++++---
+ crates/polars-python/src/expr/array.rs        |  4 +++
+ .../source/reference/expressions/array.rst    |  1 +
+ py-polars/polars/expr/array.py                | 23 ++++++++++++++++
+ py-polars/tests/unit/datatypes/test_array.py  | 24 +++++++++++++++++
+ 13 files changed, 109 insertions(+), 6 deletions(-)
+
+diff --git a/crates/polars-ops/src/chunked_array/array/dispersion.rs b/crates/polars-ops/src/chunked_array/array/dispersion.rs
+index 17924d7c3..64f2dcf53 100644
+--- a/crates/polars-ops/src/chunked_array/array/dispersion.rs
++++ b/crates/polars-ops/src/chunked_array/array/dispersion.rs
+@@ -1,5 +1,31 @@
+ use super::*;
+ 
++pub(super) fn mean_with_nulls(ca: &ArrayChunked) -> PolarsResult<Series> {
++    let mut out = match ca.inner_dtype() {
++        DataType::Float32 => {
++            let out: Float32Chunked = ca
++                .apply_amortized_generic(|s| s.and_then(|s| s.as_ref().mean().map(|v| v as f32)))
++                .with_name(ca.name().clone());
++            out.into_series()
++        },
++        #[cfg(feature = "dtype-duration")]
++        DataType::Duration(tu) => {
++            let out: Int64Chunked = ca
++                .apply_amortized_generic(|s| s.and_then(|s| s.as_ref().mean().map(|v| v as i64)))
++                .with_name(ca.name().clone());
++            out.into_duration(*tu).into_series()
++        },
++        _ => {
++            let out: Float64Chunked = ca
++                .apply_amortized_generic(|s| s.and_then(|s| s.as_ref().mean()))
++                .with_name(ca.name().clone());
++            out.into_series()
++        },
++    };
++    out.rename(ca.name().clone());
++    Ok(out)
++}
++
+ pub(super) fn median_with_nulls(ca: &ArrayChunked) -> PolarsResult<Series> {
+     let mut out = match ca.inner_dtype() {
+         DataType::Float32 => {
+diff --git a/crates/polars-ops/src/chunked_array/array/namespace.rs b/crates/polars-ops/src/chunked_array/array/namespace.rs
+index 3cab5f636..d31a32685 100644
+--- a/crates/polars-ops/src/chunked_array/array/namespace.rs
++++ b/crates/polars-ops/src/chunked_array/array/namespace.rs
+@@ -57,6 +57,11 @@ pub trait ArrayNameSpace: AsArray {
+         }
+     }
+ 
++    fn array_mean(&self) -> PolarsResult<Series> {
++        let ca = self.as_array();
++        dispersion::mean_with_nulls(ca)
++    }
++
+     fn array_median(&self) -> PolarsResult<Series> {
+         let ca = self.as_array();
+         dispersion::median_with_nulls(ca)
+diff --git a/crates/polars-plan/dsl-schema.sha256 b/crates/polars-plan/dsl-schema.sha256
+index bc865910c..eaf931e6e 100644
+--- a/crates/polars-plan/dsl-schema.sha256
++++ b/crates/polars-plan/dsl-schema.sha256
+@@ -1 +1 @@
+-f654175e3541aeded35a5dd7e479e6cb8b5699591e477880018297e66f996318
+\ No newline at end of file
++67fe4f2f5134e5f0aae81399aa4964f608210c63edba5dd946411712719173fb
+\ No newline at end of file
+diff --git a/crates/polars-plan/src/dsl/array.rs b/crates/polars-plan/src/dsl/array.rs
+index cc7ad626c..ff9342658 100644
+--- a/crates/polars-plan/src/dsl/array.rs
++++ b/crates/polars-plan/src/dsl/array.rs
+@@ -43,6 +43,12 @@ impl ArrayNameSpace {
+             .map_unary(FunctionExpr::ArrayExpr(ArrayFunction::Var(ddof)))
+     }
+ 
++    /// Compute the mean of the items in every subarray.
++    pub fn mean(self) -> Expr {
++        self.0
++            .map_unary(FunctionExpr::ArrayExpr(ArrayFunction::Mean))
++    }
++
+     /// Compute the median of the items in every subarray.
+     pub fn median(self) -> Expr {
+         self.0
+diff --git a/crates/polars-plan/src/dsl/function_expr/array.rs b/crates/polars-plan/src/dsl/function_expr/array.rs
+index 8672f1107..02ff1c642 100644
+--- a/crates/polars-plan/src/dsl/function_expr/array.rs
++++ b/crates/polars-plan/src/dsl/function_expr/array.rs
+@@ -18,6 +18,7 @@ pub enum ArrayFunction {
+     NUnique,
+     Std(u8),
+     Var(u8),
++    Mean,
+     Median,
+     #[cfg(feature = "array_any_all")]
+     Any,
+@@ -59,6 +60,7 @@ impl fmt::Display for ArrayFunction {
+             NUnique => "n_unique",
+             Std(_) => "std",
+             Var(_) => "var",
++            Mean => "mean",
+             Median => "median",
+             #[cfg(feature = "array_any_all")]
+             Any => "any",
+diff --git a/crates/polars-plan/src/dsl/plan.rs b/crates/polars-plan/src/dsl/plan.rs
+index f44f26401..9ce910bd2 100644
+--- a/crates/polars-plan/src/dsl/plan.rs
++++ b/crates/polars-plan/src/dsl/plan.rs
+@@ -48,7 +48,7 @@ use super::*;
+ // - changing a name, type, or meaning of a field or an enum variant
+ // - changing a default value of a field or a default enum variant
+ // - restricting the range of allowed values a field can have
+-pub static DSL_VERSION: (u16, u16) = (21, 0);
++pub static DSL_VERSION: (u16, u16) = (21, 1);
+ static DSL_MAGIC_BYTES: &[u8] = b"DSL_VERSION";
+ 
+ #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+diff --git a/crates/polars-plan/src/plans/aexpr/function_expr/array.rs b/crates/polars-plan/src/plans/aexpr/function_expr/array.rs
+index 1399a34b7..a97730ef7 100644
+--- a/crates/polars-plan/src/plans/aexpr/function_expr/array.rs
++++ b/crates/polars-plan/src/plans/aexpr/function_expr/array.rs
+@@ -16,6 +16,7 @@ pub enum IRArrayFunction {
+     NUnique,
+     Std(u8),
+     Var(u8),
++    Mean,
+     Median,
+     #[cfg(feature = "array_any_all")]
+     Any,
+@@ -64,6 +65,7 @@ impl IRArrayFunction {
+             NUnique => mapper.with_dtype(IDX_DTYPE),
+             Std(_) => mapper.moment_dtype(),
+             Var(_) => mapper.var_dtype(),
++            Mean => mapper.moment_dtype(),
+             Median => mapper.moment_dtype(),
+             #[cfg(feature = "array_any_all")]
+             Any | All => mapper.with_dtype(DataType::Boolean),
+@@ -121,6 +123,7 @@ impl IRArrayFunction {
+             | A::NUnique
+             | A::Std(_)
+             | A::Var(_)
++            | A::Mean
+             | A::Median
+             | A::Sort(_)
+             | A::Reverse
+@@ -180,6 +183,7 @@ impl Display for IRArrayFunction {
+             NUnique => "n_unique",
+             Std(_) => "std",
+             Var(_) => "var",
++            Mean => "mean",
+             Median => "median",
+             #[cfg(feature = "array_any_all")]
+             Any => "any",
+@@ -219,6 +223,7 @@ impl From<IRArrayFunction> for SpecialEq<Arc<dyn ColumnsUdf>> {
+             NUnique => map!(n_unique),
+             Std(ddof) => map!(std, ddof),
+             Var(ddof) => map!(var, ddof),
++            Mean => map!(mean),
+             Median => map!(median),
+             #[cfg(feature = "array_any_all")]
+             Any => map!(any),
+@@ -285,6 +290,11 @@ pub(super) fn std(s: &Column, ddof: u8) -> PolarsResult<Column> {
+ pub(super) fn var(s: &Column, ddof: u8) -> PolarsResult<Column> {
+     s.array()?.array_var(ddof).map(Column::from)
+ }
++
++pub(super) fn mean(s: &Column) -> PolarsResult<Column> {
++    s.array()?.array_mean().map(Column::from)
++}
++
+ pub(super) fn median(s: &Column) -> PolarsResult<Column> {
+     s.array()?.array_median().map(Column::from)
+ }
+diff --git a/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs b/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
+index 032bf8e27..92f8a0f6a 100644
+--- a/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
++++ b/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
+@@ -76,6 +76,7 @@ pub(super) fn convert_functions(
+                 A::NUnique => IA::NUnique,
+                 A::Std(v) => IA::Std(v),
+                 A::Var(v) => IA::Var(v),
++                A::Mean => IA::Mean,
+                 A::Median => IA::Median,
+                 #[cfg(feature = "array_any_all")]
+                 A::Any => IA::Any,
+diff --git a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+index 202f4f084..3e1671486 100644
+--- a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
++++ b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+@@ -101,6 +101,10 @@ pub fn node_to_expr(node: Node, expr_arena: &Arena<AExpr>) -> Expr {
+                 .into()
+             },
+ 
++            IRAggExpr::Mean(expr) => {
++                let exp = node_to_expr(expr, expr_arena);
++                AggExpr::Mean(Arc::new(exp)).into()
++            },
+             IRAggExpr::Median(expr) => {
+                 let exp = node_to_expr(expr, expr_arena);
+                 AggExpr::Median(Arc::new(exp)).into()
+@@ -117,10 +121,6 @@ pub fn node_to_expr(node: Node, expr_arena: &Arena<AExpr>) -> Expr {
+                 let exp = node_to_expr(expr, expr_arena);
+                 AggExpr::Last(Arc::new(exp)).into()
+             },
+-            IRAggExpr::Mean(expr) => {
+-                let exp = node_to_expr(expr, expr_arena);
+-                AggExpr::Mean(Arc::new(exp)).into()
+-            },
+             IRAggExpr::Implode(expr) => {
+                 let exp = node_to_expr(expr, expr_arena);
+                 AggExpr::Implode(Arc::new(exp)).into()
+@@ -287,6 +287,7 @@ pub fn ir_function_to_dsl(input: Vec<Expr>, function: IRFunctionExpr) -> Expr {
+                 IA::NUnique => A::NUnique,
+                 IA::Std(v) => A::Std(v),
+                 IA::Var(v) => A::Var(v),
++                IA::Mean => A::Mean,
+                 IA::Median => A::Median,
+                 #[cfg(feature = "array_any_all")]
+                 IA::Any => A::Any,
+diff --git a/crates/polars-python/src/expr/array.rs b/crates/polars-python/src/expr/array.rs
+index f67fb2327..600875f29 100644
+--- a/crates/polars-python/src/expr/array.rs
++++ b/crates/polars-python/src/expr/array.rs
+@@ -32,6 +32,10 @@ impl PyExpr {
+         self.inner.clone().arr().var(ddof).into()
+     }
+ 
++    fn arr_mean(&self) -> Self {
++        self.inner.clone().arr().mean().into()
++    }
++
+     fn arr_median(&self) -> Self {
+         self.inner.clone().arr().median().into()
+     }
+diff --git a/py-polars/docs/source/reference/expressions/array.rst b/py-polars/docs/source/reference/expressions/array.rst
+index 1573c4789..fa365ae94 100644
+--- a/py-polars/docs/source/reference/expressions/array.rst
++++ b/py-polars/docs/source/reference/expressions/array.rst
+@@ -21,6 +21,7 @@ The following methods are available under the `expr.arr` attribute.
+     Expr.arr.join
+     Expr.arr.last
+     Expr.arr.max
++    Expr.arr.mean
+     Expr.arr.median
+     Expr.arr.min
+     Expr.arr.n_unique
+diff --git a/py-polars/polars/expr/array.py b/py-polars/polars/expr/array.py
+index 3db3d0382..279408cab 100644
+--- a/py-polars/polars/expr/array.py
++++ b/py-polars/polars/expr/array.py
+@@ -304,6 +304,29 @@ class ExprArrayNameSpace:
+         """
+         return wrap_expr(self._pyexpr.arr_var(ddof))
+ 
++    def mean(self) -> Expr:
++        """
++        Compute the mean of the values of the sub-arrays.
++
++        Examples
++        --------
++        >>> df = pl.DataFrame(
++        ...     data={"a": [[1, 2, 3], [1, 1, 16]]},
++        ...     schema={"a": pl.Array(pl.Int64, 3)},
++        ... )
++        >>> df.select(pl.col("a").arr.mean())
++        shape: (2, 1)
++        ┌─────┐
++        │ a   │
++        │ --- │
++        │ f64 │
++        ╞═════╡
++        │ 2.0 │
++        │ 6.0 │
++        └─────┘
++        """
++        return wrap_expr(self._pyexpr.arr_mean())
++
+     def median(self) -> Expr:
+         """
+         Compute the median of the values of the sub-arrays.
+diff --git a/py-polars/tests/unit/datatypes/test_array.py b/py-polars/tests/unit/datatypes/test_array.py
+index 9ee092085..a63c986ce 100644
+--- a/py-polars/tests/unit/datatypes/test_array.py
++++ b/py-polars/tests/unit/datatypes/test_array.py
+@@ -240,6 +240,30 @@ def test_arr_std(data_dispersion: pl.DataFrame) -> None:
+     assert_frame_equal(result, expected)
+ 
+ 
++def test_arr_mean(data_dispersion: pl.DataFrame) -> None:
++    df = data_dispersion
++
++    result = df.select(
++        pl.col("int").arr.mean().name.suffix("_mean"),
++        pl.col("float").arr.mean().name.suffix("_mean"),
++        pl.col("duration").arr.mean().name.suffix("_mean"),
++    )
++
++    expected = pl.DataFrame(
++        [
++            pl.Series("int_mean", [3.0], dtype=pl.Float64),
++            pl.Series("float_mean", [3.0], dtype=pl.Float64),
++            pl.Series(
++                "duration_mean",
++                [timedelta(microseconds=3000)],
++                dtype=pl.Duration(time_unit="us"),
++            ),
++        ]
++    )
++
++    assert_frame_equal(result, expected)
++
++
+ def test_arr_median(data_dispersion: pl.DataFrame) -> None:
+     df = data_dispersion
+ 

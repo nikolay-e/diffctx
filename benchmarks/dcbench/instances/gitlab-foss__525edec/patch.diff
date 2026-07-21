@@ -1,0 +1,118 @@
+From 525edec78bc39ae41284927f1866def56d21a12a Mon Sep 17 00:00:00 2001
+From: Thong Kuah <tkuah@gitlab.com>
+Date: Mon, 24 Jun 2019 09:48:16 +1200
+Subject: [PATCH] Add cluster_id to deployments table as an FK
+
+We nullify when cluster is deleted as we want to keep the deployment
+record around.
+
+Add cluster as an optional association
+
+We will have only cluster for deployments where the build deploys to a
+kubernetes cluster
+---
+ app/models/deployment.rb                      |  1 +
+ ...623212503_add_cluster_id_to_deployments.rb |  9 ++++++++
+ ..._add_cluster_id_index_fk_to_deployments.rb | 21 +++++++++++++++++++
+ db/schema.rb                                  |  5 ++++-
+ spec/models/deployment_spec.rb                |  1 +
+ 5 files changed, 36 insertions(+), 1 deletion(-)
+ create mode 100644 db/migrate/20190623212503_add_cluster_id_to_deployments.rb
+ create mode 100644 db/migrate/20190627051902_add_cluster_id_index_fk_to_deployments.rb
+
+diff --git a/app/models/deployment.rb b/app/models/deployment.rb
+index f0fa597478..8332656a7a 100644
+--- a/app/models/deployment.rb
++++ b/app/models/deployment.rb
+@@ -7,6 +7,7 @@ class Deployment < ApplicationRecord
+ 
+   belongs_to :project, required: true
+   belongs_to :environment, required: true
++  belongs_to :cluster, class_name: 'Clusters::Cluster', optional: true
+   belongs_to :user
+   belongs_to :deployable, polymorphic: true # rubocop:disable Cop/PolymorphicAssociations
+ 
+diff --git a/db/migrate/20190623212503_add_cluster_id_to_deployments.rb b/db/migrate/20190623212503_add_cluster_id_to_deployments.rb
+new file mode 100644
+index 0000000000..cd0c419156
+--- /dev/null
++++ b/db/migrate/20190623212503_add_cluster_id_to_deployments.rb
+@@ -0,0 +1,9 @@
++# frozen_string_literal: true
++
++class AddClusterIdToDeployments < ActiveRecord::Migration[5.1]
++  DOWNTIME = false
++
++  def change
++    add_column :deployments, :cluster_id, :integer
++  end
++end
+diff --git a/db/migrate/20190627051902_add_cluster_id_index_fk_to_deployments.rb b/db/migrate/20190627051902_add_cluster_id_index_fk_to_deployments.rb
+new file mode 100644
+index 0000000000..f41e5c8026
+--- /dev/null
++++ b/db/migrate/20190627051902_add_cluster_id_index_fk_to_deployments.rb
+@@ -0,0 +1,21 @@
++# frozen_string_literal: true
++
++class AddClusterIdIndexFkToDeployments < ActiveRecord::Migration[5.1]
++  include Gitlab::Database::MigrationHelpers
++
++  DOWNTIME = false
++
++  disable_ddl_transaction!
++
++  def up
++    add_concurrent_index :deployments, :cluster_id
++
++    add_concurrent_foreign_key :deployments, :clusters, column: :cluster_id, on_delete: :nullify
++  end
++
++  def down
++    remove_foreign_key :deployments, :clusters
++
++    remove_concurrent_index :deployments, :cluster_id
++  end
++end
+diff --git a/db/schema.rb b/db/schema.rb
+index 054dbc7201..80e2356629 100644
+--- a/db/schema.rb
++++ b/db/schema.rb
+@@ -10,7 +10,7 @@
+ #
+ # It's strongly recommended that you check this file into your version control system.
+ 
+-ActiveRecord::Schema.define(version: 20190625184066) do
++ActiveRecord::Schema.define(version: 20190627051902) do
+ 
+   # These are extensions that must be enabled in order to support this database
+   enable_extension "plpgsql"
+@@ -1066,6 +1066,8 @@
+     t.string "on_stop"
+     t.integer "status", limit: 2, null: false
+     t.datetime_with_timezone "finished_at"
++    t.integer "cluster_id"
++    t.index ["cluster_id"], name: "index_deployments_on_cluster_id", using: :btree
+     t.index ["created_at"], name: "index_deployments_on_created_at", using: :btree
+     t.index ["deployable_type", "deployable_id"], name: "index_deployments_on_deployable_type_and_deployable_id", using: :btree
+     t.index ["environment_id", "id"], name: "index_deployments_on_environment_id_and_id", using: :btree
+@@ -3650,6 +3652,7 @@
+   add_foreign_key "dependency_proxy_blobs", "namespaces", column: "group_id", name: "fk_db58bbc5d7", on_delete: :cascade
+   add_foreign_key "dependency_proxy_group_settings", "namespaces", column: "group_id", name: "fk_616ddd680a", on_delete: :cascade
+   add_foreign_key "deploy_keys_projects", "projects", name: "fk_58a901ca7e", on_delete: :cascade
++  add_foreign_key "deployments", "clusters", name: "fk_289bba3222", on_delete: :nullify
+   add_foreign_key "deployments", "projects", name: "fk_b9a3851b82", on_delete: :cascade
+   add_foreign_key "design_management_designs", "issues", on_delete: :cascade
+   add_foreign_key "design_management_designs", "projects", on_delete: :cascade
+diff --git a/spec/models/deployment_spec.rb b/spec/models/deployment_spec.rb
+index a433878f3b..341ed31d19 100644
+--- a/spec/models/deployment_spec.rb
++++ b/spec/models/deployment_spec.rb
+@@ -7,6 +7,7 @@
+ 
+   it { is_expected.to belong_to(:project).required }
+   it { is_expected.to belong_to(:environment).required }
++  it { is_expected.to belong_to(:cluster).class_name('Clusters::Cluster') }
+   it { is_expected.to belong_to(:user) }
+   it { is_expected.to belong_to(:deployable) }
+ 

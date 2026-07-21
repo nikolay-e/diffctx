@@ -1,0 +1,86 @@
+From d54df64dba1734ec4075151d221c5d797f8a0bf7 Mon Sep 17 00:00:00 2001
+From: toreerdmann <tore.erdmann@gmail.com>
+Date: Wed, 3 Jun 2026 19:36:42 +0200
+Subject: [PATCH] fix(rust): Fix skip_batches not handling negation of bool
+ dtype with None values (#27452)
+
+---
+ .../plans/aexpr/predicates/skip_batches.rs    | 21 +++++++++++++++++++
+ py-polars/tests/unit/io/test_delta.py         |  2 +-
+ .../unit/io/test_skip_batch_predicate.py      | 18 ++++++++++++++++
+ 3 files changed, 40 insertions(+), 1 deletion(-)
+
+diff --git a/crates/polars-plan/src/plans/aexpr/predicates/skip_batches.rs b/crates/polars-plan/src/plans/aexpr/predicates/skip_batches.rs
+index 247adf13b..6ce74de9e 100644
+--- a/crates/polars-plan/src/plans/aexpr/predicates/skip_batches.rs
++++ b/crates/polars-plan/src/plans/aexpr/predicates/skip_batches.rs
+@@ -458,6 +458,27 @@ fn aexpr_to_skip_batch_predicate_rec(
+                             _ => None,
+                         }
+                     },
++                    IRBooleanFunction::Not => {
++                        let col = into_column(input[0].node(), arena)?;
++                        let dtype = schema.get(col)?;
++                        if !matches!(dtype, DataType::Boolean) {
++                            return None;
++                        }
++
++                        let col = col.clone();
++                        let col_nc = col!(null_count: col);
++                        let len = col!(len);
++                        let col_min = col!(min: col);
++                        let col_min_is_true = col_min.eq(lv!(true), arena);
++                        let min_is_defined = is_stat_defined(col_min, dtype, arena);
++
++                        // col(A).Not() ->
++                        //     null_count(A) == LEN || min(A) == True
++                        let all_null = col_nc.eq(len, arena);
++                        let min = min_is_defined.and(col_min_is_true, arena);
++
++                        Some(all_null.or(min, arena).node())
++                    },
+                     IRBooleanFunction::IsNull => {
+                         let col = into_column(input[0].node(), arena)?;
+ 
+diff --git a/py-polars/tests/unit/io/test_delta.py b/py-polars/tests/unit/io/test_delta.py
+index 2728e83c4..d3ed80e7e 100644
+--- a/py-polars/tests/unit/io/test_delta.py
++++ b/py-polars/tests/unit/io/test_delta.py
+@@ -955,7 +955,7 @@ def _df_many_types() -> pl.DataFrame:
+     "expr",
+     [
+         # Bool (requires deltalake >= 1.5.1)
+-        # ~pl.col.bool, ## see github issue #26290
++        ~pl.col.bool,
+         pl.col.bool <= False,
+         pl.col.bool < True,
+         pl.col.bool.is_null(),
+diff --git a/py-polars/tests/unit/io/test_skip_batch_predicate.py b/py-polars/tests/unit/io/test_skip_batch_predicate.py
+index e96023cba..b732a9619 100644
+--- a/py-polars/tests/unit/io/test_skip_batch_predicate.py
++++ b/py-polars/tests/unit/io/test_skip_batch_predicate.py
+@@ -103,6 +103,24 @@ def test_equality() -> None:
+     )
+ 
+ 
++def test_not_bool() -> None:
++    assert_skp_series(
++        "b",
++        pl.Boolean(),
++        ~pl.col("b"),
++        [
++            {"min": True, "max": True, "null_count": 0, "len": 42, "can_skip": True},
++            {"min": True, "max": True, "null_count": 5, "len": 42, "can_skip": True},
++            {"min": None, "max": None, "null_count": 42, "len": 42, "can_skip": True},
++            {"min": False, "max": False, "null_count": 0, "len": 42, "can_skip": False},
++            {"min": False, "max": True, "null_count": 0, "len": 42, "can_skip": False},
++            {"min": False, "max": False, "null_count": 5, "len": 42, "can_skip": False},
++            {"min": False, "max": True, "null_count": 5, "len": 42, "can_skip": False},
++            {"min": None, "max": None, "null_count": 5, "len": 42, "can_skip": False},
++        ],
++    )
++
++
+ def test_datetimes() -> None:
+     d = datetime.datetime(2023, 4, 1, 0, 0, 0, tzinfo=datetime.timezone.utc)
+     td = datetime.timedelta

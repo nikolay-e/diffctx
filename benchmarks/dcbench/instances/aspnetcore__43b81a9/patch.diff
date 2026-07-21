@@ -1,0 +1,3770 @@
+From 43b81a989650398c4971456562488bed8a00783a Mon Sep 17 00:00:00 2001
+From: Roland Vizner <148648143+rolandVi@users.noreply.github.com>
+Date: Wed, 17 Sep 2025 11:41:50 +0200
+Subject: [PATCH] [Blazor] Generalize the Image component and add new
+ components for Video and FileDownload
+
+Introduces a suite of media components for efficiently handling non-HTTP sources (byte[]s or streams) with streaming through JS interop and browser-side caching. The suite includes Image, Video, and FileDownload which built on a shared foundation.
+---
+ src/Components/Web.JS/src/GlobalExports.ts    |   7 +-
+ .../src/Rendering/BinaryImageComponent.ts     | 377 ---------
+ .../Web.JS/src/Rendering/BinaryMedia.ts       | 735 ++++++++++++++++++
+ src/Components/Web/src/Media/FileDownload.cs  | 170 ++++
+ src/Components/Web/src/Media/Image.cs         |  69 ++
+ .../Image.cs => Media/MediaComponentBase.cs}  | 185 +++--
+ src/Components/Web/src/Media/MediaContext.cs  |  44 ++
+ .../ImageSource.cs => Media/MediaSource.cs}   |  31 +-
+ src/Components/Web/src/Media/Video.cs         |  69 ++
+ .../Web/src/PublicAPI.Unshipped.txt           |  55 +-
+ .../Web/test/Media/FileDownloadTest.cs        | 276 +++++++
+ .../Web/test/{Image => Media}/ImageTest.cs    |  51 +-
+ .../test/E2ETest/Tests/FileDownloadTest.cs    | 199 +++++
+ .../test/E2ETest/Tests/ImageTest.cs           |  87 ++-
+ .../test/E2ETest/Tests/VideoTest.cs           | 145 ++++
+ .../BasicTestApp/BasicTestApp.csproj          |   1 -
+ .../ImageTest/ImageTestComponent.razor        | 240 ------
+ .../test/testassets/BasicTestApp/Index.razor  |   4 +-
+ .../MediaTest/FileDownloadTestComponent.razor | 101 +++
+ .../MediaTest/ImageTestComponent.razor        | 214 +++++
+ .../MediaTest/VideoTestComponent.razor        | 100 +++
+ .../testassets/BasicTestApp/_Imports.razor    |   2 +-
+ 22 files changed, 2371 insertions(+), 791 deletions(-)
+ delete mode 100644 src/Components/Web.JS/src/Rendering/BinaryImageComponent.ts
+ create mode 100644 src/Components/Web.JS/src/Rendering/BinaryMedia.ts
+ create mode 100644 src/Components/Web/src/Media/FileDownload.cs
+ create mode 100644 src/Components/Web/src/Media/Image.cs
+ rename src/Components/Web/src/{Image/Image.cs => Media/MediaComponentBase.cs} (51%)
+ create mode 100644 src/Components/Web/src/Media/MediaContext.cs
+ rename src/Components/Web/src/{Image/ImageSource.cs => Media/MediaSource.cs} (62%)
+ create mode 100644 src/Components/Web/src/Media/Video.cs
+ create mode 100644 src/Components/Web/test/Media/FileDownloadTest.cs
+ rename src/Components/Web/test/{Image => Media}/ImageTest.cs (82%)
+ create mode 100644 src/Components/test/E2ETest/Tests/FileDownloadTest.cs
+ create mode 100644 src/Components/test/E2ETest/Tests/VideoTest.cs
+ delete mode 100644 src/Components/test/testassets/BasicTestApp/ImageTest/ImageTestComponent.razor
+ create mode 100644 src/Components/test/testassets/BasicTestApp/MediaTest/FileDownloadTestComponent.razor
+ create mode 100644 src/Components/test/testassets/BasicTestApp/MediaTest/ImageTestComponent.razor
+ create mode 100644 src/Components/test/testassets/BasicTestApp/MediaTest/VideoTestComponent.razor
+
+diff --git a/src/Components/Web.JS/src/GlobalExports.ts b/src/Components/Web.JS/src/GlobalExports.ts
+index d5f3128d42..9b75165a44 100644
+--- a/src/Components/Web.JS/src/GlobalExports.ts
++++ b/src/Components/Web.JS/src/GlobalExports.ts
+@@ -19,7 +19,8 @@ import { attachWebRendererInterop } from './Rendering/WebRendererInteropMethods'
+ import { WebStartOptions } from './Platform/WebStartOptions';
+ import { RuntimeAPI } from '@microsoft/dotnet-runtime';
+ import { JSEventRegistry } from './Services/JSEventRegistry';
+-import { BinaryImageComponent } from './Rendering/BinaryImageComponent';
++import { BinaryMedia } from './Rendering/BinaryMedia';
++
+ 
+ // TODO: It's kind of hard to tell which .NET platform(s) some of these APIs are relevant to.
+ // It's important to know this information when dealing with the possibility of mulitple .NET platforms being available.
+@@ -51,7 +52,7 @@ export interface IBlazor {
+     navigationManager: typeof navigationManagerInternalFunctions | any;
+     domWrapper: typeof domFunctions;
+     Virtualize: typeof Virtualize;
+-    BinaryImageComponent: typeof BinaryImageComponent;
++    BinaryMedia: typeof BinaryMedia;
+     PageTitle: typeof PageTitle;
+     forceCloseConnection?: () => Promise<void>;
+     InputFile?: typeof InputFile;
+@@ -113,7 +114,7 @@ export const Blazor: IBlazor = {
+     NavigationLock,
+     getJSDataStreamChunk: getNextChunk,
+     attachWebRendererInterop,
+-    BinaryImageComponent,
++    BinaryMedia,
+   },
+ };
+ 
+diff --git a/src/Components/Web.JS/src/Rendering/BinaryImageComponent.ts b/src/Components/Web.JS/src/Rendering/BinaryImageComponent.ts
+deleted file mode 100644
+index 12ffbfe7e7..0000000000
+--- a/src/Components/Web.JS/src/Rendering/BinaryImageComponent.ts
++++ /dev/null
+@@ -1,377 +0,0 @@
+-// Licensed to the .NET Foundation under one or more agreements.
+-// The .NET Foundation licenses this file to you under the MIT license.
+-
+-import { Logger, LogLevel } from '../Platform/Logging/Logger';
+-import { ConsoleLogger } from '../Platform/Logging/Loggers';
+-
+-export interface ImageLoadResult {
+-  success: boolean;
+-  fromCache: boolean;
+-  objectUrl: string | null;
+-  error?: string;
+-}
+-
+-/**
+- * Provides functionality for rendering binary image data in Blazor components.
+- */
+-export class BinaryImageComponent {
+-  private static readonly CACHE_NAME = 'blazor-image-cache';
+-
+-  private static cachePromise?: Promise<Cache | null> = undefined;
+-
+-  private static logger: Logger = new ConsoleLogger(LogLevel.Warning);
+-
+-  private static loadingImages: Set<HTMLImageElement> = new Set();
+-
+-  private static activeCacheKey: WeakMap<HTMLImageElement, string> = new WeakMap();
+-
+-  private static trackedImages: WeakMap<HTMLImageElement, { url: string; cacheKey: string }> = new WeakMap();
+-
+-  private static observersByParent: WeakMap<Element, MutationObserver> = new WeakMap();
+-
+-  private static controllers: WeakMap<HTMLImageElement, AbortController> = new WeakMap();
+-
+-  private static initializeParentObserver(parent: Element): void {
+-    if (this.observersByParent.has(parent)) {
+-      return;
+-    }
+-
+-    const observer = new MutationObserver((mutations) => {
+-      for (const mutation of mutations) {
+-        // Handle removed nodes within this parent subtree
+-        if (mutation.type === 'childList') {
+-          for (const node of Array.from(mutation.removedNodes)) {
+-            if (node.nodeType === Node.ELEMENT_NODE) {
+-              const element = node as Element;
+-
+-              if (element.tagName === 'IMG' && this.trackedImages.has(element as HTMLImageElement)) {
+-                this.revokeTrackedUrl(element as HTMLImageElement);
+-              }
+-
+-              // Any tracked descendants
+-              element.querySelectorAll('img').forEach((img) => {
+-                if (this.trackedImages.has(img as HTMLImageElement)) {
+-                  this.revokeTrackedUrl(img as HTMLImageElement);
+-                }
+-              });
+-            }
+-          }
+-        }
+-
+-        // Handle src attribute changes on tracked images
+-        if (mutation.type === 'attributes' && (mutation as MutationRecord).attributeName === 'src') {
+-          const img = (mutation.target as Element) as HTMLImageElement;
+-          if (this.trackedImages.has(img)) {
+-            const tracked = this.trackedImages.get(img);
+-            if (tracked && img.src !== tracked.url) {
+-              this.revokeTrackedUrl(img);
+-            }
+-          }
+-        }
+-      }
+-    });
+-
+-    observer.observe(parent, {
+-      childList: true,
+-      attributes: true,
+-      attributeFilter: ['src'],
+-    });
+-
+-    this.observersByParent.set(parent, observer);
+-  }
+-
+-  private static revokeTrackedUrl(img: HTMLImageElement): void {
+-    const tracked = this.trackedImages.get(img);
+-    if (tracked) {
+-      try {
+-        URL.revokeObjectURL(tracked.url);
+-      } catch {
+-        // ignore
+-      }
+-      this.trackedImages.delete(img);
+-      this.loadingImages.delete(img);
+-      this.activeCacheKey.delete(img);
+-    }
+-
+-    // Abort any in-flight stream tied to this element
+-    const controller = this.controllers.get(img);
+-    if (controller) {
+-      try {
+-        controller.abort();
+-      } catch {
+-        // ignore
+-      }
+-      this.controllers.delete(img);
+-    }
+-  }
+-
+-  /**
+-   * Single entry point for setting image - handles cache check and streaming
+-   */
+-  public static async setImageAsync(
+-    imgElement: HTMLImageElement,
+-    streamRef: { stream: () => Promise<ReadableStream<Uint8Array>> } | null,
+-    mimeType: string,
+-    cacheKey: string,
+-    totalBytes: number | null
+-  ): Promise<ImageLoadResult> {
+-    if (!imgElement || !cacheKey) {
+-      return { success: false, fromCache: false, objectUrl: null, error: 'Invalid parameters' };
+-    }
+-
+-    // Ensure we are observing this image's parent
+-    const parent = imgElement.parentElement;
+-    if (parent) {
+-      this.initializeParentObserver(parent);
+-    }
+-
+-    // If there was a previous different key for this element, abort its in-flight operation
+-    const previousKey = this.activeCacheKey.get(imgElement);
+-    if (previousKey && previousKey !== cacheKey) {
+-      const prevController = this.controllers.get(imgElement);
+-      if (prevController) {
+-        try {
+-          prevController.abort();
+-        } catch {
+-          // ignore
+-        }
+-        this.controllers.delete(imgElement);
+-      }
+-    }
+-
+-    this.activeCacheKey.set(imgElement, cacheKey);
+-
+-    try {
+-      // Try cache first
+-      try {
+-        const cache = await this.getCache();
+-        if (cache) {
+-          const cachedResponse = await cache.match(encodeURIComponent(cacheKey));
+-          if (cachedResponse) {
+-            const blob = await cachedResponse.blob();
+-            const url = URL.createObjectURL(blob);
+-
+-            this.setImageUrl(imgElement, url, cacheKey);
+-
+-            return { success: true, fromCache: true, objectUrl: url };
+-          }
+-        }
+-      } catch (err) {
+-        this.logger.log(LogLevel.Debug, `Cache lookup failed: ${err}`);
+-      }
+-
+-      if (streamRef) {
+-        const url = await this.streamAndCreateUrl(imgElement, streamRef, mimeType, cacheKey, totalBytes);
+-        if (url) {
+-          return { success: true, fromCache: false, objectUrl: url };
+-        }
+-      }
+-
+-      return { success: false, fromCache: false, objectUrl: null, error: 'No/empty stream provided and not in cache' };
+-    } catch (error) {
+-      this.logger.log(LogLevel.Debug, `Error in setImageAsync: ${error}`);
+-      return { success: false, fromCache: false, objectUrl: null, error: String(error) };
+-    }
+-  }
+-
+-  private static setImageUrl(imgElement: HTMLImageElement, url: string, cacheKey: string): void {
+-    const tracked = this.trackedImages.get(imgElement);
+-    if (tracked) {
+-      try {
+-        URL.revokeObjectURL(tracked.url);
+-      } catch {
+-        // ignore
+-      }
+-    }
+-
+-    this.trackedImages.set(imgElement, { url, cacheKey });
+-
+-    imgElement.src = url;
+-
+-    this.setupEventHandlers(imgElement, cacheKey);
+-  }
+-
+-  private static async streamAndCreateUrl(
+-    imgElement: HTMLImageElement,
+-    streamRef: { stream: () => Promise<ReadableStream<Uint8Array>> },
+-    mimeType: string,
+-    cacheKey: string,
+-    totalBytes: number | null
+-  ): Promise<string | null> {
+-    this.loadingImages.add(imgElement);
+-
+-    // Create and track an AbortController for this element
+-    const controller = new AbortController();
+-    this.controllers.set(imgElement, controller);
+-
+-    const readable = await streamRef.stream();
+-    let displayStream = readable;
+-
+-    if (cacheKey) {
+-      const cache = await this.getCache();
+-      if (cache) {
+-        const [display, cacheStream] = readable.tee();
+-        displayStream = display;
+-
+-        cache.put(encodeURIComponent(cacheKey), new Response(cacheStream)).catch(err => {
+-          this.logger.log(LogLevel.Debug, `Failed to cache: ${err}`);
+-        });
+-      }
+-    }
+-
+-    const chunks: Uint8Array[] = [];
+-    let bytesRead = 0;
+-    let aborted = false;
+-    let resultUrl: string | null = null;
+-
+-    try {
+-      for await (const chunk of this.iterateStream(displayStream, controller.signal)) {
+-        if (controller.signal.aborted) { // Stream aborted due to a new setImageAsync call with a key change
+-          aborted = true;
+-          break;
+-        }
+-
+-        chunks.push(chunk);
+-        bytesRead += chunk.byteLength;
+-
+-        if (totalBytes) {
+-          const progress = Math.min(1, bytesRead / totalBytes);
+-          imgElement.style.setProperty('--blazor-image-progress', progress.toString());
+-        }
+-      }
+-
+-      if (!aborted) {
+-        if (bytesRead === 0) {
+-          if (typeof totalBytes === 'number' && totalBytes > 0) {
+-            throw new Error('Stream was already consumed or at end position');
+-          }
+-          resultUrl = null;
+-        } else {
+-          const combined = this.combineChunks(chunks);
+-          const blob = new Blob([combined], { type: mimeType });
+-          const url = URL.createObjectURL(blob);
+-          this.setImageUrl(imgElement, url, cacheKey);
+-          resultUrl = url;
+-        }
+-      } else {
+-        resultUrl = null;
+-      }
+-    } finally {
+-      if (this.controllers.get(imgElement) === controller) {
+-        this.controllers.delete(imgElement);
+-      }
+-      this.loadingImages.delete(imgElement);
+-      imgElement.style.removeProperty('--blazor-image-progress');
+-    }
+-
+-    return resultUrl;
+-  }
+-
+-  private static combineChunks(chunks: Uint8Array[]): Uint8Array {
+-    if (chunks.length === 1) {
+-      return chunks[0];
+-    }
+-
+-    const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
+-    const combined = new Uint8Array(total);
+-    let offset = 0;
+-    for (const chunk of chunks) {
+-      combined.set(chunk, offset);
+-      offset += chunk.byteLength;
+-    }
+-    return combined;
+-  }
+-
+-  private static setupEventHandlers(
+-    imgElement: HTMLImageElement,
+-    cacheKey: string | null = null
+-  ): void {
+-    const onLoad = (_e: Event) => {
+-      if (!cacheKey || BinaryImageComponent.activeCacheKey.get(imgElement) === cacheKey) {
+-        BinaryImageComponent.loadingImages.delete(imgElement);
+-        imgElement.style.removeProperty('--blazor-image-progress');
+-      }
+-    };
+-
+-    const onError = (_e: Event) => {
+-      if (!cacheKey || BinaryImageComponent.activeCacheKey.get(imgElement) === cacheKey) {
+-        BinaryImageComponent.loadingImages.delete(imgElement);
+-        imgElement.style.removeProperty('--blazor-image-progress');
+-        imgElement.setAttribute('data-state', 'error');
+-      }
+-    };
+-
+-    imgElement.addEventListener('load', onLoad, { once: true });
+-    imgElement.addEventListener('error', onError, { once: true });
+-  }
+-
+-  /**
+-   * Opens or creates the cache storage
+-   */
+-  private static async getCache(): Promise<Cache | null> {
+-    if (!('caches' in window)) {
+-      this.logger.log(LogLevel.Warning, 'Cache API not supported in this browser');
+-      return null;
+-    }
+-
+-    if (!this.cachePromise) {
+-      this.cachePromise = (async () => {
+-        try {
+-          return await caches.open(this.CACHE_NAME);
+-        } catch (error) {
+-          this.logger.log(LogLevel.Debug, `Failed to open cache: ${error}`);
+-          return null;
+-        }
+-      })();
+-    }
+-
+-    const cache = await this.cachePromise;
+-    // If opening failed previously, allow retry next time
+-    if (!cache) {
+-      this.cachePromise = undefined;
+-    }
+-    return cache;
+-  }
+-
+-  /**
+-   * Async iterator over a ReadableStream that ensures proper cancellation when iteration stops early.
+-   */
+-  private static async *iterateStream(stream: ReadableStream<Uint8Array>, signal?: AbortSignal): AsyncGenerator<Uint8Array, void, unknown> {
+-    const reader = stream.getReader();
+-    let finished = false;
+-
+-    try {
+-      while (true) {
+-        if (signal?.aborted) {
+-          try {
+-            await reader.cancel();
+-          } catch {
+-            // ignore
+-          }
+-          return;
+-        }
+-        const { done, value } = await reader.read();
+-        if (done) {
+-          finished = true;
+-          return;
+-        }
+-        if (value) {
+-          yield value;
+-        }
+-      }
+-    } finally {
+-      if (!finished) {
+-        try {
+-          await reader.cancel();
+-        } catch {
+-          // ignore
+-        }
+-      }
+-      try {
+-        reader.releaseLock?.();
+-      } catch {
+-        // ignore
+-      }
+-    }
+-  }
+-}
+diff --git a/src/Components/Web.JS/src/Rendering/BinaryMedia.ts b/src/Components/Web.JS/src/Rendering/BinaryMedia.ts
+new file mode 100644
+index 0000000000..c4e2475bd9
+--- /dev/null
++++ b/src/Components/Web.JS/src/Rendering/BinaryMedia.ts
+@@ -0,0 +1,735 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++import { Logger, LogLevel } from '../Platform/Logging/Logger';
++import { ConsoleLogger } from '../Platform/Logging/Loggers';
++
++// Minimal File System Access API typings
++interface FileSystemWritableFileStream {
++  write(data: BufferSource | Blob | Uint8Array): Promise<void>;
++  close(): Promise<void>;
++  abort(): Promise<void>;
++}
++interface FileSystemFileHandle {
++  createWritable(): Promise<FileSystemWritableFileStream>;
++}
++interface SaveFilePickerOptions {
++  suggestedName?: string;
++}
++declare global {
++  interface Window {
++    showSaveFilePicker?: (options?: SaveFilePickerOptions) => Promise<FileSystemFileHandle>;
++  }
++}
++
++export interface MediaLoadResult {
++  success: boolean;
++  fromCache: boolean;
++  objectUrl: string | null;
++  error?: string;
++}
++
++/**
++ * Provides functionality for rendering binary media data in Blazor components.
++ */
++export class BinaryMedia {
++  private static readonly CACHE_NAME = 'blazor-media-cache';
++
++  private static cachePromise?: Promise<Cache | null> = undefined;
++
++  private static logger: Logger = new ConsoleLogger(LogLevel.Warning);
++
++  private static loadingElements: Set<HTMLElement> = new Set();
++
++  private static activeCacheKey: WeakMap<HTMLElement, string> = new WeakMap();
++
++  private static tracked: WeakMap<HTMLElement, { url: string; cacheKey: string; attr: 'src' | 'href' }> = new WeakMap();
++
++  private static observersByParent: WeakMap<Element, MutationObserver> = new WeakMap();
++
++  private static controllers: WeakMap<HTMLElement, AbortController> = new WeakMap();
++
++  private static initializeParentObserver(parent: Element): void {
++    if (this.observersByParent.has(parent)) {
++      return;
++    }
++
++    const observer = new MutationObserver((mutations) => {
++      for (const mutation of mutations) {
++        // Handle removed nodes within this parent subtree
++        if (mutation.type === 'childList') {
++          for (const node of Array.from(mutation.removedNodes)) {
++            if (node.nodeType === Node.ELEMENT_NODE) {
++              const element = node as HTMLElement;
++
++              // If the removed element itself is tracked, revoke
++              if (this.tracked.has(element)) {
++                this.revokeTrackedUrl(element);
++              }
++
++              // Any tracked descendants (look for elements that might carry src or href)
++              element.querySelectorAll('[src],[href]').forEach((child) => {
++                const childEl = child as HTMLElement;
++                if (this.tracked.has(childEl)) {
++                  this.revokeTrackedUrl(childEl);
++                }
++              });
++            }
++          }
++        }
++
++        // Attribute changes in this subtree
++        if (mutation.type === 'attributes') {
++          const attrName = (mutation as MutationRecord).attributeName;
++          if (attrName === 'src' || attrName === 'href') {
++            const element = mutation.target as HTMLElement;
++            const tracked = this.tracked.get(element);
++            if (tracked && tracked.attr === attrName) {
++              const current = element.getAttribute(attrName) || '';
++              if (!current || current !== tracked.url) {
++                this.revokeTrackedUrl(element);
++              }
++            }
++          }
++        }
++      }
++    });
++
++    observer.observe(parent, {
++      childList: true,
++      attributes: true,
++      attributeFilter: ['src', 'href'],
++    });
++
++    this.observersByParent.set(parent, observer);
++  }
++
++  private static revokeTrackedUrl(el: HTMLElement): void {
++    const tracked = this.tracked.get(el);
++    if (tracked) {
++      try {
++        URL.revokeObjectURL(tracked.url);
++      } catch {
++        // ignore
++      }
++      this.tracked.delete(el);
++      this.loadingElements.delete(el);
++      this.activeCacheKey.delete(el);
++    }
++    // Abort any in-flight stream tied to this element
++    const controller = this.controllers.get(el);
++    if (controller) {
++      try {
++        controller.abort();
++      } catch {
++        // ignore
++      }
++      this.controllers.delete(el);
++    }
++  }
++
++  /**
++   * Single entry point for setting media content - handles cache check and streaming.
++   */
++  public static async setContentAsync(
++    element: HTMLElement,
++    streamRef: { stream: () => Promise<ReadableStream<Uint8Array>> } | null,
++    mimeType: string,
++    cacheKey: string,
++    totalBytes: number | null,
++    targetAttr: 'src' | 'href'
++  ): Promise<MediaLoadResult> {
++    if (!element || !cacheKey) {
++      return { success: false, fromCache: false, objectUrl: null, error: 'Invalid parameters' };
++    }
++
++    // Ensure we are observing this element's parent
++    const parent = element.parentElement;
++    if (parent) {
++      this.initializeParentObserver(parent);
++    }
++
++    // If there was a previous different key for this element, abort its in-flight operation
++    const previousKey = this.activeCacheKey.get(element);
++    if (previousKey && previousKey !== cacheKey) {
++      const prevController = this.controllers.get(element);
++      if (prevController) {
++        try {
++          prevController.abort();
++        } catch {
++          // ignore
++        }
++        this.controllers.delete(element);
++      }
++    }
++
++    this.activeCacheKey.set(element, cacheKey);
++
++    try {
++      // Try cache first
++      try {
++        const cache = await this.getCache();
++        if (cache) {
++          const cachedResponse = await cache.match(encodeURIComponent(cacheKey));
++          if (cachedResponse) {
++            const blob = await cachedResponse.blob();
++            const url = URL.createObjectURL(blob);
++
++            this.setUrl(element, url, cacheKey, targetAttr);
++            return { success: true, fromCache: true, objectUrl: url };
++          }
++        }
++      } catch (err) {
++        this.logger.log(LogLevel.Debug, `Cache lookup failed: ${err}`);
++      }
++
++      if (streamRef) {
++        const url = await this.streamAndCreateUrl(element, streamRef, mimeType, cacheKey, totalBytes, targetAttr);
++        if (url) {
++          return { success: true, fromCache: false, objectUrl: url };
++        }
++      }
++
++      return { success: false, fromCache: false, objectUrl: null, error: 'No/empty stream provided and not in cache' };
++    } catch (error) {
++      this.logger.log(LogLevel.Debug, `Error in setContentAsync: ${error}`);
++      return { success: false, fromCache: false, objectUrl: null, error: String(error) };
++    }
++  }
++
++  private static async streamAndCreateUrl(
++    element: HTMLElement,
++    streamRef: { stream: () => Promise<ReadableStream<Uint8Array>> },
++    mimeType: string,
++    cacheKey: string,
++    totalBytes: number | null,
++    targetAttr: 'src' | 'href'
++  ): Promise<string | null> {
++
++    // if (targetAttr === 'src' && element instanceof HTMLVideoElement) {
++    //   try {
++    //     const mediaSourceUrl = await this.tryMediaSourceVideoStreaming(
++    //       element,
++    //       streamRef,
++    //       mimeType,
++    //       cacheKey,
++    //       totalBytes
++    //     );
++    //     if (mediaSourceUrl) {
++    //       return mediaSourceUrl;
++    //     }
++    //   } catch (msErr) {
++    //     this.logger.log(LogLevel.Debug, `MediaSource video streaming path failed, falling back. Error: ${msErr}`);
++    //   }
++    // }
++
++    this.loadingElements.add(element);
++
++    // Create and track an AbortController for this element
++    const controller = new AbortController();
++    this.controllers.set(element, controller);
++
++    const readable = await streamRef.stream();
++    let displayStream = readable;
++
++    if (cacheKey) {
++      const cache = await this.getCache();
++      if (cache) {
++        const [display, cacheStream] = readable.tee();
++        displayStream = display;
++        cache.put(encodeURIComponent(cacheKey), new Response(cacheStream)).catch(err => {
++          this.logger.log(LogLevel.Debug, `Failed to put cache entry: ${err}`);
++        });
++      }
++    }
++
++    let resultUrl: string | null = null;
++    try {
++      const { aborted, chunks, bytesRead } = await this.readAllChunks(element, displayStream, controller, totalBytes);
++
++      if (!aborted) {
++        if (bytesRead === 0) {
++          if (typeof totalBytes === 'number' && totalBytes > 0) {
++            throw new Error('Stream was already consumed or at end position');
++          }
++          resultUrl = null;
++        } else {
++          const combined = this.combineChunks(chunks);
++          const baseMimeType = this.extractBaseMimeType(mimeType);
++          const blob = new Blob([combined.slice()], { type: baseMimeType });
++          const url = URL.createObjectURL(blob);
++          this.setUrl(element, url, cacheKey, targetAttr);
++          resultUrl = url;
++        }
++      } else {
++        resultUrl = null;
++      }
++    } finally {
++      if (this.controllers.get(element) === controller) {
++        this.controllers.delete(element);
++      }
++      this.loadingElements.delete(element);
++      element.style.removeProperty('--blazor-media-progress');
++    }
++
++    return resultUrl;
++  }
++
++  private static async readAllChunks(
++    element: HTMLElement,
++    stream: ReadableStream<Uint8Array>,
++    controller: AbortController,
++    totalBytes: number | null
++  ): Promise<{ aborted: boolean; chunks: Uint8Array[]; bytesRead: number }> {
++    const chunks: Uint8Array[] = [];
++    let bytesRead = 0;
++    for await (const chunk of this.iterateStream(stream, controller.signal)) {
++      if (controller.signal.aborted) {
++        return { aborted: true, chunks, bytesRead };
++      }
++      chunks.push(chunk);
++      bytesRead += chunk.byteLength;
++      if (totalBytes) {
++        const progress = Math.min(1, bytesRead / totalBytes);
++        element.style.setProperty('--blazor-media-progress', progress.toString());
++      }
++    }
++    return { aborted: controller.signal.aborted, chunks, bytesRead };
++  }
++
++  private static combineChunks(chunks: Uint8Array[]): Uint8Array {
++    if (chunks.length === 1) {
++      return chunks[0];
++    }
++
++    const total = chunks.reduce((sum, chunk) => sum + chunk.byteLength, 0);
++    const combined = new Uint8Array(total);
++    let offset = 0;
++    for (const chunk of chunks) {
++      combined.set(chunk, offset);
++      offset += chunk.byteLength;
++    }
++    return combined;
++  }
++
++  private static setUrl(element: HTMLElement, url: string, cacheKey: string, targetAttr: 'src' | 'href'): void {
++    const tracked = this.tracked.get(element);
++    if (tracked) {
++      try {
++        URL.revokeObjectURL(tracked.url);
++      } catch {
++        // ignore
++      }
++    }
++
++    this.tracked.set(element, { url, cacheKey, attr: targetAttr });
++
++    this.setupEventHandlers(element, cacheKey);
++
++    if (targetAttr === 'src') {
++      (element as HTMLImageElement | HTMLVideoElement).src = url;
++    } else {
++      (element as HTMLAnchorElement).href = url;
++    }
++  }
++
++  // Streams binary content to a user-selected file when possible,
++  // otherwise falls back to buffering in memory and triggering a blob download via an anchor.
++  public static async downloadAsync(
++    element: HTMLElement,
++    streamRef: { stream: () => Promise<ReadableStream<Uint8Array>> } | null,
++    mimeType: string,
++    totalBytes: number | null,
++    fileName: string,
++  ): Promise<boolean> {
++    if (!element || !fileName || !streamRef) {
++      return false;
++    }
++
++    this.loadingElements.add(element);
++    const controller = new AbortController();
++    this.controllers.set(element, controller);
++
++    try {
++      const readable = await streamRef.stream();
++
++      // Native picker direct-to-file streaming available
++      if (typeof window.showSaveFilePicker === 'function') {
++        try {
++          const handle = await window.showSaveFilePicker({ suggestedName: fileName });
++
++          const writer = await handle.createWritable();
++          const writeResult = await this.writeStreamToFile(element, readable, writer, totalBytes, controller);
++          if (writeResult === 'success') {
++            return true;
++          }
++          if (writeResult === 'aborted') {
++            return false;
++          }
++        } catch (pickerErr) {
++          this.logger.log(LogLevel.Debug, `Native picker streaming path failed or cancelled: ${pickerErr}`);
++        }
++      }
++
++      // In-memory fallback: read all bytes then trigger anchor download
++      const readResult = await this.readAllChunks(element, readable, controller, totalBytes);
++      if (readResult.aborted) {
++        return false;
++      }
++      const combined = this.combineChunks(readResult.chunks);
++      const baseMimeType = this.extractBaseMimeType(mimeType);
++      const blob = new Blob([combined.slice()], { type: baseMimeType });
++      const url = URL.createObjectURL(blob);
++      this.triggerDownload(url, fileName);
++
++      return true;
++    } catch (error) {
++      this.logger.log(LogLevel.Debug, `Error in downloadAsync: ${error}`);
++      return false;
++    } finally {
++      if (this.controllers.get(element) === controller) {
++        this.controllers.delete(element);
++      }
++      this.loadingElements.delete(element);
++      element.style.removeProperty('--blazor-media-progress');
++    }
++  }
++
++  private static async writeStreamToFile(
++    element: HTMLElement,
++    stream: ReadableStream<Uint8Array>,
++    writer: FileSystemWritableFileStream,
++    totalBytes: number | null,
++    controller?: AbortController
++  ): Promise<'success' | 'aborted' | 'error'> {
++    let written = 0;
++    try {
++      for await (const chunk of this.iterateStream(stream, controller?.signal)) {
++        if (controller?.signal.aborted) {
++          try {
++            await writer.abort();
++          } catch {
++            /* ignore */
++          }
++          element.style.removeProperty('--blazor-media-progress');
++          return 'aborted';
++        }
++        try {
++          await writer.write(chunk);
++        } catch (wErr) {
++          if (controller?.signal.aborted) {
++            try {
++              await writer.abort();
++            } catch {
++              /* ignore */
++            }
++            return 'aborted';
++          }
++          return 'error';
++        }
++        written += chunk.byteLength;
++        if (totalBytes) {
++          const progress = Math.min(1, written / totalBytes);
++          element.style.setProperty('--blazor-media-progress', progress.toString());
++        }
++      }
++
++      if (controller?.signal.aborted) {
++        try {
++          await writer.abort();
++        } catch {
++          /* ignore */
++        }
++        element.style.removeProperty('--blazor-media-progress');
++        return 'aborted';
++      }
++
++      try {
++        await writer.close();
++      } catch (closeErr) {
++        if (controller?.signal.aborted) {
++          return 'aborted';
++        }
++        return 'error';
++      }
++      return 'success';
++    } catch (e) {
++      try {
++        await writer.abort();
++      } catch {
++        /* ignore */
++      }
++      return controller?.signal.aborted ? 'aborted' : 'error';
++    } finally {
++      element.style.removeProperty('--blazor-media-progress');
++    }
++  }
++
++  private static triggerDownload(url: string, fileName: string): void {
++    try {
++      const a = document.createElement('a');
++      a.href = url;
++      a.download = fileName;
++      a.style.display = 'none';
++      document.body.appendChild(a);
++      a.click();
++
++      setTimeout(() => {
++        try {
++          a.remove();
++          URL.revokeObjectURL(url);
++        } catch {
++          // ignore
++        }
++      }, 0);
++    } catch {
++      // ignore
++    }
++  }
++
++  private static async getCache(): Promise<Cache | null> {
++    if (!('caches' in window)) {
++      this.logger.log(LogLevel.Warning, 'Cache API not supported in this browser');
++      return null;
++    }
++
++    if (!this.cachePromise) {
++      this.cachePromise = (async () => {
++        try {
++          return await caches.open(this.CACHE_NAME);
++        } catch (error) {
++          this.logger.log(LogLevel.Debug, `Failed to open cache: ${error}`);
++          return null;
++        }
++      })();
++    }
++
++    const cache = await this.cachePromise;
++    // If opening failed previously, allow retry next time
++    if (!cache) {
++      this.cachePromise = undefined;
++    }
++    return cache;
++  }
++
++  private static setupEventHandlers(
++    element: HTMLElement,
++    cacheKey: string | null = null
++  ): void {
++    const clearIfActive = () => {
++      if (!cacheKey || BinaryMedia.activeCacheKey.get(element) === cacheKey) {
++        BinaryMedia.loadingElements.delete(element);
++        element.style.removeProperty('--blazor-media-progress');
++      }
++    };
++
++    const onLoad = (_e: Event) => {
++      clearIfActive();
++    };
++
++    const onError = (_e: Event) => {
++      if (!cacheKey || BinaryMedia.activeCacheKey.get(element) === cacheKey) {
++        BinaryMedia.loadingElements.delete(element);
++        element.style.removeProperty('--blazor-media-progress');
++        element.setAttribute('data-state', 'error');
++      }
++    };
++
++    element.addEventListener('load', onLoad, { once: true });
++    element.addEventListener('error', onError, { once: true });
++
++    if (element instanceof HTMLVideoElement) {
++      const onLoadedData = (_e: Event) => clearIfActive();
++      element.addEventListener('loadeddata', onLoadedData, { once: true });
++    }
++  }
++
++  private static async *iterateStream(stream: ReadableStream<Uint8Array>, signal?: AbortSignal): AsyncGenerator<Uint8Array, void, unknown> {
++    const reader = stream.getReader();
++    let finished = false;
++    try {
++      while (true) {
++        if (signal?.aborted) {
++          try {
++            await reader.cancel();
++          } catch {
++            // ignore
++          }
++          return;
++        }
++        const { done, value } = await reader.read();
++        if (done) {
++          finished = true;
++          return;
++        }
++        if (value) {
++          yield value;
++        }
++      }
++    } finally {
++      if (!finished) {
++        try {
++          await reader.cancel();
++        } catch {
++          // ignore
++        }
++      }
++      try {
++        reader.releaseLock?.();
++      } catch {
++        // ignore
++      }
++    }
++  }
++
++  /**
++   * Extracts the base MIME type from a MIME type that may contain codecs.
++   * Examples: "video/mp4; codecs=\"avc1.64001E\"" -> "video/mp4"
++   */
++  private static extractBaseMimeType(mimeType: string): string {
++    const semicolonIndex = mimeType.indexOf(';');
++    return semicolonIndex !== -1 ? mimeType.substring(0, semicolonIndex).trim() : mimeType;
++  }
++
++  private static async tryMediaSourceVideoStreaming(
++    element: HTMLVideoElement,
++    streamRef: { stream: () => Promise<ReadableStream<Uint8Array>> },
++    mimeType: string,
++    cacheKey: string,
++    totalBytes: number | null
++  ): Promise<string | null> {
++    try {
++      if (!('MediaSource' in window) || !MediaSource.isTypeSupported(mimeType)) {
++        return null;
++      }
++    } catch {
++      return null;
++    }
++
++    this.loadingElements.add(element);
++    const controller = new AbortController();
++    this.controllers.set(element, controller);
++
++    const mediaSource = new MediaSource();
++    const objectUrl = URL.createObjectURL(mediaSource);
++
++    this.setUrl(element, objectUrl, cacheKey, 'src');
++
++    try {
++      await new Promise<void>((resolve, reject) => {
++        const onOpen = () => resolve();
++        mediaSource.addEventListener('sourceopen', onOpen, { once: true });
++        mediaSource.addEventListener('error', () => reject(new Error('MediaSource error event')), { once: true });
++      });
++
++      if (controller.signal.aborted) {
++        return null;
++      }
++
++      const sourceBuffer: SourceBuffer = mediaSource.addSourceBuffer(mimeType);
++
++      const originalStream = await streamRef.stream();
++      let displayStream: ReadableStream<Uint8Array> = originalStream;
++
++      if (cacheKey) {
++        try {
++          const cache = await this.getCache();
++          if (cache) {
++            const [display, cacheStream] = originalStream.tee();
++            displayStream = display;
++            cache.put(encodeURIComponent(cacheKey), new Response(cacheStream))
++              .catch(err => this.logger.log(LogLevel.Debug, `Failed to put cache entry (MediaSource path): ${err}`));
++          }
++        } catch (cacheErr) {
++          this.logger.log(LogLevel.Debug, `Cache setup failed (MediaSource path): ${cacheErr}`);
++        }
++      }
++
++      let bytesRead = 0;
++
++      for await (const chunk of this.iterateStream(displayStream, controller.signal)) {
++        if (controller.signal.aborted) {
++          break;
++        }
++
++        // Wait until sourceBuffer ready
++        if (sourceBuffer.updating) {
++          await new Promise<void>((resolve) => {
++            const handler = () => resolve();
++            sourceBuffer.addEventListener('updateend', handler, { once: true });
++          });
++          if (controller.signal.aborted) {
++            break;
++          }
++        }
++
++        try {
++          const copy = new Uint8Array(chunk.byteLength);
++          copy.set(chunk);
++          sourceBuffer.appendBuffer(copy);
++        } catch (appendErr) {
++          this.logger.log(LogLevel.Debug, `SourceBuffer append failed: ${appendErr}`);
++          try {
++            mediaSource.endOfStream();
++          } catch {
++            // ignore
++          }
++          break;
++        }
++
++        bytesRead += chunk.byteLength;
++        if (totalBytes) {
++          const progress = Math.min(1, bytesRead / totalBytes);
++          element.style.setProperty('--blazor-media-progress', progress.toString());
++        }
++      }
++
++      if (controller.signal.aborted) {
++        try {
++          URL.revokeObjectURL(objectUrl);
++        } catch {
++          // ignore
++        }
++        return null;
++      }
++
++      // Wait for any pending update to finish before ending stream
++      if (sourceBuffer.updating) {
++        await new Promise<void>((resolve) => {
++          const handler = () => resolve();
++          sourceBuffer.addEventListener('updateend', handler, { once: true });
++        });
++      }
++      try {
++        mediaSource.endOfStream();
++      } catch {
++        // ignore
++      }
++
++      this.loadingElements.delete(element);
++      element.style.removeProperty('--blazor-media-progress');
++
++      return objectUrl;
++    } catch (err) {
++      try {
++        URL.revokeObjectURL(objectUrl);
++      } catch {
++        // ignore
++      }
++      // Remove tracking so fallback can safely set a new URL
++      this.revokeTrackedUrl(element);
++      if (controller.signal.aborted) {
++        return null;
++      }
++      return null;
++    } finally {
++      if (this.controllers.get(element) === controller) {
++        this.controllers.delete(element);
++      }
++      if (controller.signal.aborted) {
++        this.loadingElements.delete(element);
++        element.style.removeProperty('--blazor-media-progress');
++      }
++    }
++  }
++}
+diff --git a/src/Components/Web/src/Media/FileDownload.cs b/src/Components/Web/src/Media/FileDownload.cs
+new file mode 100644
+index 0000000000..8ea054d55c
+--- /dev/null
++++ b/src/Components/Web/src/Media/FileDownload.cs
+@@ -0,0 +1,170 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.AspNetCore.Components.Rendering;
++using Microsoft.JSInterop;
++
++namespace Microsoft.AspNetCore.Components.Web.Media;
++
++/* This is equivalent to a .razor file containing:
++ *
++ * <a data-blazor-file-download
++ *    href="javascript:void(0)"
++ *    data-state=@(IsLoading ? "loading" : _hasError ? "error" : null)
++ *    @attributes="AdditionalAttributes"
++ *    @ref="Element"
++ *    @onclick="OnClickAsync">@(Text ?? "Download")</a>
++ *
++ */
++/// <summary>
++/// A component that provides an anchor element to download the provided media source.
++/// </summary>
++public sealed class FileDownload : MediaComponentBase
++{
++    /// <summary>
++    /// File name to suggest to the browser for the download. Must be provided.
++    /// </summary>
++    [Parameter, EditorRequired] public string FileName { get; set; } = default!;
++
++    /// <summary>
++    /// Provides custom link text. Defaults to "Download".
++    /// </summary>
++    [Parameter] public string? Text { get; set; }
++
++    internal override string TargetAttributeName => string.Empty; // Not used – object URL not tracked for downloads.
++
++    /// <inheritdoc />
++    internal override bool ShouldAutoLoad => false;
++
++    /// <summary>
++    /// Allows customizing the rendering of the file download component.
++    /// </summary>
++    [Parameter] public RenderFragment<FileDownloadContext>? ChildContent { get; set; }
++
++    private protected override void BuildRenderTree(RenderTreeBuilder builder)
++    {
++        if (ChildContent is not null)
++        {
++            var context = new FileDownloadContext
++            {
++                IsLoading = IsLoading,
++                HasError = _hasError,
++                FileName = FileName,
++            };
++            context.Initialize(r => Element = r, EventCallback.Factory.Create(this, OnClickAsync));
++            builder.AddContent(0, ChildContent, context);
++            return;
++        }
++
++        // Default rendering
++        builder.OpenElement(0, "a");
++
++        builder.AddAttribute(1, "data-blazor-file-download", "");
++
++        if (IsLoading)
++        {
++            builder.AddAttribute(2, "data-state", "loading");
++        }
++        else if (_hasError)
++        {
++            builder.AddAttribute(2, "data-state", "error");
++        }
++
++        builder.AddAttribute(3, "href", "javascript:void(0)");
++        builder.AddAttribute(4, "onclick", EventCallback.Factory.Create(this, OnClickAsync));
++
++        IEnumerable<KeyValuePair<string, object>>? attributesToRender = AdditionalAttributes;
++        if (AdditionalAttributes is not null && AdditionalAttributes.ContainsKey("href"))
++        {
++            var copy = new Dictionary<string, object>(AdditionalAttributes.Count);
++            foreach (var kvp in AdditionalAttributes)
++            {
++                if (kvp.Key == "href")
++                {
++                    continue;
++                }
++                copy.Add(kvp.Key, kvp.Value!);
++            }
++            attributesToRender = copy;
++        }
++        builder.AddMultipleAttributes(6, attributesToRender);
++
++        builder.AddElementReferenceCapture(7, elementReference => Element = elementReference);
++
++        builder.AddContent(8, Text ?? "Download");
++
++        builder.CloseElement();
++    }
++
++    private async Task OnClickAsync()
++    {
++        if (Source is null || !IsInteractive || string.IsNullOrWhiteSpace(FileName))
++        {
++            return;
++        }
++
++        CancelPreviousLoad();
++        var token = ResetCancellationToken();
++        _hasError = false;
++        _currentSource = Source;
++        Render();
++
++        var source = Source;
++
++        using var streamRef = new DotNetStreamReference(source.Stream, leaveOpen: true);
++
++        try
++        {
++            var result = await JSRuntime.InvokeAsync<bool>(
++                "Blazor._internal.BinaryMedia.downloadAsync",
++                token,
++                Element,
++                streamRef,
++                source.MimeType,
++                source.Length,
++                FileName);
++
++            if (!token.IsCancellationRequested)
++            {
++                _currentSource = null;
++                if (!result)
++                {
++                    _hasError = true;
++                }
++                Render();
++            }
++        }
++        catch (OperationCanceledException)
++        {
++            _currentSource = null;
++            Render();
++        }
++        catch
++        {
++            _currentSource = null;
++            _hasError = true;
++            Render();
++        }
++    }
++}
++
++/// <summary>
++/// Extended media context for the FileDownload component providing click invocation and filename.
++/// </summary>
++public sealed class FileDownloadContext : MediaContext
++{
++    /// <summary>
++    /// Gets the file name suggested to the browser when initiating the download.
++    /// </summary>
++    public string FileName { get; internal set; } = string.Empty;
++    private EventCallback _onClick;
++    internal void Initialize(Action<ElementReference> capture, EventCallback onClick)
++    {
++        base.Initialize(capture);
++        _onClick = onClick;
++    }
++    /// <summary>
++    /// Initiates the download by invoking the underlying click handler of the parent.
++    /// </summary>
++    public Task InvokeAsync() => _onClick.InvokeAsync();
++}
+diff --git a/src/Components/Web/src/Media/Image.cs b/src/Components/Web/src/Media/Image.cs
+new file mode 100644
+index 0000000000..752f4452ea
+--- /dev/null
++++ b/src/Components/Web/src/Media/Image.cs
+@@ -0,0 +1,69 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.AspNetCore.Components.Rendering;
++
++namespace Microsoft.AspNetCore.Components.Web.Media;
++
++/* This is equivalent to a .razor file containing:
++ *
++ * <img data-blazor-image
++ *      src="@(_currentObjectUrl)"
++ *      data-state=@(IsLoading ? "loading" : _hasError ? "error" : null)
++ *      @attributes="AdditionalAttributes"
++ *      @ref="Element"></img>
++ *
++ */
++/// <summary>
++/// A component that efficiently renders images from non-HTTP sources like byte arrays.
++/// </summary>
++public sealed class Image : MediaComponentBase
++{
++    internal override string TargetAttributeName => "src";
++
++    /// <summary>
++    /// Allows customizing the rendering of the image component.
++    /// </summary>
++    [Parameter] public RenderFragment<MediaContext>? ChildContent { get; set; }
++
++    private protected override void BuildRenderTree(RenderTreeBuilder builder)
++    {
++        if (ChildContent is not null)
++        {
++            var showInitial = Source != null && _currentSource == null && string.IsNullOrEmpty(_currentObjectUrl) && !_hasError;
++            var context = new MediaContext
++            {
++                ObjectUrl = _currentObjectUrl,
++                IsLoading = IsLoading || showInitial,
++                HasError = _hasError,
++            };
++            context.Initialize(r => Element = r);
++            builder.AddContent(0, ChildContent, context);
++            return;
++        }
++
++        // Default rendering
++        builder.OpenElement(0, "img");
++
++        if (!string.IsNullOrEmpty(_currentObjectUrl))
++        {
++            builder.AddAttribute(1, TargetAttributeName, _currentObjectUrl);
++        }
++
++        builder.AddAttribute(2, "data-blazor-image", "");
++
++        var defaultShowInitial = Source != null && _currentSource == null && string.IsNullOrEmpty(_currentObjectUrl) && !_hasError;
++        if (IsLoading || defaultShowInitial)
++        {
++            builder.AddAttribute(3, "data-state", "loading");
++        }
++        else if (_hasError)
++        {
++            builder.AddAttribute(3, "data-state", "error");
++        }
++
++        builder.AddMultipleAttributes(4, AdditionalAttributes);
++        builder.AddElementReferenceCapture(5, r => Element = r);
++        builder.CloseElement();
++    }
++}
+diff --git a/src/Components/Web/src/Image/Image.cs b/src/Components/Web/src/Media/MediaComponentBase.cs
+similarity index 51%
+rename from src/Components/Web/src/Image/Image.cs
+rename to src/Components/Web/src/Media/MediaComponentBase.cs
+index 7c25117bfa..5ea37e4b25 100644
+--- a/src/Components/Web/src/Image/Image.cs
++++ b/src/Components/Web/src/Media/MediaComponentBase.cs
+@@ -3,52 +3,94 @@
+ 
+ using System.Diagnostics;
+ using Microsoft.AspNetCore.Components.Rendering;
+-using Microsoft.JSInterop;
+ using Microsoft.Extensions.Logging;
++using Microsoft.JSInterop;
++
++namespace Microsoft.AspNetCore.Components.Web.Media;
+ 
+-namespace Microsoft.AspNetCore.Components.Web.Image;
+-
+-/* This is equivalent to a .razor file containing:
+- *
+- * <img data-blazor-image
+- *      src="@(_currentObjectUrl)"
+- *      data-state=@(IsLoading ? "loading" : _hasError ? "error" : null)
+- *      @attributes="AdditionalAttributes"
+- *      @ref="Element"/>
+- *
+- */
+ /// <summary>
+-/// A component that efficiently renders images from non-HTTP sources like byte arrays.
++/// Base component that handles turning a media stream into an object URL plus caching and lifetime management.
++/// Subclasses implement their own rendering and provide the target attribute (e.g., <c>src</c> or <c>href</c>) used
+ /// </summary>
+-public partial class Image : IComponent, IHandleAfterRender, IAsyncDisposable
++public abstract partial class MediaComponentBase : IComponent, IHandleAfterRender, IAsyncDisposable
+ {
+     private RenderHandle _renderHandle;
+-    private string? _currentObjectUrl;
+-    private bool _hasError;
++
++    /// <summary>
++    /// The current object URL (blob URL) assigned to the underlying element, or <c>null</c> if not yet loaded
++    /// or if a previous load failed/was cancelled.
++    /// </summary>
++    internal string? _currentObjectUrl;
++
++    /// <summary>
++    /// Indicates whether the last load attempt ended in an error state for the active cache key.
++    /// </summary>
++    internal bool _hasError;
++
+     private bool _isDisposed;
+     private bool _initialized;
+     private bool _hasPendingRender;
+-    private string? _activeCacheKey;
+-    private ImageSource? _currentSource;
++
++    /// <summary>
++    /// The cache key associated with the currently active/most recent load operation. Used to ignore
++    /// out-of-order JS interop responses belonging to stale operations.
++    /// </summary>
++    internal string? _activeCacheKey;
++
++    /// <summary>
++    /// The <see cref="MediaSource"/> instance currently being processed (or <c>null</c> if none).
++    /// </summary>
++    internal MediaSource? _currentSource;
+     private CancellationTokenSource? _loadCts;
+-    private bool IsLoading => _currentSource != null && string.IsNullOrEmpty(_currentObjectUrl) && !_hasError;
+ 
+-    private bool IsInteractive => _renderHandle.IsInitialized &&
+-                                _renderHandle.RendererInfo.IsInteractive;
++    /// <summary>
++    /// Gets a value indicating whether the component is currently loading the media content.
++    /// True when a source has been provided, no object URL is available yet, and there is no error.
++    /// </summary>
++    internal bool IsLoading => _currentSource != null && string.IsNullOrEmpty(_currentObjectUrl) && !_hasError;
++
++    /// <summary>
++    /// Gets a value indicating whether the renderer is interactive so client-side JS interop can be performed.
++    /// </summary>
++    internal bool IsInteractive => _renderHandle.IsInitialized && _renderHandle.RendererInfo.IsInteractive;
+ 
+-    private ElementReference? Element { get; set; }
++    /// <summary>
++    /// Gets the reference to the rendered HTML element for this media component.
++    /// </summary>
++    internal ElementReference? Element { get; set; }
+ 
+-    [Inject] private IJSRuntime JSRuntime { get; set; } = default!;
++    /// <summary>
++    /// Gets or sets the JS runtime used for interop with the browser to materialize media object URLs.
++    /// </summary>
++    [Inject] internal IJSRuntime JSRuntime { get; set; } = default!;
++
++    /// <summary>
++    /// Gets or sets the logger factory used to create the <see cref="Logger"/> instance.
++    /// </summary>
++    [Inject] internal ILoggerFactory LoggerFactory { get; set; } = default!;
++
++    /// <summary>
++    /// Logger for media operations.
++    /// </summary>
++    private ILogger Logger => _logger ??= LoggerFactory.CreateLogger(GetType());
++    private ILogger? _logger;
+ 
+-    [Inject] private ILogger<Image> Logger { get; set; } = default!;
++    internal abstract string TargetAttributeName { get; }
+ 
+     /// <summary>
+-    /// Gets or sets the source for the image.
++    /// Determines whether the component should automatically invoke a media load after the first render
++    /// and whenever the <see cref="Source"/> changes. Override and return <c>false</c> for components
++    /// (such as download buttons) that defer loading until an explicit user action.
+     /// </summary>
+-    [Parameter, EditorRequired] public required ImageSource Source { get; set; }
++    internal virtual bool ShouldAutoLoad => true;
+ 
+     /// <summary>
+-    /// Gets or sets the attributes for the image.
++    /// Gets or sets the media source.
++    /// </summary>
++    [Parameter, EditorRequired] public required MediaSource Source { get; set; }
++
++    /// <summary>
++    /// Unmatched attributes applied to the rendered element.
+     /// </summary>
+     [Parameter(CaptureUnmatchedValues = true)] public Dictionary<string, object>? AdditionalAttributes { get; set; }
+ 
+@@ -66,12 +108,12 @@ public partial class Image : IComponent, IHandleAfterRender, IAsyncDisposable
+         var previousSource = Source;
+ 
+         parameters.SetParameterProperties(this);
++
+         if (Source is null)
+         {
+-            throw new InvalidOperationException("Image.Source is required.");
++            throw new InvalidOperationException($"{nameof(MediaComponentBase)}.{nameof(Source)} is required.");
+         }
+ 
+-        // Initialize on first parameters set
+         if (!_initialized)
+         {
+             Render();
+@@ -90,7 +132,7 @@ public partial class Image : IComponent, IHandleAfterRender, IAsyncDisposable
+     async Task IHandleAfterRender.OnAfterRenderAsync()
+     {
+         var source = Source;
+-        if (!IsInteractive || source is null)
++        if (!IsInteractive || source is null || !ShouldAutoLoad)
+         {
+             return;
+         }
+@@ -104,17 +146,20 @@ public partial class Image : IComponent, IHandleAfterRender, IAsyncDisposable
+         var token = ResetCancellationToken();
+ 
+         _currentSource = source;
+-
+         try
+         {
+-            await LoadImage(source, token);
++            await LoadMediaAsync(source, token);
+         }
+         catch (OperationCanceledException)
+         {
+         }
+     }
+ 
+-    private void Render()
++    /// <summary>
++    /// Triggers a render of the component by invoking the <see cref="BuildRenderTree"/> method.
++    /// Ensures that only one render operation is pending at a time to prevent redundant renders.
++    /// </summary>
++    internal void Render()
+     {
+         Debug.Assert(_renderHandle.IsInitialized);
+ 
+@@ -126,35 +171,9 @@ public partial class Image : IComponent, IHandleAfterRender, IAsyncDisposable
+         }
+     }
+ 
+-    private void BuildRenderTree(RenderTreeBuilder builder)
+-    {
+-        builder.OpenElement(0, "img");
+-
+-        if (!string.IsNullOrEmpty(_currentObjectUrl))
+-        {
+-            builder.AddAttribute(1, "src", _currentObjectUrl);
+-        }
+-
+-        builder.AddAttribute(2, "data-blazor-image", "");
+-
+-        var showInitialLoad = Source != null && _currentSource == null && string.IsNullOrEmpty(_currentObjectUrl) && !_hasError;
+-
+-        if (IsLoading || showInitialLoad)
+-        {
+-            builder.AddAttribute(3, "data-state", "loading");
+-        }
+-        else if (_hasError)
+-        {
+-            builder.AddAttribute(3, "data-state", "error");
+-        }
+-
+-        builder.AddMultipleAttributes(4, AdditionalAttributes);
+-        builder.AddElementReferenceCapture(5, elementReference => Element = elementReference);
++    private protected virtual void BuildRenderTree(RenderTreeBuilder builder) { }
+ 
+-        builder.CloseElement();
+-    }
+-
+-    private struct ImageLoadResult
++    private sealed class MediaLoadResult
+     {
+         public bool Success { get; set; }
+         public bool FromCache { get; set; }
+@@ -162,9 +181,9 @@ public partial class Image : IComponent, IHandleAfterRender, IAsyncDisposable
+         public string? Error { get; set; }
+     }
+ 
+-    private async Task LoadImage(ImageSource source, CancellationToken cancellationToken)
++    private async Task LoadMediaAsync(MediaSource? source, CancellationToken cancellationToken)
+     {
+-        if (!IsInteractive)
++        if (source == null || !IsInteractive)
+         {
+             return;
+         }
+@@ -179,14 +198,15 @@ public partial class Image : IComponent, IHandleAfterRender, IAsyncDisposable
+ 
+             using var streamRef = new DotNetStreamReference(source.Stream, leaveOpen: true);
+ 
+-            var result = await JSRuntime.InvokeAsync<ImageLoadResult>(
+-                "Blazor._internal.BinaryImageComponent.setImageAsync",
++            var result = await JSRuntime.InvokeAsync<MediaLoadResult>(
++                "Blazor._internal.BinaryMedia.setContentAsync",
+                 cancellationToken,
+                 Element,
+                 streamRef,
+                 source.MimeType,
+                 source.CacheKey,
+-                source.Length);
++                source.Length,
++                TargetAttributeName);
+ 
+             if (_activeCacheKey == source.CacheKey && !cancellationToken.IsCancellationRequested)
+             {
+@@ -209,7 +229,7 @@ public partial class Image : IComponent, IHandleAfterRender, IAsyncDisposable
+                 else
+                 {
+                     _hasError = true;
+-                    Log.LoadFailed(Logger, source.CacheKey, new InvalidOperationException(result.Error ?? "Image load failed"));
++                    Log.LoadFailed(Logger, source.CacheKey, new InvalidOperationException(result.Error ?? "Unknown error"));
+                 }
+ 
+                 Render();
+@@ -220,8 +240,8 @@ public partial class Image : IComponent, IHandleAfterRender, IAsyncDisposable
+         }
+         catch (Exception ex)
+         {
+-            Log.LoadFailed(Logger, source.CacheKey, ex);
+-            if (_activeCacheKey == source.CacheKey && !cancellationToken.IsCancellationRequested)
++            Log.LoadFailed(Logger, source?.CacheKey ?? "(null)", ex);
++            if (source != null && _activeCacheKey == source.CacheKey && !cancellationToken.IsCancellationRequested)
+             {
+                 _currentObjectUrl = null;
+                 _hasError = true;
+@@ -236,15 +256,15 @@ public partial class Image : IComponent, IHandleAfterRender, IAsyncDisposable
+         if (!_isDisposed)
+         {
+             _isDisposed = true;
+-
+-            // Cancel any pending operations
+             CancelPreviousLoad();
+         }
+-
+         return new ValueTask();
+     }
+ 
+-    private void CancelPreviousLoad()
++    /// <summary>
++    /// Cancels any in-flight media load operation, if one is active, by signalling its <see cref="CancellationTokenSource"/>.
++    /// </summary>
++    internal void CancelPreviousLoad()
+     {
+         try
+         {
+@@ -253,18 +273,20 @@ public partial class Image : IComponent, IHandleAfterRender, IAsyncDisposable
+         catch
+         {
+         }
+-
+         _loadCts?.Dispose();
+         _loadCts = null;
+     }
+ 
+-    private CancellationToken ResetCancellationToken()
++    /// <summary>
++    /// Creates a new <see cref="CancellationTokenSource"/> for an upcoming load operation and returns its token.
++    /// </summary>
++    internal CancellationToken ResetCancellationToken()
+     {
+         _loadCts = new CancellationTokenSource();
+         return _loadCts.Token;
+     }
+ 
+-    private static bool HasSameKey(ImageSource? a, ImageSource? b)
++    private static bool HasSameKey(MediaSource? a, MediaSource? b)
+     {
+         return a is not null && b is not null && string.Equals(a.CacheKey, b.CacheKey, StringComparison.Ordinal);
+     }
+@@ -274,19 +296,16 @@ public partial class Image : IComponent, IHandleAfterRender, IAsyncDisposable
+         [LoggerMessage(1, LogLevel.Debug, "Begin load for key '{CacheKey}'", EventName = "BeginLoad")]
+         public static partial void BeginLoad(ILogger logger, string cacheKey);
+ 
+-        [LoggerMessage(2, LogLevel.Debug, "Loaded image from cache for key '{CacheKey}'", EventName = "CacheHit")]
++        [LoggerMessage(2, LogLevel.Debug, "Loaded media from cache for key '{CacheKey}'", EventName = "CacheHit")]
+         public static partial void CacheHit(ILogger logger, string cacheKey);
+ 
+-        [LoggerMessage(3, LogLevel.Debug, "Streaming image for key '{CacheKey}'", EventName = "StreamStart")]
++        [LoggerMessage(3, LogLevel.Debug, "Streaming media for key '{CacheKey}'", EventName = "StreamStart")]
+         public static partial void StreamStart(ILogger logger, string cacheKey);
+ 
+-        [LoggerMessage(4, LogLevel.Debug, "Image load succeeded for key '{CacheKey}'", EventName = "LoadSuccess")]
++        [LoggerMessage(4, LogLevel.Debug, "Media load succeeded for key '{CacheKey}'", EventName = "LoadSuccess")]
+         public static partial void LoadSuccess(ILogger logger, string cacheKey);
+ 
+-        [LoggerMessage(5, LogLevel.Debug, "Image load failed for key '{CacheKey}'", EventName = "LoadFailed")]
++        [LoggerMessage(5, LogLevel.Debug, "Media load failed for key '{CacheKey}'", EventName = "LoadFailed")]
+         public static partial void LoadFailed(ILogger logger, string cacheKey, Exception exception);
+-
+-        [LoggerMessage(6, LogLevel.Debug, "Revoked image URL on dispose", EventName = "RevokedUrl")]
+-        public static partial void RevokedUrl(ILogger logger);
+     }
+ }
+diff --git a/src/Components/Web/src/Media/MediaContext.cs b/src/Components/Web/src/Media/MediaContext.cs
+new file mode 100644
+index 0000000000..3e29e4ad99
+--- /dev/null
++++ b/src/Components/Web/src/Media/MediaContext.cs
+@@ -0,0 +1,44 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++namespace Microsoft.AspNetCore.Components.Web.Media;
++
++/// <summary>
++/// Base context supplied to media component <see cref="RenderFragment{TContext}"/> custom content.
++/// Used by <see cref="Image"/> and <see cref="Video"/>, and as the base for <see cref="FileDownloadContext"/>.
++/// </summary>
++public class MediaContext
++{
++    /// <summary>
++    /// The object URL for the media (image/video) or <c>null</c> if not loaded yet (not used for FileDownload).
++    /// </summary>
++    public string? ObjectUrl { get; internal set; }
++
++    /// <summary>
++    /// Indicates whether the media is currently loading.
++    /// </summary>
++    public bool IsLoading { get; internal set; }
++
++    /// <summary>
++    /// Indicates whether the last load attempt failed.
++    /// </summary>
++    public bool HasError { get; internal set; }
++
++    private Action<ElementReference>? _capture;
++    private ElementReference _element;
++
++    internal void Initialize(Action<ElementReference> capture) => _capture = capture;
++
++    /// <summary>
++    /// Element reference for use with <c>@ref</c>. Assigning this propagates the DOM element to the component.
++    /// </summary>
++    public ElementReference Element
++    {
++        get => _element;
++        set
++        {
++            _element = value;
++            _capture?.Invoke(value);
++        }
++    }
++}
+diff --git a/src/Components/Web/src/Image/ImageSource.cs b/src/Components/Web/src/Media/MediaSource.cs
+similarity index 62%
+rename from src/Components/Web/src/Image/ImageSource.cs
+rename to src/Components/Web/src/Media/MediaSource.cs
+index d584849437..8d51cbc771 100644
+--- a/src/Components/Web/src/Image/ImageSource.cs
++++ b/src/Components/Web/src/Media/MediaSource.cs
+@@ -1,23 +1,23 @@
+ // Licensed to the .NET Foundation under one or more agreements.
+ // The .NET Foundation licenses this file to you under the MIT license.
+ 
+-namespace Microsoft.AspNetCore.Components.Web.Image;
++namespace Microsoft.AspNetCore.Components.Web.Media;
+ 
+ /// <summary>
+-/// Represents a single-use source for image data. An <see cref="ImageSource"/> corresponds to
+-/// exactly one image load. It holds a single underlying <see cref="Stream"/> that will be
+-/// consumed by the image component. Reuse of an instance for multiple components or multiple
++/// Represents a single-use source for media data. A <see cref="MediaSource"/> corresponds to
++/// exactly one load operation. It holds a single underlying <see cref="Stream"/> that will be
++/// consumed by a media component. Reuse of an instance for multiple components or multiple
+ /// loads is not supported.
+ /// </summary>
+-public class ImageSource
++public class MediaSource
+ {
+     /// <summary>
+-    /// Gets the MIME type of the image.
++    /// Gets the MIME type of the media.
+     /// </summary>
+     public string MimeType { get; }
+ 
+     /// <summary>
+-    /// Gets the cache key for the image. Always non-null.
++    /// Gets the cache key for the media. Always non-null.
+     /// </summary>
+     public string CacheKey { get; }
+ 
+@@ -27,16 +27,19 @@ public class ImageSource
+     public Stream Stream { get; }
+ 
+     /// <summary>
+-    /// Gets the length of the image data in bytes if known.
++    /// Gets the length of the media data in bytes if known.
+     /// </summary>
+     public long? Length { get; }
+ 
+     /// <summary>
+-    /// Initializes a new instance of <see cref="ImageSource"/> with byte array data.
++    /// Initializes a new instance of <see cref="MediaSource"/> with byte array data.
+     /// A non-writable <see cref="MemoryStream"/> is created over the provided data. The byte
+     /// array reference is not copied, so callers should not mutate it afterwards.
+     /// </summary>
+-    public ImageSource(byte[] data, string mimeType, string cacheKey)
++    /// <param name="data">The media data as a byte array.</param>
++    /// <param name="mimeType">The media MIME type.</param>
++    /// <param name="cacheKey">The cache key used for caching and re-use.</param>
++    public MediaSource(byte[] data, string mimeType, string cacheKey)
+     {
+         ArgumentNullException.ThrowIfNull(data);
+         ArgumentNullException.ThrowIfNull(mimeType);
+@@ -49,15 +52,15 @@ public class ImageSource
+     }
+ 
+     /// <summary>
+-    /// Initializes a new instance of <see cref="ImageSource"/> from an existing stream.
++    /// Initializes a new instance of <see cref="MediaSource"/> from an existing stream.
+     /// The stream reference is retained (not copied). The caller retains ownership and is
+-    /// responsible for disposal after the image has loaded. The stream must remain readable
++    /// responsible for disposal after the media has loaded. The stream must remain readable
+     /// for the duration of the load.
+     /// </summary>
+     /// <param name="stream">The readable stream positioned at the beginning.</param>
+-    /// <param name="mimeType">The image MIME type.</param>
++    /// <param name="mimeType">The media MIME type.</param>
+     /// <param name="cacheKey">The cache key.</param>
+-    public ImageSource(Stream stream, string mimeType, string cacheKey)
++    public MediaSource(Stream stream, string mimeType, string cacheKey)
+     {
+         ArgumentNullException.ThrowIfNull(stream);
+         ArgumentNullException.ThrowIfNull(mimeType);
+diff --git a/src/Components/Web/src/Media/Video.cs b/src/Components/Web/src/Media/Video.cs
+new file mode 100644
+index 0000000000..feda4e6177
+--- /dev/null
++++ b/src/Components/Web/src/Media/Video.cs
+@@ -0,0 +1,69 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.AspNetCore.Components.Rendering;
++
++namespace Microsoft.AspNetCore.Components.Web.Media;
++
++/* This is equivalent to a .razor file containing:
++ *
++ * <video data-blazor-video
++ *        src="@(_currentObjectUrl)"
++ *        data-state=@(IsLoading ? "loading" : _hasError ? "error" : null)
++ *        @attributes="AdditionalAttributes"
++ *        @ref="Element"></video>
++ *
++ */
++/// <summary>
++/// A component that efficiently renders video content from non-HTTP sources like byte arrays.
++/// </summary>
++public sealed class Video : MediaComponentBase
++{
++    internal override string TargetAttributeName => "src";
++
++    /// <summary>
++    /// Allows customizing the rendering of the video component.
++    /// </summary>
++    [Parameter] public RenderFragment<MediaContext>? ChildContent { get; set; }
++
++    private protected override void BuildRenderTree(RenderTreeBuilder builder)
++    {
++        if (ChildContent is not null)
++        {
++            var showInitial = Source != null && _currentSource == null && string.IsNullOrEmpty(_currentObjectUrl) && !_hasError;
++            var context = new MediaContext
++            {
++                ObjectUrl = _currentObjectUrl,
++                IsLoading = IsLoading || showInitial,
++                HasError = _hasError,
++            };
++            context.Initialize(r => Element = r);
++            builder.AddContent(0, ChildContent, context);
++            return;
++        }
++
++        // Default rendering
++        builder.OpenElement(0, "video");
++
++        if (!string.IsNullOrEmpty(_currentObjectUrl))
++        {
++            builder.AddAttribute(1, TargetAttributeName, _currentObjectUrl);
++        }
++
++        builder.AddAttribute(2, "data-blazor-video", "");
++
++        var defaultShowInitial = Source != null && _currentSource == null && string.IsNullOrEmpty(_currentObjectUrl) && !_hasError;
++        if (IsLoading || defaultShowInitial)
++        {
++            builder.AddAttribute(3, "data-state", "loading");
++        }
++        else if (_hasError)
++        {
++            builder.AddAttribute(3, "data-state", "error");
++        }
++
++        builder.AddMultipleAttributes(4, AdditionalAttributes);
++        builder.AddElementReferenceCapture(5, r => Element = r);
++        builder.CloseElement();
++    }
++}
+diff --git a/src/Components/Web/src/PublicAPI.Unshipped.txt b/src/Components/Web/src/PublicAPI.Unshipped.txt
+index 94b8278a4c..655300f8a8 100644
+--- a/src/Components/Web/src/PublicAPI.Unshipped.txt
++++ b/src/Components/Web/src/PublicAPI.Unshipped.txt
+@@ -3,21 +3,48 @@ Microsoft.AspNetCore.Components.Forms.InputHidden
+ Microsoft.AspNetCore.Components.Forms.InputHidden.Element.get -> Microsoft.AspNetCore.Components.ElementReference?
+ Microsoft.AspNetCore.Components.Forms.InputHidden.Element.set -> void
+ Microsoft.AspNetCore.Components.Forms.InputHidden.InputHidden() -> void
+-Microsoft.AspNetCore.Components.Web.Image.Image
+-Microsoft.AspNetCore.Components.Web.Image.Image.AdditionalAttributes.get -> System.Collections.Generic.Dictionary<string!, object!>?
+-Microsoft.AspNetCore.Components.Web.Image.Image.AdditionalAttributes.set -> void
+-Microsoft.AspNetCore.Components.Web.Image.Image.DisposeAsync() -> System.Threading.Tasks.ValueTask
+-Microsoft.AspNetCore.Components.Web.Image.Image.Image() -> void
+-Microsoft.AspNetCore.Components.Web.Image.Image.Source.get -> Microsoft.AspNetCore.Components.Web.Image.ImageSource!
+-Microsoft.AspNetCore.Components.Web.Image.Image.Source.set -> void
+-Microsoft.AspNetCore.Components.Web.Image.ImageSource
+-Microsoft.AspNetCore.Components.Web.Image.ImageSource.CacheKey.get -> string!
+-Microsoft.AspNetCore.Components.Web.Image.ImageSource.ImageSource(byte[]! data, string! mimeType, string! cacheKey) -> void
+-Microsoft.AspNetCore.Components.Web.Image.ImageSource.ImageSource(System.IO.Stream! stream, string! mimeType, string! cacheKey) -> void
+-Microsoft.AspNetCore.Components.Web.Image.ImageSource.Length.get -> long?
+-Microsoft.AspNetCore.Components.Web.Image.ImageSource.MimeType.get -> string!
+-Microsoft.AspNetCore.Components.Web.Image.ImageSource.Stream.get -> System.IO.Stream!
+ Microsoft.AspNetCore.Components.Web.Internal.IInternalWebJSInProcessRuntime.InvokeJS(in Microsoft.JSInterop.Infrastructure.JSInvocationInfo invocationInfo) -> string!
++Microsoft.AspNetCore.Components.Web.Media.FileDownload
++Microsoft.AspNetCore.Components.Web.Media.FileDownload.ChildContent.get -> Microsoft.AspNetCore.Components.RenderFragment<Microsoft.AspNetCore.Components.Web.Media.FileDownloadContext!>?
++Microsoft.AspNetCore.Components.Web.Media.FileDownload.ChildContent.set -> void
++Microsoft.AspNetCore.Components.Web.Media.FileDownload.FileDownload() -> void
++Microsoft.AspNetCore.Components.Web.Media.FileDownload.FileName.get -> string!
++Microsoft.AspNetCore.Components.Web.Media.FileDownload.FileName.set -> void
++Microsoft.AspNetCore.Components.Web.Media.FileDownload.Text.get -> string?
++Microsoft.AspNetCore.Components.Web.Media.FileDownload.Text.set -> void
++Microsoft.AspNetCore.Components.Web.Media.FileDownloadContext
++Microsoft.AspNetCore.Components.Web.Media.FileDownloadContext.FileDownloadContext() -> void
++Microsoft.AspNetCore.Components.Web.Media.FileDownloadContext.FileName.get -> string!
++Microsoft.AspNetCore.Components.Web.Media.FileDownloadContext.InvokeAsync() -> System.Threading.Tasks.Task!
++Microsoft.AspNetCore.Components.Web.Media.Image
++Microsoft.AspNetCore.Components.Web.Media.Image.ChildContent.get -> Microsoft.AspNetCore.Components.RenderFragment<Microsoft.AspNetCore.Components.Web.Media.MediaContext!>?
++Microsoft.AspNetCore.Components.Web.Media.Image.ChildContent.set -> void
++Microsoft.AspNetCore.Components.Web.Media.Image.Image() -> void
++Microsoft.AspNetCore.Components.Web.Media.MediaComponentBase.Source.get -> Microsoft.AspNetCore.Components.Web.Media.MediaSource!
++Microsoft.AspNetCore.Components.Web.Media.MediaContext
++Microsoft.AspNetCore.Components.Web.Media.MediaContext.Element.get -> Microsoft.AspNetCore.Components.ElementReference
++Microsoft.AspNetCore.Components.Web.Media.MediaContext.Element.set -> void
++Microsoft.AspNetCore.Components.Web.Media.MediaContext.HasError.get -> bool
++Microsoft.AspNetCore.Components.Web.Media.MediaContext.IsLoading.get -> bool
++Microsoft.AspNetCore.Components.Web.Media.MediaContext.MediaContext() -> void
++Microsoft.AspNetCore.Components.Web.Media.MediaContext.ObjectUrl.get -> string?
++Microsoft.AspNetCore.Components.Web.Media.Video
++Microsoft.AspNetCore.Components.Web.Media.Video.ChildContent.get -> Microsoft.AspNetCore.Components.RenderFragment<Microsoft.AspNetCore.Components.Web.Media.MediaContext!>?
++Microsoft.AspNetCore.Components.Web.Media.Video.ChildContent.set -> void
++Microsoft.AspNetCore.Components.Web.Media.Video.Video() -> void
++Microsoft.AspNetCore.Components.Web.Media.MediaComponentBase
++Microsoft.AspNetCore.Components.Web.Media.MediaComponentBase.AdditionalAttributes.get -> System.Collections.Generic.Dictionary<string!, object!>?
++Microsoft.AspNetCore.Components.Web.Media.MediaComponentBase.AdditionalAttributes.set -> void
++Microsoft.AspNetCore.Components.Web.Media.MediaComponentBase.DisposeAsync() -> System.Threading.Tasks.ValueTask
++Microsoft.AspNetCore.Components.Web.Media.MediaComponentBase.MediaComponentBase() -> void
++Microsoft.AspNetCore.Components.Web.Media.MediaComponentBase.Source.set -> void
++Microsoft.AspNetCore.Components.Web.Media.MediaSource
++Microsoft.AspNetCore.Components.Web.Media.MediaSource.CacheKey.get -> string!
++Microsoft.AspNetCore.Components.Web.Media.MediaSource.Length.get -> long?
++Microsoft.AspNetCore.Components.Web.Media.MediaSource.MediaSource(byte[]! data, string! mimeType, string! cacheKey) -> void
++Microsoft.AspNetCore.Components.Web.Media.MediaSource.MediaSource(System.IO.Stream! stream, string! mimeType, string! cacheKey) -> void
++Microsoft.AspNetCore.Components.Web.Media.MediaSource.MimeType.get -> string!
++Microsoft.AspNetCore.Components.Web.Media.MediaSource.Stream.get -> System.IO.Stream!
+ override Microsoft.AspNetCore.Components.Forms.InputHidden.BuildRenderTree(Microsoft.AspNetCore.Components.Rendering.RenderTreeBuilder! builder) -> void
+ override Microsoft.AspNetCore.Components.Forms.InputHidden.TryParseValueFromString(string? value, out string? result, out string? validationErrorMessage) -> bool
+ virtual Microsoft.AspNetCore.Components.Routing.NavLink.ShouldMatch(string! uriAbsolute) -> bool
+diff --git a/src/Components/Web/test/Media/FileDownloadTest.cs b/src/Components/Web/test/Media/FileDownloadTest.cs
+new file mode 100644
+index 0000000000..cc4f95964e
+--- /dev/null
++++ b/src/Components/Web/test/Media/FileDownloadTest.cs
+@@ -0,0 +1,276 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++#nullable enable
++
++using System.Collections.Concurrent;
++using Microsoft.AspNetCore.Components;
++using Microsoft.AspNetCore.Components.RenderTree;
++using Microsoft.AspNetCore.Components.Test.Helpers;
++using Microsoft.AspNetCore.Components.Web;
++using Microsoft.AspNetCore.Components.Web.Media;
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.JSInterop;
++using Xunit;
++
++namespace Microsoft.AspNetCore.Components.Web.Media.Tests;
++
++/// <summary>
++/// Unit tests for <see cref="FileDownload"/> focusing only on behaviors not covered by Image/Video tests.
++/// </summary>
++public class FileDownloadTest
++{
++    private static readonly byte[] SampleBytes = new byte[] { 1, 2, 3, 4, 5 };
++
++    [Fact]
++    public async Task InitialRender_DoesNotInvokeJs()
++    {
++        var js = new FakeDownloadJsRuntime();
++        using var renderer = CreateRenderer(js);
++        var comp = (FileDownload)renderer.InstantiateComponent<FileDownload>();
++        var id = renderer.AssignRootComponentId(comp);
++
++        await renderer.RenderRootComponentAsync(id, ParameterView.FromDictionary(new Dictionary<string, object?>
++        {
++            [nameof(FileDownload.Source)] = new MediaSource(SampleBytes, "application/octet-stream", "file-init"),
++            [nameof(FileDownload.FileName)] = "first.bin"
++        }));
++
++        Assert.Equal(0, js.Count("Blazor._internal.BinaryMedia.downloadAsync"));
++    }
++
++    [Fact]
++    public async Task Click_InvokesDownloadOnce()
++    {
++        var js = new FakeDownloadJsRuntime { Result = true };
++        using var renderer = CreateRenderer(js);
++        var comp = (FileDownload)renderer.InstantiateComponent<FileDownload>();
++        var id = renderer.AssignRootComponentId(comp);
++        await renderer.RenderRootComponentAsync(id, Params("file-click", "ok.bin"));
++
++        await ClickAnchorAsync(renderer, id);
++
++        Assert.Equal(1, js.Count("Blazor._internal.BinaryMedia.downloadAsync"));
++        Assert.False(HasDataState(renderer, id, "error"));
++    }
++
++    [Fact]
++    public async Task BlankFileName_SuppressesDownload()
++    {
++        var js = new FakeDownloadJsRuntime { Result = true };
++        using var renderer = CreateRenderer(js);
++        var comp = (FileDownload)renderer.InstantiateComponent<FileDownload>();
++        var id = renderer.AssignRootComponentId(comp);
++        await renderer.RenderRootComponentAsync(id, Params("file-noname", "   "));
++
++        await ClickAnchorAsync(renderer, id);
++
++        Assert.Equal(0, js.Count("Blazor._internal.BinaryMedia.downloadAsync"));
++    }
++
++    [Fact]
++    public async Task JsReturnsFalse_SetsErrorState()
++    {
++        var js = new FakeDownloadJsRuntime { Result = false };
++        using var renderer = CreateRenderer(js);
++        var comp = (FileDownload)renderer.InstantiateComponent<FileDownload>();
++        var id = renderer.AssignRootComponentId(comp);
++        await renderer.RenderRootComponentAsync(id, Params("file-false", "fail.bin"));
++
++        await ClickAnchorAsync(renderer, id);
++
++        Assert.Equal(1, js.Count("Blazor._internal.BinaryMedia.downloadAsync"));
++        Assert.True(HasDataState(renderer, id, "error"));
++    }
++
++    [Fact]
++    public async Task JsThrows_SetsErrorState()
++    {
++        var js = new FakeDownloadJsRuntime { Throw = true };
++        using var renderer = CreateRenderer(js);
++        var comp = (FileDownload)renderer.InstantiateComponent<FileDownload>();
++        var id = renderer.AssignRootComponentId(comp);
++        await renderer.RenderRootComponentAsync(id, Params("file-throw", "throws.bin"));
++
++        await ClickAnchorAsync(renderer, id);
++
++        Assert.Equal(1, js.Count("Blazor._internal.BinaryMedia.downloadAsync"));
++        Assert.True(HasDataState(renderer, id, "error"));
++    }
++
++    [Fact]
++    public async Task SecondClick_CancelsFirst()
++    {
++        var js = new FakeDownloadJsRuntime { DelayOnFirst = true };
++        using var renderer = CreateRenderer(js);
++        var comp = (FileDownload)renderer.InstantiateComponent<FileDownload>();
++        var id = renderer.AssignRootComponentId(comp);
++        await renderer.RenderRootComponentAsync(id, Params("file-cancel", "cancel.bin"));
++
++        var first = ClickAnchorAsync(renderer, id); // starts first (will delay)
++        await ClickAnchorAsync(renderer, id);       // second click immediately
++        await first;                                // allow completion
++
++        Assert.Equal(2, js.Count("Blazor._internal.BinaryMedia.downloadAsync"));
++        Assert.True(js.CapturedTokens.First().IsCancellationRequested);
++        Assert.False(js.CapturedTokens.Last().IsCancellationRequested);
++    }
++
++    [Fact]
++    public async Task ProvidedHref_IsRemoved_InertHrefUsed()
++    {
++        var js = new FakeDownloadJsRuntime();
++        using var renderer = CreateRenderer(js);
++        var comp = (FileDownload)renderer.InstantiateComponent<FileDownload>();
++        var id = renderer.AssignRootComponentId(comp);
++
++        var attrs = new Dictionary<string, object?> { ["href"] = "https://example.org/real", ["class"] = "btn" };
++        await renderer.RenderRootComponentAsync(id, ParameterView.FromDictionary(new Dictionary<string, object?>
++        {
++            [nameof(FileDownload.Source)] = new MediaSource(SampleBytes, "application/octet-stream", "file-href"),
++            [nameof(FileDownload.FileName)] = "href.bin",
++            [nameof(FileDownload.AdditionalAttributes)] = attrs
++        }));
++
++        var frames = renderer.GetCurrentRenderTreeFrames(id);
++        var anchorIndex = FindAnchorIndex(frames);
++        Assert.True(anchorIndex >= 0, "anchor not found");
++        var href = GetAttributeValue(frames, anchorIndex, "href");
++        var @class = GetAttributeValue(frames, anchorIndex, "class");
++        Assert.Equal("javascript:void(0)", href);
++        Assert.Equal("btn", @class);
++    }
++
++    // Helpers
++    private static ParameterView Params(string key, string fileName) => ParameterView.FromDictionary(new Dictionary<string, object?>
++    {
++        [nameof(FileDownload.Source)] = new MediaSource(SampleBytes, "application/octet-stream", key),
++        [nameof(FileDownload.FileName)] = fileName
++    });
++
++    private static async Task ClickAnchorAsync(TestRenderer renderer, int componentId)
++    {
++        var frames = renderer.GetCurrentRenderTreeFrames(componentId);
++        var anchorIndex = FindAnchorIndex(frames);
++        Assert.True(anchorIndex >= 0, "anchor not found");
++        ulong? handlerId = null;
++        for (var i = anchorIndex + 1; i < frames.Count; i++)
++        {
++            ref readonly var frame = ref frames.Array[i];
++            if (frame.FrameType == RenderTreeFrameType.Attribute)
++            {
++                if (frame.AttributeName == "onclick")
++                {
++                    handlerId = frame.AttributeEventHandlerId;
++                }
++
++                continue;
++            }
++            break;
++        }
++        Assert.True(handlerId.HasValue, "onclick handler not found");
++        await renderer.DispatchEventAsync(handlerId.Value, new MouseEventArgs());
++    }
++
++    private static bool HasDataState(TestRenderer renderer, int componentId, string state)
++    {
++        var frames = renderer.GetCurrentRenderTreeFrames(componentId);
++        var anchorIndex = FindAnchorIndex(frames);
++        if (anchorIndex < 0)
++        {
++            return false;
++        }
++
++        var value = GetAttributeValue(frames, anchorIndex, "data-state");
++        return string.Equals(value, state, StringComparison.Ordinal);
++    }
++
++    private static int FindAnchorIndex(ArrayRange<RenderTreeFrame> frames)
++    {
++        for (var i = 0; i < frames.Count; i++)
++        {
++            ref readonly var f = ref frames.Array[i];
++            if (f.FrameType == RenderTreeFrameType.Element && string.Equals(f.ElementName, "a", StringComparison.OrdinalIgnoreCase))
++            {
++                return i;
++            }
++        }
++        return -1;
++    }
++
++    private static string? GetAttributeValue(ArrayRange<RenderTreeFrame> frames, int elementIndex, string name)
++    {
++        for (var i = elementIndex + 1; i < frames.Count; i++)
++        {
++            ref readonly var frame = ref frames.Array[i];
++            if (frame.FrameType == RenderTreeFrameType.Attribute)
++            {
++                if (string.Equals(frame.AttributeName, name, StringComparison.Ordinal))
++                {
++                    return frame.AttributeValue?.ToString();
++                }
++                continue;
++            }
++            break;
++        }
++        return null;
++    }
++
++    private static TestRenderer CreateRenderer(IJSRuntime js)
++    {
++        var services = new ServiceCollection();
++        services.AddLogging();
++        services.AddSingleton(js);
++        return new InteractiveTestRenderer(services.BuildServiceProvider());
++    }
++
++    private sealed class InteractiveTestRenderer : TestRenderer
++    {
++        public InteractiveTestRenderer(IServiceProvider services) : base(services) { }
++        protected internal override RendererInfo RendererInfo => new RendererInfo("Test", isInteractive: true);
++    }
++
++    private sealed class FakeDownloadJsRuntime : IJSRuntime
++    {
++        private readonly ConcurrentQueue<Invocation> _invocations = new();
++        public bool Result { get; set; } = true;
++        public bool Throw { get; set; }
++        public bool DelayOnFirst { get; set; }
++        private int _calls;
++
++        public IReadOnlyList<CancellationToken> CapturedTokens => _invocations.Select(i => i.Token).ToList();
++        public int Count(string id) => _invocations.Count(i => i.Identifier == id);
++
++        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, object?[]? args) => InvokeAsync<TValue>(identifier, CancellationToken.None, args ?? Array.Empty<object?>());
++
++        public ValueTask<TValue> InvokeAsync<TValue>(string identifier, CancellationToken cancellationToken, object?[]? args)
++        {
++            _invocations.Enqueue(new Invocation(identifier, cancellationToken));
++            if (identifier == "Blazor._internal.BinaryMedia.downloadAsync")
++            {
++                if (Throw)
++                {
++                    return ValueTask.FromException<TValue>(new InvalidOperationException("Download failed"));
++                }
++                if (DelayOnFirst && _calls == 0)
++                {
++                    _calls++;
++                    return new ValueTask<TValue>(DelayAsync<TValue>(cancellationToken));
++                }
++                _calls++;
++                object boxed = Result;
++                return new ValueTask<TValue>((TValue)boxed);
++            }
++            return ValueTask.FromException<TValue>(new InvalidOperationException("Unexpected identifier: " + identifier));
++        }
++
++        private async Task<TValue> DelayAsync<TValue>(CancellationToken token)
++        {
++            try { await Task.Delay(50, token); } catch { }
++            object boxed = Result;
++            return (TValue)boxed;
++        }
++
++        private record struct Invocation(string Identifier, CancellationToken Token);
++    }
++}
+diff --git a/src/Components/Web/test/Image/ImageTest.cs b/src/Components/Web/test/Media/ImageTest.cs
+similarity index 82%
+rename from src/Components/Web/test/Image/ImageTest.cs
+rename to src/Components/Web/test/Media/ImageTest.cs
+index 69bab977f8..20c7d2e35d 100644
+--- a/src/Components/Web/test/Image/ImageTest.cs
++++ b/src/Components/Web/test/Media/ImageTest.cs
+@@ -18,61 +18,61 @@ using Microsoft.JSInterop;
+ using Xunit;
+ using Microsoft.AspNetCore.Components;
+ using Microsoft.AspNetCore.Components.RenderTree;
++using Microsoft.AspNetCore.Components.Web.Media;
+ 
+-namespace Microsoft.AspNetCore.Components.Web.Image.Tests;
++namespace Microsoft.AspNetCore.Components.Web.Media.Tests;
+ 
+ /// <summary>
+-/// Unit tests for the Image component
++/// Unit tests for the new Media.Image component
+ /// </summary>
+ public class ImageTest
+ {
+     private static readonly byte[] PngBytes = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAA1JREFUGFdjqK6u/g8ABVcCcYoGhmwAAAAASUVORK5CYII=");
+ 
+     [Fact]
+-    public async Task LoadsImage_InvokesSetImageAsync_WhenSourceProvided()
++    public async Task LoadsImage_InvokesSetContentAsync_WhenSourceProvided()
+     {
+-        var js = new FakeImageJsRuntime(cacheHit: false);
++        var js = new FakeMediaJsRuntime(cacheHit: false);
+         using var renderer = CreateRenderer(js);
+         var comp = (Image)renderer.InstantiateComponent<Image>();
+         var id = renderer.AssignRootComponentId(comp);
+ 
+-        var source = new ImageSource(PngBytes, "image/png", cacheKey: "png-1");
++        var source = new MediaSource(PngBytes, "image/png", cacheKey: "png-1");
+         await renderer.RenderRootComponentAsync(id, ParameterView.FromDictionary(new Dictionary<string, object?>
+         {
+             [nameof(Image.Source)] = source,
+         }));
+ 
+-        Assert.Equal(1, js.Count("Blazor._internal.BinaryImageComponent.setImageAsync"));
++        Assert.Equal(1, js.Count("Blazor._internal.BinaryMedia.setContentAsync"));
+     }
+ 
+     [Fact]
+     public async Task SkipsReload_OnSameCacheKey()
+     {
+-        var js = new FakeImageJsRuntime(cacheHit: false);
++        var js = new FakeMediaJsRuntime(cacheHit: false);
+         using var renderer = CreateRenderer(js);
+         var comp = (Image)renderer.InstantiateComponent<Image>();
+         var id = renderer.AssignRootComponentId(comp);
+ 
+-        var s1 = new ImageSource(new byte[10], "image/png", cacheKey: "same");
++        var s1 = new MediaSource(new byte[10], "image/png", cacheKey: "same");
+         await renderer.RenderRootComponentAsync(id, ParameterView.FromDictionary(new Dictionary<string, object?>
+         {
+             [nameof(Image.Source)] = s1,
+         }));
+ 
+-        var s2 = new ImageSource(new byte[20], "image/png", cacheKey: "same");
++        var s2 = new MediaSource(new byte[20], "image/png", cacheKey: "same");
+         await renderer.RenderRootComponentAsync(id, ParameterView.FromDictionary(new Dictionary<string, object?>
+         {
+             [nameof(Image.Source)] = s2,
+         }));
+ 
+-        // Implementation skips reloading when cache key unchanged.
+-        Assert.Equal(1, js.Count("Blazor._internal.BinaryImageComponent.setImageAsync"));
++        Assert.Equal(1, js.Count("Blazor._internal.BinaryMedia.setContentAsync"));
+     }
+ 
+     [Fact]
+     public async Task NullSource_Throws()
+     {
+-        var js = new FakeImageJsRuntime(cacheHit: false);
++        var js = new FakeMediaJsRuntime(cacheHit: false);
+         using var renderer = CreateRenderer(js);
+         var comp = (Image)renderer.InstantiateComponent<Image>();
+         var id = renderer.AssignRootComponentId(comp);
+@@ -92,44 +92,43 @@ public class ImageTest
+     [Fact]
+     public async Task ParameterChange_DifferentCacheKey_Reloads()
+     {
+-        var js = new FakeImageJsRuntime(cacheHit: false);
++        var js = new FakeMediaJsRuntime(cacheHit: false);
+         using var renderer = CreateRenderer(js);
+         var comp = (Image)renderer.InstantiateComponent<Image>();
+         var id = renderer.AssignRootComponentId(comp);
+-        var s1 = new ImageSource(new byte[4], "image/png", "key-a");
++        var s1 = new MediaSource(new byte[4], "image/png", "key-a");
+         await renderer.RenderRootComponentAsync(id, ParameterView.FromDictionary(new Dictionary<string, object?>
+         {
+             [nameof(Image.Source)] = s1,
+         }));
+-        var s2 = new ImageSource(new byte[6], "image/png", "key-b");
++        var s2 = new MediaSource(new byte[6], "image/png", "key-b");
+         await renderer.RenderRootComponentAsync(id, ParameterView.FromDictionary(new Dictionary<string, object?>
+         {
+             [nameof(Image.Source)] = s2,
+         }));
+-        Assert.Equal(2, js.Count("Blazor._internal.BinaryImageComponent.setImageAsync"));
++        Assert.Equal(2, js.Count("Blazor._internal.BinaryMedia.setContentAsync"));
+     }
+ 
+     [Fact]
+     public async Task ChangingSource_CancelsPreviousLoad()
+     {
+-        var js = new FakeImageJsRuntime(cacheHit: false) { DelayOnFirstSetCall = true };
++        var js = new FakeMediaJsRuntime(cacheHit: false) { DelayOnFirstSetCall = true };
+         using var renderer = CreateRenderer(js);
+         var comp = (Image)renderer.InstantiateComponent<Image>();
+         var id = renderer.AssignRootComponentId(comp);
+ 
+-        var s1 = new ImageSource(new byte[10], "image/png", "k1");
++        var s1 = new MediaSource(new byte[10], "image/png", "k1");
+         await renderer.RenderRootComponentAsync(id, ParameterView.FromDictionary(new Dictionary<string, object?>
+         {
+             [nameof(Image.Source)] = s1,
+         }));
+ 
+-        var s2 = new ImageSource(new byte[10], "image/png", "k2");
++        var s2 = new MediaSource(new byte[10], "image/png", "k2");
+         await renderer.RenderRootComponentAsync(id, ParameterView.FromDictionary(new Dictionary<string, object?>
+         {
+             [nameof(Image.Source)] = s2,
+         }));
+ 
+-        // Give a tiny bit of time for cancellation to propagate
+         for (var i = 0; i < 10 && js.CapturedTokens.Count < 2; i++)
+         {
+             await Task.Delay(10);
+@@ -137,9 +136,7 @@ public class ImageTest
+ 
+         Assert.NotEmpty(js.CapturedTokens);
+         Assert.True(js.CapturedTokens.First().IsCancellationRequested);
+-
+-        // Two invocations total (first canceled, second completes)
+-        Assert.Equal(2, js.Count("Blazor._internal.BinaryImageComponent.setImageAsync"));
++        Assert.Equal(2, js.Count("Blazor._internal.BinaryMedia.setContentAsync"));
+     }
+ 
+     private static TestRenderer CreateRenderer(IJSRuntime js)
+@@ -156,21 +153,19 @@ public class ImageTest
+         protected internal override RendererInfo RendererInfo => new RendererInfo("Test", isInteractive: true);
+     }
+ 
+-    private sealed class FakeImageJsRuntime : IJSRuntime
++    private sealed class FakeMediaJsRuntime : IJSRuntime
+     {
+         public sealed record Invocation(string Identifier, object?[] Args, CancellationToken Token);
+         private readonly ConcurrentQueue<Invocation> _invocations = new();
+         private readonly ConcurrentDictionary<string, bool> _memoryCache = new();
+         private readonly bool _forceCacheHit;
+ 
+-        public FakeImageJsRuntime(bool cacheHit) { _forceCacheHit = cacheHit; }
++        public FakeMediaJsRuntime(bool cacheHit) { _forceCacheHit = cacheHit; }
+ 
+         public int TotalInvocationCount => _invocations.Count;
+         public int Count(string id) => _invocations.Count(i => i.Identifier == id);
+         public IReadOnlyList<CancellationToken> CapturedTokens => _invocations.Select(i => i.Token).ToList();
+-        public void MarkCached(string cacheKey) => _memoryCache[cacheKey] = true;
+ 
+-        // Simulation flags
+         public bool DelayOnFirstSetCall { get; set; }
+         public bool ForceFail { get; set; }
+         public bool FailOnce { get; set; } = true;
+@@ -186,7 +181,7 @@ public class ImageTest
+             args ??= Array.Empty<object?>();
+             _invocations.Enqueue(new Invocation(identifier, args, cancellationToken));
+ 
+-            if (identifier == "Blazor._internal.BinaryImageComponent.setImageAsync")
++            if (identifier == "Blazor._internal.BinaryMedia.setContentAsync")
+             {
+                 _setCalls++;
+                 var cacheKey = args.Length >= 4 ? args[3] as string : null;
+diff --git a/src/Components/test/E2ETest/Tests/FileDownloadTest.cs b/src/Components/test/E2ETest/Tests/FileDownloadTest.cs
+new file mode 100644
+index 0000000000..6307be02f5
+--- /dev/null
++++ b/src/Components/test/E2ETest/Tests/FileDownloadTest.cs
+@@ -0,0 +1,199 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++#nullable enable
++
++using BasicTestApp;
++using BasicTestApp.MediaTest;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure.ServerFixtures;
++using Microsoft.AspNetCore.E2ETesting;
++using OpenQA.Selenium;
++using OpenQA.Selenium.Interactions;
++using Xunit;
++using Xunit.Abstractions;
++using System.Globalization;
++
++namespace Microsoft.AspNetCore.Components.E2ETest.Tests;
++
++public class FileDownloadTest : ServerTestBase<ToggleExecutionModeServerFixture<Program>>
++{
++    public FileDownloadTest(
++        BrowserFixture browserFixture,
++        ToggleExecutionModeServerFixture<Program> serverFixture,
++        ITestOutputHelper output)
++        : base(browserFixture, serverFixture, output)
++    {
++    }
++
++    protected override void InitializeAsyncCore()
++    {
++        Navigate(ServerPathBase);
++        Browser.MountTestComponent<FileDownloadTestComponent>();
++    }
++
++    private void InstrumentDownload()
++    {
++        var success = ((IJavaScriptExecutor)Browser).ExecuteAsyncScript(@"
++            var callback = arguments[arguments.length - 1];
++            (function(){
++                if (window.__downloadInstrumentationStarted){ callback(true); return; }
++                window.__downloadInstrumentationStarted = true;
++                function tryPatch(){
++                    const root = Blazor && Blazor._internal && Blazor._internal.BinaryMedia;
++                    if (!root || !root.downloadAsync){ setTimeout(tryPatch, 50); return; }
++                    if (!window.__origDownloadAsync){
++                        window.__origDownloadAsync = root.downloadAsync;
++                        window.__downloadCalls = 0;
++                        window.__lastFileName = null;
++                        root.downloadAsync = async function(...a){
++                            window.__downloadCalls++;
++                            // downloadAsync(element, streamRef, mimeType, totalBytes, fileName)
++                            window.__lastFileName = a[4]; // fileName index
++                            if (window.__forceErrorFileName && a[4] === window.__forceErrorFileName){
++                                return false; // simulate failure
++                            }
++                            return window.__origDownloadAsync.apply(this, a);
++                        };
++                    }
++                    callback(true);
++                }
++                tryPatch();
++            })();
++        ") is true;
++        Assert.True(success, "Failed to instrument downloadAsync");
++        Thread.Sleep(100);
++    }
++
++    private int GetDownloadCallCount() => Convert.ToInt32(((IJavaScriptExecutor)Browser).ExecuteScript("return window.__downloadCalls || 0;"), CultureInfo.InvariantCulture);
++
++    private string? GetLastFileName() => (string?)((IJavaScriptExecutor)Browser).ExecuteScript("return window.__lastFileName || null;");
++
++    [Fact]
++    public void InitialRender_DoesNotStartDownload()
++    {
++        InstrumentDownload();
++        // Component rendered but no download link shown until button clicked
++        Assert.Equal(0, GetDownloadCallCount());
++    }
++
++    [Fact]
++    public void Click_InitiatesDownload()
++    {
++        InstrumentDownload();
++        Browser.FindElement(By.Id("show-download")).Click();
++        var link = Browser.FindElement(By.Id("download-link"));
++        link.Click();
++        Browser.True(() => GetDownloadCallCount() >= 1);
++        Browser.True(() => GetLastFileName() == "test.png");
++        Assert.Null(link.GetAttribute("data-state")); // no error or loading after completion
++    }
++
++    [Fact]
++    public void BlankFileName_SuppressesDownload()
++    {
++        InstrumentDownload();
++        Browser.FindElement(By.Id("show-blank-filename")).Click();
++        var link = Browser.FindElement(By.Id("blank-download-link"));
++        link.Click();
++        // Should not invoke JS because filename blank. Wait briefly to ensure no async call occurs.
++        var start = DateTime.UtcNow;
++        while (DateTime.UtcNow - start < TimeSpan.FromMilliseconds(200))
++        {
++            Assert.True(GetDownloadCallCount() == 0, "Download should not have started for blank filename.");
++            Thread.Sleep(20);
++        }
++        Assert.Equal(0, GetDownloadCallCount());
++    }
++
++    [Fact]
++    public void ErrorDownload_SetsErrorState()
++    {
++        InstrumentDownload();
++        // Force simulated failure via instrumentation hook
++        ((IJavaScriptExecutor)Browser).ExecuteScript("window.__forceErrorFileName='error.txt';");
++        Browser.FindElement(By.Id("show-error-download")).Click();
++        var link = Browser.FindElement(By.Id("error-download-link"));
++        link.Click();
++        Browser.Equal("error", () => link.GetAttribute("data-state"));
++    }
++
++    [Fact]
++    public void ProvidedHref_IsRemoved_AndInertHrefUsed()
++    {
++        Browser.FindElement(By.Id("show-custom-href")).Click();
++        var link = Browser.FindElement(By.Id("custom-href-download-link"));
++        var href = link.GetAttribute("href");
++        Assert.Equal("javascript:void(0)", href);
++    }
++
++    [Fact]
++    public void RapidClicks_CancelsFirstAndStartsSecond()
++    {
++        // Instrument with controllable delay on first call for cancellation scenario
++        var success = ((IJavaScriptExecutor)Browser).ExecuteAsyncScript(@"
++            var callback = arguments[arguments.length - 1];
++            (function(){
++                function patch(){
++                    const root = Blazor && Blazor._internal && Blazor._internal.BinaryMedia;
++                    if (!root || !root.downloadAsync){ requestAnimationFrame(patch); return; }
++                    if (!window.__origDownloadAsyncDelay){
++                        window.__origDownloadAsyncDelay = root.downloadAsync;
++                        window.__downloadCalls = 0;
++                        window.__downloadDelayResolvers = null;
++                        root.downloadAsync = async function(...a){
++                            window.__downloadCalls++;
++                            if (window.__downloadCalls === 1){
++                                const getResolvers = () => {
++                                    if (Promise.fromResolvers) return Promise.fromResolvers();
++                                    let resolve, reject; const p = new Promise((r,j)=>{ resolve=r; reject=j; });
++                                    return { promise: p, resolve, reject };
++                                };
++                                if (!window.__downloadDelayResolvers){
++                                    window.__downloadDelayResolvers = getResolvers();
++                                }
++                                await window.__downloadDelayResolvers.promise;
++                            }
++                            return window.__origDownloadAsyncDelay.apply(this, a);
++                        };
++                    }
++                    callback(true);
++                }
++                patch();
++            })();
++        ") is true;
++        Assert.True(success, "Failed to instrument for rapid clicks test");
++
++        Browser.FindElement(By.Id("show-download")).Click();
++        var link = Browser.FindElement(By.Id("download-link"));
++        link.Click(); // first (delayed)
++        link.Click(); // second should cancel first
++
++        ((IJavaScriptExecutor)Browser).ExecuteScript("if (window.__downloadDelayResolvers) { window.__downloadDelayResolvers.resolve(); }");
++
++        Browser.True(() => Convert.ToInt32(((IJavaScriptExecutor)Browser).ExecuteScript("return window.__downloadCalls || 0;"), CultureInfo.InvariantCulture) >= 2);
++        Browser.True(() => string.IsNullOrEmpty(link.GetAttribute("data-state")) || link.GetAttribute("data-state") == null);
++
++        // Cleanup instrumentation
++        ((IJavaScriptExecutor)Browser).ExecuteScript(@"
++            (function(){
++              const root = Blazor && Blazor._internal && Blazor._internal.BinaryMedia;
++              if (root && window.__origDownloadAsyncDelay){ root.downloadAsync = window.__origDownloadAsyncDelay; delete window.__origDownloadAsyncDelay; }
++              delete window.__downloadDelayResolvers;
++            })();");
++    }
++
++    [Fact]
++    public void TemplatedFileDownload_Works()
++    {
++        InstrumentDownload();
++        Browser.FindElement(By.Id("show-templated-download")).Click();
++        var link = Browser.FindElement(By.Id("templated-download-link"));
++        Assert.NotNull(link);
++        link.Click();
++        Browser.True(() => GetDownloadCallCount() >= 1);
++        Browser.True(() => GetLastFileName() == "templated.png");
++        var status = Browser.FindElement(By.Id("templated-download-status")).Text;
++        Assert.True(status == "Idle/Done");
++    }
++}
+diff --git a/src/Components/test/E2ETest/Tests/ImageTest.cs b/src/Components/test/E2ETest/Tests/ImageTest.cs
+index 5edc3c8f5f..18a2425585 100644
+--- a/src/Components/test/E2ETest/Tests/ImageTest.cs
++++ b/src/Components/test/E2ETest/Tests/ImageTest.cs
+@@ -3,7 +3,7 @@
+ 
+ using System.Globalization;
+ using BasicTestApp;
+-using BasicTestApp.ImageTest;
++using BasicTestApp.MediaTest;
+ using Microsoft.AspNetCore.Components.E2ETest.Infrastructure;
+ using Microsoft.AspNetCore.Components.E2ETest.Infrastructure.ServerFixtures;
+ using Microsoft.AspNetCore.E2ETesting;
+@@ -29,18 +29,18 @@ public class ImageTest : ServerTestBase<ToggleExecutionModeServerFixture<Program
+         Browser.MountTestComponent<ImageTestComponent>();
+     }
+ 
+-    private void ClearImageCache()
++    private void ClearMediaCache()
+     {
+         var ok = (bool)((IJavaScriptExecutor)Browser).ExecuteAsyncScript(@"
+           var done = arguments[0];
+           (async () => {
+             try {
+               if ('caches' in window) {
+-                await caches.delete('blazor-image-cache');
++                await caches.delete('blazor-media-cache');
+               }
+               // Reset memoized cache promise if present
+               try {
+-                const root = Blazor && Blazor._internal && Blazor._internal.BinaryImageComponent;
++                const root = Blazor && Blazor._internal && Blazor._internal.BinaryMedia;
+                 if (root && 'cachePromise' in root) {
+                   root.cachePromise = undefined;
+                 }
+@@ -51,7 +51,7 @@ public class ImageTest : ServerTestBase<ToggleExecutionModeServerFixture<Program
+             }
+           })();
+         ");
+-        Assert.True(ok, "Failed to clear image cache");
++        Assert.True(ok, "Failed to clear media cache");
+     }
+ 
+     [Fact]
+@@ -166,23 +166,25 @@ public class ImageTest : ServerTestBase<ToggleExecutionModeServerFixture<Program
+     [Fact]
+     public void Image_CompletesLoad_AfterArtificialDelay()
+     {
++        // Instrument setContentAsync to pause before fulfilling first image load until explicitly resolved.
+         ((IJavaScriptExecutor)Browser).ExecuteScript(@"
+             (function(){
+-              const root = Blazor && Blazor._internal && Blazor._internal.BinaryImageComponent;
++              const root = Blazor && Blazor._internal && Blazor._internal.BinaryMedia;
+               if (!root) return;
+-              if (!window.__origSetImageAsync) {
+-                window.__origSetImageAsync = root.setImageAsync;
+-                root.setImageAsync = async function(...args){
++              if (!window.__origSetContentAsync) {
++                window.__origSetContentAsync = root.setContentAsync;
++                root.setContentAsync = async function(...args){
+                   const getResolvers = () => {
+                     if (Promise.fromResolvers) return Promise.fromResolvers();
+-                    let resolve, reject;
+-                    const promise = new Promise((r,j)=>{ resolve=r; reject=j; });
++                    let resolve, reject; const promise = new Promise((r,j)=>{ resolve=r; reject=j; });
+                     return { promise, resolve, reject };
+                   };
+-                  const resolvers = getResolvers();
+-                  window.__imagePromiseResolvers = resolvers;
+-                  await resolvers.promise;
+-                  return window.__origSetImageAsync.apply(this, args);
++                  if (!window.__imageContentDelay){
++                    const resolvers = getResolvers();
++                    window.__imageContentDelay = resolvers; // first invocation delayed
++                    await resolvers.promise;
++                  }
++                  return window.__origSetContentAsync.apply(this, args);
+                 };
+               }
+             })();");
+@@ -192,7 +194,8 @@ public class ImageTest : ServerTestBase<ToggleExecutionModeServerFixture<Program
+         var imageElement = Browser.FindElement(By.Id("png-basic"));
+         Assert.NotNull(imageElement);
+ 
+-        ((IJavaScriptExecutor)Browser).ExecuteScript("if (window.__imagePromiseResolvers) { window.__imagePromiseResolvers.resolve(); }");
++        // Release the delayed promise so load can complete.
++        ((IJavaScriptExecutor)Browser).ExecuteScript("if (window.__imageContentDelay) { window.__imageContentDelay.resolve(); }");
+ 
+         Browser.True(() => {
+             var src = imageElement.GetAttribute("src");
+@@ -203,19 +206,19 @@ public class ImageTest : ServerTestBase<ToggleExecutionModeServerFixture<Program
+         // Restore original function and clean up instrumentation
+         ((IJavaScriptExecutor)Browser).ExecuteScript(@"
+             (function(){
+-              const root = Blazor && Blazor._internal && Blazor._internal.BinaryImageComponent;
+-              if (root && window.__origSetImageAsync) {
+-                root.setImageAsync = window.__origSetImageAsync;
+-                delete window.__origSetImageAsync;
++              const root = Blazor && Blazor._internal && Blazor._internal.BinaryMedia;
++              if (root && window.__origSetContentAsync) {
++                root.setContentAsync = window.__origSetContentAsync;
++                delete window.__origSetContentAsync;
+               }
+-              delete window.__imagePromiseResolvers;
++              delete window.__imageContentDelay;
+             })();");
+     }
+ 
+     [Fact]
+     public void ImageCache_PersistsAcrossPageReloads()
+     {
+-        ClearImageCache();
++        ClearMediaCache();
+ 
+         Browser.FindElement(By.Id("load-cached-jpg")).Click();
+         Browser.Equal("Cached JPG loaded", () => Browser.FindElement(By.Id("current-status")).Text);
+@@ -231,14 +234,14 @@ public class ImageTest : ServerTestBase<ToggleExecutionModeServerFixture<Program
+         // Re‑instrument after refresh so we see cache vs stream on the second load
+         ((IJavaScriptExecutor)Browser).ExecuteScript(@"
+             (function(){
+-              const root = Blazor && Blazor._internal && Blazor._internal.BinaryImageComponent;
++              const root = Blazor && Blazor._internal && Blazor._internal.BinaryMedia;
+               if (!root) return;
+               window.__cacheHits = 0;
+               window.__streamCalls = 0;
+-              if (!window.__origSetImageAsync){
+-                  window.__origSetImageAsync = root.setImageAsync;
+-                  root.setImageAsync = async function(...a){
+-                      const result = await window.__origSetImageAsync.apply(this, a);
++              if (!window.__origSetContentAsync){
++                  window.__origSetContentAsync = root.setContentAsync;
++                  root.setContentAsync = async function(...a){
++                      const result = await window.__origSetContentAsync.apply(this, a);
+                       if (result && result.fromCache) window.__cacheHits++;
+                       if (result && result.success && !result.fromCache) window.__streamCalls++;
+                       return result;
+@@ -264,8 +267,8 @@ public class ImageTest : ServerTestBase<ToggleExecutionModeServerFixture<Program
+         // Restore
+         ((IJavaScriptExecutor)Browser).ExecuteScript(@"
+             (function(){
+-              const root = Blazor && Blazor._internal && Blazor._internal.BinaryImageComponent;
+-              if (root && window.__origSetImageAsync){ root.setImageAsync = window.__origSetImageAsync; delete window.__origSetImageAsync; }
++              const root = Blazor && Blazor._internal && Blazor._internal.BinaryMedia;
++              if (root && window.__origSetContentAsync){ root.setContentAsync = window.__origSetContentAsync; delete window.__origSetContentAsync; }
+               delete window.__cacheHits;
+               delete window.__streamCalls;
+             })();");
+@@ -367,4 +370,30 @@ public class ImageTest : ServerTestBase<ToggleExecutionModeServerFixture<Program
+         var src = img.GetAttribute("src");
+         Assert.True(string.IsNullOrEmpty(src) || src.StartsWith("blob:", StringComparison.Ordinal));
+     }
++
++  [Fact]
++  public void TemplatedImage_Loads_WithContextStates()
++  {
++    Browser.FindElement(By.Id("load-templated-image")).Click();
++    Browser.Equal("Templated image loaded", () => Browser.FindElement(By.Id("current-status")).Text);
++
++    var wrapper = Browser.FindElement(By.Id("templated-image-wrapper"));
++    Assert.NotNull(wrapper);
++
++    var img = Browser.FindElement(By.Id("templated-image"));
++    Browser.True(() =>
++    {
++      var src = img.GetAttribute("src");
++      return !string.IsNullOrEmpty(src) && src.StartsWith("blob:", StringComparison.Ordinal);
++    });
++
++    var status = Browser.FindElement(By.Id("templated-image-status")).Text;
++    Assert.Equal("Loaded", status);
++
++    var cls = wrapper.GetAttribute("class");
++    Assert.Contains("templated-image", cls);
++    Assert.Contains("ready", cls);
++    Assert.DoesNotContain("loading", cls);
++    Assert.DoesNotContain("error", cls);
++  }
+ }
+diff --git a/src/Components/test/E2ETest/Tests/VideoTest.cs b/src/Components/test/E2ETest/Tests/VideoTest.cs
+new file mode 100644
+index 0000000000..37f416a147
+--- /dev/null
++++ b/src/Components/test/E2ETest/Tests/VideoTest.cs
+@@ -0,0 +1,145 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++// NOTE: Most shared media component behaviors (caching, error handling and URL revocation)
++// are validated in ImageTest. To avoid duplication, this suite intentionally contains only
++// tests that exercise <video> specific scenarios.
++
++using BasicTestApp;
++using BasicTestApp.MediaTest;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure.ServerFixtures;
++using Microsoft.AspNetCore.E2ETesting;
++using OpenQA.Selenium;
++using Xunit;
++using Xunit.Abstractions;
++using System.Globalization;
++
++namespace Microsoft.AspNetCore.Components.E2ETest.Tests;
++
++public class VideoTest : ServerTestBase<ToggleExecutionModeServerFixture<Program>>
++{
++    public VideoTest(
++        BrowserFixture browserFixture,
++        ToggleExecutionModeServerFixture<Program> serverFixture,
++        ITestOutputHelper output)
++        : base(browserFixture, serverFixture, output)
++    {
++    }
++
++    protected override void InitializeAsyncCore()
++    {
++        Navigate(ServerPathBase);
++        Browser.MountTestComponent<VideoTestComponent>();
++    }
++
++    [Fact]
++    public void CanLoadMp4Video()
++    {
++        Browser.FindElement(By.Id("load-mp4")).Click();
++
++        Browser.Equal("MP4 basic loaded", () => Browser.FindElement(By.Id("current-status")).Text);
++
++        var video = Browser.FindElement(By.Id("mp4-basic"));
++        Assert.NotNull(video);
++
++        Browser.True(() =>
++        {
++            var src = video.GetAttribute("src");
++            return !string.IsNullOrEmpty(src) && src.StartsWith("blob:", StringComparison.Ordinal);
++        });
++
++        var marker = video.GetAttribute("data-blazor-video");
++        Assert.NotNull(marker);
++
++        var state = video.GetAttribute("data-state");
++        Assert.True(string.IsNullOrEmpty(state));
++    }
++
++    [Fact]
++    public void VideoRenders_WithCorrectDimensions()
++    {
++        Browser.FindElement(By.Id("load-mp4")).Click();
++        Browser.Equal("MP4 basic loaded", () => Browser.FindElement(By.Id("current-status")).Text);
++
++        var video = Browser.FindElement(By.Id("mp4-basic"));
++        Assert.NotNull(video);
++
++        // Wait for dimensions (videoWidth/videoHeight) to be available (> 0)
++        Browser.True(() =>
++        {
++            var widthStr = video.GetAttribute("videoWidth");
++            return !string.IsNullOrEmpty(widthStr) && int.Parse(widthStr, CultureInfo.InvariantCulture) > 0;
++        });
++
++        var videoWidth = int.Parse(video.GetAttribute("videoWidth"), CultureInfo.InvariantCulture);
++        var videoHeight = int.Parse(video.GetAttribute("videoHeight"), CultureInfo.InvariantCulture);
++
++        // Expected dimensions 1024x1024
++        Assert.Equal(1024, videoWidth);
++        Assert.Equal(1024, videoHeight);
++    }
++
++    [Fact]
++    public void RapidVideoSourceChanges_MaintainsConsistency()
++    {
++        Browser.FindElement(By.Id("change-video")).Click();
++        Browser.Equal("Dynamic video initialized (A)", () => Browser.FindElement(By.Id("current-status")).Text);
++        var video = Browser.FindElement(By.Id("dynamic-video"));
++        Browser.True(() => !string.IsNullOrEmpty(video.GetAttribute("src")));
++        var initialSrc = video.GetAttribute("src");
++
++        for (int i = 0; i < 10; i++)
++        {
++            Browser.FindElement(By.Id("change-video")).Click();
++        }
++
++        Browser.True(() =>
++        {
++            var status = Browser.FindElement(By.Id("current-status")).Text;
++            var src = video.GetAttribute("src");
++            var state = video.GetAttribute("data-state");
++            if (string.IsNullOrEmpty(src) || !src.StartsWith("blob:", StringComparison.Ordinal))
++            {
++                return false;
++            }
++
++            if (state == "loading" || state == "error")
++            {
++                return false;
++            }
++
++            return status.Contains("Dynamic video changed to B") || status.Contains("Dynamic video changed to A");
++        });
++
++        var finalSrc = video.GetAttribute("src");
++        var state = video.GetAttribute("data-state");
++
++        Assert.False(string.IsNullOrEmpty(finalSrc));
++        Assert.True(string.IsNullOrEmpty(state));
++        Assert.StartsWith("blob:", finalSrc, StringComparison.Ordinal);
++
++        Assert.NotEqual(initialSrc, finalSrc);
++    }
++
++    [Fact]
++    public void TemplatedVideo_LoadsSuccessfully()
++    {
++        Browser.FindElement(By.Id("load-templated-video")).Click();
++        Browser.Equal("Templated video loaded", () => Browser.FindElement(By.Id("current-status")).Text);
++
++        var container = Browser.FindElement(By.Id("templated-video-container"));
++        Assert.NotNull(container);
++        var video = Browser.FindElement(By.Id("templated-video"));
++        Browser.True(() =>
++        {
++            var src = video.GetAttribute("src");
++            return !string.IsNullOrEmpty(src) && src.StartsWith("blob:", StringComparison.Ordinal);
++        });
++        var status = Browser.FindElement(By.Id("templated-video-status")).Text;
++        Assert.Equal("Loaded", status);
++        var cls = container.GetAttribute("class");
++        Assert.Contains("video-shell", cls);
++        Assert.Contains("ready", cls);
++    }
++}
+diff --git a/src/Components/test/testassets/BasicTestApp/BasicTestApp.csproj b/src/Components/test/testassets/BasicTestApp/BasicTestApp.csproj
+index 390c68947f..b1589317b1 100644
+--- a/src/Components/test/testassets/BasicTestApp/BasicTestApp.csproj
++++ b/src/Components/test/testassets/BasicTestApp/BasicTestApp.csproj
+@@ -26,7 +26,6 @@
+     <Reference Include="Microsoft.AspNetCore.Components.CustomElements" />
+     <Reference Include="Microsoft.AspNetCore.Components.Authorization" />
+     <Reference Include="Microsoft.AspNetCore.Components.QuickGrid" />
+-    <Reference Include="Microsoft.AspNetCore.Components.Web" />
+     <Reference Include="Microsoft.AspNetCore.SignalR.Client" />
+     <Reference Include="Microsoft.Extensions.Logging.Configuration" />
+     <Reference Include="Newtonsoft.Json" />
+diff --git a/src/Components/test/testassets/BasicTestApp/ImageTest/ImageTestComponent.razor b/src/Components/test/testassets/BasicTestApp/ImageTest/ImageTestComponent.razor
+deleted file mode 100644
+index b6aa500fa7..0000000000
+--- a/src/Components/test/testassets/BasicTestApp/ImageTest/ImageTestComponent.razor
++++ /dev/null
+@@ -1,240 +0,0 @@
+-﻿@using System.IO
+-@using Microsoft.AspNetCore.Components.Web.Image
+-@using Microsoft.JSInterop
+-@inject IJSRuntime JS
+-
+-@implements IAsyncDisposable
+-
+-<h3>Image Component Tests</h3>
+-
+-<div>
+-    <h4>Test Controls</h4>
+-    <button id="load-png" @onclick="ReloadPng">Load PNG</button>
+-    <button id="load-jpg-stream" @onclick="LoadJpgFromStream">Load JPG (Stream)</button>
+-    <button id="change-source" @onclick="ChangeDynamicImageSource">Change Dynamic Source</button>
+-    <button id="load-pair-sequence" @onclick="LoadPairSequence">Load Two Images (Same Key)</button>
+-    <button id="load-error" @onclick="LoadErrorImage">Load Error</button>
+-    <button id="load-cached-jpg" @onclick="LoadCachedJpg">Load Cached JPG</button>
+-    <button id="load-invalid-mime" @onclick="LoadInvalidMimeImage">Load Invalid MIME</button>
+-
+-    <div id="test-status">
+-        Status: <span id="current-status">@_currentStatus</span>
+-    </div>
+-</div>
+-
+-@if (_pngBasic)
+-{
+-    <h4>PNG basic</h4>
+-    <Image @ref="@_pngBasicRef"
+-        id="png-basic"
+-        Source="@_basicImageSource" />
+-}
+-
+-@if (_jpgStream)
+-{
+-    <h4>JPG Stream</h4>
+-    <Image @ref="@_jpgStreamRef"
+-        id="jpg-stream"
+-        Source="@_jpgStreamSource" />
+-}
+-
+-@if (_dynamicSource)
+-{
+-    <h4>Dynamic Source Image</h4>
+-    <Image @ref="@_dynamicSourceRef"
+-        id="dynamic-source"
+-        Source="@_dynamicImageSource" />
+-}
+-
+-@if (_pair1Visible)
+-{
+-    <h4>Pair Image 1</h4>
+-    <Image @ref="@_pair1Ref"
+-           id="pair-image-1"
+-           Source="@_pairSource" />
+-}
+-@if (_pair2Visible)
+-{
+-    <h4>Pair Image 2</h4>
+-    <Image @ref="@_pair2Ref"
+-           id="pair-image-2"
+-           Source="@_pairSource" />
+-}
+-
+-@if (_errorImage)
+-{
+-    <h4>Error Image</h4>
+-    <Image @ref="_errorRef"
+-            id="error-image"
+-            Source="@_errorSource" />
+-}
+-
+-@if (_cachedJpgVisible)
+-{
+-    <h4>Cached JPG</h4>
+-    <Image @ref="@_cachedJpgRef"
+-           id="cached-jpg"
+-           Source="@_cachedJpgSource" />
+-}
+-
+-@if (_invalidMimeImage)
+-{
+-    <h4>Invalid MIME Image</h4>
+-    <Image @ref="@_invalidMimeRef"
+-           id="invalid-mime-image"
+-           Source="@_invalidMimeSource" />
+-}
+-
+-@code {
+-    private Image _pngBasicRef;
+-    private Image _jpgStreamRef;
+-    private Image _dynamicSourceRef;
+-    private Image _pair1Ref;
+-    private Image _pair2Ref;
+-    private Image _errorRef;
+-    private Image _cachedJpgRef;
+-    private Image _invalidMimeRef;
+-
+-    private ImageSource _basicImageSource = new ImageSource(new byte[0], "", "");
+-    private ImageSource _jpgStreamSource = new ImageSource(new byte[0], "", "");
+-    private ImageSource _dynamicImageSource = new ImageSource(new byte[0], "", "");
+-    private ImageSource _pairSource = new ImageSource(new byte[0], "", "");
+-    private ImageSource _errorSource = new ImageSource(new byte[0], "", "");
+-    private ImageSource _cachedJpgSource = new ImageSource(new byte[0], "", "");
+-    private ImageSource _invalidMimeSource = new ImageSource(new byte[0], "", "");
+-
+-    private bool _pngBasic = false;
+-    private bool _jpgStream = false;
+-    private bool _dynamicSource = false;
+-    private bool _pair1Visible = false;
+-    private bool _pair2Visible = false;
+-    private bool _errorImage = false;
+-    private bool _cachedJpgVisible = false;
+-    private bool _invalidMimeImage = false;
+-
+-    private string _currentStatus = "Ready";
+-    private bool _isCurrentlyShowingPng = true; // Track which image is currently shown in dynamic test
+-
+-    // Test image data - 1x1 gray PNG and JPG byte arrays
+-    private static readonly byte[] TestPngData = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAA1JREFUGFdjqK6u/g8ABVcCcYoGhmwAAAAASUVORK5CYII=");
+-
+-    private static readonly byte[] TestJpgData = Convert.FromBase64String("/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAAAP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AN//Z");
+-
+-    protected override void OnInitialized()
+-    {
+-        _currentStatus = "Component initialized";
+-    }
+-
+-    private void LoadJpgFromStream()
+-    {
+-        _currentStatus = "Loading JPG from stream...";
+-        var stream = new MemoryStream(TestJpgData);
+-        _jpgStreamSource = new ImageSource(stream, "image/jpeg", "test-jpg-stream");
+-        _jpgStream = true;
+-        _currentStatus = "JPG from stream loaded";
+-
+-    }
+-
+-    private void ChangeDynamicImageSource()
+-    {
+-        if (!_dynamicSource)
+-        {
+-            // First time - show the component with PNG
+-            _currentStatus = "Loading dynamic source (PNG)...";
+-            _dynamicImageSource = new ImageSource(TestPngData, "image/png", "dynamic-png");
+-            _dynamicSource = true;
+-            _isCurrentlyShowingPng = true;
+-            _currentStatus = "Dynamic source initialized with PNG";
+-        }
+-        else
+-        {
+-            // Toggle between PNG and JPG
+-            if (_isCurrentlyShowingPng)
+-            {
+-                _currentStatus = "Changing to JPG...";
+-                _dynamicImageSource = new ImageSource(TestJpgData, "image/jpeg", "dynamic-jpg");
+-                _isCurrentlyShowingPng = false;
+-                _currentStatus = "Dynamic source changed to JPG";
+-            }
+-            else
+-            {
+-                _currentStatus = "Changing to PNG...";
+-                _dynamicImageSource = new ImageSource(TestPngData, "image/png", "dynamic-png");
+-                _isCurrentlyShowingPng = true;
+-                _currentStatus = "Dynamic source changed to PNG";
+-            }
+-        }
+-    }
+-    private void LoadPairSequence()
+-    {
+-        _currentStatus = "Loading pair sequence...";
+-        _pairSource = new ImageSource(TestJpgData, "image/jpeg", "pair-cache");
+-        _pair1Visible = true;
+-        _pair2Visible = true;
+-        _currentStatus = "Pair second loaded";
+-    }
+-
+-    private void ReloadPng()
+-    {
+-        if (_pngBasic)
+-        {
+-            _currentStatus = "Reloading PNG...";
+-            _pngBasic = false;
+-        }
+-        else
+-        {
+-            _currentStatus = "Loading PNG...";
+-        }
+-
+-        _basicImageSource = new ImageSource(TestPngData, "image/png", "test-png-basic");
+-        _pngBasic = true;
+-        _currentStatus = "PNG basic loaded";
+-    }
+-
+-    private void LoadErrorImage()
+-    {
+-        _currentStatus = "Loading error image...";
+-        // Create a stream then seek to end so component throws when validating position
+-        var ms = new MemoryStream(new byte[] { 1, 2, 3, 4 });
+-        ms.Seek(ms.Length, SeekOrigin.Begin);
+-        _errorSource = new ImageSource(ms, "image/png", "error-key");
+-        _errorImage = true;
+-        _currentStatus = "Error image loaded";
+-    }
+-
+-    private void LoadCachedJpg()
+-    {
+-        _currentStatus = "Loading cached JPG...";
+-        _cachedJpgSource = new ImageSource(TestJpgData, "image/jpeg", "single-cached-jpg");
+-        _cachedJpgVisible = true;
+-        _currentStatus = "Cached JPG loaded";
+-    }
+-
+-    private void LoadInvalidMimeImage()
+-    {
+-        _currentStatus = "Loading invalid mime image...";
+-        var bytes = new byte[] { 97 };
+-
+-        _invalidMimeSource = new ImageSource(bytes, "text/plain", Guid.NewGuid().ToString());
+-        _invalidMimeImage = true;
+-        _currentStatus = "Invalid mime image loaded";
+-    }
+-
+-    public async ValueTask DisposeAsync()
+-    {
+-        _currentStatus = "Disposing component...";
+-
+-        if (_dynamicSourceRef != null)
+-            await _dynamicSourceRef.DisposeAsync();
+-        if (_jpgStreamRef != null)
+-            await _jpgStreamRef.DisposeAsync();
+-        if (_pngBasicRef != null)
+-            await _pngBasicRef.DisposeAsync();
+-        if (_pair1Ref != null)
+-            await _pair1Ref.DisposeAsync();
+-        if (_pair2Ref != null)
+-            await _pair2Ref.DisposeAsync();
+-        if (_invalidMimeRef != null)
+-            await _invalidMimeRef.DisposeAsync();
+-    }
+-}
+diff --git a/src/Components/test/testassets/BasicTestApp/Index.razor b/src/Components/test/testassets/BasicTestApp/Index.razor
+index 8c9e21f163..8760aee647 100644
+--- a/src/Components/test/testassets/BasicTestApp/Index.razor
++++ b/src/Components/test/testassets/BasicTestApp/Index.razor
+@@ -48,7 +48,9 @@
+         <option value="BasicTestApp.FormsTest.SimpleValidationComponentUsingExperimentalValidator">Simple validation using experimental validator</option>
+         <option value="BasicTestApp.FormsTest.ModelLevelValidationComponent">Model-level validation</option>
+         <option value="BasicTestApp.FormsTest.TypicalValidationComponent">Typical validation</option>
+-        <option value="BasicTestApp.ImageTest.ImageTestComponent">Image component tests</option>
++        <option value="BasicTestApp.MediaTest.ImageTestComponent">Image component tests</option>
++        <option value="BasicTestApp.MediaTest.VideoTestComponent">Video component tests</option>
++        <option value="BasicTestApp.MediaTest.FileDownloadTestComponent">File download component tests</option>
+         <option value="BasicTestApp.FormsTest.TypicalValidationComponentUsingExperimentalValidator">Typical validation using experimental validator</option>
+         <option value="BasicTestApp.FormsTest.ValidationComponentDI">Validation with Dependency Injection</option>
+         <option value="BasicTestApp.FormsTest.InputFileComponent">Input file</option>
+diff --git a/src/Components/test/testassets/BasicTestApp/MediaTest/FileDownloadTestComponent.razor b/src/Components/test/testassets/BasicTestApp/MediaTest/FileDownloadTestComponent.razor
+new file mode 100644
+index 0000000000..8b1b09cf4c
+--- /dev/null
++++ b/src/Components/test/testassets/BasicTestApp/MediaTest/FileDownloadTestComponent.razor
+@@ -0,0 +1,101 @@
++﻿@using System.IO
++@using Microsoft.AspNetCore.Components.Web.Media
++
++<h3>FileDownload Component Tests</h3>
++
++<div>
++    <h4>Test Controls</h4>
++    <button id="show-download" @onclick="ShowDownload">Show Download</button>
++    <button id="show-error-download" @onclick="ShowErrorDownload">Show Error Download</button>
++    <button id="show-blank-filename" @onclick="ShowBlankFilename">Show Blank Filename</button>
++    <button id="show-custom-href" @onclick="ShowCustomHref">Show Custom Href</button>
++    <button id="show-templated-download" @onclick="ShowTemplatedDownload">Show Templated Download</button>
++</div>
++
++@if (_showDownload)
++{
++    <FileDownload id="download-link" Source="@_downloadSource" FileName="@_downloadFileName" Text="Download File" />
++}
++@if (_showError)
++{
++    <FileDownload id="error-download-link" Source="@_errorSource" FileName="@_errorFileName" Text="Error File" />
++}
++@if (_showBlank)
++{
++    <FileDownload id="blank-download-link" Source="@_blankSource" FileName="@_blankFileName" Text="Blank File" />
++}
++@if (_showCustomHref)
++{
++    <FileDownload id="custom-href-download-link" Source="@_customHrefSource" FileName="@_customHrefFileName" Text="Custom Href" href="https://example.com/original" />
++}
++@if (_showTemplated)
++{
++    <FileDownload Source="@_templatedSource" FileName="@_templatedFileName" Context="fctx">
++        <div id="templated-download-wrapper" class="download-shell @(fctx.IsLoading ? "loading" : fctx.HasError ? "error" : "ready")">
++            <a id="templated-download-link" @ref="fctx.Element" href="javascript:void(0)" @onclick="() => fctx.InvokeAsync()">
++                <span id="templated-download-text">Download (templated)</span>
++            </a>
++            <span id="templated-download-status">@(fctx.IsLoading ? "Loading" : fctx.HasError ? "Error" : "Idle/Done")</span>
++        </div>
++    </FileDownload>
++}
++
++@code {
++    private bool _showDownload;
++    private bool _showError;
++    private bool _showBlank;
++    private bool _showCustomHref;
++    private bool _showTemplated;
++
++    private MediaSource _downloadSource = new MediaSource(new byte[0], string.Empty, string.Empty);
++    private MediaSource _errorSource = new MediaSource(new byte[0], string.Empty, string.Empty);
++    private MediaSource _blankSource = new MediaSource(new byte[0], string.Empty, string.Empty);
++    private MediaSource _customHrefSource = new MediaSource(new byte[0], string.Empty, string.Empty);
++    private MediaSource _templatedSource = new MediaSource(new byte[0], string.Empty, string.Empty);
++
++    private string _downloadFileName = string.Empty;
++    private string _errorFileName = string.Empty;
++    private string _blankFileName = string.Empty;
++    private string _customHrefFileName = string.Empty;
++    private string _templatedFileName = string.Empty;
++
++    private static readonly byte[] TestPngData = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAA1JREFUGFdjqK6u/g8ABVcCcYoGhmwAAAAASUVORK5CYII=");
++    private static readonly byte[] TestTxtData = System.Text.Encoding.UTF8.GetBytes("Hello file download");
++
++    private void ShowDownload()
++    {
++        _downloadSource = new MediaSource(TestPngData, "image/png", "download-png-basic");
++        _downloadFileName = "test.png";
++        _showDownload = true;
++    }
++
++    private void ShowErrorDownload()
++    {
++        var ms = new MemoryStream(TestTxtData);
++        ms.Seek(ms.Length, SeekOrigin.Begin); // Force immediate EOF / error in JS pipeline when reading
++        _errorSource = new MediaSource(ms, "text/plain", "error-file-key");
++        _errorFileName = "error.txt";
++        _showError = true;
++    }
++
++    private void ShowBlankFilename()
++    {
++        _blankSource = new MediaSource(TestTxtData, "text/plain", "blank-file-key");
++        _blankFileName = "";
++        _showBlank = true;
++    }
++
++    private void ShowCustomHref()
++    {
++        _customHrefSource = new MediaSource(TestTxtData, "text/plain", "custom-href-file-key");
++        _customHrefFileName = "custom.bin";
++        _showCustomHref = true;
++    }
++
++    private void ShowTemplatedDownload()
++    {
++        _templatedSource = new MediaSource(TestPngData, "image/png", "templated-download-file-key");
++        _templatedFileName = "templated.png";
++        _showTemplated = true;
++    }
++}
+diff --git a/src/Components/test/testassets/BasicTestApp/MediaTest/ImageTestComponent.razor b/src/Components/test/testassets/BasicTestApp/MediaTest/ImageTestComponent.razor
+new file mode 100644
+index 0000000000..f862f332c8
+--- /dev/null
++++ b/src/Components/test/testassets/BasicTestApp/MediaTest/ImageTestComponent.razor
+@@ -0,0 +1,214 @@
++@using System.IO
++@using Microsoft.AspNetCore.Components.Web.Media
++@implements IAsyncDisposable
++
++<h3>Image Component Tests</h3>
++
++<div>
++    <h4>Test Controls</h4>
++    <button id="load-png" @onclick="ReloadPng">Load PNG</button>
++    <button id="load-jpg-stream" @onclick="LoadJpgFromStream">Load JPG (Stream)</button>
++    <button id="change-source" @onclick="ChangeDynamicImageSource">Change Dynamic Source</button>
++    <button id="load-pair-sequence" @onclick="LoadPairSequence">Load Two Images (Same Key)</button>
++    <button id="load-error" @onclick="LoadErrorImage">Load Error</button>
++    <button id="load-cached-jpg" @onclick="LoadCachedJpg">Load Cached JPG</button>
++    <button id="load-invalid-mime" @onclick="LoadInvalidMimeImage">Load Invalid MIME</button>
++    <button id="load-templated-image" @onclick="LoadTemplatedImage">Load Templated Image</button>
++
++    <div id="test-status">
++        Status: <span id="current-status">@_currentStatus</span>
++    </div>
++</div>
++
++@if (_pngBasic)
++{
++    <h4>PNG basic</h4>
++    <Image @ref="@_pngBasicRef" id="png-basic" Source="@_basicImageSource" />
++}
++@if (_jpgStream)
++{
++    <h4>JPG Stream</h4>
++    <Image @ref="@_jpgStreamRef" id="jpg-stream" Source="@_jpgStreamSource" />
++}
++@if (_dynamicSource)
++{
++    <h4>Dynamic Source Image</h4>
++    <Image @ref="@_dynamicSourceRef" id="dynamic-source" Source="@_dynamicImageSource" />
++}
++@if (_pair1Visible)
++{
++    <h4>Pair Image 1</h4>
++    <Image @ref="@_pair1Ref" id="pair-image-1" Source="@_pairSource" />
++}
++@if (_pair2Visible)
++{
++    <h4>Pair Image 2</h4>
++    <Image @ref="@_pair2Ref" id="pair-image-2" Source="@_pairSource" />
++}
++@if (_errorImage)
++{
++    <h4>Error Image</h4>
++    <Image @ref="_errorRef" id="error-image" Source="@_errorSource" />
++}
++@if (_cachedJpgVisible)
++{
++    <h4>Cached JPG</h4>
++    <Image @ref="@_cachedJpgRef" id="cached-jpg" Source="@_cachedJpgSource" />
++}
++@if (_invalidMimeImage)
++{
++    <h4>Invalid MIME Image</h4>
++    <Image @ref="@_invalidMimeRef" id="invalid-mime-image" Source="@_invalidMimeSource" />
++}
++@if (_templatedImageVisible)
++{
++    <h4>Templated Image</h4>
++    <Image @ref="_templatedImageComponent" Source="@_templatedImageSource" Context="ctx">
++        <figure id="templated-image-wrapper" class="templated-image @(ctx.IsLoading ? "loading" : ctx.HasError ? "error" : "ready")">
++            @if (ctx.ObjectUrl is not null)
++            {
++                <img id="templated-image" @ref="ctx.Element" data-blazor-image src="@ctx.ObjectUrl" />
++            }
++            else
++            {
++                <img id="templated-image" @ref="ctx.Element" data-blazor-image />
++            }
++            <figcaption id="templated-image-status">
++                @(ctx.IsLoading ? "Loading..." : ctx.HasError ? "Error" : ctx.ObjectUrl is not null ? "Loaded" : "Idle")
++            </figcaption>
++        </figure>
++    </Image>
++}
++
++@code {
++    private Image _pngBasicRef;
++    private Image _jpgStreamRef;
++    private Image _dynamicSourceRef;
++    private Image _pair1Ref;
++    private Image _pair2Ref;
++    private Image _errorRef;
++    private Image _cachedJpgRef;
++    private Image _invalidMimeRef;
++    private Image _templatedImageComponent;
++
++    private MediaSource _basicImageSource = new MediaSource(new byte[0], string.Empty, string.Empty);
++    private MediaSource _jpgStreamSource = new MediaSource(new byte[0], string.Empty, string.Empty);
++    private MediaSource _dynamicImageSource = new MediaSource(new byte[0], string.Empty, string.Empty);
++    private MediaSource _pairSource = new MediaSource(new byte[0], string.Empty, string.Empty);
++    private MediaSource _errorSource = new MediaSource(new byte[0], string.Empty, string.Empty);
++    private MediaSource _cachedJpgSource = new MediaSource(new byte[0], string.Empty, string.Empty);
++    private MediaSource _invalidMimeSource = new MediaSource(new byte[0], string.Empty, string.Empty);
++    private MediaSource _templatedImageSource = new MediaSource(new byte[0], string.Empty, string.Empty);
++
++    private bool _pngBasic;
++    private bool _jpgStream;
++    private bool _dynamicSource;
++    private bool _pair1Visible;
++    private bool _pair2Visible;
++    private bool _errorImage;
++    private bool _cachedJpgVisible;
++    private bool _invalidMimeImage;
++    private bool _templatedImageVisible;
++
++    private string _currentStatus = "Ready";
++    private bool _isCurrentlyShowingPng = true;
++
++    private static readonly byte[] TestPngData = Convert.FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAA1JREFUGFdjqK6u/g8ABVcCcYoGhmwAAAAASUVORK5CYII=");
++    private static readonly byte[] TestJpgData = Convert.FromBase64String("/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4RDgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/wAALCAABAAEBAREA/8QAFAABAAAAAAAAAAAAAAAAAAAAAP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AN//Z");
++
++    private void ReloadPng()
++    {
++        _basicImageSource = new MediaSource(TestPngData, "image/png", "test-png-basic");
++        _pngBasic = true;
++        _currentStatus = "PNG basic loaded";
++    }
++
++    private void LoadJpgFromStream()
++    {
++        _currentStatus = "Loading JPG from stream...";
++        var stream = new MemoryStream(TestJpgData);
++        _jpgStreamSource = new MediaSource(stream, "image/jpeg", "test-jpg-stream");
++        _jpgStream = true;
++        _currentStatus = "JPG from stream loaded";
++    }
++
++    private void ChangeDynamicImageSource()
++    {
++        if (!_dynamicSource)
++        {
++            _currentStatus = "Dynamic source initialized with PNG";
++            _dynamicImageSource = new MediaSource(TestPngData, "image/png", "dynamic-png");
++            _dynamicSource = true;
++            _isCurrentlyShowingPng = true;
++        }
++        else
++        {
++            if (_isCurrentlyShowingPng)
++            {
++                _currentStatus = "Dynamic source changed to JPG";
++                _dynamicImageSource = new MediaSource(TestJpgData, "image/jpeg", "dynamic-jpg");
++            }
++            else
++            {
++                _currentStatus = "Dynamic source changed to PNG";
++                _dynamicImageSource = new MediaSource(TestPngData, "image/png", "dynamic-png");
++            }
++            _isCurrentlyShowingPng = !_isCurrentlyShowingPng;
++        }
++    }
++
++    private void LoadPairSequence()
++    {
++        _currentStatus = "Loading pair sequence...";
++        _pairSource = new MediaSource(TestJpgData, "image/jpeg", "pair-cache");
++        _pair1Visible = true;
++        _pair2Visible = true;
++        _currentStatus = "Pair second loaded";
++    }
++
++    private void LoadErrorImage()
++    {
++        _currentStatus = "Loading error image...";
++        var ms = new MemoryStream(new byte[] { 1, 2, 3, 4 });
++        ms.Seek(ms.Length, SeekOrigin.Begin);
++        _errorSource = new MediaSource(ms, "image/png", "error-key");
++        _errorImage = true;
++        _currentStatus = "Error image loaded";
++    }
++
++    private void LoadCachedJpg()
++    {
++        _currentStatus = "Loading cached JPG...";
++        _cachedJpgSource = new MediaSource(TestJpgData, "image/jpeg", "single-cached-jpg");
++        _cachedJpgVisible = true;
++        _currentStatus = "Cached JPG loaded";
++    }
++
++    private void LoadInvalidMimeImage()
++    {
++        _currentStatus = "Loading invalid mime image...";
++        var bytes = new byte[] { 97 }; // 'a'
++        _invalidMimeSource = new MediaSource(bytes, "text/plain", Guid.NewGuid().ToString());
++        _invalidMimeImage = true;
++        _currentStatus = "Invalid mime image loaded";
++    }
++
++    private void LoadTemplatedImage()
++    {
++        _currentStatus = "Loading templated image...";
++        _templatedImageSource = new MediaSource(TestPngData, "image/png", "templated-png");
++        _templatedImageVisible = true;
++        _currentStatus = "Templated image loaded";
++    }
++
++    public async ValueTask DisposeAsync()
++    {
++        if (_dynamicSourceRef != null) await _dynamicSourceRef.DisposeAsync();
++        if (_jpgStreamRef != null) await _jpgStreamRef.DisposeAsync();
++        if (_pngBasicRef != null) await _pngBasicRef.DisposeAsync();
++        if (_pair1Ref != null) await _pair1Ref.DisposeAsync();
++        if (_pair2Ref != null) await _pair2Ref.DisposeAsync();
++        if (_invalidMimeRef != null) await _invalidMimeRef.DisposeAsync();
++    if (_templatedImageComponent != null) await _templatedImageComponent.DisposeAsync();
++    }
++}
+diff --git a/src/Components/test/testassets/BasicTestApp/MediaTest/VideoTestComponent.razor b/src/Components/test/testassets/BasicTestApp/MediaTest/VideoTestComponent.razor
+new file mode 100644
+index 0000000000..699dde17ec
+--- /dev/null
++++ b/src/Components/test/testassets/BasicTestApp/MediaTest/VideoTestComponent.razor
+@@ -0,0 +1,100 @@
++﻿@using System.IO
++@using Microsoft.AspNetCore.Components.Web.Media
++@using Microsoft.AspNetCore.Components.Web
++@implements IAsyncDisposable
++
++<h3>Video Component Tests</h3>
++
++<div>
++    <h4>Test Controls</h4>
++    <button id="load-mp4" @onclick="LoadMp4">Load MP4</button>
++    <button id="change-video" @onclick="ChangeDynamicVideoSource">Change Dynamic Video Source</button>
++    <button id="load-templated-video" @onclick="LoadTemplatedVideo">Load Templated Video</button>
++    <div id="test-status">Status: <span id="current-status">@_currentStatus</span></div>
++</div>
++
++@if (_mp4Visible)
++{
++    <h4>MP4 basic</h4>
++    <Video @ref="@_mp4Ref" id="mp4-basic" Source="@_mp4Source" controls />
++}
++@if (_dynamicVideoVisible)
++{
++    <h4>Dynamic Video</h4>
++    <Video @ref="@_dynamicVideoRef" id="dynamic-video" Source="@_dynamicVideoSource" controls muted loop />
++}
++@if (_templatedVideoVisible)
++{
++    <h4>Templated Video</h4>
++    <Video @ref="_templatedVideoComponent" Source="@_templatedVideoSource" Context="vctx">
++        <div id="templated-video-container" class="video-shell @(vctx.IsLoading ? "loading" : vctx.HasError ? "error" : "ready")">
++            <video id="templated-video" @ref="vctx.Element" playsinline muted loop controls src="@(vctx.ObjectUrl)" data-role="templated-video"></video>
++            <span id="templated-video-status">@(vctx.IsLoading ? "Loading" : vctx.HasError ? "Error" : vctx.ObjectUrl is not null ? "Loaded" : "Idle")</span>
++        </div>
++    </Video>
++}
++
++@code {
++    private Video _mp4Ref;
++    private Video _dynamicVideoRef;
++    private Video _templatedVideoComponent;
++
++    private MediaSource _mp4Source = new MediaSource(new byte[0], string.Empty, string.Empty);
++    private MediaSource _dynamicVideoSource = new MediaSource(new byte[0], string.Empty, string.Empty);
++    private MediaSource _templatedVideoSource = new MediaSource(new byte[0], string.Empty, string.Empty);
++
++    private bool _mp4Visible;
++    private bool _dynamicVideoVisible;
++    private bool _isShowingFirst = true;
++    private string _currentStatus = "Ready";
++    private bool _templatedVideoVisible;
++
++    // 1024x1024 green square for 10s mp4
++    private static readonly byte[] TestMp4Data = Convert.FromBase64String("AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAAIZnJlZQAALURtZGF0AAACrwYF//+r3EXpvebZSLeWLNgg2SPu73gyNjQgLSBjb3JlIDE2NCByMzE5MiBjMjRlMDZjIC0gSC4yNjQvTVBFRy00IEFWQyBjb2RlYyAtIENvcHlsZWZ0IDIwMDMtMjAyNCAtIGh0dHA6Ly93d3cudmlkZW9sYW4ub3JnL3gyNjQuaHRtbCAtIG9wdGlvbnM6IGNhYmFjPTEgcmVmPTMgZGVibG9jaz0xOjA6MCBhbmFseXNlPTB4MzoweDExMyBtZT1oZXggc3VibWU9NyBwc3k9MSBwc3lfcmQ9MS4wMDowLjAwIG1peGVkX3JlZj0xIG1lX3JhbmdlPTE2IGNocm9tYV9tZT0xIHRyZWxsaXM9MSA4eDhkY3Q9MSBjcW09MCBkZWFkem9uZT0yMSwxMSBmYXN0X3Bza2lwPTEgY2hyb21hX3FwX29mZnNldD0tMiB0aHJlYWRzPTI0IGxvb2thaGVhZF90aHJlYWRzPTQgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MyBiX3B5cmFtaWQ9MiBiX2FkYXB0PTEgYl9iaWFzPTAgZGlyZWN0PTEgd2VpZ2h0Yj0xIG9wZW5fZ29wPTAgd2VpZ2h0cD0yIGtleWludD0yNTAga2V5aW50X21pbj0yNSBzY2VuZWN1dD00MCBpbnRyYV9yZWZyZXNoPTAgcmNfbG9va2FoZWFkPTQwIHJjPWNyZiBtYnRyZWU9MSBjcmY9MjMuMCBxY29tcD0wLjYwIHFwbWluPTAgcXBtYXg9NjkgcXBzdGVwPTQgaXBfcmF0aW89MS40MCBhcT0xOjEuMDAAgAAAAPJliIQAO//+46v4FNGvoc9hzE2yUNGNPzxSXbPITNxyv/gd9NWAAAADAAADAAADAABwtb/+xalyiPhgAAADAAD6AAq4ATwALaAH0AGSAHEAH8AJkAQ0AeYAxQBxAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAADAAAbMQAAACdBmiRsQ7/+qZYAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMABKwAAAAkQZ5CeIX/AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGeYXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnmNqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZpoSahBaJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGehkURLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGepXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBnqdqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZqsSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGeykUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGe6XRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnutqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZrwSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGfDkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGfLXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBny9qQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZs0SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGfUkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGfcXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBn3NqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZt4SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGflkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWUAAAAJAGftXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBn7dqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZu8SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGf2kUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGf+XRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBn/tqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZvgSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGeHkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWUAAAAJAGePXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnj9qQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZokSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGeQkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGeYXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnmNqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZpoSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGehkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGepXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBnqdqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZqsSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGeykUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGe6XRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnutqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZrwSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGfDkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGfLXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBny9qQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZs0SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGfUkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGfcXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBn3NqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZt4SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGflkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWUAAAAJAGftXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBn7dqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZu8SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGf2kUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGf+XRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBn/tqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZvgSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGeHkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWUAAAAJAGePXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnj9qQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZokSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGeQkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGeYXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnmNqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZpoSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGehkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGepXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBnqdqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZqsSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGeykUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGe6XRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnutqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZrwSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGfDkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGfLXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBny9qQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZs0SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGfUkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGfcXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBn3NqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZt4SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGflkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWUAAAAJAGftXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBn7dqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZu8SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGf2kUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGf+XRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBn/tqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZvgSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGeHkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWUAAAAJAGePXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnj9qQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZokSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGeQkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGeYXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnmNqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZpoSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGehkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGepXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBnqdqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZqsSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGeykUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGe6XRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnutqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZrwSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGfDkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGfLXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBny9qQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZs0SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGfUkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGfcXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBn3NqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZt4SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGflkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWUAAAAJAGftXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBn7dqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZu8SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGf2kUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGf+XRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBn/tqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZvgSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGeHkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWUAAAAJAGePXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnj9qQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZokSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGeQkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGeYXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnmNqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZpoSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGehkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGepXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBnqdqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZqsSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGeykUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGe6XRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnutqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZrwSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGfDkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGfLXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBny9qQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZs0SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGfUkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGfcXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBn3NqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZt4SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGflkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWUAAAAJAGftXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBn7dqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZu8SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGf2kUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGf+XRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBn/tqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZvgSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGeHkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWUAAAAJAGePXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnj9qQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZokSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGeQkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGeYXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnmNqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZpoSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGehkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGepXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBnqdqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZqsSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGeykUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGe6XRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnutqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZrwSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGfDkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGfLXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBny9qQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZs0SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGfUkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGfcXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBn3NqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZt4SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGflkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWUAAAAJAGftXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBn7dqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZu8SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGf2kUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGf+XRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBn/tqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZvgSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGeHkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWUAAAAJAGePXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnj9qQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZokSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGeQkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGeYXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnmNqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZpoSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGehkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGepXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBnqdqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZqsSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGeykUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGe6XRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnutqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZrwSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGfDkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGfLXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBny9qQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZs0SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGfUkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGfcXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBn3NqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZt4SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGflkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWUAAAAJAGftXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBn7dqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZu8SahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGf2kUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGf+XRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBn/tqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZvgSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGeHkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWUAAAAJAGePXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnj9qQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZokSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGeQkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGeYXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnmNqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZpoSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAAStAAAAJkGehkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGepXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBnqdqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZqsSahBbJlMCHf//qmWAAADAAADAAADAAADAAADAAADAAADAAADAAADAASsAAAAJkGeykUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGe6XRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBnutqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZrwSahBbJlMCG///qeEAAADAAADAAADAAADAAADAAADAAADAAADAAADAAk5AAAAJkGfDkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGfLXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBny9qQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZs0SahBbJlMCG///qeEAAADAAADAAADAAADAAADAAADAAADAAADAAADAAk4AAAAJkGfUkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWVAAAAJAGfcXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdAAAACQBn3NqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3QAAAAtQZt4SahBbJlMCF///oywAAADAAADAAADAAADAAADAAADAAADAAADAAADACRhAAAAJkGflkUVLC//AAADAAADAAADAAADAAADAAADAAADAAADAAADAAWUAAAAJAGftXRCvwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAAAwAHdQAAACQBn7dqQr8AAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAAAMAB3UAAAAtQZu5SahBbJlMCFf//jhAAAADAAADAAADAAADAAADAAADAAADAAADAAADAIuAAAAO821vb3YAAABsbXZoZAAAAAAAAAAAAAAAAAAAA+gAACcQAAEAAAEAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAIAAA4edHJhawAAAFx0a2hkAAAAAwAAAAAAAAAAAAAAAQAAAAAAACcQAAAAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAQAAAAAAAAAAAAAAAAAAQAAAAAQAAAAEAAAAAAAAJGVkdHMAAAAcZWxzdAAAAAAAAAABAAAnEAAABAAAAQAAAAANlm1kaWEAAAAgbWRoZAAAAAAAAAAAAAAAAAAAMgAAAfQAVcQAAAAAAC1oZGxyAAAAAAAAAAB2aWRlAAAAAAAAAAAAAAAAVmlkZW9IYW5kbGVyAAAADUFtaW5mAAAAFHZtaGQAAAABAAAAAAAAAAAAAAAkZGluZgAAABxkcmVmAAAAAAAAAAEAAAAMdXJsIAAAAAEAAA0Bc3RibAAAAMFzdHNkAAAAAAAAAAEAAACxYXZjMQAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAQABAAASAAAAEgAAAAAAAAAARVMYXZjNjEuMTkuMTAwIGxpYngyNjQAAAAAAAAAAAAAABj//wAAADdhdmNDAWQAIP/hABpnZAAgrNlAQAIGwEQAAAMABAAAAwDIPGDGWAEABmjr48siwP34+AAAAAAQcGFzcAAAAAEAAAABAAAAFGJ0cnQAAAAAAAAkMAAAJDAAAAAYc3R0cwAAAAAAAAABAAAA+gAAAgAAAAAUc3RzcwAAAAAAAAABAAAAAQAAB+BjdHRzAAAAAAAAAPoAAAABAAAEAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAKAAAAAAEAAAQAAAAAAQAAAAAAAAABAAACAAAAAAEAAAoAAAAAAQAABAAAAAABAAAAAAAAAAEAAAIAAAAAAQAACgAAAAABAAAEAAAAAAEAAAAAAAAAAQAAAgAAAAABAAAEAAAAABxzdHNjAAAAAAAAAAEAAAABAAAA+gAAAAEAAAP8c3RzegAAAAAAAAAAAAAA+gAAA6kAAAArAAAAKAAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAqAAAAKAAAACgAAAAxAAAAKgAAACgAAAAoAAAAMQAAACoAAAAoAAAAKAAAADEAAAAUc3RjbwAAAAAAAAABAAAAMAAAAGF1ZHRhAAAAWW1ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAG1kaXJhcHBsAAAAAAAAAAAAAAAALGlsc3QAAAAkqXRvbwAAABxkYXRhAAAAAQAAAABMYXZmNjEuNy4xMDA=");
++
++    private void LoadMp4()
++    {
++        _mp4Source = new MediaSource(TestMp4Data, "video/mp4", "test-mp4-basic");
++        _mp4Visible = true;
++        _currentStatus = "MP4 basic loaded";
++    }
++
++    private void ChangeDynamicVideoSource()
++    {
++        if (!_dynamicVideoVisible)
++        {
++            _dynamicVideoSource = new MediaSource(TestMp4Data, "video/mp4", "dynamic-mp4-a");
++            _dynamicVideoVisible = true;
++            _isShowingFirst = true;
++            _currentStatus = "Dynamic video initialized (A)";
++        }
++        else
++        {
++            if (_isShowingFirst)
++            {
++                _dynamicVideoSource = new MediaSource(TestMp4Data, "video/mp4", "dynamic-mp4-b");
++                _currentStatus = "Dynamic video changed to B";
++            }
++            else
++            {
++                _dynamicVideoSource = new MediaSource(TestMp4Data, "video/mp4", "dynamic-mp4-a");
++                _currentStatus = "Dynamic video changed to A";
++            }
++            _isShowingFirst = !_isShowingFirst;
++        }
++    }
++
++    private void LoadTemplatedVideo()
++    {
++        _templatedVideoSource = new MediaSource(TestMp4Data, "video/mp4", "templated-mp4");
++        _templatedVideoVisible = true;
++        _currentStatus = "Templated video loaded";
++    }
++
++    public async ValueTask DisposeAsync()
++    {
++        if (_mp4Ref != null) await _mp4Ref.DisposeAsync();
++        if (_dynamicVideoRef != null) await _dynamicVideoRef.DisposeAsync();
++    if (_templatedVideoComponent != null) await _templatedVideoComponent.DisposeAsync();
++    }
++}
+diff --git a/src/Components/test/testassets/BasicTestApp/_Imports.razor b/src/Components/test/testassets/BasicTestApp/_Imports.razor
+index 4568ae32ab..ca71cae52d 100644
+--- a/src/Components/test/testassets/BasicTestApp/_Imports.razor
++++ b/src/Components/test/testassets/BasicTestApp/_Imports.razor
+@@ -1,3 +1,3 @@
+ ﻿@using Microsoft.AspNetCore.Components.Web
+ @using Microsoft.AspNetCore.Components.Web.Virtualization
+-@using Microsoft.AspNetCore.Components.Web.Image
++@using Microsoft.AspNetCore.Components.Web.Media

@@ -1,0 +1,662 @@
+From 810e48da2cc88530b7a67624f860fff688d8da69 Mon Sep 17 00:00:00 2001
+From: Adam Rutkowski <hq@mtod.org>
+Date: Tue, 23 Sep 2025 08:39:14 +0200
+Subject: [PATCH] Add top goal conversions to weekly/monthly e-mail digest
+ (#5711)
+
+* Add top goal conversions to weekly/monthly e-mail digest
+
+* Fix typo
+---
+ CHANGELOG.md                                  |   1 +
+ lib/plausible/stats/email_report.ex           |  63 ----
+ lib/plausible_web/email.ex                    |   4 +-
+ .../mjml/templates/stats_report.mjml.eex      |  35 ++-
+ lib/workers/send_email_report.ex              | 271 +++++++++++++-----
+ test/workers/send_email_report_test.exs       | 169 +++++++++++
+ 6 files changed, 404 insertions(+), 139 deletions(-)
+ delete mode 100644 lib/plausible/stats/email_report.ex
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 324db5600..05669a92e 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -10,6 +10,7 @@ All notable changes to this project will be documented in this file.
+ - Stats APIv2 now supports `include.trim_relative_date_range`. This option allows trimming empty values after current time for `day`, `month` and `year` date_range values.
+ - Properties are now included in full site exports done via Site Settings > Imports & Exports
+ - Google Search Console integration settings: properties can be dynamically sought
++- Weekly/monthly e-mail reports now contain top goal conversions
+ 
+ ### Removed
+ 
+diff --git a/lib/plausible/stats/email_report.ex b/lib/plausible/stats/email_report.ex
+deleted file mode 100644
+index ef16d6c5b..000000000
+--- a/lib/plausible/stats/email_report.ex
++++ /dev/null
+@@ -1,63 +0,0 @@
+-defmodule Plausible.Stats.EmailReport do
+-  @moduledoc """
+-  This module exposes a `get/2` function that returns a map
+-  of stats needed for email reports. These stats include:
+-
+-  * Total pageviews
+-  * Unique visitors
+-  * Bounce rate
+-  * A list of Top 5 sources (excluding "Direct / None")
+-  * A list of Top 5 pages
+-
+-  where total pageviews, unique visitors, and bounce rate
+-  also include the change compared to previous period.
+-  """
+-
+-  alias Plausible.Stats
+-  alias Plausible.Stats.{Query, QueryResult}
+-
+-  @aggregate_metrics [:pageviews, :visitors, :bounce_rate]
+-
+-  def get(site, query) do
+-    aggregate_and_compare(site, query)
+-    |> put_top_5_pages(site, query)
+-    |> put_top_5_sources(site, query)
+-  end
+-
+-  defp aggregate_and_compare(site, query) do
+-    query =
+-      query
+-      |> Query.set(metrics: @aggregate_metrics)
+-      |> Query.set_include(:comparisons, %{mode: "previous_period"})
+-      |> Query.put_comparison_utc_time_range()
+-
+-    %QueryResult{results: [result]} = Plausible.Stats.query(site, query)
+-
+-    @aggregate_metrics
+-    |> Enum.with_index()
+-    |> Enum.map(fn {metric, idx} ->
+-      value = Enum.at(result.metrics, idx)
+-      change = Enum.at(result.comparison.change, idx)
+-
+-      {metric, %{value: value, change: change}}
+-    end)
+-    |> Enum.into(%{})
+-  end
+-
+-  defp put_top_5_pages(stats, site, query) do
+-    query = Query.set(query, dimensions: ["event:page"])
+-    %{results: pages} = Stats.breakdown(site, query, [:visitors], {5, 1})
+-    Map.put(stats, :pages, pages)
+-  end
+-
+-  defp put_top_5_sources(stats, site, query) do
+-    query =
+-      query
+-      |> Query.add_filter([:is_not, "visit:source", ["Direct / None"]])
+-      |> Query.set(dimensions: ["visit:source"])
+-
+-    %{results: sources} = Stats.breakdown(site, query, [:visitors], {5, 1})
+-
+-    Map.put(stats, :sources, sources)
+-  end
+-end
+diff --git a/lib/plausible_web/email.ex b/lib/plausible_web/email.ex
+index d30920bc8..b6359b661 100644
+--- a/lib/plausible_web/email.ex
++++ b/lib/plausible_web/email.ex
+@@ -125,8 +125,8 @@ defmodule PlausibleWeb.Email do
+   def stats_report(email, assigns) do
+     base_email(%{layout: nil})
+     |> to(email)
+-    |> tag("#{assigns.type}-report")
+-    |> subject("#{assigns.name} report for #{assigns.site.domain}")
++    |> tag("#{assigns.interval}-report")
++    |> subject("#{assigns.report_name} report for #{assigns.site.domain}")
+     |> html_body(PlausibleWeb.MJML.StatsReport.render(assigns))
+   end
+ 
+diff --git a/lib/plausible_web/mjml/templates/stats_report.mjml.eex b/lib/plausible_web/mjml/templates/stats_report.mjml.eex
+index fef7fae37..51b13f3f1 100644
+--- a/lib/plausible_web/mjml/templates/stats_report.mjml.eex
++++ b/lib/plausible_web/mjml/templates/stats_report.mjml.eex
+@@ -44,7 +44,7 @@
+           <%= @site.domain %>
+         </mj-text>
+         <mj-text mj-class="text-sm" padding="0 25px 0 25px">
+-          <%= @name %> Report (<%= @date %>)
++          <%= @report_name %> Report (<%= @date_label %>)
+         </mj-text>
+       </mj-column>
+     </mj-section>
+@@ -179,7 +179,38 @@
+       </mj-group>
+     </mj-section>
+ 
+-    <%= if @login_link do %>
++    <%= if @stats.goals && length(@stats.goals) > 0 do %>
++    <mj-section padding="0">
++      <mj-column>
++        <mj-divider />
++      </mj-column>
++    </mj-section>
++
++    <mj-section>
++      <mj-group>
++        <mj-column>
++          <mj-text font-weight="bold">Goal</mj-text>
++
++          <%= for goal <- @stats.goals do %>
++            <mj-text css-class="goal-name">
++              <%= goal[:goal] %>
++            </mj-text>
++          <% end %>
++        </mj-column>
++        <mj-column>
++          <mj-text font-weight="bold" align="right">Conversions</mj-text>
++
++          <%= for goal <- @stats.goals do %>
++            <mj-text align="right" css-class="goal-conversions">
++              <%= PlausibleWeb.StatsView.large_number_format(goal[:visitors]) %>
++            </mj-text>
++          <% end %>
++        </mj-column>
++      </mj-group>
++    </mj-section>
++    <% end %>
++
++    <%= if @site_member? do %>
+       <mj-section>
+         <mj-column>
+         <mj-button href="<%= PlausibleWeb.Router.Helpers.auth_url(PlausibleWeb.Endpoint, :login_form) %>">
+diff --git a/lib/workers/send_email_report.ex b/lib/workers/send_email_report.ex
+index 287e908b2..1bd5ce17d 100644
+--- a/lib/workers/send_email_report.ex
++++ b/lib/workers/send_email_report.ex
+@@ -1,104 +1,231 @@
+ defmodule Plausible.Workers.SendEmailReport do
+   use Plausible.Repo
+   use Oban.Worker, queue: :send_email_reports, max_attempts: 1
+-  alias Plausible.Stats.Query
+-
+-  @impl Oban.Worker
+-  def perform(%Oban.Job{args: %{"interval" => "weekly", "site_id" => site_id}}) do
+-    site = Repo.get(Plausible.Site, site_id) |> Repo.preload(:weekly_report)
+-
+-    if site && site.weekly_report do
+-      %{site: site}
+-      |> put_last_week_query()
+-      |> put_date_range()
+-      |> Map.put(:type, :weekly)
+-      |> Map.put(:name, "Weekly")
+-      |> put(:date, &Calendar.strftime(&1.date_range.last, "%-d %b %Y"))
+-      |> put_stats()
+-      |> send_report_for_all(site.weekly_report.recipients)
++
++  alias Plausible.Stats.{Query, QueryResult}
++
++  @weekly "weekly"
++  @monthly "monthly"
++
++  def perform(%Oban.Job{args: %{"interval" => interval, "site_id" => site_id}})
++      when interval in [@weekly, @monthly] do
++    report_type = report_type(interval)
++
++    site =
++      Plausible.Site
++      |> Repo.get(site_id)
++      |> Repo.preload(report_type)
++
++    report = site && Map.get(site, report_type)
++
++    if report do
++      date_range = date_range(site, interval)
++      report_name = report_name(interval, date_range.first)
++      date_label = Calendar.strftime(date_range.last, "%-d %b %Y")
++      stats = stats(site, date_range)
++
++      report
++      |> Map.fetch!(:recipients)
++      |> Enum.each(fn email ->
++        assigns = %{
++          site: site,
++          report_name: report_name,
++          date_label: date_label,
++          unsubscribe_link: unsubscribe_link(site, email, interval),
++          site_member?: site_member?(site, email),
++          interval: interval,
++          stats: stats
++        }
++
++        email
++        |> PlausibleWeb.Email.stats_report(assigns)
++        |> Plausible.Mailer.send()
++      end)
+     else
+       :discard
+     end
+   end
+ 
+-  @impl Oban.Worker
+-  def perform(%Oban.Job{args: %{"interval" => "monthly", "site_id" => site_id}}) do
+-    site = Repo.get(Plausible.Site, site_id) |> Repo.preload(:monthly_report)
+-
+-    if site && site.monthly_report do
+-      %{site: site}
+-      |> put_last_month_query()
+-      |> put_date_range()
+-      |> Map.put(:type, :monthly)
+-      |> put(:name, &Calendar.strftime(&1.date_range.first, "%B"))
+-      |> put(:date, &Calendar.strftime(&1.date_range.last, "%-d %b %Y"))
+-      |> put_stats()
+-      |> send_report_for_all(site.monthly_report.recipients)
+-    else
+-      :discard
+-    end
++  defp report_type(@weekly), do: :weekly_report
++  defp report_type(@monthly), do: :monthly_report
++
++  defp site_member?(site, email) do
++    user = Plausible.Auth.find_user_by(email: email)
++    user && Plausible.Teams.Memberships.site_member?(site, user)
+   end
+ 
+-  defp send_report_for_all(_assigns, [] = _recipients), do: :ok
++  defp unsubscribe_link(site, email, interval) do
++    PlausibleWeb.Endpoint.url() <>
++      "/sites/#{URI.encode_www_form(site.domain)}/#{interval}-report/unsubscribe?email=#{email}"
++  end
+ 
+-  defp send_report_for_all(assigns, [email | rest]) do
+-    unsubscribe_link =
+-      PlausibleWeb.Endpoint.url() <>
+-        "/sites/#{URI.encode_www_form(assigns.site.domain)}/#{assigns.type}-report/unsubscribe?email=#{email}"
++  defp report_name(@weekly, _), do: "Weekly"
++  defp report_name(@monthly, first), do: Calendar.strftime(first, "%B")
+ 
+-    user = Plausible.Auth.find_user_by(email: email)
+-    login_link = user && Plausible.Teams.Memberships.site_member?(assigns.site, user)
++  defp stats(site, date_range) do
++    date_range = [
++      Date.to_iso8601(date_range.first),
++      Date.to_iso8601(date_range.last)
++    ]
+ 
+-    template_assigns =
+-      assigns
+-      |> Map.put(:unsubscribe_link, unsubscribe_link)
+-      |> Map.put(:login_link, login_link)
++    stats = stats_aggregates(site, date_range)
++    pages = pages(site, date_range)
++    sources = sources(site, date_range)
++    goals = goals(site, date_range)
+ 
+-    PlausibleWeb.Email.stats_report(email, template_assigns)
+-    |> Plausible.Mailer.send()
++    stats
++    |> Map.put(:pages, pages)
++    |> Map.put(:sources, sources)
++    |> Map.put(:goals, goals)
++  end
+ 
+-    send_report_for_all(assigns, rest)
++  defp stats_aggregates(site, date_range) do
++    {:ok, query} =
++      Query.build(
++        site,
++        :internal,
++        %{
++          # site_id parameter is required, but it doesn't matter what we pass here since the query is executed against a specific site later on
++          "site_id" => site.domain,
++          "metrics" => ["pageviews", "visitors", "bounce_rate"],
++          "date_range" => date_range,
++          "include" => %{"comparisons" => %{"mode" => "previous_period"}},
++          "pagination" => %{"limit" => 5}
++        },
++        %{}
++      )
++
++    %QueryResult{
++      results: [
++        %{
++          metrics: [pageviews, visitors, bounce_rate],
++          comparison: %{
++            change: [pageviews_change, visitors_change, bounce_rate_change]
++          }
++        }
++      ]
++    } = Plausible.Stats.query(site, query)
++
++    %{
++      pageviews: %{value: pageviews, change: pageviews_change},
++      visitors: %{value: visitors, change: visitors_change},
++      bounce_rate: %{value: bounce_rate, change: bounce_rate_change}
++    }
+   end
+ 
+-  defp put_last_month_query(%{site: site} = assigns) do
+-    last_month =
+-      DateTime.now!(site.timezone)
+-      |> DateTime.shift(month: -1)
+-      |> DateTime.to_date()
+-      |> Date.beginning_of_month()
+-      |> Date.to_iso8601()
++  defp pages(site, date_range) do
++    {:ok, query} =
++      Query.build(
++        site,
++        :internal,
++        %{
++          # site_id parameter is required, but it doesn't matter what we pass here since the query is executed against a specific site later on
++          "site_id" => site.domain,
++          "metrics" => ["visitors"],
++          "dimensions" => ["event:page"],
++          "date_range" => date_range,
++          "pagination" => %{"limit" => 5}
++        },
++        %{}
++      )
++
++    site
++    |> Plausible.Stats.query(query)
++    |> Map.fetch!(:results)
++    |> Enum.map(fn %{metrics: [visitors], dimensions: [page]} ->
++      %{
++        page: page,
++        visitors: visitors
++      }
++    end)
++  end
+ 
+-    query = Query.from(site, %{"period" => "month", "date" => last_month})
++  defp sources(site, date_range) do
++    {:ok, query} =
++      Query.build(
++        site,
++        :internal,
++        %{
++          # site_id parameter is required, but it doesn't matter what we pass here since the query is executed against a specific site later on
++          "site_id" => site.domain,
++          "metrics" => ["visitors"],
++          "filters" => [["is_not", "visit:source", ["Direct / None"]]],
++          "dimensions" => ["visit:source"],
++          "date_range" => date_range,
++          "pagination" => %{"limit" => 5}
++        },
++        %{}
++      )
++
++    site
++    |> Plausible.Stats.query(query)
++    |> Map.fetch!(:results)
++    |> Enum.map(fn %{metrics: [visitors], dimensions: [source]} ->
++      %{
++        source: source,
++        visitors: visitors
++      }
++    end)
++  end
+ 
+-    Map.put(assigns, :query, query)
++  defp goals(site, date_range) do
++    {:ok, query} =
++      Query.build(
++        site,
++        :internal,
++        %{
++          # site_id parameter is required, but it doesn't matter what we pass here since the query is executed against a specific site later on
++          "site_id" => site.domain,
++          "metrics" => ["visitors"],
++          "dimensions" => ["event:goal"],
++          "date_range" => date_range,
++          "pagination" => %{"limit" => 5}
++        },
++        %{}
++      )
++
++    site
++    |> Plausible.Stats.query(query)
++    |> Map.fetch!(:results)
++    |> Enum.map(fn %{metrics: [visitors], dimensions: [goal_name]} ->
++      %{
++        goal: goal_name,
++        visitors: visitors
++      }
++    end)
+   end
+ 
+-  defp put_last_week_query(%{site: site} = assigns) do
+-    # In production, evaluating and sending the date param to `Query.from`
+-    # is redundant since the default value is today for `site.timezone` and
+-    # weekly reports are always sent on Monday morning. However, this makes
+-    # it easier to test - no need for a `now` argument.
+-    date_param =
++  defp date_range(site, @weekly) do
++    first =
+       site.timezone
+       |> DateTime.now!()
+-      |> DateTime.to_date()
++      |> Date.shift(day: -7)
+       |> Date.beginning_of_week()
+-      |> Date.to_iso8601()
+ 
+-    query = Query.from(site, %{"period" => "7d", "date" => date_param})
++    last =
++      site.timezone
++      |> DateTime.now!()
++      |> DateTime.to_date()
++      |> Date.shift(day: -7)
++      |> Date.end_of_week()
+ 
+-    Map.put(assigns, :query, query)
++    Date.range(first, last)
+   end
+ 
+-  defp put_date_range(%{query: query} = assigns) do
+-    Map.put(assigns, :date_range, Query.date_range(query))
+-  end
++  defp date_range(site, @monthly) do
++    first =
++      site.timezone
++      |> DateTime.now!()
++      |> Date.shift(month: -1)
++      |> Date.beginning_of_month()
+ 
+-  defp put_stats(%{site: site, query: query} = assigns) do
+-    Map.put(assigns, :stats, Plausible.Stats.EmailReport.get(site, query))
+-  end
++    last =
++      site.timezone
++      |> DateTime.now!()
++      |> DateTime.shift(month: -1)
++      |> DateTime.to_date()
++      |> Date.end_of_month()
+ 
+-  defp put(assigns, key, value_fn) do
+-    Map.put(assigns, key, value_fn.(assigns))
++    Date.range(first, last)
+   end
+ end
+diff --git a/test/workers/send_email_report_test.exs b/test/workers/send_email_report_test.exs
+index 2ec864bb6..b8be9b15c 100644
+--- a/test/workers/send_email_report_test.exs
++++ b/test/workers/send_email_report_test.exs
+@@ -209,6 +209,60 @@ defmodule Plausible.Workers.SendEmailReportTest do
+       assert text(bounce_rate_change_container) == "0%"
+       assert text_of_attr(bounce_rate_change_container, "style") =~ @green
+     end
++
++    test "includes goal conversions when goals exist" do
++      now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
++      site = new_site(domain: "test-site.com", inserted_at: NaiveDateTime.shift(now, day: -8))
++      insert(:weekly_report, site: site, recipients: ["user@email.com"])
++
++      _goal1 = insert(:goal, site: site, event_name: "Signup")
++      _goal2 = insert(:goal, site: site, event_name: "Purchase")
++      _goal3 = insert(:goal, site: site, page_path: "/thank-you")
++
++      populate_stats(site, [
++        build(:pageview,
++          user_id: 123,
++          timestamp: NaiveDateTime.shift(now, day: -7)
++        ),
++        build(:pageview,
++          user_id: 124,
++          timestamp: NaiveDateTime.shift(now, day: -6)
++        ),
++        build(:event,
++          user_id: 123,
++          name: "Signup",
++          timestamp: NaiveDateTime.shift(now, day: -7)
++        ),
++        build(:event,
++          user_id: 124,
++          name: "Signup",
++          timestamp: NaiveDateTime.shift(now, day: -6)
++        ),
++        build(:event,
++          user_id: 125,
++          name: "Purchase",
++          timestamp: NaiveDateTime.shift(now, day: -5)
++        ),
++        build(:pageview,
++          user_id: 126,
++          pathname: "/thank-you",
++          timestamp: NaiveDateTime.shift(now, day: -4)
++        )
++      ])
++
++      perform_job(SendEmailReport, %{"site_id" => site.id, "interval" => "weekly"})
++
++      assert_delivered_email_matches(%{
++        to: [nil: "user@email.com"],
++        html_body: html_body
++      })
++
++      goal_names = find(html_body, ".goal-name") |> Enum.map(&text/1)
++      goal_conversions = find(html_body, ".goal-conversions") |> Enum.map(&text/1)
++
++      assert goal_names == ["Signup", "Purchase", "Visit /thank-you"]
++      assert goal_conversions == ["2", "1", "1"]
++    end
+   end
+ 
+   describe "monthly_reports" do
+@@ -241,5 +295,120 @@ defmodule Plausible.Workers.SendEmailReportTest do
+       assert :discard =
+                perform_job(SendEmailReport, %{"site_id" => site.id, "interval" => "monthly"})
+     end
++
++    test "calculates timezone correctly" do
++      site =
++        new_site(timezone: "US/Eastern")
++
++      insert(:monthly_report, site: site, recipients: ["user@email.com"])
++
++      now = DateTime.now!(site.timezone)
++      last_month_first = DateTime.shift(now, month: -1) |> Plausible.Times.beginning_of_month()
++      last_month_last = DateTime.shift(now, month: -1) |> Plausible.Times.end_of_month()
++      month_before_last = DateTime.shift(last_month_first, minute: -1)
++      this_month_first = Plausible.Times.beginning_of_month(now)
++
++      populate_stats(site, [
++        # Month before last, not counted
++        build(:pageview,
++          timestamp: DateTime.shift_zone!(month_before_last, "UTC")
++        ),
++        # Month before last, not counted
++        build(:pageview,
++          timestamp: DateTime.shift_zone!(month_before_last, "UTC")
++        ),
++        # Last month first day, counted
++        build(:pageview,
++          user_id: 123,
++          timestamp: DateTime.shift_zone!(last_month_first, "UTC")
++        ),
++        # Last month last day, counted
++        build(:pageview,
++          user_id: 124,
++          timestamp: DateTime.shift_zone!(last_month_last, "UTC")
++        ),
++        # This month first day, not counted
++        build(:pageview,
++          timestamp: DateTime.shift_zone!(this_month_first, "UTC")
++        ),
++        # This month first day, not counted
++        build(:pageview,
++          timestamp: DateTime.shift_zone!(this_month_first, "UTC")
++        )
++      ])
++
++      perform_job(SendEmailReport, %{"site_id" => site.id, "interval" => "monthly"})
++
++      assert_delivered_email_matches(%{
++        to: [nil: "user@email.com"],
++        html_body: html_body
++      })
++
++      # Should find 2 visitors
++      assert text_of_element(html_body, ".page-count") == "2"
++    end
++
++    test "limits all stats sections to 5 entries" do
++      now = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
++      site = new_site(domain: "test-site.com", inserted_at: Timex.shift(now, months: -2))
++      insert(:monthly_report, site: site, recipients: ["user@email.com"])
++
++      for i <- 1..6, do: insert(:goal, site: site, event_name: "Goal#{i}")
++
++      last_month_stats =
++        for i <- 1..6 do
++          [
++            build(:pageview,
++              user_id: 100 + i,
++              pathname: "/page#{i}",
++              referrer_source: if(i == 6, do: "Direct / None", else: "Source#{i}"),
++              timestamp: Date.shift(now, month: -1)
++            ),
++            build(:event,
++              user_id: 100 + i,
++              name: "Goal#{i}",
++              timestamp: Date.shift(now, month: -1)
++            )
++          ]
++        end
++        |> List.flatten()
++
++      populate_stats(site, last_month_stats)
++
++      perform_job(SendEmailReport, %{"site_id" => site.id, "interval" => "monthly"})
++
++      assert_delivered_email_matches(%{
++        to: [nil: "user@email.com"],
++        html_body: html_body
++      })
++
++      page_names = find(html_body, ".page-name")
++      assert length(page_names) == 5
++
++      referrer_names = find(html_body, ".referrer-name")
++      assert length(referrer_names) == 5
++
++      goal_names = find(html_body, ".goal-name")
++      assert length(goal_names) == 5
++    end
++
++    test "email subject includes month name" do
++      site = new_site(domain: "test-site.com", timezone: "US/Eastern")
++      insert(:monthly_report, site: site, recipients: ["user@email.com"])
++
++      last_month =
++        site.timezone
++        |> DateTime.now!()
++        |> Date.shift(month: -1)
++        |> Date.beginning_of_month()
++        |> Calendar.strftime("%B")
++
++      perform_job(SendEmailReport, %{"site_id" => site.id, "interval" => "monthly"})
++
++      assert_email_delivered_with(
++        subject: "#{last_month} report for #{site.domain}",
++        to: [nil: "user@email.com"]
++      )
++    end
+   end
+ end

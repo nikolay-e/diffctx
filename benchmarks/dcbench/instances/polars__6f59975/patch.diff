@@ -1,0 +1,215 @@
+From 6f59975555a707acc54566f10a4a440eb0a5585b Mon Sep 17 00:00:00 2001
+From: Gijs Burghoorn <me@gburghoorn.com>
+Date: Thu, 6 Mar 2025 09:56:16 +0100
+Subject: [PATCH] feat: Add len method to arr (#21618)
+
+Co-authored-by: magicteo <matty.macaluso@gmail.com>
+---
+ crates/polars-plan/src/dsl/array.rs           |  4 +++
+ .../src/dsl/function_expr/array.rs            | 27 +++++++++++++++++++
+ crates/polars-python/src/expr/array.rs        |  4 +++
+ py-polars/polars/expr/array.py                | 23 ++++++++++++++++
+ py-polars/polars/series/array.py              | 21 +++++++++++++++
+ .../operations/namespaces/array/test_array.py | 27 +++++++++++++++++++
+ 6 files changed, 106 insertions(+)
+
+diff --git a/crates/polars-plan/src/dsl/array.rs b/crates/polars-plan/src/dsl/array.rs
+index c41157496..431993883 100644
+--- a/crates/polars-plan/src/dsl/array.rs
++++ b/crates/polars-plan/src/dsl/array.rs
+@@ -11,6 +11,10 @@ use crate::prelude::*;
+ pub struct ArrayNameSpace(pub Expr);
+ 
+ impl ArrayNameSpace {
++    pub fn len(self) -> Expr {
++        self.0
++            .map_private(FunctionExpr::ArrayExpr(ArrayFunction::Length))
++    }
+     /// Compute the maximum of the items in every subarray.
+     pub fn max(self) -> Expr {
+         self.0
+diff --git a/crates/polars-plan/src/dsl/function_expr/array.rs b/crates/polars-plan/src/dsl/function_expr/array.rs
+index cac042ba2..e73594023 100644
+--- a/crates/polars-plan/src/dsl/function_expr/array.rs
++++ b/crates/polars-plan/src/dsl/function_expr/array.rs
+@@ -6,6 +6,7 @@ use crate::{map, map_as_slice};
+ #[derive(Clone, Copy, Eq, PartialEq, Hash, Debug)]
+ #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+ pub enum ArrayFunction {
++    Length,
+     Min,
+     Max,
+     Sum,
+@@ -47,6 +48,7 @@ impl ArrayFunction {
+                     &mut mapper.args().iter().map(|x| (x.name.as_str(), &x.dtype)),
+                 )?,
+             )),
++            Length => mapper.with_dtype(IDX_DTYPE),
+             Min | Max => mapper.map_to_list_and_array_inner_dtype(),
+             Sum => mapper.nested_sum_type(),
+             ToList => mapper.try_map_dtype(map_array_dtype_to_list_dtype),
+@@ -85,6 +87,7 @@ impl Display for ArrayFunction {
+         use ArrayFunction::*;
+         let name = match self {
+             Concat => "concat",
++            Length => "length",
+             Min => "min",
+             Max => "max",
+             Sum => "sum",
+@@ -120,6 +123,7 @@ impl From<ArrayFunction> for SpecialEq<Arc<dyn ColumnsUdf>> {
+         use ArrayFunction::*;
+         match func {
+             Concat => map_as_slice!(concat_arr),
++            Length => map!(length),
+             Min => map!(min),
+             Max => map!(max),
+             Sum => map!(sum),
+@@ -149,6 +153,29 @@ impl From<ArrayFunction> for SpecialEq<Arc<dyn ColumnsUdf>> {
+     }
+ }
+ 
++pub(super) fn length(s: &Column) -> PolarsResult<Column> {
++    let array = s.array()?;
++    let width = array.width();
++    let width = IdxSize::try_from(width)
++        .map_err(|_| polars_err!(bigidx, ctx = "array length", size = width))?;
++
++    let mut c = Column::new_scalar(array.name().clone(), width.into(), array.len());
++    if let Some(validity) = array.rechunk_validity() {
++        let mut series = c.into_materialized_series().clone();
++
++        // SAFETY: We keep datatypes intact and call compute_len afterwards.
++        let chunks = unsafe { series.chunks_mut() };
++        assert_eq!(chunks.len(), 1);
++
++        chunks[0] = chunks[0].with_validity(Some(validity));
++
++        series.compute_len();
++        c = series.into_column();
++    }
++
++    Ok(c)
++}
++
+ pub(super) fn max(s: &Column) -> PolarsResult<Column> {
+     Ok(s.array()?.array_max().into())
+ }
+diff --git a/crates/polars-python/src/expr/array.rs b/crates/polars-python/src/expr/array.rs
+index 9d057dcc4..5a4e507c5 100644
+--- a/crates/polars-python/src/expr/array.rs
++++ b/crates/polars-python/src/expr/array.rs
+@@ -10,6 +10,10 @@ use crate::expr::PyExpr;
+ 
+ #[pymethods]
+ impl PyExpr {
++    fn arr_len(&self) -> Self {
++        self.inner.clone().arr().len().into()
++    }
++
+     fn arr_max(&self) -> Self {
+         self.inner.clone().arr().max().into()
+     }
+diff --git a/py-polars/polars/expr/array.py b/py-polars/polars/expr/array.py
+index ed44d9942..095e5647c 100644
+--- a/py-polars/polars/expr/array.py
++++ b/py-polars/polars/expr/array.py
+@@ -21,6 +21,29 @@ class ExprArrayNameSpace:
+     def __init__(self, expr: Expr) -> None:
+         self._pyexpr = expr._pyexpr
+ 
++    def len(self) -> Expr:
++        """
++        Return the number of elements in each array.
++
++        Examples
++        --------
++        >>> df = pl.DataFrame(
++        ...     data={"a": [[1, 2], [4, 3]]},
++        ...     schema={"a": pl.Array(pl.Int64, 2)},
++        ... )
++        >>> df.select(pl.col("a").arr.len())
++        shape: (2, 1)
++        ┌─────┐
++        │ a   │
++        │ --- │
++        │ u32 │
++        ╞═════╡
++        │ 2   │
++        │ 2   │
++        └─────┘
++        """
++        return wrap_expr(self._pyexpr.arr_len())
++
+     def min(self) -> Expr:
+         """
+         Compute the min values of the sub-arrays.
+diff --git a/py-polars/polars/series/array.py b/py-polars/polars/series/array.py
+index 6bb7285b1..9f5d27653 100644
+--- a/py-polars/polars/series/array.py
++++ b/py-polars/polars/series/array.py
+@@ -210,6 +210,27 @@ class ArrayNameSpace:
+         ]
+         """
+ 
++    def len(self) -> Series:
++        """
++        Return the number of elements in each array.
++
++        Returns
++        -------
++        Series
++            Series of data type :class:`UInt32`.
++
++        Examples
++        --------
++        >>> s = pl.Series("a", [[1, 2], [4, 3]], dtype=pl.Array(pl.Int64, 2))
++        >>> s.arr.len()
++        shape: (2,)
++        Series: 'a' [u32]
++        [
++            2
++            2
++        ]
++        """
++
+     def all(self) -> Series:
+         """
+         Evaluate whether all boolean values are true for every subarray.
+diff --git a/py-polars/tests/unit/operations/namespaces/array/test_array.py b/py-polars/tests/unit/operations/namespaces/array/test_array.py
+index 44ce10db2..efb31a4e4 100644
+--- a/py-polars/tests/unit/operations/namespaces/array/test_array.py
++++ b/py-polars/tests/unit/operations/namespaces/array/test_array.py
+@@ -63,6 +63,33 @@ def test_arr_sum(
+     assert s.arr.sum().to_list() == expected_sum
+ 
+ 
++def test_array_lengths() -> None:
++    df = pl.DataFrame(
++        [
++            pl.Series("a", [[1, 2, 3]], dtype=pl.Array(pl.Int64, 3)),
++            pl.Series("b", [[4, 5]], dtype=pl.Array(pl.Int64, 2)),
++        ]
++    )
++    out = df.select(pl.col("a").arr.len(), pl.col("b").arr.len())
++    expected_df = pl.DataFrame(
++        {"a": [3], "b": [2]}, schema={"a": pl.UInt32, "b": pl.UInt32}
++    )
++    assert_frame_equal(out, expected_df)
++
++    assert pl.Series("a", [[], []], pl.Array(pl.Null, 0)).arr.len().to_list() == [0, 0]
++    assert pl.Series("a", [None, []], pl.Array(pl.Null, 0)).arr.len().to_list() == [
++        None,
++        0,
++    ]
++    assert pl.Series("a", [None], pl.Array(pl.Null, 0)).arr.len().to_list() == [None]
++
++    assert pl.Series("a", [], pl.Array(pl.Null, 0)).arr.len().to_list() == []
++    assert pl.Series("a", [], pl.Array(pl.Null, 1)).arr.len().to_list() == []
++    assert pl.Series(
++        "a", [[1, 2, 3], None, [7, 8, 9]], pl.Array(pl.Int32, 3)
++    ).arr.len().to_list() == [3, None, 3]
++
++
+ def test_arr_unique() -> None:
+     df = pl.DataFrame(
+         {"a": pl.Series("a", [[1, 1], [4, 3]], dtype=pl.Array(pl.Int64, 2))}

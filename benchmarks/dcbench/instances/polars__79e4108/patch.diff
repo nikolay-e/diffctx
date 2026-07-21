@@ -1,0 +1,77 @@
+From 79e41088e42b6841336bca667343cead8ff1060c Mon Sep 17 00:00:00 2001
+From: BitWeaver <hello.bitweaver@gmail.com>
+Date: Tue, 2 Jun 2026 15:17:02 +0200
+Subject: [PATCH] fix(rust): Fix rolling aggregations with window_size=0
+ (#27812)
+
+---
+ crates/polars-compute/src/rolling/mod.rs      |  6 +++++
+ .../src/rolling/no_nulls/quantile.rs          |  2 +-
+ .../tests/unit/operations/test_rolling.py     | 24 +++++++++++++++++++
+ 3 files changed, 31 insertions(+), 1 deletion(-)
+
+diff --git a/crates/polars-compute/src/rolling/mod.rs b/crates/polars-compute/src/rolling/mod.rs
+index a8d0f66c5..f30392012 100644
+--- a/crates/polars-compute/src/rolling/mod.rs
++++ b/crates/polars-compute/src/rolling/mod.rs
+@@ -68,9 +68,15 @@ pub enum RollingFnParams {
+ }
+ 
+ fn det_offsets(i: Idx, window_size: WindowSize, _len: Len) -> (usize, usize) {
++    if window_size == 0 {
++        return (i, i);
++    }
+     (i.saturating_sub(window_size - 1), i + 1)
+ }
+ fn det_offsets_center(i: Idx, window_size: WindowSize, len: Len) -> (usize, usize) {
++    if window_size == 0 {
++        return (i, i);
++    }
+     let right_window = window_size.div_ceil(2);
+     (
+         i.saturating_sub(window_size - right_window),
+diff --git a/crates/polars-compute/src/rolling/no_nulls/quantile.rs b/crates/polars-compute/src/rolling/no_nulls/quantile.rs
+index 005191cff..d26daf0fd 100644
+--- a/crates/polars-compute/src/rolling/no_nulls/quantile.rs
++++ b/crates/polars-compute/src/rolling/no_nulls/quantile.rs
+@@ -138,7 +138,7 @@ where
+     };
+     match weights {
+         None => {
+-            if !center {
++            if !center && window_size != 0 {
+                 let params = params.as_ref().unwrap();
+                 let RollingFnParams::Quantile(params) = params else {
+                     unreachable!("expected Quantile params");
+diff --git a/py-polars/tests/unit/operations/test_rolling.py b/py-polars/tests/unit/operations/test_rolling.py
+index 8e5b32746..3b6e26ef1 100644
+--- a/py-polars/tests/unit/operations/test_rolling.py
++++ b/py-polars/tests/unit/operations/test_rolling.py
+@@ -940,3 +940,27 @@ def test_rolling_by_temporal_null_min_samples_27661() -> None:
+         ),
+     )
+     assert_series_equal(df["avg_power_2s"].alias("avg_power_2i"), df["avg_power_2i"])
++
++
++@pytest.mark.parametrize(
++    ("method", "expected"),
++    [
++        ("rolling_sum", [0.0, 0.0, 0.0]),
++        ("rolling_mean", [None, None, None]),
++        ("rolling_min", [None, None, None]),
++        ("rolling_max", [None, None, None]),
++        ("rolling_std", [None, None, None]),
++        ("rolling_var", [None, None, None]),
++        ("rolling_median", [None, None, None]),
++        ("rolling_skew", [None, None, None]),
++    ],
++)
++def test_rolling_window_size_zero_23434(
++    method: str, expected: list[float | None]
++) -> None:
++    """window_size=0 should match the aggregation of an empty series."""
++    s = pl.Series([1.0, 2.0, 3.0], dtype=pl.Float64)
++    assert_series_equal(
++        getattr(s, method)(window_size=0),
++        pl.Series(expected, dtype=pl.Float64),
++    )

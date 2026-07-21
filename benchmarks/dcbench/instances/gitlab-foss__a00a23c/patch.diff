@@ -1,0 +1,878 @@
+From a00a23ca828488ae343e02d8528bb94936d0e624 Mon Sep 17 00:00:00 2001
+From: Luke Duncalfe <lduncalfe@eml.cc>
+Date: Mon, 1 Jul 2019 16:34:34 +1200
+Subject: [PATCH] GraphQL mutations for managing Notes
+
+https://gitlab.com/gitlab-org/gitlab-ce/issues/62826
+---
+ app/graphql/mutations/notes/base.rb           | 34 +++++++++
+ app/graphql/mutations/notes/create/base.rb    | 49 +++++++++++++
+ .../mutations/notes/create/diff_note.rb       | 33 +++++++++
+ .../mutations/notes/create/image_diff_note.rb | 33 +++++++++
+ app/graphql/mutations/notes/create/note.rb    | 11 +++
+ app/graphql/mutations/notes/destroy.rb        | 28 ++++++++
+ app/graphql/mutations/notes/update.rb         | 38 ++++++++++
+ app/graphql/types/base_input_object.rb        |  1 +
+ app/graphql/types/diff_paths_input_type.rb    | 12 ++++
+ app/graphql/types/mutation_type.rb            |  5 ++
+ .../notes/diff_image_position_input_type.rb   | 20 ++++++
+ .../notes/diff_position_base_input_type.rb    | 22 ++++++
+ .../types/notes/diff_position_input_type.rb   | 16 +++++
+ .../62826-graphql-note-mutations.yml          |  5 ++
+ .../mutations/notes/create/diff_note_spec.rb  | 64 +++++++++++++++++
+ .../notes/create/image_diff_note_spec.rb      | 70 ++++++++++++++++++
+ .../mutations/notes/create/note_spec.rb       | 43 +++++++++++
+ .../graphql/mutations/notes/destroy_spec.rb   | 52 ++++++++++++++
+ .../graphql/mutations/notes/update_spec.rb    | 72 +++++++++++++++++++
+ spec/support/helpers/graphql_helpers.rb       | 15 +++-
+ .../graphql/notes_creation_shared_examples.rb | 61 ++++++++++++++++
+ 21 files changed, 683 insertions(+), 1 deletion(-)
+ create mode 100644 app/graphql/mutations/notes/base.rb
+ create mode 100644 app/graphql/mutations/notes/create/base.rb
+ create mode 100644 app/graphql/mutations/notes/create/diff_note.rb
+ create mode 100644 app/graphql/mutations/notes/create/image_diff_note.rb
+ create mode 100644 app/graphql/mutations/notes/create/note.rb
+ create mode 100644 app/graphql/mutations/notes/destroy.rb
+ create mode 100644 app/graphql/mutations/notes/update.rb
+ create mode 100644 app/graphql/types/diff_paths_input_type.rb
+ create mode 100644 app/graphql/types/notes/diff_image_position_input_type.rb
+ create mode 100644 app/graphql/types/notes/diff_position_base_input_type.rb
+ create mode 100644 app/graphql/types/notes/diff_position_input_type.rb
+ create mode 100644 changelogs/unreleased/62826-graphql-note-mutations.yml
+ create mode 100644 spec/requests/api/graphql/mutations/notes/create/diff_note_spec.rb
+ create mode 100644 spec/requests/api/graphql/mutations/notes/create/image_diff_note_spec.rb
+ create mode 100644 spec/requests/api/graphql/mutations/notes/create/note_spec.rb
+ create mode 100644 spec/requests/api/graphql/mutations/notes/destroy_spec.rb
+ create mode 100644 spec/requests/api/graphql/mutations/notes/update_spec.rb
+ create mode 100644 spec/support/shared_examples/graphql/notes_creation_shared_examples.rb
+
+diff --git a/app/graphql/mutations/notes/base.rb b/app/graphql/mutations/notes/base.rb
+new file mode 100644
+index 0000000000..a7198f5fba
+--- /dev/null
++++ b/app/graphql/mutations/notes/base.rb
+@@ -0,0 +1,34 @@
++# frozen_string_literal: true
++
++module Mutations
++  module Notes
++    class Base < BaseMutation
++      include Gitlab::Graphql::Authorize::AuthorizeResource
++
++      field :note,
++            Types::Notes::NoteType,
++            null: true,
++            description: 'The note after mutation'
++
++      private
++
++      def find_object(id:)
++        GitlabSchema.object_from_id(id)
++      end
++
++      def check_object_is_noteable!(object)
++        unless object.is_a?(Noteable)
++          raise Gitlab::Graphql::Errors::ResourceNotAvailable,
++                'Cannot add notes to this resource'
++        end
++      end
++
++      def check_object_is_note!(object)
++        unless object.is_a?(Note)
++          raise Gitlab::Graphql::Errors::ResourceNotAvailable,
++                'Resource is not a note'
++        end
++      end
++    end
++  end
++end
+diff --git a/app/graphql/mutations/notes/create/base.rb b/app/graphql/mutations/notes/create/base.rb
+new file mode 100644
+index 0000000000..d3a5dae218
+--- /dev/null
++++ b/app/graphql/mutations/notes/create/base.rb
+@@ -0,0 +1,49 @@
++# frozen_string_literal: true
++
++module Mutations
++  module Notes
++    module Create
++      # This is a Base class for the Note creation Mutations and is not
++      # mounted as a GraphQL mutation itself.
++      class Base < Mutations::Notes::Base
++        authorize :create_note
++
++        argument :noteable_id,
++                  GraphQL::ID_TYPE,
++                  required: true,
++                  description: 'The global id of the resource to add a note to'
++
++        argument :body,
++                  GraphQL::STRING_TYPE,
++                  required: true,
++                  description: copy_field_description(Types::Notes::NoteType, :body)
++
++        private
++
++        def resolve(args)
++          noteable = authorized_find!(id: args[:noteable_id])
++
++          check_object_is_noteable!(noteable)
++
++          note = ::Notes::CreateService.new(
++            noteable.project,
++            current_user,
++            create_note_params(noteable, args)
++          ).execute
++
++          {
++            note: (note if note.persisted?),
++            errors: errors_on_object(note)
++          }
++        end
++
++        def create_note_params(noteable, args)
++          {
++            noteable: noteable,
++            note: args[:body]
++          }
++        end
++      end
++    end
++  end
++end
+diff --git a/app/graphql/mutations/notes/create/diff_note.rb b/app/graphql/mutations/notes/create/diff_note.rb
+new file mode 100644
+index 0000000000..9b5f309200
+--- /dev/null
++++ b/app/graphql/mutations/notes/create/diff_note.rb
+@@ -0,0 +1,33 @@
++# frozen_string_literal: true
++
++module Mutations
++  module Notes
++    module Create
++      class DiffNote < Base
++        graphql_name 'CreateDiffNote'
++
++        argument :position,
++                  Types::Notes::DiffPositionInputType,
++                  required: true,
++                  description: copy_field_description(Types::Notes::NoteType, :position)
++
++        private
++
++        def create_note_params(noteable, args)
++          super(noteable, args).merge({
++            type: 'DiffNote',
++            position: position(noteable, args)
++          })
++        end
++
++        def position(noteable, args)
++          position = args[:position].to_h
++          position[:position_type] = 'text'
++          position.merge!(position[:paths].to_h)
++
++          Gitlab::Diff::Position.new(position)
++        end
++      end
++    end
++  end
++end
+diff --git a/app/graphql/mutations/notes/create/image_diff_note.rb b/app/graphql/mutations/notes/create/image_diff_note.rb
+new file mode 100644
+index 0000000000..d94fd4d6ff
+--- /dev/null
++++ b/app/graphql/mutations/notes/create/image_diff_note.rb
+@@ -0,0 +1,33 @@
++# frozen_string_literal: true
++
++module Mutations
++  module Notes
++    module Create
++      class ImageDiffNote < Base
++        graphql_name 'CreateImageDiffNote'
++
++        argument :position,
++                  Types::Notes::DiffImagePositionInputType,
++                  required: true,
++                  description: copy_field_description(Types::Notes::NoteType, :position)
++
++        private
++
++        def create_note_params(noteable, args)
++          super(noteable, args).merge({
++            type: 'DiffNote',
++            position: position(noteable, args)
++          })
++        end
++
++        def position(noteable, args)
++          position = args[:position].to_h
++          position[:position_type] = 'image'
++          position.merge!(position[:paths].to_h)
++
++          Gitlab::Diff::Position.new(position)
++        end
++      end
++    end
++  end
++end
+diff --git a/app/graphql/mutations/notes/create/note.rb b/app/graphql/mutations/notes/create/note.rb
+new file mode 100644
+index 0000000000..3c571a4538
+--- /dev/null
++++ b/app/graphql/mutations/notes/create/note.rb
+@@ -0,0 +1,11 @@
++# frozen_string_literal: true
++
++module Mutations
++  module Notes
++    module Create
++      class Note < Base
++        graphql_name 'CreateNote'
++      end
++    end
++  end
++end
+diff --git a/app/graphql/mutations/notes/destroy.rb b/app/graphql/mutations/notes/destroy.rb
+new file mode 100644
+index 0000000000..a81322bc9b
+--- /dev/null
++++ b/app/graphql/mutations/notes/destroy.rb
+@@ -0,0 +1,28 @@
++# frozen_string_literal: true
++
++module Mutations
++  module Notes
++    class Destroy < Base
++      graphql_name 'DestroyNote'
++
++      authorize :admin_note
++
++      argument :id,
++                GraphQL::ID_TYPE,
++                required: true,
++                description: 'The global id of the note to destroy'
++
++      def resolve(id:)
++        note = authorized_find!(id: id)
++
++        check_object_is_note!(note)
++
++        ::Notes::DestroyService.new(note.project, current_user).execute(note)
++
++        {
++          errors: []
++        }
++      end
++    end
++  end
++end
+diff --git a/app/graphql/mutations/notes/update.rb b/app/graphql/mutations/notes/update.rb
+new file mode 100644
+index 0000000000..ebf57b800c
+--- /dev/null
++++ b/app/graphql/mutations/notes/update.rb
+@@ -0,0 +1,38 @@
++# frozen_string_literal: true
++
++module Mutations
++  module Notes
++    class Update < Base
++      graphql_name 'UpdateNote'
++
++      authorize :admin_note
++
++      argument :id,
++                GraphQL::ID_TYPE,
++                required: true,
++                description: 'The global id of the note to update'
++
++      argument :body,
++                GraphQL::STRING_TYPE,
++                required: true,
++                description: copy_field_description(Types::Notes::NoteType, :body)
++
++      def resolve(args)
++        note = authorized_find!(id: args[:id])
++
++        check_object_is_note!(note)
++
++        note = ::Notes::UpdateService.new(
++          note.project,
++          current_user,
++          { note: args[:body] }
++        ).execute(note)
++
++        {
++          note: note.reset,
++          errors: errors_on_object(note)
++        }
++      end
++    end
++  end
++end
+diff --git a/app/graphql/types/base_input_object.rb b/app/graphql/types/base_input_object.rb
+index aebed035d3..90a29b0cfb 100644
+--- a/app/graphql/types/base_input_object.rb
++++ b/app/graphql/types/base_input_object.rb
+@@ -2,5 +2,6 @@
+ 
+ module Types
+   class BaseInputObject < GraphQL::Schema::InputObject
++    prepend Gitlab::Graphql::CopyFieldDescription
+   end
+ end
+diff --git a/app/graphql/types/diff_paths_input_type.rb b/app/graphql/types/diff_paths_input_type.rb
+new file mode 100644
+index 0000000000..43feddd982
+--- /dev/null
++++ b/app/graphql/types/diff_paths_input_type.rb
+@@ -0,0 +1,12 @@
++# frozen_string_literal: true
++
++module Types
++  # rubocop: disable Graphql/AuthorizeTypes
++  class DiffPathsInputType < BaseInputObject
++    argument :old_path, GraphQL::STRING_TYPE, required: false,
++              description: 'The path of the file on the start sha'
++    argument :new_path, GraphQL::STRING_TYPE, required: false,
++              description: 'The path of the file on the head sha'
++  end
++  # rubocop: enable Graphql/AuthorizeTypes
++end
+diff --git a/app/graphql/types/mutation_type.rb b/app/graphql/types/mutation_type.rb
+index bc5fb70952..f843d6ad86 100644
+--- a/app/graphql/types/mutation_type.rb
++++ b/app/graphql/types/mutation_type.rb
+@@ -10,5 +10,10 @@ class MutationType < BaseObject
+     mount_mutation Mutations::AwardEmojis::Remove
+     mount_mutation Mutations::AwardEmojis::Toggle
+     mount_mutation Mutations::MergeRequests::SetWip, calls_gitaly: true
++    mount_mutation Mutations::Notes::Create::Note, calls_gitaly: true
++    mount_mutation Mutations::Notes::Create::DiffNote, calls_gitaly: true
++    mount_mutation Mutations::Notes::Create::ImageDiffNote, calls_gitaly: true
++    mount_mutation Mutations::Notes::Update
++    mount_mutation Mutations::Notes::Destroy
+   end
+ end
+diff --git a/app/graphql/types/notes/diff_image_position_input_type.rb b/app/graphql/types/notes/diff_image_position_input_type.rb
+new file mode 100644
+index 0000000000..23b53b2081
+--- /dev/null
++++ b/app/graphql/types/notes/diff_image_position_input_type.rb
+@@ -0,0 +1,20 @@
++# frozen_string_literal: true
++
++module Types
++  module Notes
++    # rubocop: disable Graphql/AuthorizeTypes
++    class DiffImagePositionInputType < DiffPositionBaseInputType
++      graphql_name 'DiffImagePositionInput'
++
++      argument :x, GraphQL::INT_TYPE, required: true,
++               description: copy_field_description(Types::Notes::DiffPositionType, :x)
++      argument :y, GraphQL::INT_TYPE, required: true,
++               description: copy_field_description(Types::Notes::DiffPositionType, :y)
++      argument :width, GraphQL::INT_TYPE, required: true,
++               description: copy_field_description(Types::Notes::DiffPositionType, :width)
++      argument :height, GraphQL::INT_TYPE, required: true,
++               description: copy_field_description(Types::Notes::DiffPositionType, :height)
++    end
++    # rubocop: enable Graphql/AuthorizeTypes
++  end
++end
+diff --git a/app/graphql/types/notes/diff_position_base_input_type.rb b/app/graphql/types/notes/diff_position_base_input_type.rb
+new file mode 100644
+index 0000000000..a8991a1240
+--- /dev/null
++++ b/app/graphql/types/notes/diff_position_base_input_type.rb
+@@ -0,0 +1,22 @@
++# frozen_string_literal: true
++
++module Types
++  module Notes
++    # rubocop: disable Graphql/AuthorizeTypes
++    class DiffPositionBaseInputType < BaseInputObject
++      argument :head_sha, GraphQL::STRING_TYPE, required: true,
++               description: copy_field_description(Types::Notes::DiffPositionType, :head_sha)
++      argument :base_sha,  GraphQL::STRING_TYPE, required: false,
++               description: copy_field_description(Types::Notes::DiffPositionType, :base_sha)
++      argument :start_sha, GraphQL::STRING_TYPE, required: true,
++               description: copy_field_description(Types::Notes::DiffPositionType, :start_sha)
++
++      argument :paths,
++               Types::DiffPathsInputType,
++               required: true,
++               description: 'The paths of the file that was changed. ' \
++                            'Both of the properties of this input are optional, but at least one of them is required'
++    end
++    # rubocop: enable Graphql/AuthorizeTypes
++  end
++end
+diff --git a/app/graphql/types/notes/diff_position_input_type.rb b/app/graphql/types/notes/diff_position_input_type.rb
+new file mode 100644
+index 0000000000..02c91e173c
+--- /dev/null
++++ b/app/graphql/types/notes/diff_position_input_type.rb
+@@ -0,0 +1,16 @@
++# frozen_string_literal: true
++
++module Types
++  module Notes
++    # rubocop: disable Graphql/AuthorizeTypes
++    class DiffPositionInputType < DiffPositionBaseInputType
++      graphql_name 'DiffPositionInput'
++
++      argument :old_line, GraphQL::INT_TYPE, required: false,
++               description: copy_field_description(Types::Notes::DiffPositionType, :old_line)
++      argument :new_line, GraphQL::INT_TYPE, required: true,
++               description: copy_field_description(Types::Notes::DiffPositionType, :new_line)
++    end
++    # rubocop: enable Graphql/AuthorizeTypes
++  end
++end
+diff --git a/changelogs/unreleased/62826-graphql-note-mutations.yml b/changelogs/unreleased/62826-graphql-note-mutations.yml
+new file mode 100644
+index 0000000000..85273186bb
+--- /dev/null
++++ b/changelogs/unreleased/62826-graphql-note-mutations.yml
+@@ -0,0 +1,5 @@
++---
++title: GraphQL mutations for managing Notes
++merge_request: 30210
++author:
++type: added
+diff --git a/spec/requests/api/graphql/mutations/notes/create/diff_note_spec.rb b/spec/requests/api/graphql/mutations/notes/create/diff_note_spec.rb
+new file mode 100644
+index 0000000000..b04fcb9aec
+--- /dev/null
++++ b/spec/requests/api/graphql/mutations/notes/create/diff_note_spec.rb
+@@ -0,0 +1,64 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe 'Adding a DiffNote' do
++  include GraphqlHelpers
++
++  set(:current_user) { create(:user) }
++  let(:noteable) { create(:merge_request, source_project: project, target_project: project) }
++  let(:project) { create(:project, :repository) }
++  let(:diff_refs) { noteable.diff_refs }
++  let(:mutation) do
++    variables = {
++      noteable_id: GitlabSchema.id_from_object(noteable).to_s,
++      body: 'Body text',
++      position: {
++        paths: {
++          old_path: 'files/ruby/popen.rb',
++          new_path: 'files/ruby/popen2.rb'
++        },
++        new_line: 14,
++        base_sha: diff_refs.base_sha,
++        head_sha: diff_refs.head_sha,
++        start_sha: diff_refs.start_sha
++      }
++    }
++
++    graphql_mutation(:create_diff_note, variables)
++  end
++
++  def mutation_response
++    graphql_mutation_response(:create_diff_note)
++  end
++
++  it_behaves_like 'a Note mutation when the user does not have permission'
++
++  context 'when the user has permission' do
++    before do
++      project.add_developer(current_user)
++    end
++
++    it_behaves_like 'a Note mutation that creates a Note'
++
++    it_behaves_like 'a Note mutation when there are active record validation errors', model: DiffNote
++
++    context do
++      let(:diff_refs) { build(:merge_request).diff_refs } # Allow fake diff refs so arguments are valid
++
++      it_behaves_like 'a Note mutation when the given resource id is not for a Noteable'
++    end
++
++    it 'returns the note with the correct position' do
++      post_graphql_mutation(mutation, current_user: current_user)
++
++      expect(mutation_response['note']['body']).to eq('Body text')
++      mutation_position_response = mutation_response['note']['position']
++      expect(mutation_position_response['positionType']).to eq('text')
++      expect(mutation_position_response['filePath']).to eq('files/ruby/popen2.rb')
++      expect(mutation_position_response['oldPath']).to eq('files/ruby/popen.rb')
++      expect(mutation_position_response['newPath']).to eq('files/ruby/popen2.rb')
++      expect(mutation_position_response['newLine']).to eq(14)
++    end
++  end
++end
+diff --git a/spec/requests/api/graphql/mutations/notes/create/image_diff_note_spec.rb b/spec/requests/api/graphql/mutations/notes/create/image_diff_note_spec.rb
+new file mode 100644
+index 0000000000..3ba6c68902
+--- /dev/null
++++ b/spec/requests/api/graphql/mutations/notes/create/image_diff_note_spec.rb
+@@ -0,0 +1,70 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe 'Adding an image DiffNote' do
++  include GraphqlHelpers
++
++  set(:current_user) { create(:user) }
++  let(:noteable) { create(:merge_request, source_project: project, target_project: project) }
++  let(:project) { create(:project, :repository) }
++  let(:diff_refs) { noteable.diff_refs }
++  let(:mutation) do
++    variables = {
++      noteable_id: GitlabSchema.id_from_object(noteable).to_s,
++      body: 'Body text',
++      position: {
++        paths: {
++          old_path: 'files/images/any_image.png',
++          new_path: 'files/images/any_image2.png'
++        },
++        width: 100,
++        height: 200,
++        x: 1,
++        y: 2,
++        base_sha: diff_refs.base_sha,
++        head_sha: diff_refs.head_sha,
++        start_sha: diff_refs.start_sha
++      }
++    }
++
++    graphql_mutation(:create_image_diff_note, variables)
++  end
++
++  def mutation_response
++    graphql_mutation_response(:create_image_diff_note)
++  end
++
++  it_behaves_like 'a Note mutation when the user does not have permission'
++
++  context 'when the user has permission' do
++    before do
++      project.add_developer(current_user)
++    end
++
++    it_behaves_like 'a Note mutation that creates a Note'
++
++    it_behaves_like 'a Note mutation when there are active record validation errors', model: DiffNote
++
++    context do
++      let(:diff_refs) { build(:merge_request).diff_refs } # Allow fake diff refs so arguments are valid
++
++      it_behaves_like 'a Note mutation when the given resource id is not for a Noteable'
++    end
++
++    it 'returns the note with the correct position' do
++      post_graphql_mutation(mutation, current_user: current_user)
++
++      expect(mutation_response['note']['body']).to eq('Body text')
++      mutation_position_response = mutation_response['note']['position']
++      expect(mutation_position_response['filePath']).to eq('files/images/any_image2.png')
++      expect(mutation_position_response['oldPath']).to eq('files/images/any_image.png')
++      expect(mutation_position_response['newPath']).to eq('files/images/any_image2.png')
++      expect(mutation_position_response['positionType']).to eq('image')
++      expect(mutation_position_response['width']).to eq(100)
++      expect(mutation_position_response['height']).to eq(200)
++      expect(mutation_position_response['x']).to eq(1)
++      expect(mutation_position_response['y']).to eq(2)
++    end
++  end
++end
+diff --git a/spec/requests/api/graphql/mutations/notes/create/note_spec.rb b/spec/requests/api/graphql/mutations/notes/create/note_spec.rb
+new file mode 100644
+index 0000000000..17aed69b65
+--- /dev/null
++++ b/spec/requests/api/graphql/mutations/notes/create/note_spec.rb
+@@ -0,0 +1,43 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe 'Adding a Note' do
++  include GraphqlHelpers
++
++  set(:current_user) { create(:user) }
++  let(:noteable) { create(:merge_request, source_project: project, target_project: project) }
++  let(:project) { create(:project, :repository) }
++  let(:mutation) do
++    variables = {
++      noteable_id: GitlabSchema.id_from_object(noteable).to_s,
++      body: 'Body text'
++    }
++
++    graphql_mutation(:create_note, variables)
++  end
++
++  def mutation_response
++    graphql_mutation_response(:create_note)
++  end
++
++  it_behaves_like 'a Note mutation when the user does not have permission'
++
++  context 'when the user has permission' do
++    before do
++      project.add_developer(current_user)
++    end
++
++    it_behaves_like 'a Note mutation that creates a Note'
++
++    it_behaves_like 'a Note mutation when there are active record validation errors'
++
++    it_behaves_like 'a Note mutation when the given resource id is not for a Noteable'
++
++    it 'returns the note' do
++      post_graphql_mutation(mutation, current_user: current_user)
++
++      expect(mutation_response['note']['body']).to eq('Body text')
++    end
++  end
++end
+diff --git a/spec/requests/api/graphql/mutations/notes/destroy_spec.rb b/spec/requests/api/graphql/mutations/notes/destroy_spec.rb
+new file mode 100644
+index 0000000000..337a6e6f6e
+--- /dev/null
++++ b/spec/requests/api/graphql/mutations/notes/destroy_spec.rb
+@@ -0,0 +1,52 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe 'Destroying a Note' do
++  include GraphqlHelpers
++
++  let!(:note) { create(:note) }
++  let(:mutation) do
++    variables = {
++      id: GitlabSchema.id_from_object(note).to_s
++    }
++
++    graphql_mutation(:destroy_note, variables)
++  end
++
++  def mutation_response
++    graphql_mutation_response(:destroy_note)
++  end
++
++  context 'when the user does not have permission' do
++    let(:current_user) { create(:user) }
++
++    it_behaves_like 'a mutation that returns top-level errors',
++                    errors: ['The resource that you are attempting to access does not exist or you don\'t have permission to perform this action']
++
++    it 'does not destroy the Note' do
++      expect do
++        post_graphql_mutation(mutation, current_user: current_user)
++      end.not_to change { Note.count }
++    end
++  end
++
++  context 'when the user has permission' do
++    let(:current_user) { note.author }
++
++    it_behaves_like 'a Note mutation when the given resource id is not for a Note'
++
++    it 'destroys the Note' do
++      expect do
++        post_graphql_mutation(mutation, current_user: current_user)
++      end.to change { Note.count }.by(-1)
++    end
++
++    it 'returns an empty Note' do
++      post_graphql_mutation(mutation, current_user: current_user)
++
++      expect(mutation_response).to have_key('note')
++      expect(mutation_response['note']).to be_nil
++    end
++  end
++end
+diff --git a/spec/requests/api/graphql/mutations/notes/update_spec.rb b/spec/requests/api/graphql/mutations/notes/update_spec.rb
+new file mode 100644
+index 0000000000..958f640995
+--- /dev/null
++++ b/spec/requests/api/graphql/mutations/notes/update_spec.rb
+@@ -0,0 +1,72 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe 'Updating a Note' do
++  include GraphqlHelpers
++
++  let!(:note) { create(:note, note: original_body) }
++  let(:original_body) { 'Initial body text' }
++  let(:updated_body) { 'Updated body text' }
++  let(:mutation) do
++    variables = {
++      id: GitlabSchema.id_from_object(note).to_s,
++      body: updated_body
++    }
++
++    graphql_mutation(:update_note, variables)
++  end
++
++  def mutation_response
++    graphql_mutation_response(:update_note)
++  end
++
++  context 'when the user does not have permission' do
++    let(:current_user) { create(:user) }
++
++    it_behaves_like 'a mutation that returns top-level errors',
++                    errors: ['The resource that you are attempting to access does not exist or you don\'t have permission to perform this action']
++
++    it 'does not update the Note' do
++      post_graphql_mutation(mutation, current_user: current_user)
++
++      expect(note.reload.note).to eq(original_body)
++    end
++  end
++
++  context 'when the user has permission' do
++    let(:current_user) { note.author }
++
++    it_behaves_like 'a Note mutation when the given resource id is not for a Note'
++
++    it 'updates the Note' do
++      post_graphql_mutation(mutation, current_user: current_user)
++
++      expect(note.reload.note).to eq(updated_body)
++    end
++
++    it 'returns the updated Note' do
++      post_graphql_mutation(mutation, current_user: current_user)
++
++      expect(mutation_response['note']['body']).to eq(updated_body)
++    end
++
++    context 'when there are ActiveRecord validation errors' do
++      let(:updated_body) { '' }
++
++      it_behaves_like 'a mutation that returns errors in the response', errors: ["Note can't be blank"]
++
++      it 'does not update the Note' do
++        post_graphql_mutation(mutation, current_user: current_user)
++
++        expect(note.reload.note).to eq(original_body)
++      end
++
++      it 'returns the Note with its original body' do
++        post_graphql_mutation(mutation, current_user: current_user)
++
++        expect(mutation_response['note']['body']).to eq(original_body)
++      end
++    end
++  end
++end
+diff --git a/spec/support/helpers/graphql_helpers.rb b/spec/support/helpers/graphql_helpers.rb
+index 1a09d48f4c..ec3c460cd3 100644
+--- a/spec/support/helpers/graphql_helpers.rb
++++ b/spec/support/helpers/graphql_helpers.rb
+@@ -57,7 +57,8 @@ def graphql_mutation(name, input, fields = nil)
+   end
+ 
+   def variables_for_mutation(name, input)
+-    graphql_input = input.map { |name, value| [GraphqlHelpers.fieldnamerize(name), value] }.to_h
++    graphql_input = prepare_input_for_mutation(input)
++
+     result = { input_variable_name_for_mutation(name) => graphql_input }
+ 
+     # Avoid trying to serialize multipart data into JSON
+@@ -68,6 +69,18 @@ def variables_for_mutation(name, input)
+     end
+   end
+ 
++  # Recursively convert a Hash with Ruby-style keys to GraphQL fieldname-style keys
++  #
++  # prepare_input_for_mutation({ 'my_key' => 1 })
++  #   => { 'myKey' => 1}
++  def prepare_input_for_mutation(input)
++    input.map do |name, value|
++      value = prepare_input_for_mutation(value) if value.is_a?(Hash)
++
++      [GraphqlHelpers.fieldnamerize(name), value]
++    end.to_h
++  end
++
+   def input_variable_name_for_mutation(mutation_name)
+     mutation_name = GraphqlHelpers.fieldnamerize(mutation_name)
+     mutation_field = GitlabSchema.mutation.fields[mutation_name]
+diff --git a/spec/support/shared_examples/graphql/notes_creation_shared_examples.rb b/spec/support/shared_examples/graphql/notes_creation_shared_examples.rb
+new file mode 100644
+index 0000000000..f2e1a95345
+--- /dev/null
++++ b/spec/support/shared_examples/graphql/notes_creation_shared_examples.rb
+@@ -0,0 +1,61 @@
++# frozen_string_literal: true
++
++RSpec.shared_examples 'a Note mutation that does not create a Note' do
++  it do
++    expect do
++      post_graphql_mutation(mutation, current_user: current_user)
++    end.not_to change { Note.count }
++  end
++end
++
++RSpec.shared_examples 'a Note mutation that creates a Note' do
++  it do
++    expect do
++      post_graphql_mutation(mutation, current_user: current_user)
++    end.to change { Note.count }.by(1)
++  end
++end
++
++RSpec.shared_examples 'a Note mutation when the user does not have permission' do
++  it_behaves_like 'a Note mutation that does not create a Note'
++
++  it_behaves_like 'a mutation that returns top-level errors',
++                  errors: ['The resource that you are attempting to access does not exist or you don\'t have permission to perform this action']
++end
++
++RSpec.shared_examples 'a Note mutation when there are active record validation errors' do |model: Note|
++  before do
++    expect_next_instance_of(model) do |note|
++      expect(note).to receive(:valid?).at_least(:once).and_return(false)
++      expect(note).to receive_message_chain(
++        :errors,
++        :full_messages
++      ).and_return(['Error 1', 'Error 2'])
++    end
++  end
++
++  it_behaves_like 'a Note mutation that does not create a Note'
++
++  it_behaves_like 'a mutation that returns errors in the response', errors: ['Error 1', 'Error 2']
++
++  it 'returns an empty Note' do
++    post_graphql_mutation(mutation, current_user: current_user)
++
++    expect(mutation_response).to have_key('note')
++    expect(mutation_response['note']).to be_nil
++  end
++end
++
++RSpec.shared_examples 'a Note mutation when the given resource id is not for a Noteable' do
++  let(:noteable) { create(:label, project: project) }
++
++  it_behaves_like 'a Note mutation that does not create a Note'
++
++  it_behaves_like 'a mutation that returns top-level errors', errors: ['Cannot add notes to this resource']
++end
++
++RSpec.shared_examples 'a Note mutation when the given resource id is not for a Note' do
++  let(:note) { create(:issue) }
++
++  it_behaves_like 'a mutation that returns top-level errors', errors: ['Resource is not a note']
++end

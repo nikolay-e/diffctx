@@ -1,0 +1,694 @@
+From 0e84b52acb4caef2af43cbdb563d44120bcc0216 Mon Sep 17 00:00:00 2001
+From: Adrian Gruntkowski <adrian.gruntkowski@gmail.com>
+Date: Wed, 3 Jun 2026 14:45:42 +0200
+Subject: [PATCH] Add ability to smoothly update TOTP configuration (#6420)
+
+* Add vault fallback key to runtime configuration
+
+* Add fallback vault and run it as a part of application
+
+* Add fallback encrypted binary ecto type
+
+* Add `totp_secret_fallback` to `User` schema
+
+* Make TOTP logic account for fallback secret
+
+* Add backfill migration script for totp_secret_fallback from totp_secret
+
+* Add overwrite data migration script for totp_secret
+
+* Send error to sentry on failed TOTP secret decode
+
+* Clean up runtime config slightly
+
+* Fix Sentry capture message call
+
+* Add test for the fallback vault
+
+* Add integration test for the whole rotation procedure
+
+* Add more context to data migration notices
+
+* Rename test
+
+* Address unrelated credo issues in touched modules
+
+* Modify the rotation procedure
+
+* Fix typos
+---
+ config/runtime.exs                            |  26 ++-
+ lib/plausible/application.ex                  |  51 +++---
+ lib/plausible/auth/totp.ex                    |  38 ++++-
+ .../auth/totp/fallback_encrypted_binary.ex    |   9 ++
+ lib/plausible/auth/totp/fallback_vault.ex     |  20 +++
+ lib/plausible/auth/user.ex                    |   5 +
+ .../backfill_totp_secret_fallback.ex          |  74 +++++++++
+ .../data_migration/overwrite_totp_secret.ex   |  77 +++++++++
+ .../auth/totp/fallback_vault_test.exs         |  30 ++++
+ test/plausible/auth/totp/rotation_test.exs    | 148 ++++++++++++++++++
+ test/plausible/config_test.exs                |  11 +-
+ 11 files changed, 459 insertions(+), 30 deletions(-)
+ create mode 100644 lib/plausible/auth/totp/fallback_encrypted_binary.ex
+ create mode 100644 lib/plausible/auth/totp/fallback_vault.ex
+ create mode 100644 lib/plausible/data_migration/backfill_totp_secret_fallback.ex
+ create mode 100644 lib/plausible/data_migration/overwrite_totp_secret.ex
+ create mode 100644 test/plausible/auth/totp/fallback_vault_test.exs
+ create mode 100644 test/plausible/auth/totp/rotation_test.exs
+
+diff --git a/config/runtime.exs b/config/runtime.exs
+index a17489c47..3d3194df8 100644
+--- a/config/runtime.exs
++++ b/config/runtime.exs
+@@ -190,7 +190,31 @@ totp_vault_key =
+     Plug.Crypto.KeyGenerator.generate(secret_key_base, "totp", length: 32, iterations: 100_000)
+   end
+ 
+-config :plausible, Plausible.Auth.TOTP, vault_key: totp_vault_key
++fallback_totp_vault_key =
++  if totp_vault_key_base64 = get_var_from_path_or_env(config_dir, "TOTP_VAULT_KEY_FALLBACK") do
++    case Base.decode64(totp_vault_key_base64) do
++      {:ok, totp_vault_key} ->
++        if byte_size(totp_vault_key) == 32 do
++          totp_vault_key
++        else
++          raise ArgumentError, """
++          TOTP_VAULT_KEY_FALLBACK must be Base64 encoded 32 bytes, e.g. `openssl rand -base64 32`.
++          Got Base64 encoded #{byte_size(totp_vault_key)} bytes.
++          More info: https://github.com/plausible/community-edition/wiki/configuration#totp_vault_key
++          """
++        end
++
++      :error ->
++        raise ArgumentError, """
++        TOTP_VAULT_KEY_FALLBACK must be Base64 encoded 32 bytes, e.g. `openssl rand -base64 32`
++        More info: https://github.com/plausible/community-edition/wiki/configuration#totp_vault_key
++        """
++    end
++  end
++
++config :plausible, Plausible.Auth.TOTP,
++  vault_key: totp_vault_key,
++  fallback_vault_key: fallback_totp_vault_key || totp_vault_key
+ 
+ build_metadata_raw = get_var_from_path_or_env(config_dir, "BUILD_METADATA", "{}")
+ 
+diff --git a/lib/plausible/application.ex b/lib/plausible/application.ex
+index c60af5afc..973a670ba 100644
+--- a/lib/plausible/application.ex
++++ b/lib/plausible/application.ex
+@@ -36,6 +36,7 @@ defmodule Plausible.Application do
+         Plausible.Session.BalancerSupervisor,
+         Plausible.PromEx,
+         {Plausible.Auth.TOTP.Vault, key: totp_vault_key()},
++        {Plausible.Auth.TOTP.FallbackVault, key: totp_fallback_vault_key()},
+         Plausible.Repo,
+         Plausible.ClickhouseRepo,
+         Plausible.IngestRepo,
+@@ -246,6 +247,12 @@ defmodule Plausible.Application do
+     |> Keyword.fetch!(:vault_key)
+   end
+ 
++  defp totp_fallback_vault_key() do
++    :plausible
++    |> Application.fetch_env!(Plausible.Auth.TOTP)
++    |> Keyword.fetch!(:fallback_vault_key)
++  end
++
+   defp finch_pool_config() do
+     default = Application.get_env(:plausible, Plausible.Finch)
+ 
+@@ -313,36 +320,32 @@ defmodule Plausible.Application do
+   defp maybe_add_paddle_pool(pool_config, default) do
+     paddle_conf = Application.get_env(:plausible, :paddle)
+ 
+-    cond do
+-      paddle_conf[:vendor_id] && paddle_conf[:vendor_auth_code] ->
+-        Map.put(
+-          pool_config,
+-          Plausible.Billing.PaddleApi.vendors_domain(),
+-          Config.Reader.merge(default, conn_opts: [transport_opts: [timeout: 15_000]])
+-        )
+-
+-      true ->
+-        pool_config
++    if paddle_conf[:vendor_id] && paddle_conf[:vendor_auth_code] do
++      Map.put(
++        pool_config,
++        Plausible.Billing.PaddleApi.vendors_domain(),
++        Config.Reader.merge(default, conn_opts: [transport_opts: [timeout: 15_000]])
++      )
++    else
++      pool_config
+     end
+   end
+ 
+   defp maybe_add_google_pools(pool_config, default) do
+     google_conf = Application.get_env(:plausible, :google)
+ 
+-    cond do
+-      google_conf[:client_id] && google_conf[:client_secret] ->
+-        pool_config
+-        |> Map.put(
+-          google_conf[:api_url],
+-          Config.Reader.merge(default, conn_opts: [transport_opts: [timeout: 15_000]])
+-        )
+-        |> Map.put(
+-          google_conf[:reporting_api_url],
+-          Config.Reader.merge(default, conn_opts: [transport_opts: [timeout: 15_000]])
+-        )
+-
+-      true ->
+-        pool_config
++    if google_conf[:client_id] && google_conf[:client_secret] do
++      pool_config
++      |> Map.put(
++        google_conf[:api_url],
++        Config.Reader.merge(default, conn_opts: [transport_opts: [timeout: 15_000]])
++      )
++      |> Map.put(
++        google_conf[:reporting_api_url],
++        Config.Reader.merge(default, conn_opts: [transport_opts: [timeout: 15_000]])
++      )
++    else
++      pool_config
+     end
+   end
+ 
+diff --git a/lib/plausible/auth/totp.ex b/lib/plausible/auth/totp.ex
+index d6b6c95dd..4bdaaf1d7 100644
+--- a/lib/plausible/auth/totp.ex
++++ b/lib/plausible/auth/totp.ex
+@@ -119,6 +119,7 @@ defmodule Plausible.Auth.TOTP do
+       |> change(
+         totp_enabled: false,
+         totp_secret: secret,
++        totp_secret_fallback: secret,
+         totp_token: nil
+       )
+       |> Repo.update!()
+@@ -290,6 +291,7 @@ defmodule Plausible.Auth.TOTP do
+         totp_enabled: false,
+         totp_token: nil,
+         totp_secret: nil,
++        totp_secret_fallback: nil,
+         totp_last_used_at: nil
+       )
+       |> Repo.update!()
+@@ -322,12 +324,42 @@ defmodule Plausible.Auth.TOTP do
+ 
+     time = System.os_time(:second)
+ 
+-    if NimbleTOTP.valid?(user.totp_secret, code, since: last_used, time: time) or
+-         NimbleTOTP.valid?(user.totp_secret, code, since: last_used, time: time - 30) do
+-      {:ok, bump_last_used!(user)}
++    case validate_with_secret(:main, user, user.totp_secret, code, last_used, time) do
++      :ok ->
++        {:ok, bump_last_used!(user)}
++
++      {:error, :invalid_code} ->
++        case validate_with_secret(
++               :fallback,
++               user,
++               user.totp_secret_fallback,
++               code,
++               last_used,
++               time
++             ) do
++          :ok ->
++            {:ok, bump_last_used!(user)}
++
++          {:error, :invalid_code} ->
++            {:error, :invalid_code}
++        end
++    end
++  end
++
++  defp validate_with_secret(label, user, secret, code, last_used, time) do
++    valid? =
++      NimbleTOTP.valid?(secret, code, since: last_used, time: time) or
++        NimbleTOTP.valid?(secret, code, since: last_used, time: time - 30)
++
++    if valid? do
++      :ok
+     else
+       {:error, :invalid_code}
+     end
++  rescue
++    _ ->
++      Sentry.capture_message("Failed to decode #{label} totp secret", extra: %{user_id: user.id})
++      {:error, :invalid_code}
+   end
+ 
+   defp fetch_last_used(user) do
+diff --git a/lib/plausible/auth/totp/fallback_encrypted_binary.ex b/lib/plausible/auth/totp/fallback_encrypted_binary.ex
+new file mode 100644
+index 000000000..efc9049b1
+--- /dev/null
++++ b/lib/plausible/auth/totp/fallback_encrypted_binary.ex
+@@ -0,0 +1,9 @@
++defmodule Plausible.Auth.TOTP.FallbackEncryptedBinary do
++  @moduledoc """
++  Defines an Ecto type so Cloak.Ecto can encrypt/decrypt a binary field.
++
++  Used for fallback vault field.
++  """
++
++  use Cloak.Ecto.Binary, vault: Plausible.Auth.TOTP.FallbackVault
++end
+diff --git a/lib/plausible/auth/totp/fallback_vault.ex b/lib/plausible/auth/totp/fallback_vault.ex
+new file mode 100644
+index 000000000..801ebf040
+--- /dev/null
++++ b/lib/plausible/auth/totp/fallback_vault.ex
+@@ -0,0 +1,20 @@
++defmodule Plausible.Auth.TOTP.FallbackVault do
++  @moduledoc """
++  Provides a fallback vault that will be used to encrypt/decrypt the TOTP 
++  secrets of users who enable it in case the primary vault fails.
++  """
++
++  use Cloak.Vault, otp_app: :plausible
++
++  @impl GenServer
++  def init(config) do
++    {key, config} = Keyword.pop!(config, :key)
++
++    config =
++      Keyword.put(config, :ciphers,
++        default: {Cloak.Ciphers.AES.GCM, tag: "AES.GCM.V1", iv_length: 12, key: key}
++      )
++
++    {:ok, config}
++  end
++end
+diff --git a/lib/plausible/auth/user.ex b/lib/plausible/auth/user.ex
+index d5aba33e6..bba161b60 100644
+--- a/lib/plausible/auth/user.ex
++++ b/lib/plausible/auth/user.ex
+@@ -1,4 +1,8 @@
+ defmodule Plausible.Auth.User do
++  @moduledoc """
++  User schema.
++  """
++
+   use Plausible
+   use Ecto.Schema
+   import Ecto.Changeset
+@@ -40,6 +44,7 @@ defmodule Plausible.Auth.User do
+     # Fields for TOTP authentication. See `Plausible.Auth.TOTP`.
+     field :totp_enabled, :boolean, default: false
+     field :totp_secret, Plausible.Auth.TOTP.EncryptedBinary
++    field :totp_secret_fallback, Plausible.Auth.TOTP.FallbackEncryptedBinary
+     field :totp_token, :string
+     field :totp_last_used_at, :naive_datetime
+ 
+diff --git a/lib/plausible/data_migration/backfill_totp_secret_fallback.ex b/lib/plausible/data_migration/backfill_totp_secret_fallback.ex
+new file mode 100644
+index 000000000..b18f23caa
+--- /dev/null
++++ b/lib/plausible/data_migration/backfill_totp_secret_fallback.ex
+@@ -0,0 +1,74 @@
++defmodule Plausible.DataMigration.BackfillTotpSecretFallback do
++  @moduledoc """
++  Backfill `user.totp_secret_fallback` with the contents of `user.totp_secret`
++  with vaulted values decoded and encoded again.
++  """
++
++  import Ecto.Query
++
++  alias Plausible.Repo
++
++  @confirmation_phrase "BACKFILL TOTP_SECRET_FALLBACK WITH TOTP_SECRET"
++
++  def run(opts \\ []) do
++    IO.puts("""
++    **!!!IMPORTANT!!!**: Please make sure you are following a proper
++    rotation procedure!
++
++    1. Set TOTP_VAULT_KEY_FALLBACK to the same value as TOTP_VAULT_KEY
++    2. Run: DataMigration.BackfillTotpSecretFallback(dry_run?: false) <== YOU ARE HERE
++    3. Set TOTP_VAULT_KEY to a new value
++    4. Run: DataMigration.OverwriteTotpSecret(dry_run?: false)
++    5. Set TOTP_VAULT_KEY_FALLBACK to a new random value
++
++    **WARNING**: Please make sure that TOTP_VAULT_KEY_FALLBACK is set to
++    the same value as TOTP_VAULT_KEY before running this script.
++
++    To confirm that you know what you are doing, please type in:
++
++    #{@confirmation_phrase}
++
++    and hit Enter.
++
++    """)
++
++    confirmation = IO.gets("Confirmation: ")
++
++    if String.trim(confirmation) == @confirmation_phrase do
++      run_backfill(opts)
++    else
++      IO.puts("Wrong confirmation phrase. Aborting!")
++      {:error, :aborted}
++    end
++  end
++
++  defp run_backfill(opts) do
++    dry_run? = Keyword.get(opts, :dry_run?, true)
++
++    users =
++      Repo.all(
++        from u in Plausible.Auth.User,
++          where: not is_nil(u.totp_secret)
++      )
++
++    users_count = length(users)
++
++    IO.puts("Backfilling totp_secret_fallback with totp_secret for #{users_count} users...")
++
++    users
++    |> Enum.with_index(1)
++    |> Enum.each(fn {user, index} ->
++      IO.puts("Backfilling totp_secret_fallback for user #{user.id} (#{index}/#{users_count})...")
++
++      if not dry_run? do
++        user
++        |> Ecto.Changeset.change(totp_secret_fallback: user.totp_secret)
++        |> Repo.update!()
++      end
++    end)
++
++    IO.puts(
++      "Finished backfilling totp_secret_fallback with totp_secret for #{users_count} users."
++    )
++  end
++end
+diff --git a/lib/plausible/data_migration/overwrite_totp_secret.ex b/lib/plausible/data_migration/overwrite_totp_secret.ex
+new file mode 100644
+index 000000000..151b1535c
+--- /dev/null
++++ b/lib/plausible/data_migration/overwrite_totp_secret.ex
+@@ -0,0 +1,77 @@
++defmodule Plausible.DataMigration.OverwriteTotpSecret do
++  @moduledoc """
++  Overwrite `user.totp_secret` with the contents of `user.totp_secret_fallback`
++  with vaulted values decoded and encoded again.
++  """
++
++  import Ecto.Query
++
++  alias Plausible.Repo
++
++  @confirmation_phrase "OVERWRITE TOTP_SECRET WITH TOTP_SECRET_FALLBACK"
++
++  def run(opts \\ []) do
++    IO.puts("""
++    **!!!IMPORTANT!!!**: Please make sure you are following a proper
++    rotation procedure!
++
++    1. Set TOTP_VAULT_KEY_FALLBACK to the same value as TOTP_VAULT_KEY
++    2. Run: DataMigration.BackfillTotpSecretFallback(dry_run?: false)
++    3. Set TOTP_VAULT_KEY to a new value
++    4. Run: DataMigration.OverwriteTotpSecret(dry_run?: false) <== YOU ARE HERE
++    5. Set TOTP_VAULT_KEY_FALLBACK to a new random value
++
++    **!!!WARNING!!!**: This is might lead to valid TOTP keys loss!
++    Please make sure you have a new TOTP_VAULT_KEY set and that 
++    TOTP_VAULT_KEY_FALLBACK was set to the current value of
++    TOTP_VAULT_KEY and that the preceding backfill of 
++    `totp_secret_fallback` completed successfully.
++
++    To confirm that you know what you are doing, please type in:
++
++    #{@confirmation_phrase}
++
++    and hit Enter.
++
++    """)
++
++    confirmation = IO.gets("Confirmation: ")
++
++    if String.trim(confirmation) == @confirmation_phrase do
++      run_backfill(opts)
++    else
++      IO.puts("Wrong confirmation phrase. Aborting!")
++      {:error, :aborted}
++    end
++  end
++
++  defp run_backfill(opts) do
++    dry_run? = Keyword.get(opts, :dry_run?, true)
++
++    users =
++      Repo.all(
++        from u in Plausible.Auth.User,
++          where: not is_nil(u.totp_secret_fallback)
++      )
++
++    users_count = length(users)
++
++    IO.puts("Overwriting totp_secret with totp_secret_fallback for #{users_count} users...")
++
++    users
++    |> Enum.with_index(1)
++    |> Enum.each(fn {user, index} ->
++      IO.puts("Overwriting totp_secret for user #{user.id} (#{index}/#{users_count})...")
++
++      if not dry_run? do
++        user
++        |> Ecto.Changeset.change(totp_secret: user.totp_secret_fallback)
++        |> Repo.update!()
++      end
++    end)
++
++    IO.puts(
++      "Finished overwriting totp_secret with totp_secret_fallback for #{users_count} users."
++    )
++  end
++end
+diff --git a/test/plausible/auth/totp/fallback_vault_test.exs b/test/plausible/auth/totp/fallback_vault_test.exs
+new file mode 100644
+index 000000000..1f5813e75
+--- /dev/null
++++ b/test/plausible/auth/totp/fallback_vault_test.exs
+@@ -0,0 +1,30 @@
++defmodule Plausible.Auth.TOTP.FallbackVaultTest do
++  use Plausible.DataCase, async: true
++
++  alias Plausible.Auth.TOTP.FallbackVault
++
++  describe "encrypting secrets" do
++    test "encryption works" do
++      plain_secret = "super secret"
++      encrypted_secret = FallbackVault.encrypt!(plain_secret)
++      decrypted_secret = FallbackVault.decrypt!(encrypted_secret)
++
++      assert encrypted_secret != plain_secret
++      assert decrypted_secret == plain_secret
++    end
++
++    test "TOTP secret is stored encrypted and decrypted on read" do
++      secret = NimbleTOTP.secret()
++
++      user = insert(:user, totp_secret_fallback: secret)
++      user = Repo.reload!(user)
++
++      assert user.totp_secret_fallback == secret
++
++      {:ok, %{rows: [[totp_secret_in_db]]}} =
++        Repo.query("SELECT totp_secret_fallback from users where id = $1", [user.id])
++
++      assert totp_secret_in_db != secret
++    end
++  end
++end
+diff --git a/test/plausible/auth/totp/rotation_test.exs b/test/plausible/auth/totp/rotation_test.exs
+new file mode 100644
+index 000000000..67cacb6ab
+--- /dev/null
++++ b/test/plausible/auth/totp/rotation_test.exs
+@@ -0,0 +1,148 @@
++defmodule Plausible.Auth.TOTP.RotationTest do
++  use Plausible.DataCase, async: false
++
++  import ExUnit.CaptureIO
++
++  alias Plausible.Auth.TOTP
++  alias Plausible.Auth.TOTP.FallbackVault
++  alias Plausible.Auth.TOTP.Vault
++  alias Plausible.DataMigration.BackfillTotpSecretFallback
++  alias Plausible.DataMigration.OverwriteTotpSecret
++  alias Plausible.Repo
++
++  test "run full TOTP vault key rotation scenario" do
++    Plausible.Test.Support.Sentry.setup(self())
++
++    old_fallback_key = :crypto.strong_rand_bytes(32)
++    old_key = :crypto.strong_rand_bytes(32)
++    new_key = :crypto.strong_rand_bytes(32)
++
++    # set a different vault key without restarting the whole app
++    {:ok, config} = Vault.init(key: old_key)
++    :sys.replace_state(Vault, fn _ -> config end)
++    GenServer.call(Vault, :save_config)
++
++    {:ok, config} = FallbackVault.init(key: old_fallback_key)
++    :sys.replace_state(FallbackVault, fn _ -> config end)
++    GenServer.call(FallbackVault, :save_config)
++
++    # user with empty fallback key
++    user_with_totp_legacy =
++      insert(:user)
++      |> TOTP.initiate()
++      |> elem(1)
++      |> TOTP.enable(:skip_verify)
++      |> elem(1)
++      |> Ecto.Changeset.change(totp_secret_fallback: nil)
++      |> Repo.update!()
++
++    # user with both keys set to old key initially
++    user_with_totp =
++      insert(:user)
++      |> TOTP.initiate()
++      |> elem(1)
++      |> TOTP.enable(:skip_verify)
++      |> elem(1)
++
++    user_without_totp = insert(:user)
++
++    # generate 2FA codes for further testing (with reuse)
++    code_legacy = NimbleTOTP.verification_code(user_with_totp_legacy.totp_secret)
++    code = NimbleTOTP.verification_code(user_with_totp.totp_secret)
++
++    # ensure verification works with fallback secret empty
++    assert {:ok, user_with_totp_legacy} =
++             TOTP.validate_code(user_with_totp_legacy, code_legacy, allow_reuse?: true)
++
++    assert [] = Sentry.Test.pop_sentry_reports()
++
++    # set the existing key as the key for the fallback vault - first step of rotation
++    {:ok, config} = FallbackVault.init(key: new_key)
++    :sys.replace_state(FallbackVault, fn _ -> config end)
++    GenServer.call(FallbackVault, :save_config)
++
++    # run backfill of the fallback secrets - second step of rotation
++    assert capture_io(
++             [input: "BACKFILL TOTP_SECRET_FALLBACK WITH TOTP_SECRET", capture_prompt: false],
++             fn ->
++               BackfillTotpSecretFallback.run(dry_run?: false)
++             end
++           ) =~ "Finished backfilling totp_secret_fallback with totp_secret for 2 users."
++
++    assert_matches %{
++                     totp_secret: ^user_with_totp_legacy.totp_secret,
++                     totp_secret_fallback: ^user_with_totp_legacy.totp_secret
++                   } = Repo.reload!(user_with_totp_legacy)
++
++    assert_matches %{
++                     totp_secret: ^user_with_totp.totp_secret,
++                     totp_secret_fallback: ^user_with_totp.totp_secret_fallback
++                   } = Repo.reload!(user_with_totp)
++
++    assert_matches %{
++                     totp_secret: nil,
++                     totp_secret_fallback: nil
++                   } = Repo.reload!(user_without_totp)
++
++    # set a new key for the main vault - third step of rotation
++    {:ok, config} = Vault.init(key: new_key)
++    :sys.replace_state(Vault, fn _ -> config end)
++    GenServer.call(Vault, :save_config)
++
++    # reload users to ensure they use "mangled" secret due to changed vault key
++    user_with_totp_legacy = Repo.reload!(user_with_totp_legacy)
++    user_with_totp = Repo.reload!(user_with_totp)
++
++    assert {:ok, user_with_totp_legacy} =
++             TOTP.validate_code(user_with_totp_legacy, code_legacy, allow_reuse?: true)
++
++    assert [sentry_error] = Sentry.Test.pop_sentry_reports()
++    assert sentry_error.message.formatted == "Failed to decode main totp secret"
++    assert sentry_error.extra.user_id == user_with_totp_legacy.id
++
++    assert {:ok, user_with_totp} = TOTP.validate_code(user_with_totp, code, allow_reuse?: true)
++
++    assert [sentry_error] = Sentry.Test.pop_sentry_reports()
++    assert sentry_error.message.formatted == "Failed to decode main totp secret"
++    assert sentry_error.extra.user_id == user_with_totp.id
++
++    # run overwrite - fourth step of rotation
++    assert capture_io(
++             [input: "OVERWRITE TOTP_SECRET WITH TOTP_SECRET_FALLBACK", capture_prompt: false],
++             fn ->
++               OverwriteTotpSecret.run(dry_run?: false)
++             end
++           ) =~ "Finished overwriting totp_secret with totp_secret_fallback for 2 users."
++
++    # verify that main secret works now
++    user_with_totp_legacy = Repo.reload!(user_with_totp_legacy)
++    user_with_totp = Repo.reload!(user_with_totp)
++
++    assert {:ok, user_with_totp_legacy} =
++             TOTP.validate_code(user_with_totp_legacy, code_legacy, allow_reuse?: true)
++
++    assert [] = Sentry.Test.pop_sentry_reports()
++
++    assert {:ok, user_with_totp} = TOTP.validate_code(user_with_totp, code, allow_reuse?: true)
++
++    assert [] = Sentry.Test.pop_sentry_reports()
++
++    # set fallback vault key to a random new value - fifth step of rotation
++    {:ok, config} = FallbackVault.init(key: :crypto.strong_rand_bytes(32))
++    :sys.replace_state(FallbackVault, fn _ -> config end)
++    GenServer.call(FallbackVault, :save_config)
++
++    # verify that everything still works
++    user_with_totp_legacy = Repo.reload!(user_with_totp_legacy)
++    user_with_totp = Repo.reload!(user_with_totp)
++
++    assert {:ok, _user_with_totp_legacy} =
++             TOTP.validate_code(user_with_totp_legacy, code_legacy, allow_reuse?: true)
++
++    assert [] = Sentry.Test.pop_sentry_reports()
++
++    assert {:ok, _user_with_totp} = TOTP.validate_code(user_with_totp, code, allow_reuse?: true)
++
++    assert [] = Sentry.Test.pop_sentry_reports()
++  end
++end
+diff --git a/test/plausible/config_test.exs b/test/plausible/config_test.exs
+index 666ca5782..c42fe4fdb 100644
+--- a/test/plausible/config_test.exs
++++ b/test/plausible/config_test.exs
+@@ -683,12 +683,16 @@ defmodule Plausible.ConfigTest do
+ 
+       config = runtime_config(env)
+ 
+-      assert [vault_key: vault_key] = get_in(config, [:plausible, Plausible.Auth.TOTP])
++      assert keys = get_in(config, [:plausible, Plausible.Auth.TOTP])
++      vault_key = keys[:vault_key]
++      fallback_vault_key = keys[:fallback_vault_key]
+       assert byte_size(vault_key) == 32
+ 
+       # make sure it doesn't change between releases
+       assert vault_key ==
+                "\x95\x9C\x05\x9A\xCD\xE4\xEF\xDDH\xFB\xCA\xD5o\xD1z\xCCTǐ\xBC\"J\xF8:\xFAs\xCA\x0Fo\x10\x9B\x84"
++
++      assert vault_key == fallback_vault_key
+     end
+ 
+     test "can be Base64-encoded 32 bytes (with padding)" do
+@@ -700,9 +704,12 @@ defmodule Plausible.ConfigTest do
+ 
+       config = runtime_config(env)
+ 
+-      assert [vault_key: vault_key] = get_in(config, [:plausible, Plausible.Auth.TOTP])
++      assert keys = get_in(config, [:plausible, Plausible.Auth.TOTP])
++      vault_key = keys[:vault_key]
++      fallback_vault_key = keys[:fallback_vault_key]
+       assert byte_size(vault_key) == 32
+       assert vault_key == Base.decode64!("dx2W6PNd/QIC6IyYVWMEaG2fI8/5WVylryM3mRaOpAo=")
++      assert vault_key == fallback_vault_key
+     end
+ 
+     test "fails on invalid key length" do

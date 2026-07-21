@@ -1,0 +1,1226 @@
+From 7bc6bb9d1e34c1ff0010d9b9b3135c877c046b8e Mon Sep 17 00:00:00 2001
+From: Florent Lecoultre <104759954+fl0Lec@users.noreply.github.com>
+Date: Wed, 1 Jul 2026 19:14:51 +0200
+Subject: [PATCH] upstream_rbac: add upstream RBAC HTTP filter matching on the
+ selected host (#45543)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Commit Message: upstream_rbac: add upstream RBAC HTTP filter matching on
+the selected host
+Additional Description:
+
+Generative AI (Claude) was used to assist with this change; I have
+reviewed and understand all of the code.
+
+Adds a new `envoy.filters.http.upstream_rbac` upstream HTTP filter that
+evaluates the existing RBAC engine against the **selected upstream
+host**, from the `onHostSelected()` callback added in #43764 — i.e.
+after a host is selected but before the upstream connection is
+initiated.
+
+Motivation (see #43924): the `upstream_ip_port` RBAC matcher relies on
+the upstream address being present in filter state, which is only
+populated in dynamic_forward_proxy `dns_cache` mode. In
+`sub_cluster_config` mode (and for other cluster types) it is never
+populated, so IP-based default-deny / SSRF protection cannot be
+enforced. Evaluating RBAC from `onHostSelected()` makes the upstream
+IP/port available for matching across all cluster types and rejects the
+request (via `sendLocalReply`) before any upstream connection is
+established.
+
+The filter is a thin subclass of the downstream RBAC filter: it reuses
+the engine, config and the shadow/enforced evaluation logic, but runs it
+from `onHostSelected()` instead of `decodeHeaders()`. It reuses the
+existing `envoy.extensions.filters.http.rbac.v3.RBAC` proto, so the full
+downstream matcher set (headers, source/destination IP, SSL, dynamic
+metadata, CEL, ...) is available alongside `upstream_ip_port`.
+Registered only as an upstream HTTP filter.
+
+Risk Level: Low (new opt-in extension; reuses the existing, well-tested
+RBAC engine).
+Testing: unit, config and integration tests under
+`test/extensions/filters/http/upstream_rbac/`. Also validated in our
+staging environment (dynamic forward proxy egress gateway with
+`sub_cluster_config`), where it correctly enforced upstream IP-based
+deny policies.
+Docs Changes: new `upstream_rbac_filter.rst`.
+Release Notes: added (new_features).
+Platform Specific Features: n/a
+
+Builds on #43764. Fixes #43924.
+
+Signed-off-by: Florent Lecoultre <florent.lecoultre@datadoghq.com>
+---
+ CODEOWNERS                                    |   1 +
+ bazel/deps.yaml                               |   3 +
+ ...c__added-the-upstream-rbac-http-filter.rst |   6 +
+ .../http/http_filters/http_filters.rst        |   1 +
+ .../http_filters/upstream_rbac_filter.rst     | 145 +++++++++
+ source/extensions/extensions_build_config.bzl |   1 +
+ source/extensions/extensions_metadata.yaml    |   8 +
+ .../filters/http/rbac/rbac_filter.cc          |   2 +-
+ .../filters/http/rbac/rbac_filter.h           |  11 +-
+ .../filters/http/upstream_rbac/BUILD          |  38 +++
+ .../filters/http/upstream_rbac/config.cc      |  47 +++
+ .../filters/http/upstream_rbac/config.h       |  39 +++
+ .../upstream_rbac/upstream_rbac_filter.cc     |  88 ++++++
+ .../http/upstream_rbac/upstream_rbac_filter.h |  54 ++++
+ .../filters/http/upstream_rbac/BUILD          |  68 ++++
+ .../filters/http/upstream_rbac/config_test.cc |  46 +++
+ .../upstream_rbac_filter_test.cc              | 299 ++++++++++++++++++
+ .../upstream_rbac_integration_test.cc         | 117 +++++++
+ 18 files changed, 968 insertions(+), 6 deletions(-)
+ create mode 100644 changelogs/current/new_features/rbac__added-the-upstream-rbac-http-filter.rst
+ create mode 100644 docs/root/configuration/http/http_filters/upstream_rbac_filter.rst
+ create mode 100644 source/extensions/filters/http/upstream_rbac/BUILD
+ create mode 100644 source/extensions/filters/http/upstream_rbac/config.cc
+ create mode 100644 source/extensions/filters/http/upstream_rbac/config.h
+ create mode 100644 source/extensions/filters/http/upstream_rbac/upstream_rbac_filter.cc
+ create mode 100644 source/extensions/filters/http/upstream_rbac/upstream_rbac_filter.h
+ create mode 100644 test/extensions/filters/http/upstream_rbac/BUILD
+ create mode 100644 test/extensions/filters/http/upstream_rbac/config_test.cc
+ create mode 100644 test/extensions/filters/http/upstream_rbac/upstream_rbac_filter_test.cc
+ create mode 100644 test/extensions/filters/http/upstream_rbac/upstream_rbac_integration_test.cc
+
+diff --git a/CODEOWNERS b/CODEOWNERS
+index 711ab3eeb..c51ef9bfb 100644
+--- a/CODEOWNERS
++++ b/CODEOWNERS
+@@ -313,6 +313,7 @@ extensions/upstreams/tcp @ggreenway @mattklein123
+ # rbac
+ /*/extensions/filters/network/rbac @yangminzhu @yanavlasov
+ /*/extensions/filters/http/rbac @yangminzhu @yanavlasov
++/*/extensions/filters/http/upstream_rbac @yangminzhu @yanavlasov @fl0Lec
+ /*/extensions/filters/common/rbac @yangminzhu @yanavlasov
+ # tap
+ /*/extensions/filters/http/tap @mattklein123 @xu1zhou
+diff --git a/bazel/deps.yaml b/bazel/deps.yaml
+index 967a7c124..e7867e808 100644
+--- a/bazel/deps.yaml
++++ b/bazel/deps.yaml
+@@ -269,6 +269,7 @@ flatbuffers:
+   - envoy.filters.http.ext_proc
+   - envoy.filters.http.rate_limit_quota
+   - envoy.filters.http.rbac
++  - envoy.filters.http.upstream_rbac
+   - envoy.filters.http.wasm
+   - envoy.filters.network.rbac
+   - envoy.filters.network.wasm
+@@ -617,6 +618,7 @@ cel_cpp:
+   - envoy.filters.http.ext_proc
+   - envoy.filters.http.rate_limit_quota
+   - envoy.filters.http.rbac
++  - envoy.filters.http.upstream_rbac
+   - envoy.filters.http.wasm
+   - envoy.filters.network.rbac
+   - envoy.filters.network.wasm
+@@ -645,6 +647,7 @@ cel_spec:
+   - envoy.filters.http.ext_proc
+   - envoy.filters.http.rate_limit_quota
+   - envoy.filters.http.rbac
++  - envoy.filters.http.upstream_rbac
+   - envoy.filters.http.wasm
+   - envoy.filters.network.rbac
+   - envoy.filters.network.wasm
+diff --git a/changelogs/current/new_features/rbac__added-the-upstream-rbac-http-filter.rst b/changelogs/current/new_features/rbac__added-the-upstream-rbac-http-filter.rst
+new file mode 100644
+index 000000000..158514db8
+--- /dev/null
++++ b/changelogs/current/new_features/rbac__added-the-upstream-rbac-http-filter.rst
+@@ -0,0 +1,6 @@
++Added the :ref:`upstream RBAC HTTP filter <config_http_filters_upstream_rbac>`, an upstream HTTP
++filter that evaluates RBAC policies against the selected upstream host before the upstream
++connection is initiated. This enables the :ref:`upstream_ip_port
++<envoy_v3_api_msg_extensions.rbac.matchers.upstream_ip_port.v3.UpstreamIpPortMatcher>` matcher for
++all cluster types (including dynamic forward proxy ``sub_cluster_config``, static, EDS, and strict
++DNS), allowing default-deny SSRF protection that rejects requests to disallowed upstream addresses.
+diff --git a/docs/root/configuration/http/http_filters/http_filters.rst b/docs/root/configuration/http/http_filters/http_filters.rst
+index 5bfca3fff..ad47b4a0b 100644
+--- a/docs/root/configuration/http/http_filters/http_filters.rst
++++ b/docs/root/configuration/http/http_filters/http_filters.rst
+@@ -75,5 +75,6 @@ HTTP filters
+   tap_filter
+   thrift_to_metadata_filter
+   upstream_codec_filter
++  upstream_rbac_filter
+   wasm_filter
+   transform_filter
+diff --git a/docs/root/configuration/http/http_filters/upstream_rbac_filter.rst b/docs/root/configuration/http/http_filters/upstream_rbac_filter.rst
+new file mode 100644
+index 000000000..f1872b00b
+--- /dev/null
++++ b/docs/root/configuration/http/http_filters/upstream_rbac_filter.rst
+@@ -0,0 +1,145 @@
++.. _config_http_filters_upstream_rbac:
++.. _extension_envoy.filters.http.upstream_rbac:
++
++Upstream Role Based Access Control (RBAC) Filter
++================================================
++
++The upstream RBAC filter authorizes a request against the **selected upstream host**, before the
++upstream connection is initiated. It is configured exactly like the
++:ref:`RBAC filter <config_http_filters_rbac>` (it reuses the same
++:ref:`RBAC <envoy_v3_api_msg_extensions.filters.http.rbac.v3.RBAC>` configuration), but runs as an
++:ref:`upstream HTTP filter <arch_overview_upstream_filters>` and evaluates its policies from the
++host-selection callback rather than during request decoding.
++
++The primary use case is protecting against SSRF by enforcing a default-deny policy on the upstream
++IP address. Because evaluation happens after a host has been selected but before the connection is
++established, the :ref:`upstream_ip_port
++<envoy_v3_api_msg_extensions.rbac.matchers.upstream_ip_port.v3.UpstreamIpPortMatcher>` matcher
++receives the resolved upstream address directly from host selection. By contrast, the downstream
++:ref:`RBAC filter <config_http_filters_rbac>` can only match on the upstream IP when a preceding HTTP
++filter (the dynamic forward proxy filter with ``save_upstream_address``) has already recorded the
++selected host in filter state. Evaluating at host-selection time removes that dependency, so the
++upstream IP match works for **all** cluster types — including dynamic forward proxy
++``sub_cluster_config``, static, EDS, and strict DNS. When the request is denied, no upstream
++connection is established and a ``403 (Forbidden)`` local reply is returned.
++
++Since the filter is handed the downstream connection and request headers, the full set of RBAC
++matchers available to the downstream :ref:`RBAC filter <config_http_filters_rbac>` (request headers,
++source/destination IP and port, SSL properties, dynamic metadata, CEL attributes, ...) can be
++combined with the upstream IP match.
++
++.. attention::
++
++  This filter must be configured as an **upstream** HTTP filter. There is no top-level
++  ``upstream_http_filters`` field on a cluster; the upstream HTTP filter chain lives in one of two
++  places:
++
++  * **Per cluster** — inside the cluster's
++    :ref:`typed_extension_protocol_options <envoy_v3_api_field_config.cluster.v3.Cluster.typed_extension_protocol_options>`,
++    under the ``envoy.extensions.upstreams.http.v3.HttpProtocolOptions`` entry, in its
++    :ref:`http_filters <envoy_v3_api_field_extensions.upstreams.http.v3.HttpProtocolOptions.http_filters>`
++    list (see the example below).
++  * **On the router** (applies to every cluster) — via
++    :ref:`Router.upstream_http_filters <envoy_v3_api_field_extensions.filters.http.router.v3.Router.upstream_http_filters>`.
++
++  Either chain must end with the ``envoy.filters.http.upstream_codec`` terminal filter. The filter
++  has no effect in a downstream HTTP filter chain, and is therefore registered only as an upstream
++  filter.
++
++* This filter should be configured with the type URL ``type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC``.
++* :ref:`v3 API reference <envoy_v3_api_msg_extensions.filters.http.rbac.v3.RBAC>`
++
++Example configuration
++---------------------
++
++The following ``Cluster`` denies any request whose selected upstream IP falls within a private CIDR
++range. The upstream filter chain is configured **on the cluster**, under
++``typed_extension_protocol_options`` → ``envoy.extensions.upstreams.http.v3.HttpProtocolOptions`` →
++``http_filters`` (the same ``HttpProtocolOptions`` entry that carries the upstream protocol config),
++and ends with the ``upstream_codec`` terminal filter:
++
++.. code-block:: yaml
++
++  clusters:
++  - name: egress_cluster
++    connect_timeout: 5s
++    type: STRICT_DNS
++    load_assignment: {} # ... cluster endpoints ...
++    typed_extension_protocol_options:
++      envoy.extensions.upstreams.http.v3.HttpProtocolOptions:
++        "@type": type.googleapis.com/envoy.extensions.upstreams.http.v3.HttpProtocolOptions
++        # Upstream protocol selection (required by HttpProtocolOptions).
++        explicit_http_config:
++          http_protocol_options: {}
++        # Upstream HTTP filter chain. Must end with envoy.filters.http.upstream_codec.
++        http_filters:
++        - name: envoy.filters.http.upstream_rbac
++          typed_config:
++            "@type": type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC
++            rules:
++              action: DENY
++              policies:
++                "deny-private-ips":
++                  permissions:
++                  - matcher:
++                      name: envoy.rbac.matchers.upstream_ip_port
++                      typed_config:
++                        "@type": type.googleapis.com/envoy.extensions.rbac.matchers.upstream_ip_port.v3.UpstreamIpPortMatcher
++                        upstream_ip:
++                          address_prefix: 10.0.0.0
++                          prefix_len: 8
++                  principals:
++                  - any: true
++        - name: envoy.filters.http.upstream_codec
++          typed_config:
++            "@type": type.googleapis.com/envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
++
++Statistics
++----------
++
++The upstream RBAC filter outputs the same statistics as the
++:ref:`RBAC filter <config_http_filters_rbac>`, with the counter names built as
++``<scope>.rbac.[<rules_stat_prefix>.]{allowed,denied,shadow_allowed,shadow_denied}``. The
++``<scope>`` prefix depends on **where the filter is attached**, not on the filter itself:
++
++* When attached to the router via :ref:`Router.upstream_http_filters
++  <envoy_v3_api_field_extensions.filters.http.router.v3.Router.upstream_http_filters>`, the stats
++  inherit the router's (HTTP connection manager / listener) scope. On a listener with no stats
++  prefix this is the **root** scope, so the counters are simply ``rbac.*`` (e.g.
++  ``rbac.<rules_stat_prefix>.allowed``). This produces a single aggregate per Envoy, independent of
++  which upstream cluster is selected at request time.
++* When attached to a cluster via
++  :ref:`HttpProtocolOptions.http_filters
++  <envoy_v3_api_field_extensions.upstreams.http.v3.HttpProtocolOptions.http_filters>`, the stats are
++  emitted in that **cluster's** scope, i.e. ``cluster.<name>.rbac.*``.
++
++.. note::
++
++   With :ref:`dynamic forward proxy <envoy_v3_api_field_extensions.filters.http.dynamic_forward_proxy.v3.FilterConfig.sub_cluster_config>`
++   ``sub_cluster_config``, the cluster selected at request time is a per-host dynamic sub-cluster
++   (``DFPCluster:<host>:<port>``). Attaching the filter at the **cluster** scope in that mode would
++   therefore emit one counter series per resolved upstream host — i.e. unbounded cardinality — and
++   scatter deny counts across many series. Prefer attaching the filter at the **router** scope for
++   the dynamic forward proxy use case so the counters stay a single root-scoped aggregate.
++
++The optional ``rules_stat_prefix`` / ``shadow_rules_stat_prefix`` fields of the
++:ref:`RBAC <envoy_v3_api_msg_extensions.filters.http.rbac.v3.RBAC>` config add a further segment
++after ``rbac.`` (e.g. ``rules_stat_prefix: private`` yields ``rbac.private.allowed``); this is
++orthogonal to the scope prefix above.
++
++Dynamic Metadata
++----------------
++
++The upstream RBAC filter emits the same dynamic metadata as the
++:ref:`RBAC filter <config_http_filters_rbac_dynamic_metadata>`, under the
++``envoy.filters.http.upstream_rbac`` key namespace.
++
++Per-Route Configuration
++-----------------------
++
++Like the downstream :ref:`RBAC filter <config_http_filters_rbac>`, the engine can be overridden or
++disabled per virtual host / route / weighted cluster by attaching a
++:ref:`RBACPerRoute <envoy_v3_api_msg_extensions.filters.http.rbac.v3.RBACPerRoute>` to the route's
++``typed_per_filter_config``, keyed by this filter's configured name. The override is resolved over
++the request's (downstream) route, so the same route entry can carry distinct downstream and upstream
++RBAC overrides.
+diff --git a/source/extensions/extensions_build_config.bzl b/source/extensions/extensions_build_config.bzl
+index ef1841aee..53ca3d7f5 100644
+--- a/source/extensions/extensions_build_config.bzl
++++ b/source/extensions/extensions_build_config.bzl
+@@ -218,6 +218,7 @@ EXTENSIONS = {
+     "envoy.filters.http.proto_api_scrubber":            "//source/extensions/filters/http/proto_api_scrubber:config",
+     "envoy.filters.http.ratelimit":                     "//source/extensions/filters/http/ratelimit:config",
+     "envoy.filters.http.rbac":                          "//source/extensions/filters/http/rbac:config",
++    "envoy.filters.http.upstream_rbac":                 "//source/extensions/filters/http/upstream_rbac:config",
+     "envoy.filters.http.router":                        "//source/extensions/filters/http/router:config",
+     "envoy.filters.http.set_filter_state":              "//source/extensions/filters/http/set_filter_state:config",
+     "envoy.filters.http.set_metadata":                  "//source/extensions/filters/http/set_metadata:config",
+diff --git a/source/extensions/extensions_metadata.yaml b/source/extensions/extensions_metadata.yaml
+index 6e8e2ae56..3c71e27be 100644
+--- a/source/extensions/extensions_metadata.yaml
++++ b/source/extensions/extensions_metadata.yaml
+@@ -424,6 +424,14 @@ envoy.filters.http.upstream_codec:
+   status_upstream: stable
+   type_urls:
+   - envoy.extensions.filters.http.upstream_codec.v3.UpstreamCodec
++envoy.filters.http.upstream_rbac:
++  categories:
++  - envoy.filters.http.upstream
++  security_posture: robust_to_untrusted_downstream
++  status: alpha
++  status_upstream: alpha
++  type_urls:
++  - envoy.extensions.filters.http.rbac.v3.RBAC
+ envoy.filters.http.composite:
+   categories:
+   - envoy.filters.http
+diff --git a/source/extensions/filters/http/rbac/rbac_filter.cc b/source/extensions/filters/http/rbac/rbac_filter.cc
+index e83f6ddfd..ccf6ebf4b 100644
+--- a/source/extensions/filters/http/rbac/rbac_filter.cc
++++ b/source/extensions/filters/http/rbac/rbac_filter.cc
+@@ -195,7 +195,7 @@ bool RoleBasedAccessControlFilter::evaluateShadowEngine(const Http::RequestHeade
+ 
+ // Evaluates the enforced engine policy and returns the appropriate filter status
+ Http::FilterHeadersStatus
+-RoleBasedAccessControlFilter::evaluateEnforcedEngine(Http::RequestHeaderMap& headers,
++RoleBasedAccessControlFilter::evaluateEnforcedEngine(const Http::RequestHeaderMap& headers,
+                                                      Protobuf::Struct& metrics) const {
+   const auto engine = config_->engine(callbacks_, Filters::Common::RBAC::EnforcementMode::Enforced);
+   if (engine == nullptr) {
+diff --git a/source/extensions/filters/http/rbac/rbac_filter.h b/source/extensions/filters/http/rbac/rbac_filter.h
+index f0dc61074..d0907837b 100644
+--- a/source/extensions/filters/http/rbac/rbac_filter.h
++++ b/source/extensions/filters/http/rbac/rbac_filter.h
+@@ -99,8 +99,8 @@ using RoleBasedAccessControlFilterConfigSharedPtr =
+ /**
+  * A filter that provides role-based access control authorization for HTTP requests.
+  */
+-class RoleBasedAccessControlFilter final : public Http::StreamDecoderFilter,
+-                                           public Logger::Loggable<Logger::Id::rbac> {
++class RoleBasedAccessControlFilter : public Http::StreamDecoderFilter,
++                                     public Logger::Loggable<Logger::Id::rbac> {
+ public:
+   RoleBasedAccessControlFilter(RoleBasedAccessControlFilterConfigSharedPtr config)
+       : config_(std::move(config)) {}
+@@ -124,12 +124,13 @@ public:
+   // Http::StreamFilterBase
+   void onDestroy() override {}
+ 
+-private:
++protected:
+   // Handles shadow engine evaluation and updates metrics
+   bool evaluateShadowEngine(const Http::RequestHeaderMap& headers, Protobuf::Struct& metrics) const;
+ 
+-  // Handles enforced engine evaluation and updates metrics
+-  Http::FilterHeadersStatus evaluateEnforcedEngine(Http::RequestHeaderMap& headers,
++  // Handles enforced engine evaluation and updates metrics. Sends a local reply on denial and
++  // returns StopIteration; returns Continue otherwise.
++  Http::FilterHeadersStatus evaluateEnforcedEngine(const Http::RequestHeaderMap& headers,
+                                                    Protobuf::Struct& metrics) const;
+ 
+   RoleBasedAccessControlFilterConfigSharedPtr config_;
+diff --git a/source/extensions/filters/http/upstream_rbac/BUILD b/source/extensions/filters/http/upstream_rbac/BUILD
+new file mode 100644
+index 000000000..bc066642b
+--- /dev/null
++++ b/source/extensions/filters/http/upstream_rbac/BUILD
+@@ -0,0 +1,38 @@
++load(
++    "//bazel:envoy_build_system.bzl",
++    "envoy_cc_extension",
++    "envoy_cc_library",
++    "envoy_extension_package",
++)
++
++licenses(["notice"])  # Apache 2
++
++envoy_extension_package()
++
++envoy_cc_extension(
++    name = "config",
++    srcs = ["config.cc"],
++    hdrs = ["config.h"],
++    deps = [
++        ":upstream_rbac_filter_lib",
++        "//envoy/registry",
++        "//source/extensions/filters/http/common:factory_base_lib",
++        "//source/extensions/filters/http/rbac:rbac_filter_lib",
++        "@envoy_api//envoy/extensions/filters/http/rbac/v3:pkg_cc_proto",
++    ],
++)
++
++envoy_cc_library(
++    name = "upstream_rbac_filter_lib",
++    srcs = ["upstream_rbac_filter.cc"],
++    hdrs = ["upstream_rbac_filter.h"],
++    deps = [
++        "//envoy/http:filter_interface",
++        "//envoy/upstream:upstream_interface",
++        "//source/common/common:logger_lib",
++        "//source/common/http:header_map_lib",
++        "//source/common/stream_info:upstream_address_lib",
++        "//source/extensions/filters/common/rbac:engine_lib",
++        "//source/extensions/filters/http/rbac:rbac_filter_lib",
++    ],
++)
+diff --git a/source/extensions/filters/http/upstream_rbac/config.cc b/source/extensions/filters/http/upstream_rbac/config.cc
+new file mode 100644
+index 000000000..59b021311
+--- /dev/null
++++ b/source/extensions/filters/http/upstream_rbac/config.cc
+@@ -0,0 +1,47 @@
++#include "source/extensions/filters/http/upstream_rbac/config.h"
++
++#include "envoy/registry/registry.h"
++
++#include "source/common/common/empty_string.h"
++#include "source/extensions/filters/http/rbac/rbac_filter.h"
++#include "source/extensions/filters/http/upstream_rbac/upstream_rbac_filter.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace UpstreamRBACFilter {
++
++absl::StatusOr<Http::FilterFactoryCb>
++UpstreamRoleBasedAccessControlFilterConfigFactory::createFilterFactoryFromProto(
++    const Protobuf::Message& proto_config, const std::string&,
++    Server::Configuration::UpstreamFactoryContext& context) {
++  auto& server_context = context.serverFactoryContext();
++  const auto& typed_config =
++      MessageUtil::downcastAndValidate<const envoy::extensions::filters::http::rbac::v3::RBAC&>(
++          proto_config, server_context.messageValidationVisitor());
++
++  // The stats prefix supplied for an upstream filter is the owning cluster's scope prefix (e.g.
++  // "cluster.<name>."), which context.scope() already applies. Use an empty prefix so the RBAC
++  // stats land under "cluster.<name>.rbac." instead of being prefixed twice.
++  auto config = std::make_shared<RBACFilter::RoleBasedAccessControlFilterConfig>(
++      typed_config, EMPTY_STRING, context.scope(), server_context,
++      server_context.messageValidationVisitor());
++
++  return [config](Http::FilterChainFactoryCallbacks& callbacks) -> void {
++    callbacks.addStreamDecoderFilter(
++        std::make_shared<UpstreamRoleBasedAccessControlFilter>(config));
++  };
++}
++
++/**
++ * Static registration for the upstream RBAC filter. This filter is intentionally registered only as
++ * an upstream HTTP filter; it acts from the onHostSelected() callback and has no effect in a
++ * downstream filter chain. @see RegisterFactory.
++ */
++REGISTER_FACTORY(UpstreamRoleBasedAccessControlFilterConfigFactory,
++                 Server::Configuration::UpstreamHttpFilterConfigFactory);
++
++} // namespace UpstreamRBACFilter
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/upstream_rbac/config.h b/source/extensions/filters/http/upstream_rbac/config.h
+new file mode 100644
+index 000000000..6466417cf
+--- /dev/null
++++ b/source/extensions/filters/http/upstream_rbac/config.h
+@@ -0,0 +1,39 @@
++#pragma once
++
++#include "envoy/extensions/filters/http/rbac/v3/rbac.pb.h"
++#include "envoy/extensions/filters/http/rbac/v3/rbac.pb.validate.h"
++#include "envoy/server/filter_config.h"
++
++#include "source/extensions/filters/http/common/factory_base.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace UpstreamRBACFilter {
++
++/**
++ * Config registration for the upstream RBAC filter. This filter is only usable as an upstream HTTP
++ * filter, since it acts from the onHostSelected() callback. It reuses the existing
++ * `envoy.extensions.filters.http.rbac.v3.RBAC` configuration. @see UpstreamHttpFilterConfigFactory.
++ */
++class UpstreamRoleBasedAccessControlFilterConfigFactory
++    : public Common::CommonFactoryBase<envoy::extensions::filters::http::rbac::v3::RBAC>,
++      public Server::Configuration::UpstreamHttpFilterConfigFactory {
++public:
++  UpstreamRoleBasedAccessControlFilterConfigFactory()
++      : CommonFactoryBase("envoy.filters.http.upstream_rbac") {}
++
++  std::string category() const override { return "envoy.filters.http.upstream"; }
++
++  absl::StatusOr<Http::FilterFactoryCb>
++  createFilterFactoryFromProto(const Protobuf::Message& proto_config,
++                               const std::string& stats_prefix,
++                               Server::Configuration::UpstreamFactoryContext& context) override;
++};
++
++DECLARE_FACTORY(UpstreamRoleBasedAccessControlFilterConfigFactory);
++
++} // namespace UpstreamRBACFilter
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/upstream_rbac/upstream_rbac_filter.cc b/source/extensions/filters/http/upstream_rbac/upstream_rbac_filter.cc
+new file mode 100644
+index 000000000..c2fbe667f
+--- /dev/null
++++ b/source/extensions/filters/http/upstream_rbac/upstream_rbac_filter.cc
+@@ -0,0 +1,88 @@
++#include "source/extensions/filters/http/upstream_rbac/upstream_rbac_filter.h"
++
++#include "source/common/http/header_map_impl.h"
++#include "source/common/stream_info/upstream_address.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace UpstreamRBACFilter {
++
++void UpstreamRoleBasedAccessControlFilter::setDecoderFilterCallbacks(
++    Http::StreamDecoderFilterCallbacks& callbacks) {
++  RBACFilter::RoleBasedAccessControlFilter::setDecoderFilterCallbacks(callbacks);
++  if (auto cb = callbacks.upstreamCallbacks(); cb) {
++    cb->addUpstreamCallbacks(*this);
++  }
++}
++
++void UpstreamRoleBasedAccessControlFilter::setUpstreamAddress(
++    const Network::Address::InstanceConstSharedPtr& address) {
++  // Always (re)write the selected host's address so the `upstream_ip_port` matcher evaluates *this*
++  // attempt's host. The upstream address filter state is request-scoped and shared across retries
++  // (and may also be populated by the dynamic forward proxy filter via `save_upstream_address`), so
++  // a stale or foreign address must never be trusted for an SSRF deny decision — overwrite it.
++  //
++  // NOTE: setData overwrites an existing entry only when it was stored at the same life span. An
++  // entry written at a *higher* life span (e.g. LifeSpan::Connection) would trip a life-span
++  // conflict and be left untouched instead. In the supported HTTP-over-TCP setup the upstream
++  // address is only ever written at LifeSpan::Request (here, and by the dynamic forward proxy HTTP
++  // filter), so this reliably overwrites.
++  callbacks_->streamInfo().filterState()->setData(
++      StreamInfo::UpstreamAddress::key(), std::make_shared<StreamInfo::UpstreamAddress>(address),
++      StreamInfo::FilterState::LifeSpan::Request);
++}
++
++void UpstreamRoleBasedAccessControlFilter::onHostSelected(
++    const Upstream::HostDescriptionConstSharedPtr& host) {
++  ASSERT(host != nullptr);
++
++  // A selected host may have no resolved address (e.g. a logical host). With no upstream address
++  // there is nothing for the upstream_ip_port matcher to evaluate and no concrete connection
++  // target, so skip evaluation — and avoid dereferencing a null address below.
++  const Network::Address::InstanceConstSharedPtr address = host->address();
++  if (address == nullptr) {
++    ENVOY_LOG(warn, "selected upstream host has no resolved address; skipping upstream RBAC");
++    return;
++  }
++
++  setUpstreamAddress(address);
++
++  // The RBAC engine evaluates against the downstream connection (source IP, SSL, SNI, ...). A
++  // proxied request always has one, but guard rather than dereference an empty OptRef.
++  if (!callbacks_->connection().has_value()) {
++    ENVOY_LOG(warn, "no downstream connection available at host selection; skipping upstream RBAC");
++    return;
++  }
++
++  // onHostSelected() fires during the downstream router's decodeHeaders(), before this upstream
++  // filter chain's own decodeHeaders() runs, so the request headers come from the (downstream)
++  // stream info that the connection manager populated earlier.
++  const Http::RequestHeaderMap* request_headers = callbacks_->streamInfo().getRequestHeaders();
++  if (request_headers == nullptr) {
++    request_headers = Http::StaticEmptyHeaders::get().request_headers.get();
++  }
++
++  ENVOY_LOG(debug, "checking upstream host {} for request", address->asString());
++
++  // Reuse the downstream RBAC filter's shadow + enforced evaluation. evaluateEnforcedEngine() sends
++  // the 403 local reply on denial (aborting the upstream connection) and returns StopIteration.
++  Protobuf::Struct metrics;
++  const bool shadow_engine_evaluated = evaluateShadowEngine(*request_headers, metrics);
++  const Http::FilterHeadersStatus status = evaluateEnforcedEngine(*request_headers, metrics);
++  const bool enforced_engine_evaluated =
++      config_->engine(callbacks_, Filters::Common::RBAC::EnforcementMode::Enforced) != nullptr;
++
++  if (shadow_engine_evaluated || enforced_engine_evaluated) {
++    callbacks_->streamInfo().setDynamicMetadata(std::string(DynamicMetadataKey), metrics);
++  }
++
++  if (status != Http::FilterHeadersStatus::StopIteration) {
++    ENVOY_LOG(debug, "allowed by default or by policy");
++  }
++}
++
++} // namespace UpstreamRBACFilter
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/upstream_rbac/upstream_rbac_filter.h b/source/extensions/filters/http/upstream_rbac/upstream_rbac_filter.h
+new file mode 100644
+index 000000000..045f7ab86
+--- /dev/null
++++ b/source/extensions/filters/http/upstream_rbac/upstream_rbac_filter.h
+@@ -0,0 +1,54 @@
++#pragma once
++
++#include "envoy/http/filter.h"
++#include "envoy/upstream/upstream.h"
++
++#include "source/extensions/filters/http/rbac/rbac_filter.h"
++
++#include "absl/strings/string_view.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace UpstreamRBACFilter {
++
++// Dynamic metadata namespace used to expose the RBAC result, mirroring the downstream RBAC filter.
++inline constexpr absl::string_view DynamicMetadataKey = "envoy.filters.http.upstream_rbac";
++
++/**
++ * An upstream HTTP filter that authorizes the *selected upstream host* using the RBAC engine.
++ *
++ * It is a thin specialization of the downstream RBAC filter: it reuses the engine, config and the
++ * shadow/enforced evaluation logic (RoleBasedAccessControlFilter::evaluate{Shadow,Enforced}Engine),
++ * but instead of evaluating during decodeHeaders it evaluates from the onHostSelected() callback —
++ * after a host has been selected but before the upstream connection is initiated. This lets the
++ * `upstream_ip_port` matcher work for every cluster type, including dynamic forward proxy
++ * `sub_cluster_config` where the upstream address filter-state is otherwise never populated, and
++ * rejects the request before any connection is established.
++ */
++class UpstreamRoleBasedAccessControlFilter : public RBACFilter::RoleBasedAccessControlFilter,
++                                             public Http::UpstreamCallbacks {
++public:
++  using RBACFilter::RoleBasedAccessControlFilter::RoleBasedAccessControlFilter;
++
++  // Http::StreamDecoderFilter
++  void setDecoderFilterCallbacks(Http::StreamDecoderFilterCallbacks& callbacks) override;
++  // The RBAC check runs in onHostSelected(), not during decode, so decoding just passes through.
++  Http::FilterHeadersStatus decodeHeaders(Http::RequestHeaderMap&, bool) override {
++    return Http::FilterHeadersStatus::Continue;
++  }
++
++  // Http::UpstreamCallbacks
++  void onHostSelected(const Upstream::HostDescriptionConstSharedPtr& host) override;
++  void onUpstreamConnectionEstablished() override {}
++
++private:
++  // (Over)writes the selected host's address into the upstream address filter state so the
++  // `upstream_ip_port` RBAC matcher resolves the host selected for *this* attempt.
++  void setUpstreamAddress(const Network::Address::InstanceConstSharedPtr& address);
++};
++
++} // namespace UpstreamRBACFilter
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/test/extensions/filters/http/upstream_rbac/BUILD b/test/extensions/filters/http/upstream_rbac/BUILD
+new file mode 100644
+index 000000000..a951d3bf0
+--- /dev/null
++++ b/test/extensions/filters/http/upstream_rbac/BUILD
+@@ -0,0 +1,68 @@
++load(
++    "//bazel:envoy_build_system.bzl",
++    "envoy_package",
++)
++load(
++    "//test/extensions:extensions_build_system.bzl",
++    "envoy_extension_cc_test",
++)
++
++licenses(["notice"])  # Apache 2
++
++envoy_package()
++
++envoy_extension_cc_test(
++    name = "config_test",
++    srcs = ["config_test.cc"],
++    extension_names = ["envoy.filters.http.upstream_rbac"],
++    rbe_pool = "6gig",
++    tags = ["skip_on_windows"],
++    deps = [
++        "//source/extensions/filters/http/upstream_rbac:config",
++        "//test/mocks/http:http_mocks",
++        "//test/mocks/server:factory_context_mocks",
++        "@envoy_api//envoy/extensions/filters/http/rbac/v3:pkg_cc_proto",
++    ],
++)
++
++envoy_extension_cc_test(
++    name = "upstream_rbac_filter_test",
++    srcs = ["upstream_rbac_filter_test.cc"],
++    extension_names = ["envoy.filters.http.upstream_rbac"],
++    rbe_pool = "6gig",
++    tags = ["skip_on_windows"],
++    deps = [
++        "//source/common/network:utility_lib",
++        "//source/common/stream_info:upstream_address_lib",
++        "//source/extensions/filters/http/upstream_rbac:upstream_rbac_filter_lib",
++        "//test/mocks/http:http_mocks",
++        "//test/mocks/network:network_mocks",
++        "//test/mocks/server:server_factory_context_mocks",
++        "//test/mocks/stream_info:stream_info_mocks",
++        "//test/mocks/upstream:host_mocks",
++        "@envoy_api//envoy/config/rbac/v3:pkg_cc_proto",
++        "@envoy_api//envoy/extensions/filters/http/rbac/v3:pkg_cc_proto",
++        "@envoy_api//envoy/extensions/rbac/matchers/upstream_ip_port/v3:pkg_cc_proto",
++    ],
++)
++
++envoy_extension_cc_test(
++    name = "upstream_rbac_integration_test",
++    size = "large",
++    srcs = ["upstream_rbac_integration_test.cc"],
++    extension_names = ["envoy.filters.http.upstream_rbac"],
++    rbe_pool = "6gig",
++    tags = ["skip_on_windows"],
++    deps = [
++        "//source/common/router:upstream_codec_filter_lib",
++        "//source/extensions/filters/http/upstream_rbac:config",
++        "//test/config:utility_lib",
++        "//test/integration:http_integration_lib",
++        "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
++        "@envoy_api//envoy/config/rbac/v3:pkg_cc_proto",
++        "@envoy_api//envoy/extensions/filters/http/rbac/v3:pkg_cc_proto",
++        "@envoy_api//envoy/extensions/filters/http/upstream_codec/v3:pkg_cc_proto",
++        "@envoy_api//envoy/extensions/filters/network/http_connection_manager/v3:pkg_cc_proto",
++        "@envoy_api//envoy/extensions/rbac/matchers/upstream_ip_port/v3:pkg_cc_proto",
++    ],
++)
+diff --git a/test/extensions/filters/http/upstream_rbac/config_test.cc b/test/extensions/filters/http/upstream_rbac/config_test.cc
+new file mode 100644
+index 000000000..f3c34e096
+--- /dev/null
++++ b/test/extensions/filters/http/upstream_rbac/config_test.cc
+@@ -0,0 +1,46 @@
++#include "envoy/extensions/filters/http/rbac/v3/rbac.pb.h"
++
++#include "source/extensions/filters/http/upstream_rbac/config.h"
++
++#include "test/mocks/http/mocks.h"
++#include "test/mocks/server/factory_context.h"
++
++#include "gtest/gtest.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace UpstreamRBACFilter {
++namespace {
++
++envoy::extensions::filters::http::rbac::v3::RBAC simpleConfig() {
++  envoy::extensions::filters::http::rbac::v3::RBAC config;
++  config.mutable_rules()->set_action(envoy::config::rbac::v3::RBAC::DENY);
++  return config;
++}
++
++// The filter can be created as an upstream HTTP filter.
++TEST(UpstreamRbacConfigTest, CreatesUpstreamFilter) {
++  UpstreamRoleBasedAccessControlFilterConfigFactory factory;
++  testing::NiceMock<Server::Configuration::MockUpstreamFactoryContext> context;
++
++  auto cb = factory.createFilterFactoryFromProto(simpleConfig(), "stats", context);
++  EXPECT_TRUE(cb.ok());
++
++  testing::NiceMock<Http::MockFilterChainFactoryCallbacks> callbacks;
++  EXPECT_CALL(callbacks, addStreamDecoderFilter(testing::_));
++  cb.value()(callbacks);
++}
++
++// The proto descriptor and a route-specific config can both be produced.
++TEST(UpstreamRbacConfigTest, CreatesEmptyConfigProtoAndRouteConfig) {
++  UpstreamRoleBasedAccessControlFilterConfigFactory factory;
++  EXPECT_NE(nullptr, factory.createEmptyConfigProto());
++  EXPECT_NE(nullptr, factory.createEmptyRouteConfigProto());
++}
++
++} // namespace
++} // namespace UpstreamRBACFilter
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/test/extensions/filters/http/upstream_rbac/upstream_rbac_filter_test.cc b/test/extensions/filters/http/upstream_rbac/upstream_rbac_filter_test.cc
+new file mode 100644
+index 000000000..b861f8709
+--- /dev/null
++++ b/test/extensions/filters/http/upstream_rbac/upstream_rbac_filter_test.cc
+@@ -0,0 +1,299 @@
++#include "envoy/config/rbac/v3/rbac.pb.h"
++#include "envoy/extensions/filters/http/rbac/v3/rbac.pb.h"
++#include "envoy/extensions/rbac/matchers/upstream_ip_port/v3/upstream_ip_port_matcher.pb.h"
++#include "envoy/http/filter.h"
++
++#include "source/common/network/utility.h"
++#include "source/common/stream_info/upstream_address.h"
++#include "source/extensions/filters/http/upstream_rbac/upstream_rbac_filter.h"
++
++#include "test/mocks/http/mocks.h"
++#include "test/mocks/network/mocks.h"
++#include "test/mocks/server/server_factory_context.h"
++#include "test/mocks/stream_info/mocks.h"
++#include "test/mocks/upstream/host.h"
++
++#include "gmock/gmock.h"
++#include "gtest/gtest.h"
++
++using testing::_;
++using testing::NiceMock;
++using testing::Return;
++using testing::ReturnRef;
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace UpstreamRBACFilter {
++namespace {
++
++// Minimal fake implementation of UpstreamStreamFilterCallbacks that captures the registered
++// UpstreamCallbacks so the test can drive onHostSelected() directly.
++class FakeUpstreamStreamFilterCallbacks : public Http::UpstreamStreamFilterCallbacks {
++public:
++  StreamInfo::StreamInfo& upstreamStreamInfo() override { return stream_info_; }
++  OptRef<Router::GenericUpstream> upstream() override { return {}; }
++  void dumpState(std::ostream&, int) const override {}
++  bool pausedForConnect() const override { return false; }
++  void setPausedForConnect(bool) override {}
++  bool pausedForWebsocketUpgrade() const override { return false; }
++  void setPausedForWebsocketUpgrade(bool) override {}
++  void disableRouteTimeoutForWebsocketUpgrade() override {}
++  void disablePerTryTimeoutForWebsocketUpgrade() override {}
++  const Http::ConnectionPool::Instance::StreamOptions& upstreamStreamOptions() const override {
++    return options_;
++  }
++  void addUpstreamCallbacks(Http::UpstreamCallbacks& callbacks) override {
++    registered_callbacks_ = &callbacks;
++  }
++  void setUpstreamToDownstream(Router::UpstreamToDownstream&) override {}
++
++  NiceMock<StreamInfo::MockStreamInfo> stream_info_;
++  Http::ConnectionPool::Instance::StreamOptions options_{false, false};
++  Http::UpstreamCallbacks* registered_callbacks_{};
++};
++
++class UpstreamRbacFilterTest : public testing::Test {
++public:
++  // Builds a single-policy RBAC config matching on the given upstream IP (prefix /32) and, if
++  // require_header is set, additionally requiring the "x-block" request header to be present.
++  void setup(envoy::config::rbac::v3::RBAC::Action action, const std::string& upstream_ip,
++             bool require_header = false) {
++    envoy::config::rbac::v3::Policy policy;
++    auto* and_rules = policy.add_permissions()->mutable_and_rules();
++
++    envoy::extensions::rbac::matchers::upstream_ip_port::v3::UpstreamIpPortMatcher matcher;
++    matcher.mutable_upstream_ip()->set_address_prefix(upstream_ip);
++    matcher.mutable_upstream_ip()->mutable_prefix_len()->set_value(32);
++    auto* matcher_ext = and_rules->add_rules()->mutable_matcher();
++    matcher_ext->set_name("envoy.rbac.matchers.upstream_ip_port");
++    std::ignore = matcher_ext->mutable_typed_config()->PackFrom(matcher);
++
++    if (require_header) {
++      auto* header = and_rules->add_rules()->mutable_header();
++      header->set_name("x-block");
++      header->set_present_match(true);
++    }
++
++    policy.add_principals()->set_any(true);
++
++    envoy::extensions::filters::http::rbac::v3::RBAC config;
++    config.mutable_rules()->set_action(action);
++    (*config.mutable_rules()->mutable_policies())["foo"] = policy;
++    applyConfig(config);
++  }
++
++  // Builds the filter from an arbitrary RBAC config and wires the callbacks/mocks.
++  void applyConfig(const envoy::extensions::filters::http::rbac::v3::RBAC& config) {
++    config_ = std::make_shared<RBACFilter::RoleBasedAccessControlFilterConfig>(
++        config, "test", *stats_store_.rootScope(), context_,
++        ProtobufMessage::getStrictValidationVisitor());
++
++    filter_ = std::make_unique<UpstreamRoleBasedAccessControlFilter>(config_);
++
++    EXPECT_CALL(callbacks_, connection())
++        .WillRepeatedly(Return(OptRef<const Network::Connection>{connection_}));
++    EXPECT_CALL(callbacks_, streamInfo()).WillRepeatedly(ReturnRef(req_info_));
++    EXPECT_CALL(callbacks_, upstreamCallbacks())
++        .WillRepeatedly(Return(OptRef<Http::UpstreamStreamFilterCallbacks>{upstream_cbs_}));
++    // The filter reads the request headers from the (downstream) stream info during
++    // onHostSelected(), since its own decodeHeaders() has not run at that point.
++    ON_CALL(req_info_, getRequestHeaders()).WillByDefault(Return(&headers_));
++    filter_->setDecoderFilterCallbacks(callbacks_);
++  }
++
++  Upstream::HostDescriptionConstSharedPtr makeHost(const std::string& address) {
++    auto host = std::make_shared<NiceMock<Upstream::MockHostDescription>>();
++    ON_CALL(*host, address())
++        .WillByDefault(
++            Return(Network::Utility::parseInternetAddressAndPortNoThrow(address, false)));
++    return host;
++  }
++
++  NiceMock<Http::MockStreamDecoderFilterCallbacks> callbacks_;
++  NiceMock<Network::MockConnection> connection_;
++  NiceMock<StreamInfo::MockStreamInfo> req_info_;
++  FakeUpstreamStreamFilterCallbacks upstream_cbs_;
++  Stats::TestUtil::TestStore stats_store_;
++  NiceMock<Server::Configuration::MockServerFactoryContext> context_;
++  RBACFilter::RoleBasedAccessControlFilterConfigSharedPtr config_;
++  std::unique_ptr<UpstreamRoleBasedAccessControlFilter> filter_;
++  Http::TestRequestHeaderMapImpl headers_;
++};
++
++// The filter should register itself as an upstream callback during setDecoderFilterCallbacks.
++TEST_F(UpstreamRbacFilterTest, RegistersUpstreamCallbacks) {
++  setup(envoy::config::rbac::v3::RBAC::DENY, "1.2.3.4");
++  EXPECT_EQ(upstream_cbs_.registered_callbacks_, filter_.get());
++}
++
++// A DENY policy whose upstream_ip matches the selected host rejects the request before connecting.
++TEST_F(UpstreamRbacFilterTest, DenyMatchingUpstreamIp) {
++  setup(envoy::config::rbac::v3::RBAC::DENY, "1.2.3.4");
++  EXPECT_CALL(callbacks_, sendLocalReply(Http::Code::Forbidden, "RBAC: access denied", _, _, _));
++  filter_->onHostSelected(makeHost("1.2.3.4:80"));
++
++  EXPECT_EQ(1U, config_->stats().denied_.value());
++  // The filter populates the upstream address filter state so the matcher can resolve it.
++  EXPECT_TRUE(req_info_.filterState()->hasDataWithName(StreamInfo::UpstreamAddress::key()));
++}
++
++// A DENY policy whose upstream_ip does not match the selected host allows the request.
++TEST_F(UpstreamRbacFilterTest, AllowNonMatchingUpstreamIp) {
++  setup(envoy::config::rbac::v3::RBAC::DENY, "1.2.3.4");
++  EXPECT_CALL(callbacks_, sendLocalReply(_, _, _, _, _)).Times(0);
++  filter_->onHostSelected(makeHost("5.6.7.8:80"));
++
++  EXPECT_EQ(1U, config_->stats().allowed_.value());
++}
++
++// An ALLOW policy whose upstream_ip matches the selected host allows the request.
++TEST_F(UpstreamRbacFilterTest, AllowMatchingUpstreamIp) {
++  setup(envoy::config::rbac::v3::RBAC::ALLOW, "1.2.3.4");
++  EXPECT_CALL(callbacks_, sendLocalReply(_, _, _, _, _)).Times(0);
++  filter_->onHostSelected(makeHost("1.2.3.4:80"));
++
++  EXPECT_EQ(1U, config_->stats().allowed_.value());
++}
++
++// Header matching is available at onHostSelected time: the request is denied only when both the
++// upstream IP and the request header match.
++TEST_F(UpstreamRbacFilterTest, CombinedHeaderAndUpstreamIpMatch) {
++  setup(envoy::config::rbac::v3::RBAC::DENY, "1.2.3.4", /*require_header=*/true);
++
++  // Header present + IP match -> denied.
++  headers_.addCopy("x-block", "1");
++  EXPECT_CALL(callbacks_, sendLocalReply(Http::Code::Forbidden, _, _, _, _));
++  filter_->onHostSelected(makeHost("1.2.3.4:80"));
++  EXPECT_EQ(1U, config_->stats().denied_.value());
++}
++
++TEST_F(UpstreamRbacFilterTest, HeaderAbsentIsAllowed) {
++  setup(envoy::config::rbac::v3::RBAC::DENY, "1.2.3.4", /*require_header=*/true);
++
++  // Header absent -> the AND permission does not match, so the request is allowed.
++  EXPECT_CALL(callbacks_, sendLocalReply(_, _, _, _, _)).Times(0);
++  filter_->onHostSelected(makeHost("1.2.3.4:80"));
++  EXPECT_EQ(1U, config_->stats().allowed_.value());
++}
++
++// A stale/foreign upstream address already in filter state (e.g. left by a previous retry attempt
++// or by the dynamic forward proxy filter) must NOT be trusted: the filter overwrites it and
++// evaluates the host selected for this attempt. Regression test for the deny-bypass-on-retry bug.
++TEST_F(UpstreamRbacFilterTest, ReevaluatesSelectedHostIgnoringStaleFilterState) {
++  setup(envoy::config::rbac::v3::RBAC::DENY, "1.2.3.4");
++  // Pre-populate the filter state with a different (allowed) address, as a prior attempt would.
++  req_info_.filterState()->setData(
++      StreamInfo::UpstreamAddress::key(),
++      std::make_shared<StreamInfo::UpstreamAddress>(
++          Network::Utility::parseInternetAddressAndPortNoThrow("5.6.7.8:80", false)),
++      StreamInfo::FilterState::LifeSpan::Request);
++
++  // The selected host matches the deny rule and must be denied, despite the stale allowed address.
++  EXPECT_CALL(callbacks_, sendLocalReply(Http::Code::Forbidden, _, _, _, _));
++  filter_->onHostSelected(makeHost("1.2.3.4:80"));
++  EXPECT_EQ(1U, config_->stats().denied_.value());
++}
++
++// The engine result is exposed as dynamic metadata under the upstream_rbac namespace (distinct from
++// the downstream rbac filter's namespace).
++TEST_F(UpstreamRbacFilterTest, EmitsDynamicMetadataUnderUpstreamRbacKey) {
++  setup(envoy::config::rbac::v3::RBAC::DENY, "1.2.3.4");
++  EXPECT_CALL(req_info_, setDynamicMetadata("envoy.filters.http.upstream_rbac", _));
++  EXPECT_CALL(callbacks_, sendLocalReply(_, _, _, _, _));
++  filter_->onHostSelected(makeHost("1.2.3.4:80"));
++}
++
++// With no RBAC engine configured (empty config), the filter is a no-op: no denial, no metadata.
++TEST_F(UpstreamRbacFilterTest, NoEngineConfiguredAllows) {
++  applyConfig(envoy::extensions::filters::http::rbac::v3::RBAC{});
++  EXPECT_CALL(callbacks_, sendLocalReply(_, _, _, _, _)).Times(0);
++  EXPECT_CALL(req_info_, setDynamicMetadata(_, _)).Times(0);
++  filter_->onHostSelected(makeHost("1.2.3.4:80"));
++}
++
++// Per-route configuration works for the upstream filter exactly as for the downstream RBAC filter:
++// it is inherited from RoleBasedAccessControlFilter, which resolves the route-specific config by
++// the filter's config name over the (downstream) route. Here the main config denies the selected
++// host but a route-local RBACPerRoute override allows it, and the override wins.
++TEST_F(UpstreamRbacFilterTest, PerRouteConfigOverridesEngine) {
++  setup(envoy::config::rbac::v3::RBAC::DENY, "1.2.3.4");
++
++  // Route-local config: allow everything.
++  envoy::extensions::filters::http::rbac::v3::RBACPerRoute per_route;
++  auto* rules = per_route.mutable_rbac()->mutable_rules();
++  rules->set_action(envoy::config::rbac::v3::RBAC::ALLOW);
++  envoy::config::rbac::v3::Policy allow_all;
++  allow_all.add_permissions()->set_any(true);
++  allow_all.add_principals()->set_any(true);
++  (*rules->mutable_policies())["allow-all"] = allow_all;
++  RBACFilter::RoleBasedAccessControlRouteSpecificFilterConfig route_config(
++      per_route, context_, ProtobufMessage::getStrictValidationVisitor());
++  EXPECT_CALL(callbacks_, mostSpecificPerFilterConfig()).WillRepeatedly(Return(&route_config));
++
++  // The deny-matching host is allowed because the route-local engine takes precedence.
++  EXPECT_CALL(callbacks_, sendLocalReply(_, _, _, _, _)).Times(0);
++  filter_->onHostSelected(makeHost("1.2.3.4:80"));
++  EXPECT_EQ(1U, config_->stats().allowed_.value());
++}
++
++// A selected host with no resolved address (e.g. a logical host) is skipped without evaluating,
++// crashing, or writing filter state.
++TEST_F(UpstreamRbacFilterTest, NullHostAddressIsSkipped) {
++  setup(envoy::config::rbac::v3::RBAC::DENY, "1.2.3.4");
++  auto host = std::make_shared<NiceMock<Upstream::MockHostDescription>>();
++  ON_CALL(*host, address()).WillByDefault(Return(nullptr));
++
++  EXPECT_CALL(callbacks_, sendLocalReply(_, _, _, _, _)).Times(0);
++  filter_->onHostSelected(host);
++  EXPECT_FALSE(req_info_.filterState()->hasDataWithName(StreamInfo::UpstreamAddress::key()));
++}
++
++// With no downstream connection available at host-selection time, the filter records the selected
++// address but skips evaluation rather than dereferencing an empty connection OptRef.
++TEST_F(UpstreamRbacFilterTest, NoDownstreamConnectionIsSkipped) {
++  setup(envoy::config::rbac::v3::RBAC::DENY, "1.2.3.4");
++  EXPECT_CALL(callbacks_, connection()).WillRepeatedly(Return(OptRef<const Network::Connection>{}));
++
++  EXPECT_CALL(callbacks_, sendLocalReply(_, _, _, _, _)).Times(0);
++  EXPECT_CALL(req_info_, setDynamicMetadata(_, _)).Times(0);
++  filter_->onHostSelected(makeHost("1.2.3.4:80"));
++
++  // The address is written (that happens before the connection guard), but no policy is evaluated.
++  EXPECT_TRUE(req_info_.filterState()->hasDataWithName(StreamInfo::UpstreamAddress::key()));
++  EXPECT_EQ(0U, config_->stats().denied_.value());
++  EXPECT_EQ(0U, config_->stats().allowed_.value());
++}
++
++// If the downstream stream info exposes no request headers at host-selection time, the filter
++// evaluates against an empty header map rather than dereferencing null. The IP-only deny rule still
++// matches and denies.
++TEST_F(UpstreamRbacFilterTest, NullRequestHeadersUsesEmptyHeaders) {
++  setup(envoy::config::rbac::v3::RBAC::DENY, "1.2.3.4");
++  EXPECT_CALL(req_info_, getRequestHeaders()).WillRepeatedly(Return(nullptr));
++
++  EXPECT_CALL(callbacks_, sendLocalReply(Http::Code::Forbidden, _, _, _, _));
++  filter_->onHostSelected(makeHost("1.2.3.4:80"));
++  EXPECT_EQ(1U, config_->stats().denied_.value());
++}
++
++// decodeHeaders is a pass-through: the RBAC check runs in onHostSelected(), not during decode.
++TEST_F(UpstreamRbacFilterTest, DecodeHeadersPassesThrough) {
++  setup(envoy::config::rbac::v3::RBAC::DENY, "1.2.3.4");
++  EXPECT_CALL(callbacks_, sendLocalReply(_, _, _, _, _)).Times(0);
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->decodeHeaders(headers_, false));
++}
++
++// onUpstreamConnectionEstablished is a no-op (the filter acts at host selection); exercise it to
++// confirm it has no side effects.
++TEST_F(UpstreamRbacFilterTest, OnUpstreamConnectionEstablishedIsNoOp) {
++  setup(envoy::config::rbac::v3::RBAC::DENY, "1.2.3.4");
++  EXPECT_CALL(callbacks_, sendLocalReply(_, _, _, _, _)).Times(0);
++  filter_->onUpstreamConnectionEstablished();
++}
++
++} // namespace
++} // namespace UpstreamRBACFilter
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/test/extensions/filters/http/upstream_rbac/upstream_rbac_integration_test.cc b/test/extensions/filters/http/upstream_rbac/upstream_rbac_integration_test.cc
+new file mode 100644
+index 000000000..d8ea8235d
+--- /dev/null
++++ b/test/extensions/filters/http/upstream_rbac/upstream_rbac_integration_test.cc
+@@ -0,0 +1,117 @@
++#include "envoy/config/bootstrap/v3/bootstrap.pb.h"
++#include "envoy/config/rbac/v3/rbac.pb.h"
++#include "envoy/extensions/filters/http/rbac/v3/rbac.pb.h"
++#include "envoy/extensions/filters/http/upstream_codec/v3/upstream_codec.pb.h"
++#include "envoy/extensions/filters/network/http_connection_manager/v3/http_connection_manager.pb.h"
++#include "envoy/extensions/rbac/matchers/upstream_ip_port/v3/upstream_ip_port_matcher.pb.h"
++
++#include "test/config/utility.h"
++#include "test/integration/http_integration.h"
++
++#include "gtest/gtest.h"
++
++namespace Envoy {
++namespace {
++
++using HttpFilterProto =
++    envoy::extensions::filters::network::http_connection_manager::v3::HttpFilter;
++
++class UpstreamRbacIntegrationTest : public testing::TestWithParam<Network::Address::IpVersion>,
++                                    public HttpIntegrationTest {
++public:
++  UpstreamRbacIntegrationTest() : HttpIntegrationTest(Http::CodecType::HTTP2, GetParam()) {
++    setUpstreamProtocol(Http::CodecType::HTTP2);
++    skip_tag_extraction_rule_check_ = true;
++  }
++
++  // Adds an upstream RBAC filter (followed by the upstream codec filter) to the cluster, denying
++  // requests whose selected upstream IP falls within the provided CIDR.
++  void addUpstreamRbacFilter(const std::string& address_prefix, uint32_t prefix_len) {
++    envoy::extensions::filters::http::rbac::v3::RBAC rbac;
++    rbac.mutable_rules()->set_action(envoy::config::rbac::v3::RBAC::DENY);
++
++    envoy::config::rbac::v3::Policy policy;
++    envoy::extensions::rbac::matchers::upstream_ip_port::v3::UpstreamIpPortMatcher matcher;
++    matcher.mutable_upstream_ip()->set_address_prefix(address_prefix);
++    matcher.mutable_upstream_ip()->mutable_prefix_len()->set_value(prefix_len);
++    auto* matcher_ext = policy.add_permissions()->mutable_matcher();
++    matcher_ext->set_name("envoy.rbac.matchers.upstream_ip_port");
++    std::ignore = matcher_ext->mutable_typed_config()->PackFrom(matcher);
++    policy.add_principals()->set_any(true);
++    (*rbac.mutable_rules()->mutable_policies())["deny-upstream"] = policy;
++
++    HttpFilterProto rbac_filter;
++    rbac_filter.set_name("envoy.filters.http.upstream_rbac");
++    std::ignore = rbac_filter.mutable_typed_config()->PackFrom(rbac);
++
++    HttpFilterProto codec_filter;
++    codec_filter.set_name("envoy.filters.http.upstream_codec");
++    std::ignore = codec_filter.mutable_typed_config()->PackFrom(
++        envoy::extensions::filters::http::upstream_codec::v3::UpstreamCodec());
++
++    config_helper_.addConfigModifier(
++        [rbac_filter, codec_filter](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
++          auto* cluster = bootstrap.mutable_static_resources()->mutable_clusters(0);
++          ConfigHelper::HttpProtocolOptions protocol_options =
++              MessageUtil::anyConvert<ConfigHelper::HttpProtocolOptions>(
++                  (*cluster->mutable_typed_extension_protocol_options())
++                      ["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]);
++          *protocol_options.add_http_filters() = rbac_filter;
++          *protocol_options.add_http_filters() = codec_filter;
++          std::ignore = (*cluster->mutable_typed_extension_protocol_options())
++                            ["envoy.extensions.upstreams.http.v3.HttpProtocolOptions"]
++                                .PackFrom(protocol_options);
++        });
++  }
++
++  std::string loopbackCidr() {
++    return version_ == Network::Address::IpVersion::v4 ? "127.0.0.1" : "::1";
++  }
++
++  uint32_t loopbackPrefixLen() { return version_ == Network::Address::IpVersion::v4 ? 8 : 128; }
++};
++
++INSTANTIATE_TEST_SUITE_P(IpVersions, UpstreamRbacIntegrationTest,
++                         testing::ValuesIn(TestEnvironment::getIpVersionsForTest()),
++                         TestUtility::ipTestParamsToString);
++
++// A request to an upstream whose IP matches the deny rule is rejected with a 403 and no upstream
++// connection is established.
++TEST_P(UpstreamRbacIntegrationTest, DeniesMatchingUpstreamIp) {
++  addUpstreamRbacFilter(loopbackCidr(), loopbackPrefixLen());
++  initialize();
++
++  codec_client_ = makeHttpConnection(lookupPort("http"));
++  auto response = codec_client_->makeHeaderOnlyRequest(default_request_headers_);
++
++  ASSERT_TRUE(response->waitForEndStream());
++  EXPECT_TRUE(response->complete());
++  EXPECT_EQ("403", response->headers().getStatusValue());
++  // No upstream connection should have been established since the request was denied during host
++  // selection, before the connection was initiated.
++  EXPECT_EQ(0, test_server_->counter("cluster.cluster_0.upstream_cx_total")->value());
++
++  cleanupUpstreamAndDownstream();
++}
++
++// A request to an upstream whose IP does not match the deny rule is forwarded normally.
++TEST_P(UpstreamRbacIntegrationTest, AllowsNonMatchingUpstreamIp) {
++  // Deny a CIDR that the loopback upstream address will not fall into.
++  addUpstreamRbacFilter("10.255.255.255", 32);
++  initialize();
++
++  codec_client_ = makeHttpConnection(lookupPort("http"));
++  auto response = codec_client_->makeHeaderOnlyRequest(default_request_headers_);
++
++  waitForNextUpstreamRequest();
++  upstream_request_->encodeHeaders(Http::TestResponseHeaderMapImpl{{":status", "200"}}, true);
++
++  ASSERT_TRUE(response->waitForEndStream());
++  EXPECT_TRUE(response->complete());
++  EXPECT_EQ("200", response->headers().getStatusValue());
++
++  cleanupUpstreamAndDownstream();
++}
++
++} // namespace
++} // namespace Envoy

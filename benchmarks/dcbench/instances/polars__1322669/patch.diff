@@ -1,0 +1,306 @@
+From 1322669eba567c717b4de22d83a748ba63010151 Mon Sep 17 00:00:00 2001
+From: Pablo Galindo Salgado <Pablogsal@gmail.com>
+Date: Fri, 1 May 2026 13:12:42 +0100
+Subject: [PATCH] fix(rust): Rebalance deep merge_sorted chains (#27065)
+
+---
+ .../plans/optimizer/flatten_merge_sorted.rs   | 145 ++++++++++++++++++
+ crates/polars-plan/src/plans/optimizer/mod.rs |   6 +
+ .../lazyframe/test_order_observability.py     |  35 +++++
+ .../unit/operations/test_merge_sorted.py      |  51 ++++++
+ 4 files changed, 237 insertions(+)
+ create mode 100644 crates/polars-plan/src/plans/optimizer/flatten_merge_sorted.rs
+
+diff --git a/crates/polars-plan/src/plans/optimizer/flatten_merge_sorted.rs b/crates/polars-plan/src/plans/optimizer/flatten_merge_sorted.rs
+new file mode 100644
+index 000000000..6d7f67a29
+--- /dev/null
++++ b/crates/polars-plan/src/plans/optimizer/flatten_merge_sorted.rs
+@@ -0,0 +1,145 @@
++use polars_core::error::PolarsResult;
++use polars_core::prelude::PlHashSet;
++use polars_utils::aliases::InitHashMaps;
++use polars_utils::arena::{Arena, Node};
++use polars_utils::pl_str::PlSmallStr;
++
++use super::OptimizationRule;
++use crate::prelude::{AExpr, IR};
++
++pub struct FlattenMergeSortedRule {
++    collected_inputs: Vec<Node>,
++    optimized_nodes: PlHashSet<Node>,
++    traversal_stack: Vec<Node>,
++}
++
++impl FlattenMergeSortedRule {
++    pub fn new() -> Self {
++        Self {
++            collected_inputs: Vec::new(),
++            optimized_nodes: PlHashSet::new(),
++            traversal_stack: Vec::new(),
++        }
++    }
++}
++
++impl OptimizationRule for FlattenMergeSortedRule {
++    fn optimize_plan(
++        &mut self,
++        lp_arena: &mut Arena<IR>,
++        _expr_arena: &mut Arena<AExpr>,
++        node: Node,
++    ) -> PolarsResult<Option<IR>> {
++        let (key, maintain_order) = match lp_arena.get(node) {
++            IR::MergeSorted {
++                key,
++                maintain_order,
++                ..
++            } => (key.clone(), *maintain_order),
++            _ => return Ok(None),
++        };
++        if !self.optimized_nodes.insert(node) {
++            return Ok(None);
++        }
++
++        self.collected_inputs.clear();
++        collect_merge_sorted_inputs(
++            node,
++            &key,
++            maintain_order,
++            lp_arena,
++            &mut self.collected_inputs,
++            &mut self.traversal_stack,
++        );
++
++        if self.collected_inputs.len() <= 2 {
++            return Ok(None);
++        }
++
++        Ok(Some(build_merge_sorted_subtree(
++            &self.collected_inputs,
++            &key,
++            maintain_order,
++            lp_arena,
++            &mut self.optimized_nodes,
++        )))
++    }
++}
++
++fn collect_merge_sorted_inputs(
++    root: Node,
++    key: &PlSmallStr,
++    maintain_order: bool,
++    lp_arena: &Arena<IR>,
++    out: &mut Vec<Node>,
++    traversal_stack: &mut Vec<Node>,
++) {
++    traversal_stack.clear();
++    traversal_stack.push(root);
++
++    while let Some(node) = traversal_stack.pop() {
++        match lp_arena.get(node) {
++            IR::MergeSorted {
++                input_left,
++                input_right,
++                key: merge_key,
++                maintain_order: merge_maintain_order,
++            } if merge_key == key && *merge_maintain_order == maintain_order => {
++                traversal_stack.push(*input_right);
++                traversal_stack.push(*input_left);
++            },
++            _ => out.push(node),
++        }
++    }
++}
++
++fn build_merge_sorted_subtree(
++    inputs: &[Node],
++    key: &PlSmallStr,
++    maintain_order: bool,
++    lp_arena: &mut Arena<IR>,
++    optimized_nodes: &mut PlHashSet<Node>,
++) -> IR {
++    debug_assert!(inputs.len() >= 2);
++
++    let split = inputs.len().div_ceil(2);
++    let input_left = build_merge_sorted_subtree_node(
++        &inputs[..split],
++        key,
++        maintain_order,
++        lp_arena,
++        optimized_nodes,
++    );
++    let input_right = build_merge_sorted_subtree_node(
++        &inputs[split..],
++        key,
++        maintain_order,
++        lp_arena,
++        optimized_nodes,
++    );
++    IR::MergeSorted {
++        input_left,
++        input_right,
++        key: key.clone(),
++        maintain_order,
++    }
++}
++
++fn build_merge_sorted_subtree_node(
++    inputs: &[Node],
++    key: &PlSmallStr,
++    maintain_order: bool,
++    lp_arena: &mut Arena<IR>,
++    optimized_nodes: &mut PlHashSet<Node>,
++) -> Node {
++    match inputs {
++        [node] => *node,
++        _ => {
++            let subtree =
++                build_merge_sorted_subtree(inputs, key, maintain_order, lp_arena, optimized_nodes);
++            let node = lp_arena.add(subtree);
++            optimized_nodes.insert(node);
++            node
++        },
++    }
++}
+diff --git a/crates/polars-plan/src/plans/optimizer/mod.rs b/crates/polars-plan/src/plans/optimizer/mod.rs
+index 0ed764c81..19067e3ea 100644
+--- a/crates/polars-plan/src/plans/optimizer/mod.rs
++++ b/crates/polars-plan/src/plans/optimizer/mod.rs
+@@ -11,6 +11,8 @@ mod collect_members;
+ mod count_star;
+ #[cfg(feature = "cse")]
+ mod cse;
++#[cfg(feature = "merge_sorted")]
++mod flatten_merge_sorted;
+ mod flatten_union;
+ #[cfg(feature = "fused")]
+ mod fused;
+@@ -46,6 +48,8 @@ pub use sortedness::{
+ };
+ pub use stack_opt::{OptimizationRule, OptimizeExprContext, StackOptimizer};
+ 
++#[cfg(feature = "merge_sorted")]
++use self::flatten_merge_sorted::FlattenMergeSortedRule;
+ use self::flatten_union::FlattenUnionRule;
+ pub use crate::frame::{AllowedOptimizations, OptFlags};
+ pub use crate::plans::conversion::type_coercion::TypeCoercionRule;
+@@ -244,6 +248,8 @@ pub fn optimize(
+     }
+ 
+     if !opt_flags.eager() {
++        #[cfg(feature = "merge_sorted")]
++        rules.push(Box::new(FlattenMergeSortedRule::new()));
+         rules.push(Box::new(FlattenUnionRule {}));
+     }
+ 
+diff --git a/py-polars/tests/unit/lazyframe/test_order_observability.py b/py-polars/tests/unit/lazyframe/test_order_observability.py
+index 3b386a375..2ff7dfd2c 100644
+--- a/py-polars/tests/unit/lazyframe/test_order_observability.py
++++ b/py-polars/tests/unit/lazyframe/test_order_observability.py
+@@ -1,5 +1,6 @@
+ from __future__ import annotations
+ 
++import functools
+ from typing import Any
+ 
+ import pytest
+@@ -164,6 +165,40 @@ def test_merge_sorted_to_union() -> None:
+     assert "UNION" in explain
+ 
+ 
++@pytest.mark.parametrize("n_frames", [4, 5])
++def test_merge_sorted_deep_chain_to_union(n_frames: int) -> None:
++    lfs = [pl.LazyFrame({"a": [i], "b": [i]}) for i in range(n_frames)]
++    lf = functools.reduce(
++        lambda left, right: left.merge_sorted(right, "a"), lfs
++    ).unique()
++
++    explain = lf.explain(optimizations=pl.QueryOptFlags(check_order_observe=False))
++    assert "MERGE_SORTED" in explain
++    assert "UNION" not in explain
++
++    explain = lf.explain()
++    assert "MERGE_SORTED" not in explain
++    assert "UNION" in explain
++
++
++@pytest.mark.parametrize("n_frames", [4, 5, 6])
++def test_merge_sorted_deep_chain_explain_matches_balanced(n_frames: int) -> None:
++    lfs = [pl.LazyFrame({"a": [i], "b": [i]}) for i in range(n_frames)]
++
++    chained = functools.reduce(lambda left, right: left.merge_sorted(right, "a"), lfs)
++    balanced = pl.merge_sorted(lfs, key="a")
++
++    assert chained.sort("a").explain() == balanced.sort("a").explain()
++
++    opts = pl.QueryOptFlags(check_order_observe=False)
++    chained_explain = chained.explain(optimizations=opts)
++    balanced_explain = balanced.explain(optimizations=opts)
++
++    assert chained_explain == balanced_explain
++    assert "MERGE_SORTED" in chained_explain
++    assert "UNION" not in chained_explain
++
++
+ @pytest.mark.parametrize(
+     "order_sensitive_expr",
+     [
+diff --git a/py-polars/tests/unit/operations/test_merge_sorted.py b/py-polars/tests/unit/operations/test_merge_sorted.py
+index e3b58fa20..1fbd12dae 100644
+--- a/py-polars/tests/unit/operations/test_merge_sorted.py
++++ b/py-polars/tests/unit/operations/test_merge_sorted.py
+@@ -377,3 +377,54 @@ def test_merge_sorted_maintain_order_parametric(lhs: pl.Series, rhs: pl.Series)
+     expected = pl.concat([left, right]).sort(["key", "df"], maintain_order=True)
+ 
+     assert_frame_equal(actual, expected)
++
++
++@pytest.mark.parametrize("n_frames", [4, 5])
++def test_merge_sorted_deep_chain_maintain_order(n_frames: int) -> None:
++    dfs = [
++        pl.DataFrame(
++            {
++                "key": [0, 0, 1, 1],
++                "src": [i, i, i, i],
++                "pos": [0, 1, 0, 1],
++            }
++        )
++        for i in range(n_frames)
++    ]
++
++    chained = dfs[0].lazy()
++    for df in dfs[1:]:
++        chained = chained.merge_sorted(df.lazy(), key="key", maintain_order=True)
++
++    expected = pl.concat(dfs).sort(["key", "src", "pos"], maintain_order=True)
++
++    assert_frame_equal(chained.collect(), expected)
++
++
++@pytest.mark.parametrize("n_frames", [4, 5])
++def test_merge_sorted_deep_chain_with_sort_collect(n_frames: int) -> None:
++    dfs = [
++        pl.DataFrame(
++            {
++                "foo": [f"lazy-bear-{i}", f"eager-bear-{i}"],
++                "n": [10 + i, 110 + i],
++            }
++        )
++        for i in range(n_frames)
++    ]
++    lfs = [df.lazy() for df in dfs]
++
++    chained = lfs[0]
++    for lf in lfs[1:]:
++        chained = chained.merge_sorted(lf, key="n")
++
++    expected = pl.DataFrame(
++        {
++            "foo": [f"lazy-bear-{i}" for i in range(n_frames)]
++            + [f"eager-bear-{i}" for i in range(n_frames)],
++            "n": [10 + i for i in range(n_frames)] + [110 + i for i in range(n_frames)],
++        }
++    )
++    result = chained.sort("n", "foo").collect()
++
++    assert_frame_equal(result, expected)

@@ -1,0 +1,973 @@
+From a298fc95ac8023957331253aaa956ae2aa89d16a Mon Sep 17 00:00:00 2001
+From: Marco Edward Gorelli <33491632+MarcoGorelli@users.noreply.github.com>
+Date: Mon, 6 Jul 2026 15:42:02 +0100
+Subject: [PATCH] feat: Add `list` expression which consistently packs elements
+ together into new List type (#27990)
+
+Co-authored-by: Orson Peters <orsonpeters@gmail.com>
+---
+ crates/polars-core/src/frame/column/mod.rs    |  9 ++-
+ crates/polars-core/src/frame/column/scalar.rs |  7 ++
+ crates/polars-core/src/series/mod.rs          | 20 +-----
+ crates/polars-core/src/series/ops/reshape.rs  | 31 ++++----
+ .../src/dispatch/groups_dispatch.rs           |  4 +-
+ crates/polars-expr/src/dispatch/misc.rs       | 11 +++
+ crates/polars-expr/src/dispatch/mod.rs        |  1 +
+ .../src/expressions/aggregation.rs            |  2 +-
+ crates/polars-expr/src/expressions/apply.rs   |  2 +-
+ crates/polars-expr/src/expressions/mod.rs     |  4 +-
+ crates/polars-expr/src/expressions/slice.rs   |  8 +--
+ crates/polars-plan/dsl-schema-hashes.json     |  2 +-
+ .../polars-plan/src/dsl/function_expr/mod.rs  |  3 +
+ .../polars-plan/src/dsl/functions/concat.rs   | 12 ++++
+ .../src/plans/aexpr/determinism.rs            |  1 +
+ .../src/plans/aexpr/function_expr/mod.rs      |  5 ++
+ .../src/plans/aexpr/function_expr/schema.rs   | 14 ++++
+ .../conversion/dsl_to_ir/expr_expansion.rs    |  1 +
+ .../plans/conversion/dsl_to_ir/functions.rs   |  1 +
+ .../src/plans/conversion/ir_to_dsl.rs         |  1 +
+ crates/polars-python/src/c_api/mod.rs         |  1 +
+ crates/polars-python/src/functions/lazy.rs    |  7 ++
+ .../src/lazyframe/visitor/expr_nodes.rs       |  1 +
+ .../reference/expressions/functions.rst       |  1 +
+ py-polars/src/polars/__init__.py              |  2 +
+ py-polars/src/polars/_plr.pyi                 | 71 ++++++++++---------
+ py-polars/src/polars/functions/__init__.py    |  2 +
+ py-polars/src/polars/functions/as_datatype.py | 54 +++++++++++++-
+ .../functions/as_datatype/test_concat_list.py | 50 +++++++++++++
+ 29 files changed, 248 insertions(+), 80 deletions(-)
+
+diff --git a/crates/polars-core/src/frame/column/mod.rs b/crates/polars-core/src/frame/column/mod.rs
+index bb36b1bc3..95c2138ed 100644
+--- a/crates/polars-core/src/frame/column/mod.rs
++++ b/crates/polars-core/src/frame/column/mod.rs
+@@ -1306,10 +1306,13 @@ impl Column {
+         }
+     }
+ 
+-    /// Packs every element into a list.
+-    pub fn as_list(&self) -> ListChunked {
++    /// Packs every element into a single-element list.
++    pub fn to_unit_list(&self) -> Column {
+         // @scalar-opt
+-        self.as_materialized_series().as_list()
++        match self {
++            Column::Series(s) => s.to_unit_list().into_column(),
++            Column::Scalar(s) => s.to_unit_list().into_column(),
++        }
+     }
+ 
+     pub fn is_sorted_flag(&self) -> IsSorted {
+diff --git a/crates/polars-core/src/frame/column/scalar.rs b/crates/polars-core/src/frame/column/scalar.rs
+index 3a264a9a2..83f44f68f 100644
+--- a/crates/polars-core/src/frame/column/scalar.rs
++++ b/crates/polars-core/src/frame/column/scalar.rs
+@@ -305,6 +305,13 @@ impl ScalarColumn {
+         self
+     }
+ 
++    /// Packs every element into a single-element list.
++    pub fn to_unit_list(&self) -> Self {
++        let mut slf = self.clone();
++        slf.map_scalar(|s| Scalar::new_list(s.into_series(PlSmallStr::EMPTY)));
++        slf
++    }
++
+     pub fn map_scalar(&mut self, map_scalar: impl Fn(Scalar) -> Scalar) {
+         self.scalar = map_scalar(std::mem::take(&mut self.scalar));
+         self.materialized.take();
+diff --git a/crates/polars-core/src/series/mod.rs b/crates/polars-core/src/series/mod.rs
+index be3896690..6311b713a 100644
+--- a/crates/polars-core/src/series/mod.rs
++++ b/crates/polars-core/src/series/mod.rs
+@@ -35,7 +35,6 @@ use std::hash::{Hash, Hasher};
+ use std::ops::Deref;
+ 
+ use arrow::compute::aggregate::estimated_bytes_size;
+-use arrow::offset::Offsets;
+ pub use from::*;
+ pub use iterator::{SeriesIter, SeriesPhysIter};
+ use num_traits::NumCast;
+@@ -1051,23 +1050,6 @@ impl Series {
+         size
+     }
+ 
+-    /// Packs every element into a list.
+-    pub fn as_list(&self) -> ListChunked {
+-        let s = self.rechunk();
+-        // don't  use `to_arrow` as we need the physical types
+-        let values = s.chunks()[0].clone();
+-        let offsets = (0i64..(s.len() as i64 + 1)).collect::<Vec<_>>();
+-        let offsets = unsafe { Offsets::new_unchecked(offsets) };
+-
+-        let dtype = LargeListArray::default_datatype(
+-            s.dtype().to_physical().to_arrow(CompatLevel::newest()),
+-        );
+-        let new_arr = LargeListArray::new(dtype, offsets.into(), values, None);
+-        let mut out = ListChunked::with_chunk(s.name().clone(), new_arr);
+-        out.set_inner_dtype(s.dtype().clone());
+-        out
+-    }
+-
+     pub fn row_encode_unordered(&self) -> PolarsResult<BinaryOffsetChunked> {
+         row_encode::_get_rows_encoded_ca_unordered(
+             self.name().clone(),
+@@ -1177,7 +1159,7 @@ mod test {
+                     ArrowDataType::Int32,
+                     true,
+                 ))),
+-                unsafe { Offsets::new_unchecked(vec![0, 1]) }.into(),
++                unsafe { arrow::offset::Offsets::new_unchecked(vec![0, 1]) }.into(),
+                 PrimitiveArray::new(ArrowDataType::Int32, vec![1i32].into(), None).to_boxed(),
+                 None,
+             )],
+diff --git a/crates/polars-core/src/series/ops/reshape.rs b/crates/polars-core/src/series/ops/reshape.rs
+index c1499dae4..b2f02ef96 100644
+--- a/crates/polars-core/src/series/ops/reshape.rs
++++ b/crates/polars-core/src/series/ops/reshape.rs
+@@ -11,17 +11,6 @@ use crate::chunked_array::builder::get_list_builder;
+ use crate::datatypes::{DataType, ListChunked};
+ use crate::prelude::{IntoSeries, Series, *};
+ 
+-fn reshape_fast_path(name: PlSmallStr, s: &Series) -> Series {
+-    let mut ca = ListChunked::from_chunk_iter(
+-        name,
+-        s.chunks().iter().map(|arr| array_to_unit_list(arr.clone())),
+-    );
+-
+-    ca.set_inner_dtype(s.dtype().clone());
+-    ca.set_fast_explode();
+-    ca.into_series()
+-}
+-
+ impl Series {
+     /// Recurse nested types until we are at the leaf array.
+     pub fn get_leaf_array(&self) -> Series {
+@@ -71,6 +60,20 @@ impl Series {
+         (offsets, validities)
+     }
+ 
++    /// Wrap each element of this Series in a single-element list.
++    /// A Series `[1, 2, 3]` becomes `[[1], [2], [3]]`.
++    pub fn to_unit_list(&self) -> ListChunked {
++        let mut ca = ListChunked::from_chunk_iter(
++            self.name().clone(),
++            self.chunks()
++                .iter()
++                .map(|arr| array_to_unit_list(arr.clone())),
++        );
++        ca.set_inner_dtype(self.dtype().clone());
++        ca.set_fast_explode();
++        ca
++    }
++
+     /// Convert the values of this Series to a ListChunked with a length of 1,
+     /// so a Series of `[1, 2, 3]` becomes `[[1, 2, 3]]`.
+     pub fn implode(&self) -> PolarsResult<ListChunked> {
+@@ -256,8 +259,7 @@ impl Series {
+ 
+                 if s_ref.is_empty() {
+                     if rows.get_or_infer(0) == 0 && cols.get_or_infer(0) <= 1 {
+-                        let s = reshape_fast_path(s.name().clone(), s_ref);
+-                        return Ok(s);
++                        return Ok(s_ref.to_unit_list().into_series());
+                     } else {
+                         polars_bail!(InvalidOperation: "cannot reshape len 0 into shape {}", format_tuple!(dimensions))
+                     }
+@@ -280,8 +282,7 @@ impl Series {
+ 
+                 // Fast path, we can create a unit list so we only allocate offsets.
+                 if rows as usize == s_ref.len() && cols == 1 {
+-                    let s = reshape_fast_path(s.name().clone(), s_ref);
+-                    return Ok(s);
++                    return Ok(s_ref.to_unit_list().into_series());
+                 }
+ 
+                 polars_ensure!(
+diff --git a/crates/polars-expr/src/dispatch/groups_dispatch.rs b/crates/polars-expr/src/dispatch/groups_dispatch.rs
+index 65f42f469..ceab9da96 100644
+--- a/crates/polars-expr/src/dispatch/groups_dispatch.rs
++++ b/crates/polars-expr/src/dispatch/groups_dispatch.rs
+@@ -360,7 +360,7 @@ pub fn drop_items<'a>(
+     // No elements are filtered out.
+     if predicate.unset_bits() == 0 {
+         if let AggState::AggregatedScalar(c) | AggState::LiteralScalar(c) = &mut ac.state {
+-            *c = c.as_list().into_column();
++            *c = c.to_unit_list();
+             if c.len() == 1 && ac.groups.len() != 1 {
+                 *c = c.new_from_index(0, ac.groups.len());
+             }
+@@ -686,7 +686,7 @@ pub fn unique<'a>(
+     ac.groups();
+ 
+     if let AggState::AggregatedScalar(c) | AggState::LiteralScalar(c) = &mut ac.state {
+-        *c = c.as_list().into_column();
++        *c = c.to_unit_list();
+         if c.len() == 1 && ac.groups.len() != 1 {
+             *c = c.new_from_index(0, ac.groups.len());
+         }
+diff --git a/crates/polars-expr/src/dispatch/misc.rs b/crates/polars-expr/src/dispatch/misc.rs
+index 55612d225..30c388bc7 100644
+--- a/crates/polars-expr/src/dispatch/misc.rs
++++ b/crates/polars-expr/src/dispatch/misc.rs
+@@ -4,6 +4,7 @@ use polars_core::prelude::*;
+ use polars_core::scalar::Scalar;
+ use polars_core::series::Series;
+ use polars_core::series::ops::NullBehavior;
++use polars_ops::prelude::ListNameSpaceImpl;
+ #[cfg(feature = "interpolate")]
+ use polars_ops::series::InterpolationMethod;
+ #[cfg(feature = "rank")]
+@@ -679,6 +680,16 @@ pub fn as_struct(cols: &[Column]) -> PolarsResult<Column> {
+     Ok(StructChunked::from_columns(fst.name().clone(), length, cols)?.into_column())
+ }
+ 
++pub fn as_list(s: &mut [Column]) -> PolarsResult<Column> {
++    let first = s[0].to_unit_list();
++    let other: Vec<Column> = s[1..].iter().map(Column::to_unit_list).collect();
++
++    first
++        .list()?
++        .lst_concat(&other)
++        .map(IntoColumn::into_column)
++}
++
+ #[cfg(feature = "log")]
+ pub(super) fn entropy(s: &Column, base: f64, normalize: bool) -> PolarsResult<Column> {
+     use polars_ops::series::LogSeries;
+diff --git a/crates/polars-expr/src/dispatch/mod.rs b/crates/polars-expr/src/dispatch/mod.rs
+index 1031d058b..8a2a328ab 100644
+--- a/crates/polars-expr/src/dispatch/mod.rs
++++ b/crates/polars-expr/src/dispatch/mod.rs
+@@ -303,6 +303,7 @@ pub fn function_expr_to_udf(func: IRFunctionExpr) -> SpecialEq<Arc<dyn ColumnsUd
+         F::Repeat => map_as_slice!(misc::repeat),
+         #[cfg(feature = "rank")]
+         F::Rank { options, seed } => map!(misc::rank, options, seed),
++        F::AsList => map_as_slice!(misc::as_list),
+         #[cfg(feature = "dtype-struct")]
+         F::AsStruct => {
+             map_as_slice!(misc::as_struct)
+diff --git a/crates/polars-expr/src/expressions/aggregation.rs b/crates/polars-expr/src/expressions/aggregation.rs
+index 8084dac2c..8abd684e5 100644
+--- a/crates/polars-expr/src/expressions/aggregation.rs
++++ b/crates/polars-expr/src/expressions/aggregation.rs
+@@ -297,7 +297,7 @@ impl PhysicalExpr for AggregationExpr {
+                 GroupByMethod::Implode { maintain_order: _ } => {
+                     let col = match ac.agg_state() {
+                         AggState::LiteralScalar(_) => unreachable!(), // handled above
+-                        AggState::AggregatedScalar(c) => c.as_list().into_column(),
++                        AggState::AggregatedScalar(c) => c.to_unit_list(),
+                         AggState::AggregatedList(c) => c.clone(),
+                         AggState::NotAggregated(_) => ac.aggregated(),
+                     };
+diff --git a/crates/polars-expr/src/expressions/apply.rs b/crates/polars-expr/src/expressions/apply.rs
+index 418c4b06a..252bbbb4b 100644
+--- a/crates/polars-expr/src/expressions/apply.rs
++++ b/crates/polars-expr/src/expressions/apply.rs
+@@ -152,7 +152,7 @@ impl ApplyExpr {
+ 
+         // At this point, calling aggregated() will not lead to memory explosion.
+         let agg = match ac.agg_state() {
+-            AggState::AggregatedScalar(s) => s.as_list().into_column(),
++            AggState::AggregatedScalar(s) => s.to_unit_list(),
+             _ => ac.aggregated(),
+         };
+ 
+diff --git a/crates/polars-expr/src/expressions/mod.rs b/crates/polars-expr/src/expressions/mod.rs
+index 838a94d37..0278ed3db 100644
+--- a/crates/polars-expr/src/expressions/mod.rs
++++ b/crates/polars-expr/src/expressions/mod.rs
+@@ -440,7 +440,9 @@ impl<'a> AggregationContext<'a> {
+         self.aggregated();
+         let out = self.get_values();
+         match self.agg_state() {
+-            AggState::AggregatedScalar(_) => Cow::Owned(out.as_list()),
++            AggState::AggregatedScalar(_) => {
++                Cow::Owned(out.as_materialized_series().to_unit_list())
++            },
+             _ => Cow::Borrowed(out.list().unwrap()),
+         }
+     }
+diff --git a/crates/polars-expr/src/expressions/slice.rs b/crates/polars-expr/src/expressions/slice.rs
+index d38ce30fb..72fbd14d4 100644
+--- a/crates/polars-expr/src/expressions/slice.rs
++++ b/crates/polars-expr/src/expressions/slice.rs
+@@ -134,7 +134,7 @@ impl PhysicalExpr for SliceExpr {
+                     return Ok(ac);
+                 }
+                 if let AggregatedScalar(c) = ac.state {
+-                    ac.state = AggregatedList(c.as_list().into_column());
++                    ac.state = AggregatedList(c.to_unit_list());
+                     ac.update_groups = UpdateGroups::WithSeriesLen;
+                 }
+                 let groups = ac.groups();
+@@ -164,7 +164,7 @@ impl PhysicalExpr for SliceExpr {
+                 if matches!(ac.state, LiteralScalar(_)) {
+                     ac.aggregated();
+                 } else if let AggregatedScalar(c) = ac.state {
+-                    ac.state = AggregatedList(c.as_list().into_column());
++                    ac.state = AggregatedList(c.to_unit_list());
+                     ac.update_groups = UpdateGroups::WithSeriesLen;
+                 }
+                 let groups = ac.groups();
+@@ -206,7 +206,7 @@ impl PhysicalExpr for SliceExpr {
+                 if matches!(ac.state, LiteralScalar(_)) {
+                     ac.aggregated();
+                 } else if let AggregatedScalar(c) = ac.state {
+-                    ac.state = AggregatedList(c.as_list().into_column());
++                    ac.state = AggregatedList(c.to_unit_list());
+                     ac.update_groups = UpdateGroups::WithSeriesLen;
+                 }
+                 let groups = ac.groups();
+@@ -248,7 +248,7 @@ impl PhysicalExpr for SliceExpr {
+                 if matches!(ac.state, LiteralScalar(_)) {
+                     ac.aggregated();
+                 } else if let AggregatedScalar(c) = ac.state {
+-                    ac.state = AggregatedList(c.as_list().into_column());
++                    ac.state = AggregatedList(c.to_unit_list());
+                     ac.update_groups = UpdateGroups::WithSeriesLen;
+                 }
+ 
+diff --git a/crates/polars-plan/dsl-schema-hashes.json b/crates/polars-plan/dsl-schema-hashes.json
+index 1eb292198..8c9c6a2e1 100644
+--- a/crates/polars-plan/dsl-schema-hashes.json
++++ b/crates/polars-plan/dsl-schema-hashes.json
+@@ -66,7 +66,7 @@
+   "FileSinkOptions": "edebcf5e3965add5e4fd1be14ca6bdddc55fa22e6e829dca04beb321de0c992c",
+   "FileWriteFormat": "1a685aba7dd5d6c0aefc99a9060d1b57f166ea44ef57ad0d0d0c565dbabda811",
+   "FillNullStrategy": "459a9a9702415f9ca9e5218bb573609a60291e73162c38fbc046c97feb1b7500",
+-  "FunctionExpr": "83c1874c55b198580750a7f4230c078fe34085f13548ef76b1f665b4e3238342",
++  "FunctionExpr": "1ebcf362f8206c1cf9f99f05b2f7ec1103bb113958e4592e35e189fc658a79b5",
+   "FunctionFlags": "ac68b661d980cee7c3c7f499f4d8fa824b2f8617f7093613b00ec199a0f7c21f",
+   "FunctionOptions": "0784524479a30a7d91b890b03feac9eca6c46d04f0a7c3f4a9a2d827c3e34b5e",
+   "GroupbyOptions": "0cda61fc19eb9866157ae4afeed3dc018294aaea5f02692b085885de771bfcdb",
+diff --git a/crates/polars-plan/src/dsl/function_expr/mod.rs b/crates/polars-plan/src/dsl/function_expr/mod.rs
+index ed9bf7c05..971ef74ec 100644
+--- a/crates/polars-plan/src/dsl/function_expr/mod.rs
++++ b/crates/polars-plan/src/dsl/function_expr/mod.rs
+@@ -185,6 +185,7 @@ pub enum FunctionExpr {
+         has_min: bool,
+         has_max: bool,
+     },
++    AsList,
+     #[cfg(feature = "dtype-struct")]
+     AsStruct,
+     #[cfg(feature = "top_k")]
+@@ -503,6 +504,7 @@ impl Hash for FunctionExpr {
+             ArgWhere => {},
+             #[cfg(feature = "trigonometry")]
+             Atan2 => {},
++            AsList => {},
+             #[cfg(feature = "dtype-struct")]
+             AsStruct => {},
+             #[cfg(feature = "sign")]
+@@ -772,6 +774,7 @@ impl Display for FunctionExpr {
+                 (true, false) => "clip_min",
+                 _ => unreachable!(),
+             },
++            AsList => "as_list",
+             #[cfg(feature = "dtype-struct")]
+             AsStruct => "as_struct",
+             #[cfg(feature = "top_k")]
+diff --git a/crates/polars-plan/src/dsl/functions/concat.rs b/crates/polars-plan/src/dsl/functions/concat.rs
+index 32618440a..b72f2ce42 100644
+--- a/crates/polars-plan/src/dsl/functions/concat.rs
++++ b/crates/polars-plan/src/dsl/functions/concat.rs
+@@ -104,6 +104,18 @@ pub fn format_str(format: &str, args: &[Expr]) -> PolarsResult<Expr> {
+     })
+ }
+ 
++/// Collect expressions into a list, treating each expression's value as one element.
++pub fn as_list<E: AsRef<[IE]>, IE: Into<Expr> + Clone>(s: E) -> PolarsResult<Expr> {
++    let s: Vec<_> = s.as_ref().iter().map(|e| e.clone().into()).collect();
++
++    polars_ensure!(!s.is_empty(), ComputeError: "`as_list` needs one or more expressions");
++
++    Ok(Expr::Function {
++        input: s,
++        function: FunctionExpr::AsList,
++    })
++}
++
+ /// Concat lists entries.
+ pub fn concat_list<E: AsRef<[IE]>, IE: Into<Expr> + Clone>(s: E) -> PolarsResult<Expr> {
+     let s: Vec<_> = s.as_ref().iter().map(|e| e.clone().into()).collect();
+diff --git a/crates/polars-plan/src/plans/aexpr/determinism.rs b/crates/polars-plan/src/plans/aexpr/determinism.rs
+index e755e0aaf..619b827a0 100644
+--- a/crates/polars-plan/src/plans/aexpr/determinism.rs
++++ b/crates/polars-plan/src/plans/aexpr/determinism.rs
+@@ -162,6 +162,7 @@ fn is_inherently_nondeterministic_fn(f: &IRFunctionExpr) -> bool {
+         F::Repeat => false,
+         #[cfg(feature = "round_series")]
+         F::Clip { .. } => false,
++        F::AsList => false,
+         #[cfg(feature = "dtype-struct")]
+         F::AsStruct => false,
+         #[cfg(feature = "top_k")]
+diff --git a/crates/polars-plan/src/plans/aexpr/function_expr/mod.rs b/crates/polars-plan/src/plans/aexpr/function_expr/mod.rs
+index 09682d06a..7149641ff 100644
+--- a/crates/polars-plan/src/plans/aexpr/function_expr/mod.rs
++++ b/crates/polars-plan/src/plans/aexpr/function_expr/mod.rs
+@@ -195,6 +195,7 @@ pub enum IRFunctionExpr {
+         has_min: bool,
+         has_max: bool,
+     },
++    AsList,
+     #[cfg(feature = "dtype-struct")]
+     AsStruct,
+     #[cfg(feature = "top_k")]
+@@ -524,6 +525,7 @@ impl Hash for IRFunctionExpr {
+             ArgWhere => {},
+             #[cfg(feature = "trigonometry")]
+             Atan2 => {},
++            AsList => {},
+             #[cfg(feature = "dtype-struct")]
+             AsStruct => {},
+             #[cfg(feature = "sign")]
+@@ -793,6 +795,7 @@ impl Display for IRFunctionExpr {
+                 (true, false) => "clip_min",
+                 _ => unreachable!(),
+             },
++            AsList => "as_list",
+             #[cfg(feature = "dtype-struct")]
+             AsStruct => "as_struct",
+             #[cfg(feature = "top_k")]
+@@ -1116,6 +1119,8 @@ impl IRFunctionExpr {
+             },
+             #[cfg(feature = "round_series")]
+             F::Clip { .. } => FunctionOptions::elementwise(),
++            F::AsList => FunctionOptions::elementwise()
++                .with_flags(|f| f | FunctionFlags::INPUT_WILDCARD_EXPANSION),
+             #[cfg(feature = "dtype-struct")]
+             F::AsStruct => FunctionOptions::elementwise().with_flags(|f| {
+                 f | FunctionFlags::PASS_NAME_TO_APPLY | FunctionFlags::INPUT_WILDCARD_EXPANSION
+diff --git a/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs b/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs
+index 5380ef8c9..5d1263943 100644
+--- a/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs
++++ b/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs
+@@ -161,6 +161,7 @@ impl IRFunctionExpr {
+                 RankMethod::Average => DataType::Float64,
+                 _ => IDX_DTYPE,
+             }),
++            AsList => mapper.map_to_list_of_dtypes(),
+             #[cfg(feature = "dtype-struct")]
+             AsStruct => {
+                 let mut field_names = PlHashSet::with_capacity(fields.len() - 1);
+@@ -648,6 +649,19 @@ impl<'a> FieldsMapper<'a> {
+         }
+     }
+ 
++    /// Map the dtypes to a list whose element type is the supertype of all input dtypes.
++    /// Unlike `map_to_list_supertype`, List inputs are NOT unwrapped — each input dtype
++    /// is treated as an element type, so `List(T)` inputs produce `List(List(T))` output.
++    pub fn map_to_list_of_dtypes(&self) -> PolarsResult<Field> {
++        self.try_map_dtypes(|dts| {
++            let mut super_type = dts[0].clone();
++            for dt in &dts[1..] {
++                super_type = try_get_supertype(&super_type, dt)?;
++            }
++            Ok(DataType::List(Box::new(super_type)))
++        })
++    }
++
+     /// Map the dtypes to the "supertype" of a list of lists.
+     pub fn map_to_list_supertype(&self) -> PolarsResult<Field> {
+         self.try_map_dtypes(|dts| {
+diff --git a/crates/polars-plan/src/plans/conversion/dsl_to_ir/expr_expansion.rs b/crates/polars-plan/src/plans/conversion/dsl_to_ir/expr_expansion.rs
+index 98d9ab87c..16a2c0f0b 100644
+--- a/crates/polars-plan/src/plans/conversion/dsl_to_ir/expr_expansion.rs
++++ b/crates/polars-plan/src/plans/conversion/dsl_to_ir/expr_expansion.rs
+@@ -81,6 +81,7 @@ fn function_input_wildcard_expansion(function: &FunctionExpr) -> FunctionExpansi
+         F::Boolean(BooleanFunction::AnyHorizontal | BooleanFunction::AllHorizontal)
+             | F::Coalesce
+             | F::ListExpr(ListFunction::Concat)
++            | F::AsList
+             | F::ConcatExpr(..)
+             | F::MinHorizontal
+             | F::MaxHorizontal
+diff --git a/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs b/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
+index 410b2eb1d..b0b88ac63 100644
+--- a/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
++++ b/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
+@@ -844,6 +844,7 @@ pub(super) fn convert_functions(
+         },
+         #[cfg(feature = "round_series")]
+         F::Clip { has_min, has_max } => I::Clip { has_min, has_max },
++        F::AsList => I::AsList,
+         #[cfg(feature = "dtype-struct")]
+         F::AsStruct => I::AsStruct,
+         #[cfg(feature = "top_k")]
+diff --git a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+index 971b6ec9b..881da799c 100644
+--- a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
++++ b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+@@ -941,6 +941,7 @@ pub fn ir_function_to_dsl(input: Vec<Expr>, function: IRFunctionExpr) -> Expr {
+         IF::Repeat => F::Repeat,
+         #[cfg(feature = "round_series")]
+         IF::Clip { has_min, has_max } => F::Clip { has_min, has_max },
++        IF::AsList => F::AsList,
+         #[cfg(feature = "dtype-struct")]
+         IF::AsStruct => F::AsStruct,
+         #[cfg(feature = "top_k")]
+diff --git a/crates/polars-python/src/c_api/mod.rs b/crates/polars-python/src/c_api/mod.rs
+index 7a67fee66..6622da87e 100644
+--- a/crates/polars-python/src/c_api/mod.rs
++++ b/crates/polars-python/src/c_api/mod.rs
+@@ -206,6 +206,7 @@ pub fn _polars_runtime(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
+         .unwrap();
+     m.add_wrapped(wrap_pyfunction!(functions::concat_list))
+         .unwrap();
++    m.add_wrapped(wrap_pyfunction!(functions::as_list)).unwrap();
+     m.add_wrapped(wrap_pyfunction!(functions::concat_str))
+         .unwrap();
+     m.add_wrapped(wrap_pyfunction!(functions::len)).unwrap();
+diff --git a/crates/polars-python/src/functions/lazy.rs b/crates/polars-python/src/functions/lazy.rs
+index c239e4cb6..767fd0f8a 100644
+--- a/crates/polars-python/src/functions/lazy.rs
++++ b/crates/polars-python/src/functions/lazy.rs
+@@ -240,6 +240,13 @@ pub fn concat_list(s: Vec<PyExpr>) -> PyResult<PyExpr> {
+     Ok(expr.into())
+ }
+ 
++#[pyfunction(name = "list")]
++pub fn as_list(s: Vec<PyExpr>) -> PyResult<PyExpr> {
++    let s = s.into_iter().map(|e| e.inner).collect::<Vec<_>>();
++    let expr = dsl::as_list(s).map_err(PyPolarsErr::from)?;
++    Ok(expr.into())
++}
++
+ #[pyfunction]
+ pub fn concat_arr(s: Vec<PyExpr>) -> PyResult<PyExpr> {
+     let s = s.into_iter().map(|e| e.inner).collect::<Vec<_>>();
+diff --git a/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs b/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+index fb415b848..874012f10 100644
+--- a/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
++++ b/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+@@ -1374,6 +1374,7 @@ pub(crate) fn into_py(py: Python<'_>, expr: &AExpr) -> PyResult<Py<PyAny>> {
+                 IRFunctionExpr::Clip { has_min, has_max } => {
+                     ("clip", has_min, has_max).into_py_any(py)
+                 },
++                IRFunctionExpr::AsList => ("as_list",).into_py_any(py),
+                 IRFunctionExpr::AsStruct => ("as_struct",).into_py_any(py),
+                 #[cfg(feature = "top_k")]
+                 IRFunctionExpr::TopK { descending } => ("top_k", descending).into_py_any(py),
+diff --git a/py-polars/docs/source/reference/expressions/functions.rst b/py-polars/docs/source/reference/expressions/functions.rst
+index 4da39a4bf..4e0de852e 100644
+--- a/py-polars/docs/source/reference/expressions/functions.rst
++++ b/py-polars/docs/source/reference/expressions/functions.rst
+@@ -58,6 +58,7 @@ These functions are available from the Polars module root and can be used as exp
+    len
+    linear_space
+    linear_spaces
++   list
+    lit
+    map_batches
+    map_groups
+diff --git a/py-polars/src/polars/__init__.py b/py-polars/src/polars/__init__.py
+index 8ea7a1c2c..c2adb15e9 100644
+--- a/py-polars/src/polars/__init__.py
++++ b/py-polars/src/polars/__init__.py
+@@ -173,6 +173,7 @@ from polars.functions import (
+     len,
+     linear_space,
+     linear_spaces,
++    list,
+     lit,
+     map_batches,
+     map_groups,
+@@ -451,6 +452,7 @@ __all__ = [
+     "linear_space",
+     "linear_spaces",
+     "lit",
++    "list",
+     "map_batches",
+     "map_groups",
+     "mean",
+diff --git a/py-polars/src/polars/_plr.pyi b/py-polars/src/polars/_plr.pyi
+index 5d4201701..7d0fd4db4 100644
+--- a/py-polars/src/polars/_plr.pyi
++++ b/py-polars/src/polars/_plr.pyi
+@@ -1,3 +1,4 @@
++from builtins import list as pylist
+ from collections.abc import Callable, Sequence
+ from typing import Any, Literal, TypeAlias, overload
+ 
+@@ -120,7 +121,7 @@ class PySeries:
+ 
+     # general
+     def struct_unnest(self) -> PyDataFrame: ...
+-    def struct_fields(self) -> list[str]: ...
++    def struct_fields(self) -> pylist[str]: ...
+     def is_sorted_ascending_flag(self) -> bool: ...
+     def is_sorted_descending_flag(self) -> bool: ...
+     def can_fast_explode_flag(self) -> bool: ...
+@@ -137,7 +138,7 @@ class PySeries:
+     def bitand(self, other: PySeries) -> PySeries: ...
+     def bitor(self, other: PySeries) -> PySeries: ...
+     def bitxor(self, other: PySeries) -> PySeries: ...
+-    def chunk_lengths(self) -> list[int]: ...
++    def chunk_lengths(self) -> pylist[int]: ...
+     def name(self) -> str: ...
+     def rename(self, name: str) -> None: ...
+     def dtype(self) -> Any: ...
+@@ -174,7 +175,7 @@ class PySeries:
+     def skew(self, bias: bool) -> float | None: ...
+     def kurtosis(self, fisher: bool, bias: bool) -> float | None: ...
+     def cast(self, dtype: Any, strict: bool, wrap_numerical: bool) -> PySeries: ...
+-    def get_chunks(self) -> list[Any]: ...
++    def get_chunks(self) -> pylist[Any]: ...
+     def is_sorted(self, descending: bool, nulls_last: bool) -> bool: ...
+     def clear(self) -> PySeries: ...
+     def head(self, n: int) -> PySeries: ...
+@@ -557,7 +558,7 @@ class PySeries:
+     def from_arrow(name: str, array: Any) -> PySeries: ...
+ 
+     # export
+-    def to_list(self) -> list[Any]: ...
++    def to_list(self) -> pylist[Any]: ...
+     def to_arrow(self, compat_level: Any) -> Any: ...
+     def __arrow_c_stream__(self, requested_schema: Any | None) -> Any: ...
+     def _export(self, location: int) -> None: ...
+@@ -604,7 +605,7 @@ class PyDataFrame:
+     @staticmethod
+     def empty_with_height(height: int) -> PyDataFrame: ...
+     def estimated_size(self) -> int: ...
+-    def dtype_strings(self) -> list[str]: ...
++    def dtype_strings(self) -> pylist[str]: ...
+     def add(self, s: PySeries) -> PyDataFrame: ...
+     def sub(self, s: PySeries) -> PyDataFrame: ...
+     def mul(self, s: PySeries) -> PyDataFrame: ...
+@@ -627,10 +628,10 @@ class PyDataFrame:
+     ) -> PyDataFrame: ...
+     def rechunk(self) -> PyDataFrame: ...
+     def as_str(self) -> str: ...
+-    def get_columns(self) -> list[PySeries]: ...
+-    def columns(self) -> list[str]: ...
++    def get_columns(self) -> pylist[PySeries]: ...
++    def columns(self) -> pylist[str]: ...
+     def set_column_names(self, names: Sequence[str]) -> None: ...
+-    def dtypes(self) -> list[Any]: ...
++    def dtypes(self) -> pylist[Any]: ...
+     def n_chunks(self) -> int: ...
+     def shape(self) -> tuple[int, int]: ...
+     def height(self) -> int: ...
+@@ -678,7 +679,7 @@ class PyDataFrame:
+     ) -> PyDataFrame: ...
+     def partition_by(
+         self, by: Sequence[str], maintain_order: bool, include_key: bool
+-    ) -> list[PyDataFrame]: ...
++    ) -> pylist[PyDataFrame]: ...
+     def lazy(self) -> PyLazyFrame: ...
+     def to_dummies(
+         self,
+@@ -736,9 +737,9 @@ class PyDataFrame:
+ 
+     # export
+     def row_tuple(self, idx: int) -> tuple[Any, ...]: ...
+-    def row_tuples(self) -> list[tuple[Any, ...]]: ...
+-    def to_arrow(self, compat_level: Any) -> list[Any]: ...
+-    def to_pandas(self) -> list[Any]: ...
++    def row_tuples(self) -> pylist[tuple[Any, ...]]: ...
++    def to_arrow(self, compat_level: Any) -> pylist[Any]: ...
++    def to_pandas(self) -> pylist[Any]: ...
+     def __arrow_c_stream__(self, requested_schema: Any | None) -> Any: ...
+ 
+     # io
+@@ -1125,7 +1126,7 @@ class PyLazyFrame:
+     def unique(
+         self,
+         maintain_order: bool,
+-        subset: list[PyExpr] | None,
++        subset: pylist[PyExpr] | None,
+         keep: UniqueKeepStrategy,
+     ) -> PyLazyFrame: ...
+     def drop_nans(self, subset: PySelector | None) -> PyLazyFrame: ...
+@@ -1172,7 +1173,10 @@ class PyLazyFrame:
+         self, other: PyLazyFrame, key: str, maintain_order: bool
+     ) -> PyLazyFrame: ...
+     def hint_sorted(
+-        self, columns: list[str], descending: list[bool], nulls_last: list[bool]
++        self,
++        columns: pylist[str],
++        descending: pylist[bool],
++        nulls_last: pylist[bool],
+     ) -> PyLazyFrame: ...
+ 
+     # exitable
+@@ -1644,8 +1648,8 @@ class PyExpr:
+ 
+     # meta
+     def meta_eq(self, other: PyExpr) -> bool: ...
+-    def meta_pop(self, schema: Schema | None = None) -> list[PyExpr]: ...
+-    def meta_root_names(self) -> list[str]: ...
++    def meta_pop(self, schema: Schema | None = None) -> pylist[PyExpr]: ...
++    def meta_root_names(self) -> pylist[str]: ...
+     def meta_output_name(self) -> str: ...
+     def meta_undo_aliases(self) -> PyExpr: ...
+     def meta_has_multiple_outputs(self) -> bool: ...
+@@ -1950,7 +1954,7 @@ class PyExpr:
+     ) -> PyExpr: ...
+     def str_escape_regex(self) -> PyExpr: ...
+     @staticmethod
+-    def str_format(f_string: str, exprs: list[PyExpr]) -> PyExpr: ...
++    def str_format(f_string: str, exprs: pylist[PyExpr]) -> PyExpr: ...
+ 
+     # struct
+     def struct_field_by_index(self, index: int) -> PyExpr: ...
+@@ -2147,7 +2151,7 @@ def col(name: str) -> PyExpr: ...
+ def element() -> PyExpr: ...
+ def collect_all(
+     lfs: Sequence[PyLazyFrame], engine: Any, optflags: PyOptFlags
+-) -> list[PyDataFrame]: ...
++) -> pylist[PyDataFrame]: ...
+ def explain_all(lfs: Sequence[PyLazyFrame], optflags: PyOptFlags) -> str: ...
+ def collect_all_lazy(
+     lfs: Sequence[PyLazyFrame], optflags: PyOptFlags
+@@ -2159,6 +2163,7 @@ def concat_lf(
+     seq: Any, rechunk: bool, parallel: bool, to_supertypes: bool, maintain_order: bool
+ ) -> PyLazyFrame: ...
+ def concat_list(s: Sequence[PyExpr]) -> PyExpr: ...
++def list(s: Sequence[PyExpr]) -> PyExpr: ...
+ def concat_arr(s: Sequence[PyExpr]) -> PyExpr: ...
+ def concat_str(s: Sequence[PyExpr], separator: str, ignore_nulls: bool) -> PyExpr: ...
+ def len() -> PyExpr: ...
+@@ -2264,10 +2269,10 @@ def read_parquet_metadata(
+     py_f: Any, storage_options: Any, credential_provider: Any
+ ) -> dict[str, str]: ...
+ def _bench_parquet_metadata_bincode_size(
+-    path: str, projection: list[str] | None, predicate: list[str]
++    path: str, projection: pylist[str] | None, predicate: pylist[str]
+ ) -> int: ...
+ def _parquet_metadata_pruned_json(
+-    path: str, projection: list[str], predicate: list[str]
++    path: str, projection: pylist[str], predicate: pylist[str]
+ ) -> str: ...
+ def read_clipboard_string() -> str: ...
+ def write_clipboard_string(s: str) -> None: ...
+@@ -2393,10 +2398,10 @@ def polars_schema_field_from_arrow_c_schema(schema_object: Any) -> tuple[str, An
+ def polars_schema_to_pycapsule(schema: Schema, compat_level: CompatLevel) -> Any: ...
+ 
+ class PyLazyGroupBy:
+-    def agg(self, aggs: list[PyExpr]) -> PyLazyFrame: ...
++    def agg(self, aggs: pylist[PyExpr]) -> PyLazyFrame: ...
+     def head(self, n: int) -> PyLazyFrame: ...
+     def tail(self, n: int) -> PyLazyFrame: ...
+-    def having(self, predicates: list[PyExpr]) -> PyLazyGroupBy: ...
++    def having(self, predicates: pylist[PyExpr]) -> PyLazyGroupBy: ...
+     def map_groups(
+         self, lambda_function: Any, schema: Schema | None
+     ) -> PyLazyFrame: ...
+@@ -2421,9 +2426,9 @@ class PyCategories:
+ class PyCatalogClient:
+     @staticmethod
+     def new(workspace_url: str, bearer_token: str | None) -> PyCatalogClient: ...
+-    def list_catalogs(self) -> list[Any]: ...
+-    def list_namespaces(self, catalog_name: str) -> list[Any]: ...
+-    def list_tables(self, catalog_name: str, namespace: str) -> list[Any]: ...
++    def list_catalogs(self) -> pylist[Any]: ...
++    def list_namespaces(self, catalog_name: str) -> pylist[Any]: ...
++    def list_tables(self, catalog_name: str, namespace: str) -> pylist[Any]: ...
+     def get_table_info(
+         self, table_name: str, catalog_name: str, namespace: str
+     ) -> Any: ...
+@@ -2482,7 +2487,7 @@ class PySQLContext:
+     @staticmethod
+     def new() -> PySQLContext: ...
+     def execute(self, query: str) -> PyLazyFrame: ...
+-    def get_tables(self) -> list[str]: ...
++    def get_tables(self) -> pylist[str]: ...
+     def register(self, name: str, lf: PyLazyFrame) -> None: ...
+     def unregister(self, name: str) -> None: ...
+     @staticmethod
+@@ -2490,7 +2495,7 @@ class PySQLContext:
+         query: str,
+         include_schema: bool = ...,
+         unique: bool = ...,
+-    ) -> list[str]: ...
++    ) -> pylist[str]: ...
+ 
+ # testing
+ def assert_series_equal_py(
+@@ -2528,7 +2533,7 @@ def assert_schema_equal_py(
+ # datatypes
+ def _get_dtype_max(dt: DataType) -> PyExpr: ...
+ def _get_dtype_min(dt: DataType) -> PyExpr: ...
+-def _known_timezones() -> list[str]: ...
++def _known_timezones() -> pylist[str]: ...
+ 
+ # extension
+ def _register_extension_type(name: str, cls: Any | None) -> None: ...
+@@ -2548,8 +2553,8 @@ class PyExprIR:
+     output_name: str
+ 
+ class NodeTraverser:
+-    def get_exprs(self) -> list[PyExprIR]: ...
+-    def get_inputs(self) -> list[int]: ...
++    def get_exprs(self) -> pylist[PyExprIR]: ...
++    def get_inputs(self) -> pylist[int]: ...
+     def version(self) -> tuple[int, int]: ...
+     def get_schema(self) -> dict[str, DataType]: ...
+     def get_dtype(self, expr_node: int) -> DataType: ...
+@@ -2558,8 +2563,10 @@ class NodeTraverser:
+     def set_udf(self, function: Any, is_pure: bool = False) -> None: ...
+     def view_current_node(self) -> Any: ...
+     def view_expression(self, node: int) -> Any: ...
+-    def add_expressions(self, expressions: list[PyExpr]) -> tuple[list[int], int]: ...
+-    def set_expr_mapping(self, mapping: list[int]) -> None: ...
++    def add_expressions(
++        self, expressions: pylist[PyExpr]
++    ) -> tuple[pylist[int], int]: ...
++    def set_expr_mapping(self, mapping: pylist[int]) -> None: ...
+     def unset_expr_mapping(self) -> None: ...
+ 
+ class PyCollectBatches:
+diff --git a/py-polars/src/polars/functions/__init__.py b/py-polars/src/polars/functions/__init__.py
+index c5c56a559..ac49238c4 100644
+--- a/py-polars/src/polars/functions/__init__.py
++++ b/py-polars/src/polars/functions/__init__.py
+@@ -19,6 +19,7 @@ from polars.functions.as_datatype import (
+     concat_str,
+     duration,
+     format,
++    list,
+     struct,
+ )
+ from polars.functions.as_datatype import date_ as date
+@@ -141,6 +142,7 @@ __all__ = [
+     "concat_arr",
+     "concat_list",
+     "concat_str",
++    "list",
+     "corr",
+     "count",
+     "cov",
+diff --git a/py-polars/src/polars/functions/as_datatype.py b/py-polars/src/polars/functions/as_datatype.py
+index 2c98cd184..fba7764fd 100644
+--- a/py-polars/src/polars/functions/as_datatype.py
++++ b/py-polars/src/polars/functions/as_datatype.py
+@@ -500,6 +500,58 @@ def concat_list(exprs: IntoExpr | Iterable[IntoExpr], *more_exprs: IntoExpr) ->
+     return wrap_expr(plr.concat_list(exprs))
+ 
+ 
++def list(exprs: IntoExpr | Iterable[IntoExpr], *more_exprs: IntoExpr) -> Expr:
++    """
++    Collect columns into a list column, treating each expression's value as one element.
++
++    Unlike :func:`concat_list`, list-typed inputs are not extended — each input's value
++    becomes a single element of the output list. This means ``List(T)`` inputs produce
++    ``List(List(T))`` output.
++
++    Parameters
++    ----------
++    exprs
++        Columns to collect into a list. Accepts expression input. Strings are parsed
++        as column names, other non-expression inputs are parsed as literals.
++    *more_exprs
++        Additional columns, specified as positional arguments.
++
++    Examples
++    --------
++    Wrap scalar columns into a list (same as ``concat_list`` for scalars):
++
++    >>> df = pl.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]})
++    >>> df.with_columns(a_b=pl.list("a", "b"))
++    shape: (3, 3)
++    ┌─────┬─────┬───────────┐
++    │ a   ┆ b   ┆ a_b      │
++    │ --- ┆ --- ┆ ---       │
++    │ i64 ┆ i64 ┆ list[i64] │
++    ╞═════╪═════╪═══════════╡
++    │ 1   ┆ 4   ┆ [1, 4]    │
++    │ 2   ┆ 5   ┆ [2, 5]    │
++    │ 3   ┆ 6   ┆ [3, 6]    │
++    └─────┴─────┴───────────┘
++
++    Collect list columns into a list-of-lists (unlike ``concat_list``, which extends):
++
++    >>> df = pl.DataFrame({"a": [[1, 2], [3], [4, 5]], "b": [[6], [7, 8], [9]]})
++    >>> df.with_columns(a_b=pl.list("a", "b"))
++    shape: (3, 3)
++    ┌───────────┬───────────┬─────────────────┐
++    │ a         ┆ b         ┆ a_b             │
++    │ ---       ┆ ---       ┆ ---             │
++    │ list[i64] ┆ list[i64] ┆ list[list[i64]] │
++    ╞═══════════╪═══════════╪═════════════════╡
++    │ [1, 2]    ┆ [6]       ┆ [[1, 2], [6]]   │
++    │ [3]       ┆ [7, 8]    ┆ [[3], [7, 8]]   │
++    │ [4, 5]    ┆ [9]       ┆ [[4, 5], [9]]   │
++    └───────────┴───────────┴─────────────────┘
++    """
++    exprs = parse_into_list_of_expressions(exprs, *more_exprs)
++    return wrap_expr(plr.list(exprs))
++
++
+ def concat_arr(exprs: IntoExpr | Iterable[IntoExpr], *more_exprs: IntoExpr) -> Expr:
+     """
+     Horizontally concatenate columns into a single array column.
+@@ -718,7 +770,7 @@ def struct(
+         if not exprs and not named_exprs:
+             # no columns or expressions provided; create one from schema keys
+             expr = wrap_expr(
+-                plr.as_struct(parse_into_list_of_expressions(list(schema.keys())))
++                plr.as_struct(parse_into_list_of_expressions([*schema.keys()]))
+             )
+         else:
+             expr = wrap_expr(plr.as_struct(pyexprs))
+diff --git a/py-polars/tests/unit/functions/as_datatype/test_concat_list.py b/py-polars/tests/unit/functions/as_datatype/test_concat_list.py
+index a5e5d056b..33ab7bc5a 100644
+--- a/py-polars/tests/unit/functions/as_datatype/test_concat_list.py
++++ b/py-polars/tests/unit/functions/as_datatype/test_concat_list.py
+@@ -230,3 +230,53 @@ def test_concat_list_broadcast_empty() -> None:
+     out = df.select(pl.concat_list(pl.lit(0.0), pl.lit(0.0), pl.col("a")))
+     expected = pl.DataFrame(schema={"literal": pl.List(pl.Float64)})
+     assert_frame_equal(out, expected)
++
++
++def test_list_function() -> None:
++    df = pl.LazyFrame(
++        {
++            "a": [1, 2, None],
++            "b": [4, 5, 6],
++            "c": [[1], [2, 3], None],
++            "d": [[3, 4], [5], [6]],
++        }
++    )
++    result = df.with_columns(a_b=pl.list("a", "b"), c_d=pl.list("c", "d"))
++    expected = {
++        "a": [1, 2, None],
++        "b": [4, 5, 6],
++        "c": [[1], [2, 3], None],
++        "d": [[3, 4], [5], [6]],
++        "a_b": [[1, 4], [2, 5], [None, 6]],
++        "c_d": [[[1], [3, 4]], [[2, 3], [5]], [None, [6]]],
++    }
++    assert_frame_equal(result.collect(), pl.DataFrame(expected))
++    assert result.collect().schema == result.collect_schema()
++
++
++def test_list_function_w_scalars() -> None:
++    df = pl.LazyFrame(
++        {
++            "a": [1, 2, None],
++            "b": [4, 5, 6],
++            "c": [[1], [2, 3], None],
++            "d": [[3, 4], [5], [6]],
++        }
++    )
++    result = df.with_columns(a_b_lit=pl.list("a", "b", pl.lit(3)))
++    expected = {
++        "a": [1, 2, None],
++        "b": [4, 5, 6],
++        "c": [[1], [2, 3], None],
++        "d": [[3, 4], [5], [6]],
++        "a_b_lit": [[1, 4, 3], [2, 5, 3], [None, 6, 3]],
++    }
++    assert_frame_equal(result.collect(), pl.DataFrame(expected))
++    assert result.collect().schema == result.collect_schema()
++
++    result = df.select(literals=pl.list(pl.lit(1), pl.lit(2)))
++    expected = {"literals": [[1, 2]]}
++    assert_frame_equal(
++        result.collect(), pl.DataFrame(expected, schema={"literals": pl.List(pl.Int32)})
++    )
++    assert result.collect().schema == result.collect_schema()

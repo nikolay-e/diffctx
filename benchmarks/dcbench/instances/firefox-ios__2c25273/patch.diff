@@ -1,0 +1,2378 @@
+From 2c25273fa706f51d72482d35056bc5f9a1421b2e Mon Sep 17 00:00:00 2001
+From: Isabella <173110554+ih-codes@users.noreply.github.com>
+Date: Mon, 23 Mar 2026 11:31:03 -0600
+Subject: [PATCH] Refactor FXIOS-15059 [Technical Debt] [Redux] Rename for
+ misleading `activeScreens` State terminology (#32426)
+
+* Rename AppScreenState -> ComponentState, ActiveScreensState -> ActiveComponentsState, AppScreen -> AppComponent, ScreenActionType -> ComponentActionType. Update related property names.
+
+* Rename concept from "active" components to "presented" components for more clarity.
+
+* Update all call sites for name changes.
+
+* Update unit tests for new naming.
+---
+ firefox-ios/Client.xcodeproj/project.pbxproj  | 20 +++--
+ .../Browser/BrowserCoordinator.swift          |  6 +-
+ .../Coordinators/SettingsCoordinator.swift    |  6 +-
+ ...Controller+ToolBarActionMenuDelegate.swift | 18 ++--
+ .../State/BrowserViewControllerState.swift    |  4 +-
+ .../Views/BrowserViewController.swift         | 34 ++++----
+ .../MainMenu/Redux/MainMenuState.swift        |  2 +-
+ .../Views/MainMenuViewController.swift        | 12 +--
+ .../Redux/SearchEngineSelectionState.swift    |  2 +-
+ .../SearchEngineSelectionViewController.swift | 12 +--
+ .../Middleware/TabManagerMiddleware.swift     | 16 ++--
+ .../Tabs/State/RemoteTabsPanelState.swift     |  2 +-
+ .../Browser/Tabs/State/TabPeekState.swift     |  4 +-
+ .../Browser/Tabs/State/TabTrayState.swift     |  2 +-
+ .../Browser/Tabs/State/TabsPanelState.swift   |  2 +-
+ .../Browser/Tabs/Views/RemoteTabsPanel.swift  | 15 ++--
+ .../Views/TabDisplayPanelViewController.swift | 14 ++--
+ .../Tabs/Views/TabPeekViewController.swift    | 12 +--
+ .../Tabs/Views/TabTrayViewController.swift    | 14 ++--
+ .../Browser/TermsOfUse/TermsOfUseState.swift  |  2 +-
+ .../View/TermsOfUseViewController.swift       | 14 ++--
+ .../Toolbars/AddressToolbarContainer.swift    | 18 ++--
+ .../Toolbars/NavigationToolbarContainer.swift |  2 +-
+ .../Toolbars/Redux/AddressBarState.swift      | 14 ++--
+ .../Toolbars/Redux/NavigationBarState.swift   |  2 +-
+ .../Toolbars/Redux/ToolbarMiddleware.swift    | 30 +++----
+ .../Browser/Toolbars/Redux/ToolbarState.swift |  2 +-
+ .../Browser/TopTabsViewController.swift       |  2 +-
+ .../Homepage/Header/HomepageHeaderCell.swift  |  2 +-
+ .../Homepage/HomepageViewController.swift     | 12 +--
+ .../HomepageSectionLayoutProvider.swift       | 30 ++++---
+ .../Home/Homepage/Redux/HomepageState.swift   |  2 +-
+ .../Microsurvey/Survey/MicrosurveyState.swift |  2 +-
+ .../View/MicrosurveyViewController.swift      | 12 +--
+ .../NativeErrorPageState.swift                |  2 +-
+ .../NativeErrorPageViewController.swift       | 12 +--
+ .../State/OnboardingViewControllerState.swift |  2 +-
+ .../Views/IntroViewController.swift           | 12 +--
+ .../PasswordGeneratorMiddleware.swift         |  6 +-
+ .../PasswordGeneratorState.swift              |  2 +-
+ .../PasswordGeneratorViewController.swift     | 12 +--
+ .../ThemeSettingsController.swift             |  6 +-
+ .../ThemeSettings/ThemeSettingsState.swift    |  2 +-
+ ...nslationPickerSettingsViewController.swift | 12 +--
+ .../TranslationSettingsState.swift            |  2 +-
+ .../Redux/ShortcutsLibraryMiddleware.swift    |  6 +-
+ .../Redux/ShortcutsLibraryState.swift         |  2 +-
+ .../ShortcutsLibraryViewController.swift      | 14 ++--
+ .../TrackingProtectionState.swift             |  2 +-
+ .../TrackingProtectionViewController.swift    | 12 +--
+ .../Translations/TranslationsMiddleware.swift |  4 +-
+ ...eScreenAction.swift => AppComponent.swift} | 15 +---
+ .../Client/Redux/GlobalState/AppState.swift   | 20 +++--
+ .../Redux/GlobalState/ComponentAction.swift   | 18 ++++
+ ...e.swift => PresentedComponentsState.swift} | 82 +++++++++----------
+ .../BrowserViewControllerKVOTests.swift       |  4 +-
+ .../BrowserViewControllerStateTests.swift     |  8 +-
+ .../BrowserViewControllerTests.swift          |  8 +-
+ .../Browser/RemoteTabsPanelTests.swift        | 10 +--
+ ...SearchEngineSelectionMiddlewareTests.swift |  4 +-
+ .../Redux/BookmarksMiddlewareTests.swift      |  4 +-
+ .../Redux/HomepageMiddlewareTests.swift       |  4 +-
+ .../Redux/MerinoMiddlewareTests.swift         |  4 +-
+ .../Redux/MessageCardMiddlewareTests.swift    |  4 +-
+ .../ShortcutsLibraryMiddlewareTests.swift     |  8 +-
+ .../SummarizerMiddlewareTests.swift           |  4 +-
+ .../MicrosurveyMiddlewareTests.swift          |  4 +-
+ .../MicrosurveyPromptMiddlewareTests.swift    |  4 +-
+ .../NativeErrorPageMiddlewareTests.swift      |  2 +-
+ .../OnboardingViewControllerStateTests.swift  | 18 ++--
+ .../ThemeSettingsControllerTests.swift        | 10 +--
+ ...ionPickerSettingsViewControllerTests.swift |  4 +-
+ .../TranslationSettingsMiddlewareTests.swift  |  4 +-
+ .../StartAtHomeMiddlewareTests.swift          |  4 +-
+ .../TabTray/TabManagerMiddlewareTests.swift   |  4 +-
+ .../Toolbar/AddressBarStateTests.swift        |  8 +-
+ .../Toolbar/NavigationBarStateTests.swift     |  4 +-
+ .../Toolbar/ToolbarMiddlewareTests.swift      | 12 +--
+ .../Toolbar/ToolbarStateTests.swift           |  4 +-
+ .../TranslationsMiddlewareTests.swift         |  4 +-
+ 80 files changed, 379 insertions(+), 357 deletions(-)
+ rename firefox-ios/Client/Redux/GlobalState/{ActiveScreenAction.swift => AppComponent.swift} (72%)
+ create mode 100644 firefox-ios/Client/Redux/GlobalState/ComponentAction.swift
+ rename firefox-ios/Client/Redux/GlobalState/{ActiveScreenState.swift => PresentedComponentsState.swift} (68%)
+
+diff --git a/firefox-ios/Client.xcodeproj/project.pbxproj b/firefox-ios/Client.xcodeproj/project.pbxproj
+index 29f1f322b..6bd562af0 100644
+--- a/firefox-ios/Client.xcodeproj/project.pbxproj
++++ b/firefox-ios/Client.xcodeproj/project.pbxproj
+@@ -323,8 +323,8 @@
+ 		2154E7D62E4D069400272F0D /* BrowserViewController+TabScrollHandlerDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2154E7D52E4D068600272F0D /* BrowserViewController+TabScrollHandlerDelegate.swift */; };
+ 		21618A612A4201E500A5189E /* ThemeSettingsController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21618A602A4201E500A5189E /* ThemeSettingsController.swift */; };
+ 		21618A632A422A3900A5189E /* ThemeMiddleware.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21618A622A422A3900A5189E /* ThemeMiddleware.swift */; };
+-		21618A8A2A4389F700A5189E /* ActiveScreenState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21618A892A4389F700A5189E /* ActiveScreenState.swift */; };
+-		21618A8C2A438A0900A5189E /* ActiveScreenAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21618A8B2A438A0900A5189E /* ActiveScreenAction.swift */; };
++		21618A8A2A4389F700A5189E /* PresentedComponentsState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21618A892A4389F700A5189E /* PresentedComponentsState.swift */; };
++		21618A8C2A438A0900A5189E /* ComponentAction.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21618A8B2A438A0900A5189E /* ComponentAction.swift */; };
+ 		21618A932A4499FC00A5189E /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 21618A912A4499FC00A5189E /* AppState.swift */; };
+ 		216424D42E56175100A3AF40 /* MockTabScrollHandlerDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 216424D32E56174400A3AF40 /* MockTabScrollHandlerDelegate.swift */; };
+ 		2165B2CC28748CD7004C0786 /* LibraryPanelDescriptor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2165B2CB28748CD7004C0786 /* LibraryPanelDescriptor.swift */; };
+@@ -2180,6 +2180,7 @@
+ 		EDADF77C2D70C58200C39295 /* SettingsTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDADF77B2D70C58200C39295 /* SettingsTelemetry.swift */; };
+ 		EDADF77F2D70D35B00C39295 /* AppIconSelectionTelemetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDADF77E2D70D35B00C39295 /* AppIconSelectionTelemetryTests.swift */; };
+ 		EDADF7842D70DAF800C39295 /* SettingsTelemetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDADF7832D70DAF800C39295 /* SettingsTelemetryTests.swift */; };
++		EDB9BAC32F5F5BBD002168F0 /* AppComponent.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDB9BAC22F5F5BBD002168F0 /* AppComponent.swift */; };
+ 		EDBD5C1C2DFA248E0050A59A /* HistoryTelemetry.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDBD5C1B2DFA248B0050A59A /* HistoryTelemetry.swift */; };
+ 		EDC3C2562CCAC9CB005A047F /* SearchEnginesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = EDC3C2552CCAC9CB005A047F /* SearchEnginesManager.swift */; };
+ 		EDC3D34F2CB5E70500C62DE3 /* SearchEngineTestAssets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = EDC3D34E2CB5E70500C62DE3 /* SearchEngineTestAssets.xcassets */; };
+@@ -3060,8 +3061,8 @@
+ 		2154E7D52E4D068600272F0D /* BrowserViewController+TabScrollHandlerDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "BrowserViewController+TabScrollHandlerDelegate.swift"; sourceTree = "<group>"; };
+ 		21618A602A4201E500A5189E /* ThemeSettingsController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ThemeSettingsController.swift; sourceTree = "<group>"; };
+ 		21618A622A422A3900A5189E /* ThemeMiddleware.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThemeMiddleware.swift; sourceTree = "<group>"; };
+-		21618A892A4389F700A5189E /* ActiveScreenState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveScreenState.swift; sourceTree = "<group>"; };
+-		21618A8B2A438A0900A5189E /* ActiveScreenAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ActiveScreenAction.swift; sourceTree = "<group>"; };
++		21618A892A4389F700A5189E /* PresentedComponentsState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PresentedComponentsState.swift; sourceTree = "<group>"; };
++		21618A8B2A438A0900A5189E /* ComponentAction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ComponentAction.swift; sourceTree = "<group>"; };
+ 		21618A912A4499FC00A5189E /* AppState.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+ 		216424D32E56174400A3AF40 /* MockTabScrollHandlerDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockTabScrollHandlerDelegate.swift; sourceTree = "<group>"; };
+ 		2165B2CB28748CD7004C0786 /* LibraryPanelDescriptor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryPanelDescriptor.swift; sourceTree = "<group>"; };
+@@ -11265,6 +11266,7 @@
+ 		EDADF77E2D70D35B00C39295 /* AppIconSelectionTelemetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppIconSelectionTelemetryTests.swift; sourceTree = "<group>"; };
+ 		EDADF7832D70DAF800C39295 /* SettingsTelemetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsTelemetryTests.swift; sourceTree = "<group>"; };
+ 		EDB94DDC89DE1F2C624C9841 /* ko */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ko; path = ko.lproj/InfoPlist.strings; sourceTree = "<group>"; };
++		EDB9BAC22F5F5BBD002168F0 /* AppComponent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppComponent.swift; sourceTree = "<group>"; };
+ 		EDBD5C1B2DFA248B0050A59A /* HistoryTelemetry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryTelemetry.swift; sourceTree = "<group>"; };
+ 		EDBE49119AB71D7076BC2CA3 /* zh-CN */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "zh-CN"; path = "zh-CN.lproj/Menu.strings"; sourceTree = "<group>"; };
+ 		EDC3C2552CCAC9CB005A047F /* SearchEnginesManager.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = SearchEnginesManager.swift; sourceTree = "<group>"; };
+@@ -12062,8 +12064,9 @@
+ 		216A0D722A40DD34008077BA /* GlobalState */ = {
+ 			isa = PBXGroup;
+ 			children = (
+-				21618A8B2A438A0900A5189E /* ActiveScreenAction.swift */,
+-				21618A892A4389F700A5189E /* ActiveScreenState.swift */,
++				EDB9BAC22F5F5BBD002168F0 /* AppComponent.swift */,
++				21618A8B2A438A0900A5189E /* ComponentAction.swift */,
++				21618A892A4389F700A5189E /* PresentedComponentsState.swift */,
+ 				21618A912A4499FC00A5189E /* AppState.swift */,
+ 				212985E32A6F078800546684 /* ScreenState.swift */,
+ 			);
+@@ -18697,7 +18700,7 @@
+ 				2152473E2D6E4A4A0078D78A /* AutoFillPasswordSettingsViewController.swift in Sources */,
+ 				F85C7F122721048E004BDBA4 /* Layout.swift in Sources */,
+ 				B2FEA68D2B460D390058E616 /* AddressAutofillSettingsViewController.swift in Sources */,
+-				21618A8A2A4389F700A5189E /* ActiveScreenState.swift in Sources */,
++				21618A8A2A4389F700A5189E /* PresentedComponentsState.swift in Sources */,
+ 				8CC617092C35463B001C7688 /* AddressModifiedStatus.swift in Sources */,
+ 				EB1C84BF212EFFBF001489DF /* BrowserViewController+ReaderMode.swift in Sources */,
+ 				81020C922BB5AFA2007B8481 /* OnboardingMultipleChoiceButtonView.swift in Sources */,
+@@ -18843,7 +18846,7 @@
+ 				0B8BF3722CA2DA4600E9812D /* EditBookmarkViewController.swift in Sources */,
+ 				8AED23042D40002D000FF624 /* MessageCardState.swift in Sources */,
+ 				F18859502A3E454E0004AA7B /* EnhancedTrackingProtectionCoordinator.swift in Sources */,
+-				21618A8C2A438A0900A5189E /* ActiveScreenAction.swift in Sources */,
++				21618A8C2A438A0900A5189E /* ComponentAction.swift in Sources */,
+ 				C25020802ECDE0390071506F /* TranslationsEngine.swift in Sources */,
+ 				E15DE7C2293A7AED00B32667 /* PhotonActionSheetLineSeparator.swift in Sources */,
+ 				631A369F2CC0A4FE0044DFEB /* NativeErrorPageMiddleware.swift in Sources */,
+@@ -19306,6 +19309,7 @@
+ 				8A0A1BA32B22030100E8706F /* PrivateMessageCardCell.swift in Sources */,
+ 				C714D7752E46649600FC02E6 /* ShortcutsLibraryDiffableDataSource.swift in Sources */,
+ 				AB9CBC022C53B64C00102610 /* TrackingProtectionAction.swift in Sources */,
++				EDB9BAC32F5F5BBD002168F0 /* AppComponent.swift in Sources */,
+ 				0E456F152C541CB300EE93BF /* PasswordGeneratorViewController.swift in Sources */,
+ 				213BF7532AC21D1B00C53A64 /* TabDisplayPanelViewController.swift in Sources */,
+ 				C7FA9AE62E4B7D0D004F2CA1 /* TopSitesSectionLayoutProvider.swift in Sources */,
+diff --git a/firefox-ios/Client/Coordinators/Browser/BrowserCoordinator.swift b/firefox-ios/Client/Coordinators/Browser/BrowserCoordinator.swift
+index a0948edd8..7db276231 100644
+--- a/firefox-ios/Client/Coordinators/Browser/BrowserCoordinator.swift
++++ b/firefox-ios/Client/Coordinators/Browser/BrowserCoordinator.swift
+@@ -687,9 +687,9 @@ final class BrowserCoordinator: BaseCoordinator,
+ 
+     func showSearchEngineSelection(forSourceView sourceView: UIView) {
+         guard !childCoordinators.contains(where: { $0 is SearchEngineSelectionCoordinator }) else { return }
+-        let isEditing = store.state.screenState(ToolbarState.self,
+-                                                for: .toolbar,
+-                                                window: windowUUID)?.addressToolbar.isEditing == true
++        let isEditing = store.state.componentState(ToolbarState.self,
++                                                   for: .toolbar,
++                                                   window: windowUUID)?.addressToolbar.isEditing == true
+ 
+         let navigationController = DismissableNavigationViewController()
+         if navigationController.shouldUseiPadSetup() {
+diff --git a/firefox-ios/Client/Coordinators/SettingsCoordinator.swift b/firefox-ios/Client/Coordinators/SettingsCoordinator.swift
+index 384850b8e..4eeacffc4 100644
+--- a/firefox-ios/Client/Coordinators/SettingsCoordinator.swift
++++ b/firefox-ios/Client/Coordinators/SettingsCoordinator.swift
+@@ -440,9 +440,9 @@ final class SettingsCoordinator: BaseCoordinator,
+     }
+ 
+     func pressedTheme() {
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.showScreen,
+-                                  screen: .themeSettings)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.addComponent,
++                                     component: .themeSettings)
+         store.dispatch(action)
+ 
+         if themeManager.isNewAppearanceMenuOn {
+diff --git a/firefox-ios/Client/Frontend/Browser/BrowserViewController/Extensions/BrowserViewController+ToolBarActionMenuDelegate.swift b/firefox-ios/Client/Frontend/Browser/BrowserViewController/Extensions/BrowserViewController+ToolBarActionMenuDelegate.swift
+index dcbe082b0..83f3c2296 100644
+--- a/firefox-ios/Client/Frontend/Browser/BrowserViewController/Extensions/BrowserViewController+ToolBarActionMenuDelegate.swift
++++ b/firefox-ios/Client/Frontend/Browser/BrowserViewController/Extensions/BrowserViewController+ToolBarActionMenuDelegate.swift
+@@ -79,9 +79,9 @@ extension BrowserViewController: PhotonActionSheetProtocol {
+         // 2. Microsurvey prompt is not being displayed
+         // If the hint does not show,
+         // ToolbarActionType.navigationButtonDoubleTapped will have to be dispatched again through user action
+-        guard let state = store.state.screenState(BrowserViewControllerState.self,
+-                                                  for: .browserViewController,
+-                                                  window: windowUUID)
++        guard let state = store.state.componentState(BrowserViewControllerState.self,
++                                                     for: .browserViewController,
++                                                     window: windowUUID)
+         else { return }
+ 
+         if let selectedTab = tabManager.selectedTab,
+@@ -97,9 +97,9 @@ extension BrowserViewController: PhotonActionSheetProtocol {
+     }
+ 
+     func configureToolbarUpdateContextualHint(addressToolbarView: UIView, navigationToolbarView: UIView) {
+-        guard let state = store.state.screenState(ToolbarState.self,
+-                                                  for: .toolbar,
+-                                                  window: windowUUID),
++        guard let state = store.state.componentState(ToolbarState.self,
++                                                     for: .toolbar,
++                                                     window: windowUUID),
+               isToolbarUpdateHintEnabled
+         else { return }
+ 
+@@ -130,7 +130,7 @@ extension BrowserViewController: PhotonActionSheetProtocol {
+ 
+     // MARK: - Summarize CFR / Contextual Hint
+     func configureSummarizeToolbarEntryContextualHint(for view: UIView) {
+-        guard let state = store.state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID) else { return }
++        guard let state = store.state.componentState(ToolbarState.self, for: .toolbar, window: windowUUID) else { return }
+         // Show up arrow for iPad and landscape or top address bar; otherwise show down arrow
+         let showNavToolbar = toolbarHelper.shouldShowNavigationToolbar(for: traitCollection)
+         let shouldShowUpArrow = state.toolbarPosition == .top || !showNavToolbar
+@@ -159,7 +159,7 @@ extension BrowserViewController: PhotonActionSheetProtocol {
+ 
+     // MARK: - Translation CFR
+     func configureTranslationContextualHint(for view: UIView) {
+-        guard let state = store.state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID) else { return }
++        guard let state = store.state.componentState(ToolbarState.self, for: .toolbar, window: windowUUID) else { return }
+         // Show up arrow for iPad and landscape or top address bar; otherwise show down arrow
+         let showNavToolbar = toolbarHelper.shouldShowNavigationToolbar(for: traitCollection)
+         let shouldShowUpArrow = state.toolbarPosition == .top || !showNavToolbar
+@@ -193,7 +193,7 @@ extension BrowserViewController: PhotonActionSheetProtocol {
+     }
+ 
+     func dismissToolbarCFRs(with windowUUID: WindowUUID) {
+-        guard let toolbarState = store.state.screenState(
++        guard let toolbarState = store.state.componentState(
+             ToolbarState.self,
+             for: .toolbar,
+             window: windowUUID
+diff --git a/firefox-ios/Client/Frontend/Browser/BrowserViewController/State/BrowserViewControllerState.swift b/firefox-ios/Client/Frontend/Browser/BrowserViewController/State/BrowserViewControllerState.swift
+index 29975c10c..3b8354dd0 100644
+--- a/firefox-ios/Client/Frontend/Browser/BrowserViewController/State/BrowserViewControllerState.swift
++++ b/firefox-ios/Client/Frontend/Browser/BrowserViewController/State/BrowserViewControllerState.swift
+@@ -54,7 +54,7 @@ struct BrowserViewControllerState: ScreenState {
+     var navigationDestination: NavigationDestination?
+ 
+     init(appState: AppState, uuid: WindowUUID) {
+-        guard let bvcState = appState.screenState(
++        guard let bvcState = appState.componentState(
+             BrowserViewControllerState.self,
+             for: .browserViewController,
+             window: uuid)
+@@ -232,7 +232,7 @@ struct BrowserViewControllerState: ScreenState {
+     ) -> BrowserViewControllerState {
+         switch action.actionType {
+         case ToolbarMiddlewareActionType.didTapButton:
+-            let shouldShowSearchBar = store.state.screenState(
++            let shouldShowSearchBar = store.state.componentState(
+                 HomepageState.self,
+                 for: .homepage,
+                 window: action.windowUUID
+diff --git a/firefox-ios/Client/Frontend/Browser/BrowserViewController/Views/BrowserViewController.swift b/firefox-ios/Client/Frontend/Browser/BrowserViewController/Views/BrowserViewController.swift
+index 692ee00dc..c7dd27fc6 100644
+--- a/firefox-ios/Client/Frontend/Browser/BrowserViewController/Views/BrowserViewController.swift
++++ b/firefox-ios/Client/Frontend/Browser/BrowserViewController/Views/BrowserViewController.swift
+@@ -753,7 +753,7 @@ class BrowserViewController: UIViewController,
+         let isKeyboardShowing = keyboardState != nil
+ 
+         let isScrollAlphaZero = if #available(iOS 26.0, *) {
+-            store.state.screenState(
++            store.state.componentState(
+                 ToolbarState.self,
+                 for: .toolbar,
+                 window: windowUUID
+@@ -845,7 +845,7 @@ class BrowserViewController: UIViewController,
+         let isActionNeeded = RustFirefoxAccounts.shared.isActionNeeded
+         let showWarningBadge = isActionNeeded
+ 
+-        let shouldShowWarningBadge = store.state.screenState(
++        let shouldShowWarningBadge = store.state.componentState(
+             ToolbarState.self,
+             for: .toolbar,
+             window: windowUUID
+@@ -899,7 +899,7 @@ class BrowserViewController: UIViewController,
+         guard isSwipingTabsEnabled else { return }
+ 
+         if isBottomSearchBar,
+-           let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID),
++           let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: windowUUID),
+            !toolbarState.addressToolbar.isEditing {
+             addressBarPanGestureHandler?.enablePanGestureRecognizer()
+             addressToolbarContainer.updateSkeletonAddressBarsVisibility(tabManager: tabManager)
+@@ -1065,9 +1065,9 @@ class BrowserViewController: UIViewController,
+     // MARK: - Redux
+ 
+     func subscribeToRedux() {
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.showScreen,
+-                                  screen: .browserViewController)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.addComponent,
++                                     component: .browserViewController)
+         store.dispatch(action)
+ 
+         let browserAction = GeneralBrowserMiddlewareAction(
+@@ -1085,9 +1085,9 @@ class BrowserViewController: UIViewController,
+     }
+ 
+     func unsubscribeFromRedux() {
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.closeScreen,
+-                                  screen: .browserViewController)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.removeComponent,
++                                     component: .browserViewController)
+         store.dispatch(action)
+         // Note: actual `store.unsubscribe()` is not strictly needed; Redux uses weak subscribers
+     }
+@@ -1414,7 +1414,7 @@ class BrowserViewController: UIViewController,
+     /// The homepage search bar should not appear if we are in editing mode.
+     private func shouldHideAddressToolbar() {
+         guard featureFlags.isFeatureEnabled(.homepageSearchBar, checking: .buildOnly) else { return }
+-        let toolbarState = store.state.screenState(
++        let toolbarState = store.state.componentState(
+             ToolbarState.self,
+             for: .toolbar,
+             window: windowUUID
+@@ -1422,7 +1422,7 @@ class BrowserViewController: UIViewController,
+ 
+         let isEditing = toolbarState?.addressToolbar.isEditing ?? false
+ 
+-        let shouldShowSearchBar = store.state.screenState(
++        let shouldShowSearchBar = store.state.componentState(
+             HomepageState.self,
+             for: .homepage,
+             window: windowUUID
+@@ -2579,7 +2579,7 @@ class BrowserViewController: UIViewController,
+     }
+ 
+     private func updateToolbarAnimationStateIfNeeded() {
+-        let shouldAnimate = store.state.screenState(
++        let shouldAnimate = store.state.componentState(
+             ToolbarState.self,
+             for: .toolbar,
+             window: windowUUID
+@@ -3323,7 +3323,7 @@ class BrowserViewController: UIViewController,
+ 
+         // Only dispatch action when the value of top tabs being shown is different from what is saved in the state
+         // to avoid having the toolbar re-displayed
+-        guard let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID),
++        guard let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: windowUUID),
+               toolbarState.isShowingTopTabs != showTopTabs || toolbarState.isShowingNavigationToolbar != showNavToolbar
+         else { return }
+ 
+@@ -3340,7 +3340,7 @@ class BrowserViewController: UIViewController,
+         // Avoid redundant state updates when neither calculated value changed.
+         guard let browserViewControllerState,
+            browserViewControllerState.browserViewType == .normalHomepage,
+-           let homepageState = store.state.screenState(HomepageState.self, for: .homepage, window: windowUUID)
++           let homepageState = store.state.componentState(HomepageState.self, for: .homepage, window: windowUUID)
+         else { return }
+ 
+         let availableContentHeight = getAvailableHomepageContentHeight()
+@@ -5034,7 +5034,7 @@ extension BrowserViewController: TabManagerDelegate {
+     private func updateToolbarTabCount(_ count: Int) {
+         // Only dispatch action when the number of tabs is different from what is saved in the state
+         // to avoid having the toolbar re-displayed
+-        guard let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID),
++        guard let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: windowUUID),
+               toolbarState.numberOfTabs != count
+         else { return }
+ 
+@@ -5168,7 +5168,7 @@ extension BrowserViewController: KeyboardHelperDelegate {
+     }
+ 
+     func keyboardHelper(_ keyboardHelper: KeyboardHelper, keyboardDidHideWithState state: KeyboardState) {
+-        let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID)
++        let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: windowUUID)
+         let isEditing = toolbarState?.addressToolbar.isEditing == true
+         if !isEditing {
+             store.dispatch(
+@@ -5223,7 +5223,7 @@ extension BrowserViewController: KeyboardHelperDelegate {
+         let newTabChoice = NewTabAccessors.getNewTabPage(profile.prefs)
+         guard newTabChoice != .topSites, newTabChoice != .blankPage else { return false }
+ 
+-        let searchTerm = store.state.screenState(
++        let searchTerm = store.state.componentState(
+             ToolbarState.self,
+             for: .toolbar,
+             window: windowUUID
+diff --git a/firefox-ios/Client/Frontend/Browser/MainMenu/Redux/MainMenuState.swift b/firefox-ios/Client/Frontend/Browser/MainMenu/Redux/MainMenuState.swift
+index 6b43ed6bf..118e7bae0 100644
+--- a/firefox-ios/Client/Frontend/Browser/MainMenu/Redux/MainMenuState.swift
++++ b/firefox-ios/Client/Frontend/Browser/MainMenu/Redux/MainMenuState.swift
+@@ -97,7 +97,7 @@ struct MainMenuState: ScreenState, Sendable {
+     private let menuConfigurator = MainMenuConfigurationUtility()
+ 
+     init(appState: AppState, uuid: WindowUUID) {
+-        guard let mainMenuState = appState.screenState(
++        guard let mainMenuState = appState.componentState(
+             MainMenuState.self,
+             for: .mainMenu,
+             window: uuid
+diff --git a/firefox-ios/Client/Frontend/Browser/MainMenu/Views/MainMenuViewController.swift b/firefox-ios/Client/Frontend/Browser/MainMenu/Views/MainMenuViewController.swift
+index 2927ffe35..b76211aa4 100644
+--- a/firefox-ios/Client/Frontend/Browser/MainMenu/Views/MainMenuViewController.swift
++++ b/firefox-ios/Client/Frontend/Browser/MainMenu/Views/MainMenuViewController.swift
+@@ -373,10 +373,10 @@ class MainMenuViewController: UIViewController,
+     // MARK: - Redux
+     func subscribeToRedux() {
+         store.dispatch(
+-            ScreenAction(
++            ComponentAction(
+                 windowUUID: windowUUID,
+-                actionType: ScreenActionType.showScreen,
+-                screen: .mainMenu
++                actionType: ComponentActionType.addComponent,
++                component: .mainMenu
+             )
+         )
+         let uuid = windowUUID
+@@ -389,10 +389,10 @@ class MainMenuViewController: UIViewController,
+ 
+     func unsubscribeFromRedux() {
+         store.dispatch(
+-            ScreenAction(
++            ComponentAction(
+                 windowUUID: windowUUID,
+-                actionType: ScreenActionType.closeScreen,
+-                screen: .mainMenu
++                actionType: ComponentActionType.removeComponent,
++                component: .mainMenu
+             )
+         )
+     }
+diff --git a/firefox-ios/Client/Frontend/Browser/SearchEngines/Redux/SearchEngineSelectionState.swift b/firefox-ios/Client/Frontend/Browser/SearchEngines/Redux/SearchEngineSelectionState.swift
+index bcc6549c5..1d35173f5 100644
+--- a/firefox-ios/Client/Frontend/Browser/SearchEngines/Redux/SearchEngineSelectionState.swift
++++ b/firefox-ios/Client/Frontend/Browser/SearchEngines/Redux/SearchEngineSelectionState.swift
+@@ -16,7 +16,7 @@ struct SearchEngineSelectionState: ScreenState {
+     var selectedSearchEngine: SearchEngineModel?
+ 
+     init(appState: AppState, uuid: WindowUUID) {
+-        guard let state = appState.screenState(
++        guard let state = appState.componentState(
+             SearchEngineSelectionState.self,
+             for: .searchEngineSelection,
+             window: uuid
+diff --git a/firefox-ios/Client/Frontend/Browser/SearchEngines/Views/SearchEngineSelectionViewController.swift b/firefox-ios/Client/Frontend/Browser/SearchEngines/Views/SearchEngineSelectionViewController.swift
+index fa35c2d21..c020d17f4 100644
+--- a/firefox-ios/Client/Frontend/Browser/SearchEngines/Views/SearchEngineSelectionViewController.swift
++++ b/firefox-ios/Client/Frontend/Browser/SearchEngines/Views/SearchEngineSelectionViewController.swift
+@@ -103,10 +103,10 @@ class SearchEngineSelectionViewController: UIViewController,
+ 
+     func subscribeToRedux() {
+         store.dispatch(
+-            ScreenAction(
++            ComponentAction(
+                 windowUUID: windowUUID,
+-                actionType: ScreenActionType.showScreen,
+-                screen: .searchEngineSelection
++                actionType: ComponentActionType.addComponent,
++                component: .searchEngineSelection
+             )
+         )
+ 
+@@ -120,10 +120,10 @@ class SearchEngineSelectionViewController: UIViewController,
+ 
+     func unsubscribeFromRedux() {
+         store.dispatch(
+-            ScreenAction(
++            ComponentAction(
+                 windowUUID: windowUUID,
+-                actionType: ScreenActionType.closeScreen,
+-                screen: .searchEngineSelection
++                actionType: ComponentActionType.removeComponent,
++                component: .searchEngineSelection
+             )
+         )
+     }
+diff --git a/firefox-ios/Client/Frontend/Browser/Tabs/Middleware/TabManagerMiddleware.swift b/firefox-ios/Client/Frontend/Browser/Tabs/Middleware/TabManagerMiddleware.swift
+index 7eeeea625..38fdbadc4 100644
+--- a/firefox-ios/Client/Frontend/Browser/Tabs/Middleware/TabManagerMiddleware.swift
++++ b/firefox-ios/Client/Frontend/Browser/Tabs/Middleware/TabManagerMiddleware.swift
+@@ -97,9 +97,9 @@ final class TabManagerMiddleware: FeatureFlaggable,
+         let manager = tabManager(for: action.windowUUID)
+         manager.tabDidSetScreenshot(action.tab)
+ 
+-        guard let tabsState = state.screenState(TabsPanelState.self,
+-                                                for: .tabsPanel,
+-                                                window: action.windowUUID) else { return }
++        guard let tabsState = state.componentState(TabsPanelState.self,
++                                                   for: .tabsPanel,
++                                                   window: action.windowUUID) else { return }
+         triggerRefresh(uuid: action.windowUUID, isPrivate: tabsState.isPrivateMode)
+     }
+ 
+@@ -120,9 +120,9 @@ final class TabManagerMiddleware: FeatureFlaggable,
+ 
+         case TabPeekActionType.closeTab:
+             // TODO: verify if this works for closing a tab from an unselected tab panel
+-            guard let tabsState = state.screenState(TabsPanelState.self,
+-                                                    for: .tabsPanel,
+-                                                    window: action.windowUUID) else { return }
++            guard let tabsState = state.componentState(TabsPanelState.self,
++                                                       for: .tabsPanel,
++                                                       window: action.windowUUID) else { return }
+             tabPeekCloseTab(with: tabUUID,
+                             uuid: action.windowUUID,
+                             isPrivate: tabsState.isPrivateMode)
+@@ -519,7 +519,7 @@ final class TabManagerMiddleware: FeatureFlaggable,
+ 
+         tabManager.undoCloseTab()
+ 
+-        guard let tabsState = state.screenState(TabsPanelState.self, for: .tabsPanel, window: uuid) else { return }
++        guard let tabsState = state.componentState(TabsPanelState.self, for: .tabsPanel, window: uuid) else { return }
+ 
+         let model = getTabsDisplayModel(for: tabsState.isPrivateMode, uuid: uuid)
+         let refreshAction = TabPanelMiddlewareAction(tabDisplayModel: model,
+@@ -541,7 +541,7 @@ final class TabManagerMiddleware: FeatureFlaggable,
+ 
+     private func closeAllTabs(state: AppState, uuid: WindowUUID) {
+         let tabManager = tabManager(for: uuid)
+-        guard let tabsState = state.screenState(TabsPanelState.self, for: .tabsPanel, window: uuid) else { return }
++        guard let tabsState = state.componentState(TabsPanelState.self, for: .tabsPanel, window: uuid) else { return }
+ 
+         tabsPanelTelemetry.closeAllTabsSheetOptionSelected(option: .all, mode: tabsState.isPrivateMode ? .private : .normal)
+         let normalCount = tabManager.normalTabs.count
+diff --git a/firefox-ios/Client/Frontend/Browser/Tabs/State/RemoteTabsPanelState.swift b/firefox-ios/Client/Frontend/Browser/Tabs/State/RemoteTabsPanelState.swift
+index 71b0d76ac..7bed914ae 100644
+--- a/firefox-ios/Client/Frontend/Browser/Tabs/State/RemoteTabsPanelState.swift
++++ b/firefox-ios/Client/Frontend/Browser/Tabs/State/RemoteTabsPanelState.swift
+@@ -57,7 +57,7 @@ struct RemoteTabsPanelState: ScreenState, Sendable {
+     let devices: [Device]
+ 
+     init(appState: AppState, uuid: WindowUUID) {
+-        guard let panelState = appState.screenState(
++        guard let panelState = appState.componentState(
+             RemoteTabsPanelState.self,
+             for: .remoteTabsPanel,
+             window: uuid
+diff --git a/firefox-ios/Client/Frontend/Browser/Tabs/State/TabPeekState.swift b/firefox-ios/Client/Frontend/Browser/Tabs/State/TabPeekState.swift
+index f39cb1317..8d3c68e2d 100644
+--- a/firefox-ios/Client/Frontend/Browser/Tabs/State/TabPeekState.swift
++++ b/firefox-ios/Client/Frontend/Browser/Tabs/State/TabPeekState.swift
+@@ -16,9 +16,9 @@ struct TabPeekState: ScreenState {
+     let windowUUID: WindowUUID
+ 
+     init(appState: AppState, uuid: WindowUUID) {
+-        guard let tabPeekState = appState.screenState(
++        guard let tabPeekState = appState.componentState(
+             TabPeekState.self,
+-            for: AppScreen.tabPeek,
++            for: .tabPeek,
+             window: uuid
+         ) else {
+             self.init(windowUUID: uuid)
+diff --git a/firefox-ios/Client/Frontend/Browser/Tabs/State/TabTrayState.swift b/firefox-ios/Client/Frontend/Browser/Tabs/State/TabTrayState.swift
+index e50e218cb..283dbe50a 100644
+--- a/firefox-ios/Client/Frontend/Browser/Tabs/State/TabTrayState.swift
++++ b/firefox-ios/Client/Frontend/Browser/Tabs/State/TabTrayState.swift
+@@ -36,7 +36,7 @@ struct TabTrayState: ScreenState, Equatable {
+     }
+ 
+     init(appState: AppState, uuid: WindowUUID) {
+-        guard let panelState = appState.screenState(
++        guard let panelState = appState.componentState(
+             TabTrayState.self,
+             for: .tabsTray,
+             window: uuid
+diff --git a/firefox-ios/Client/Frontend/Browser/Tabs/State/TabsPanelState.swift b/firefox-ios/Client/Frontend/Browser/Tabs/State/TabsPanelState.swift
+index 03f19d22d..3e17ffca0 100644
+--- a/firefox-ios/Client/Frontend/Browser/Tabs/State/TabsPanelState.swift
++++ b/firefox-ios/Client/Frontend/Browser/Tabs/State/TabsPanelState.swift
+@@ -25,7 +25,7 @@ struct TabsPanelState: ScreenState, Equatable {
+     }
+ 
+     init(appState: AppState, uuid: WindowUUID) {
+-        guard let panelState = appState.screenState(
++        guard let panelState = appState.componentState(
+             TabsPanelState.self,
+             for: .tabsPanel,
+             window: uuid
+diff --git a/firefox-ios/Client/Frontend/Browser/Tabs/Views/RemoteTabsPanel.swift b/firefox-ios/Client/Frontend/Browser/Tabs/Views/RemoteTabsPanel.swift
+index 271ae4956..a5595dbe7 100644
+--- a/firefox-ios/Client/Frontend/Browser/Tabs/Views/RemoteTabsPanel.swift
++++ b/firefox-ios/Client/Frontend/Browser/Tabs/Views/RemoteTabsPanel.swift
+@@ -190,10 +190,11 @@ class RemoteTabsPanel: UIViewController,
+     // MARK: - Redux
+ 
+     func subscribeToRedux() {
+-        let showScreenAction = ScreenAction(windowUUID: windowUUID,
+-                                            actionType: ScreenActionType.showScreen,
+-                                            screen: .remoteTabsPanel)
+-        store.dispatch(showScreenAction)
++        store.dispatch(ComponentAction(
++            windowUUID: windowUUID,
++            actionType: ComponentActionType.addComponent,
++            component: .remoteTabsPanel
++        ))
+ 
+         let didAppearAction = RemoteTabsPanelAction(windowUUID: windowUUID,
+                                                     actionType: RemoteTabsPanelActionType.panelDidAppear)
+@@ -207,9 +208,9 @@ class RemoteTabsPanel: UIViewController,
+     }
+ 
+     func unsubscribeFromRedux() {
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.closeScreen,
+-                                  screen: .remoteTabsPanel)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.removeComponent,
++                                     component: .remoteTabsPanel)
+         store.dispatch(action)
+     }
+ 
+diff --git a/firefox-ios/Client/Frontend/Browser/Tabs/Views/TabDisplayPanelViewController.swift b/firefox-ios/Client/Frontend/Browser/Tabs/Views/TabDisplayPanelViewController.swift
+index cefbc2fb9..f08816aef 100644
+--- a/firefox-ios/Client/Frontend/Browser/Tabs/Views/TabDisplayPanelViewController.swift
++++ b/firefox-ios/Client/Frontend/Browser/Tabs/Views/TabDisplayPanelViewController.swift
+@@ -210,7 +210,7 @@ final class TabDisplayPanelViewController: UIViewController,
+     }
+ 
+     var shouldBeInPrivateTheme: Bool {
+-        let tabTrayState = store.state.screenState(TabTrayState.self, for: .tabsTray, window: windowUUID)
++        let tabTrayState = store.state.componentState(TabTrayState.self, for: .tabsTray, window: windowUUID)
+         return tabTrayState?.isPrivateMode ?? false
+     }
+ 
+@@ -311,9 +311,9 @@ final class TabDisplayPanelViewController: UIViewController,
+     // MARK: - Redux
+ 
+     func subscribeToRedux() {
+-        let screenAction = ScreenAction(windowUUID: windowUUID,
+-                                        actionType: ScreenActionType.showScreen,
+-                                        screen: .tabsPanel)
++        let screenAction = ComponentAction(windowUUID: windowUUID,
++                                           actionType: ComponentActionType.addComponent,
++                                           component: .tabsPanel)
+         store.dispatch(screenAction)
+ 
+         let didLoadAction = TabPanelViewAction(panelType: panelType,
+@@ -330,9 +330,9 @@ final class TabDisplayPanelViewController: UIViewController,
+     }
+ 
+     func unsubscribeFromRedux() {
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.closeScreen,
+-                                  screen: .tabsPanel)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.removeComponent,
++                                     component: .tabsPanel)
+         store.dispatch(action)
+     }
+ 
+diff --git a/firefox-ios/Client/Frontend/Browser/Tabs/Views/TabPeekViewController.swift b/firefox-ios/Client/Frontend/Browser/Tabs/Views/TabPeekViewController.swift
+index 22c2cd04c..85d3ed7cc 100644
+--- a/firefox-ios/Client/Frontend/Browser/Tabs/Views/TabPeekViewController.swift
++++ b/firefox-ios/Client/Frontend/Browser/Tabs/Views/TabPeekViewController.swift
+@@ -65,9 +65,9 @@ final class TabPeekViewController: UIViewController,
+     // MARK: - Private helper methods
+ 
+     func subscribeToRedux() {
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.showScreen,
+-                                  screen: .tabPeek)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.addComponent,
++                                     component: .tabPeek)
+         store.dispatch(action)
+         let uuid = windowUUID
+         store.subscribe(self, transform: {
+@@ -78,9 +78,9 @@ final class TabPeekViewController: UIViewController,
+     }
+ 
+     func unsubscribeFromRedux() {
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.closeScreen,
+-                                  screen: .tabPeek)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.removeComponent,
++                                     component: .tabPeek)
+         store.dispatch(action)
+     }
+ 
+diff --git a/firefox-ios/Client/Frontend/Browser/Tabs/Views/TabTrayViewController.swift b/firefox-ios/Client/Frontend/Browser/Tabs/Views/TabTrayViewController.swift
+index 45db02e02..8fd1827c1 100644
+--- a/firefox-ios/Client/Frontend/Browser/Tabs/Views/TabTrayViewController.swift
++++ b/firefox-ios/Client/Frontend/Browser/Tabs/Views/TabTrayViewController.swift
+@@ -359,9 +359,9 @@ final class TabTrayViewController: UIViewController,
+ 
+     func subscribeToRedux() {
+         let initialSelectedPanel = tabTrayState.selectedPanel
+-        let screenAction = ScreenAction(windowUUID: windowUUID,
+-                                        actionType: ScreenActionType.showScreen,
+-                                        screen: .tabsTray)
++        let screenAction = ComponentAction(windowUUID: windowUUID,
++                                           actionType: ComponentActionType.addComponent,
++                                           component: .tabsTray)
+         store.dispatch(screenAction)
+         let uuid = windowUUID
+         store.subscribe(self, transform: {
+@@ -377,9 +377,9 @@ final class TabTrayViewController: UIViewController,
+     }
+ 
+     func unsubscribeFromRedux() {
+-        let screenAction = ScreenAction(windowUUID: windowUUID,
+-                                        actionType: ScreenActionType.closeScreen,
+-                                        screen: .tabsTray)
++        let screenAction = ComponentAction(windowUUID: windowUUID,
++                                           actionType: ComponentActionType.removeComponent,
++                                           component: .tabsTray)
+         store.dispatch(screenAction)
+     }
+ 
+@@ -434,7 +434,7 @@ final class TabTrayViewController: UIViewController,
+     }
+ 
+     var shouldBeInPrivateTheme: Bool {
+-        let tabTrayState = store.state.screenState(TabTrayState.self, for: .tabsTray, window: windowUUID)
++        let tabTrayState = store.state.componentState(TabTrayState.self, for: .tabsTray, window: windowUUID)
+         return tabTrayState?.isPrivateMode ?? false
+     }
+ 
+diff --git a/firefox-ios/Client/Frontend/Browser/TermsOfUse/TermsOfUseState.swift b/firefox-ios/Client/Frontend/Browser/TermsOfUse/TermsOfUseState.swift
+index 7a67e6c44..0c1600f63 100644
+--- a/firefox-ios/Client/Frontend/Browser/TermsOfUse/TermsOfUseState.swift
++++ b/firefox-ios/Client/Frontend/Browser/TermsOfUse/TermsOfUseState.swift
+@@ -11,7 +11,7 @@ struct TermsOfUseState: ScreenState {
+     var wasDismissed: Bool
+ 
+     init(appState: AppState, uuid: WindowUUID) {
+-        guard let termsOfUseState = appState.screenState(
++        guard let termsOfUseState = appState.componentState(
+             TermsOfUseState.self,
+             for: .termsOfUse,
+             window: uuid)
+diff --git a/firefox-ios/Client/Frontend/Browser/TermsOfUse/View/TermsOfUseViewController.swift b/firefox-ios/Client/Frontend/Browser/TermsOfUse/View/TermsOfUseViewController.swift
+index 5daaa0967..1899249b5 100644
+--- a/firefox-ios/Client/Frontend/Browser/TermsOfUse/View/TermsOfUseViewController.swift
++++ b/firefox-ios/Client/Frontend/Browser/TermsOfUse/View/TermsOfUseViewController.swift
+@@ -154,22 +154,22 @@ final class TermsOfUseViewController: UIViewController,
+     }
+ 
+     func subscribeToRedux() {
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.showScreen,
+-                                  screen: .termsOfUse)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.addComponent,
++                                     component: .termsOfUse)
+         store.dispatch(action)
+         store.subscribe(self) {
+             $0.select { appState in
+-                appState.screenState(TermsOfUseState.self, for: .termsOfUse, window: self.windowUUID)
++                appState.componentState(TermsOfUseState.self, for: .termsOfUse, window: self.windowUUID)
+                 ?? TermsOfUseState(windowUUID: self.windowUUID)
+             }
+         }
+     }
+ 
+     func unsubscribeFromRedux() {
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.closeScreen,
+-                                  screen: .termsOfUse)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.removeComponent,
++                                     component: .termsOfUse)
+         store.dispatch(action)
+         // Note: actual `store.unsubscribe()` is not strictly needed; Redux uses weak subscribers
+     }
+diff --git a/firefox-ios/Client/Frontend/Browser/Toolbars/AddressToolbarContainer.swift b/firefox-ios/Client/Frontend/Browser/Toolbars/AddressToolbarContainer.swift
+index 59754ade5..da568a4f5 100644
+--- a/firefox-ios/Client/Frontend/Browser/Toolbars/AddressToolbarContainer.swift
++++ b/firefox-ios/Client/Frontend/Browser/Toolbars/AddressToolbarContainer.swift
+@@ -289,9 +289,9 @@ final class AddressToolbarContainer: UIView,
+     func subscribeToRedux() {
+         guard let windowUUID else { return }
+ 
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.showScreen,
+-                                  screen: .toolbar)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.addComponent,
++                                     component: .toolbar)
+         store.dispatch(action)
+ 
+         store.subscribe(self, transform: {
+@@ -307,9 +307,9 @@ final class AddressToolbarContainer: UIView,
+             return
+         }
+ 
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.closeScreen,
+-                                  screen: .toolbar)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.removeComponent,
++                                     component: .toolbar)
+         store.dispatch(action)
+         store.unsubscribe(self)
+     }
+@@ -531,7 +531,7 @@ final class AddressToolbarContainer: UIView,
+     // MARK: - AddressToolbarDelegate
+     func searchSuggestions(searchTerm: String) {
+         if let windowUUID,
+-           let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID) {
++           let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: windowUUID) {
+             if searchTerm.isEmpty, !toolbarState.addressToolbar.isEmptySearch {
+                 let action = ToolbarAction(windowUUID: windowUUID, actionType: ToolbarActionType.didDeleteSearchTerm)
+                 store.dispatch(action)
+@@ -593,7 +593,7 @@ final class AddressToolbarContainer: UIView,
+         with contextualHintType: String
+     ) {
+         guard addressToolbar == toolbar,
+-              let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID)
++              let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: windowUUID)
+         else { return }
+ 
+         if contextualHintType == ContextualHintType.navigation.rawValue && !toolbarState.canShowNavigationHint { return }
+@@ -648,7 +648,7 @@ final class AddressToolbarContainer: UIView,
+ 
+     func leaveOverlayMode(reason: URLBarLeaveOverlayModeReason, shouldCancelLoading cancel: Bool) {
+         guard let windowUUID,
+-              let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID)
++              let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: windowUUID)
+         else { return }
+ 
+         _ = toolbar.resignFirstResponder()
+diff --git a/firefox-ios/Client/Frontend/Browser/Toolbars/NavigationToolbarContainer.swift b/firefox-ios/Client/Frontend/Browser/Toolbars/NavigationToolbarContainer.swift
+index 6f9e44653..fa414d603 100644
+--- a/firefox-ios/Client/Frontend/Browser/Toolbars/NavigationToolbarContainer.swift
++++ b/firefox-ios/Client/Frontend/Browser/Toolbars/NavigationToolbarContainer.swift
+@@ -125,7 +125,7 @@ final class NavigationToolbarContainer: UIView, ThemeApplicable, StoreSubscriber
+ 
+ extension NavigationToolbarContainer: BrowserNavigationToolbarDelegate {
+     func configureContextualHint(for button: UIButton, with contextualHintType: String) {
+-        guard let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID)
++        guard let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: windowUUID)
+         else { return }
+ 
+         if contextualHintType == ContextualHintType.navigation.rawValue && !toolbarState.canShowNavigationHint { return }
+diff --git a/firefox-ios/Client/Frontend/Browser/Toolbars/Redux/AddressBarState.swift b/firefox-ios/Client/Frontend/Browser/Toolbars/Redux/AddressBarState.swift
+index 0bc6bb75d..07a3d9648 100644
+--- a/firefox-ios/Client/Frontend/Browser/Toolbars/Redux/AddressBarState.swift
++++ b/firefox-ios/Client/Frontend/Browser/Toolbars/Redux/AddressBarState.swift
+@@ -1081,7 +1081,7 @@ struct AddressBarState: StateType, Sendable, Equatable {
+     ) -> [ToolbarActionConfiguration] {
+         var actions = [ToolbarActionConfiguration]()
+ 
+-        guard let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: action.windowUUID)
++        guard let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: action.windowUUID)
+         else { return actions }
+ 
+         let isShowingNavigationToolbar = action.isShowingNavigationToolbar ?? toolbarState.isShowingNavigationToolbar
+@@ -1109,7 +1109,7 @@ struct AddressBarState: StateType, Sendable, Equatable {
+     ) -> [ToolbarActionConfiguration] {
+         var actions = [ToolbarActionConfiguration]()
+ 
+-        guard let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: action.windowUUID),
++        guard let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: action.windowUUID),
+               !isEditing
+         else { return actions }
+ 
+@@ -1230,9 +1230,9 @@ struct AddressBarState: StateType, Sendable, Equatable {
+     ) -> [ToolbarActionConfiguration] {
+         var actions = [ToolbarActionConfiguration]()
+ 
+-        guard let toolbarState = store.state.screenState(ToolbarState.self,
+-                                                         for: .toolbar,
+-                                                         window: action.windowUUID)
++        guard let toolbarState = store.state.componentState(ToolbarState.self,
++                                                            for: .toolbar,
++                                                            window: action.windowUUID)
+         else { return actions }
+ 
+         let isShowingNavigationToolbar = action.isShowingNavigationToolbar ?? toolbarState.isShowingNavigationToolbar
+@@ -1307,7 +1307,7 @@ struct AddressBarState: StateType, Sendable, Equatable {
+     // MARK: - Helper
+     @MainActor
+     private static func toolbarPosition(action: ToolbarAction) -> AddressToolbarPosition? {
+-        guard let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: action.windowUUID)
++        guard let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: action.windowUUID)
+         else { return nil }
+ 
+         guard action.actionType as? ToolbarActionType == .toolbarPositionChanged,
+@@ -1324,7 +1324,7 @@ struct AddressBarState: StateType, Sendable, Equatable {
+ 
+     @MainActor
+     private static func shouldUseAlternativeLocationColor(action: ToolbarAction) -> Bool {
+-        guard let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: action.windowUUID)
++        guard let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: action.windowUUID)
+         else { return false }
+ 
+         let isTraitCollectionDidChangeAction = action.actionType as? ToolbarActionType == .traitCollectionDidChange
+diff --git a/firefox-ios/Client/Frontend/Browser/Toolbars/Redux/NavigationBarState.swift b/firefox-ios/Client/Frontend/Browser/Toolbars/Redux/NavigationBarState.swift
+index 2bb0ef93a..3e3f13f3f 100644
+--- a/firefox-ios/Client/Frontend/Browser/Toolbars/Redux/NavigationBarState.swift
++++ b/firefox-ios/Client/Frontend/Browser/Toolbars/Redux/NavigationBarState.swift
+@@ -239,7 +239,7 @@ struct NavigationBarState: StateType, Equatable {
+     -> [ToolbarActionConfiguration] {
+         var actions = [ToolbarActionConfiguration]()
+ 
+-        guard let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: action.windowUUID)
++        guard let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: action.windowUUID)
+         else { return actions }
+ 
+         let isLoadAction = action.actionType as? ToolbarActionType == .didLoadToolbars
+diff --git a/firefox-ios/Client/Frontend/Browser/Toolbars/Redux/ToolbarMiddleware.swift b/firefox-ios/Client/Frontend/Browser/Toolbars/Redux/ToolbarMiddleware.swift
+index 2b9a8faa4..9a07b0f54 100644
+--- a/firefox-ios/Client/Frontend/Browser/Toolbars/Redux/ToolbarMiddleware.swift
++++ b/firefox-ios/Client/Frontend/Browser/Toolbars/Redux/ToolbarMiddleware.swift
+@@ -139,7 +139,7 @@ final class ToolbarMiddleware: FeatureFlaggable {
+             updateTopAddressBorderPosition(scrollOffset: scrollOffset, windowUUID: action.windowUUID, state: state)
+ 
+         case ToolbarMiddlewareActionType.didClearSearch:
+-            guard let toolbarState = state.screenState(ToolbarState.self, for: .toolbar, window: action.windowUUID)
++            guard let toolbarState = state.componentState(ToolbarState.self, for: .toolbar, window: action.windowUUID)
+             else { return }
+             let action = ToolbarAction(windowUUID: action.windowUUID, actionType: ToolbarActionType.clearSearch)
+             store.dispatch(action)
+@@ -169,7 +169,7 @@ final class ToolbarMiddleware: FeatureFlaggable {
+         case ToolbarActionType.didSubmitSearchTerm:
+             // After a user submits a search term, we want to record it in our history storage via recent search provider.
+             // We only want to record when in normal mode since recent searches is not available for private mode.
+-            guard let toolbarState = state.screenState(
++            guard let toolbarState = state.componentState(
+                 ToolbarState.self,
+                 for: .toolbar,
+                 window: action.windowUUID
+@@ -213,7 +213,7 @@ final class ToolbarMiddleware: FeatureFlaggable {
+ 
+     @MainActor
+     private func handleToolbarButtonTapActions(action: ToolbarMiddlewareAction, state: AppState) {
+-        guard let toolbarState = state.screenState(ToolbarState.self, for: .toolbar, window: action.windowUUID)
++        guard let toolbarState = state.componentState(ToolbarState.self, for: .toolbar, window: action.windowUUID)
+         else { return }
+ 
+         switch action.buttonType {
+@@ -324,7 +324,7 @@ final class ToolbarMiddleware: FeatureFlaggable {
+     }
+ 
+     private func handleToolbarButtonLongPressActions(action: ToolbarMiddlewareAction, state: AppState) {
+-        guard let toolbarState = state.screenState(ToolbarState.self, for: .toolbar, window: action.windowUUID)
++        guard let toolbarState = state.componentState(ToolbarState.self, for: .toolbar, window: action.windowUUID)
+         else { return }
+ 
+         switch action.buttonType {
+@@ -373,9 +373,9 @@ final class ToolbarMiddleware: FeatureFlaggable {
+     // MARK: - Border
+     // For the top placement of the address bar, the border is only visible on scroll. This is due to a design choice.
+     private func updateTopAddressBorderPosition(scrollOffset: CGPoint, windowUUID: WindowUUID, state: AppState) {
+-        guard let toolbarState = state.screenState(ToolbarState.self,
+-                                                   for: .toolbar,
+-                                                   window: windowUUID),
++        guard let toolbarState = state.componentState(ToolbarState.self,
++                                                      for: .toolbar,
++                                                      window: windowUUID),
+               toolbarState.toolbarPosition == .top
+         else { return }
+ 
+@@ -394,7 +394,7 @@ final class ToolbarMiddleware: FeatureFlaggable {
+     }
+ 
+     private func isMicrosurveyShown(action: GeneralBrowserMiddlewareAction, state: AppState) -> Bool {
+-        let bvcState = state.screenState(
++        let bvcState = state.componentState(
+             BrowserViewControllerState.self,
+             for: .browserViewController,
+             window: action.windowUUID
+@@ -410,9 +410,9 @@ final class ToolbarMiddleware: FeatureFlaggable {
+     //  - When survey is shown and address bar is at bottom, hide borders for address and nav toolbar
+     //  - When survey is dismissed, show border as expected based on the toolbar requirements
+     private func updateToolbarBorders(windowUUID: WindowUUID, state: AppState, isMicrosurveyShown: Bool) {
+-        guard let toolbarState = state.screenState(ToolbarState.self,
+-                                                   for: .toolbar,
+-                                                   window: windowUUID) else { return }
++        guard let toolbarState = state.componentState(ToolbarState.self,
++                                                      for: .toolbar,
++                                                      window: windowUUID) else { return }
+ 
+         if toolbarState.toolbarPosition == .top {
+             let toolbarAction = ToolbarAction(displayNavBorder: !isMicrosurveyShown,
+@@ -431,9 +431,9 @@ final class ToolbarMiddleware: FeatureFlaggable {
+     private func updateToolbarPosition(action: GeneralBrowserMiddlewareAction, state: AppState) {
+         guard let searchBarPosition = action.toolbarPosition,
+               let scrollOffset = action.scrollOffset,
+-              let toolbarState = state.screenState(ToolbarState.self,
+-                                                   for: .toolbar,
+-                                                   window: action.windowUUID)
++              let toolbarState = state.componentState(ToolbarState.self,
++                                                      for: .toolbar,
++                                                      window: action.windowUUID)
+         else { return }
+ 
+         let addressToolbarPosition = addressToolbarPositionFromSearchBarPosition(searchBarPosition)
+@@ -520,7 +520,7 @@ final class ToolbarMiddleware: FeatureFlaggable {
+     }
+ 
+     private func recordReaderModeTelemetry(state: AppState, windowUUID: WindowUUID) {
+-        guard let toolbarState = state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID) else { return }
++        guard let toolbarState = state.componentState(ToolbarState.self, for: .toolbar, window: windowUUID) else { return }
+ 
+         let isReaderModeEnabled = switch toolbarState.addressToolbar.readerModeState {
+         case .available: true // will be enabled after action gets executed
+diff --git a/firefox-ios/Client/Frontend/Browser/Toolbars/Redux/ToolbarState.swift b/firefox-ios/Client/Frontend/Browser/Toolbars/Redux/ToolbarState.swift
+index f1480783c..db273de9d 100644
+--- a/firefox-ios/Client/Frontend/Browser/Toolbars/Redux/ToolbarState.swift
++++ b/firefox-ios/Client/Frontend/Browser/Toolbars/Redux/ToolbarState.swift
+@@ -30,7 +30,7 @@ struct ToolbarState: ScreenState, Sendable {
+     var nextTabScreenshot: UIImage?
+ 
+     init(appState: AppState, uuid: WindowUUID) {
+-        guard let toolbarState = appState.screenState(
++        guard let toolbarState = appState.componentState(
+             ToolbarState.self,
+             for: .toolbar,
+             window: uuid)
+diff --git a/firefox-ios/Client/Frontend/Browser/TopTabsViewController.swift b/firefox-ios/Client/Frontend/Browser/TopTabsViewController.swift
+index be896d107..3674fd23a 100644
+--- a/firefox-ios/Client/Frontend/Browser/TopTabsViewController.swift
++++ b/firefox-ios/Client/Frontend/Browser/TopTabsViewController.swift
+@@ -201,7 +201,7 @@ class TopTabsViewController: UIViewController, Themeable, Notifiable, FeatureFla
+         let colors = currentTheme.colors
+ 
+         view.backgroundColor = .clear
+-        if let toolbarState = store.state.screenState(ToolbarState.self, for: .toolbar, window: windowUUID),
++        if let toolbarState = store.state.componentState(ToolbarState.self, for: .toolbar, window: windowUUID),
+            toolbarState.isTranslucent {
+             collectionView.backgroundColor = .clear
+         } else {
+diff --git a/firefox-ios/Client/Frontend/Home/Homepage/Header/HomepageHeaderCell.swift b/firefox-ios/Client/Frontend/Home/Homepage/Header/HomepageHeaderCell.swift
+index 2d1e95475..83fa083bd 100644
+--- a/firefox-ios/Client/Frontend/Home/Homepage/Header/HomepageHeaderCell.swift
++++ b/firefox-ios/Client/Frontend/Home/Homepage/Header/HomepageHeaderCell.swift
+@@ -120,7 +120,7 @@ class HomepageHeaderCell: UICollectionViewCell, ReusableCell, ThemeApplicable {
+     func applyTheme(theme: Theme) {
+         // TODO: FXIOS-10851 This can be moved to the new homescreen wallpaper fetching redux
+         let wallpaperManager = WallpaperManager()
+-        let browserViewType = store.state.screenState(
++        let browserViewType = store.state.componentState(
+             BrowserViewControllerState.self,
+             for: .browserViewController,
+             window: currentWindowUUID
+diff --git a/firefox-ios/Client/Frontend/Home/Homepage/HomepageViewController.swift b/firefox-ios/Client/Frontend/Home/Homepage/HomepageViewController.swift
+index f446f7f35..c6572dae8 100644
+--- a/firefox-ios/Client/Frontend/Home/Homepage/HomepageViewController.swift
++++ b/firefox-ios/Client/Frontend/Home/Homepage/HomepageViewController.swift
+@@ -354,10 +354,10 @@ final class HomepageViewController: UIViewController,
+ 
+     // MARK: - Redux
+     func subscribeToRedux() {
+-        let action = ScreenAction(
++        let action = ComponentAction(
+             windowUUID: windowUUID,
+-            actionType: ScreenActionType.showScreen,
+-            screen: .homepage
++            actionType: ComponentActionType.addComponent,
++            component: .homepage
+         )
+         store.dispatch(action)
+ 
+@@ -399,10 +399,10 @@ final class HomepageViewController: UIViewController,
+     }
+ 
+     func unsubscribeFromRedux() {
+-        let action = ScreenAction(
++        let action = ComponentAction(
+             windowUUID: windowUUID,
+-            actionType: ScreenActionType.closeScreen,
+-            screen: .homepage
++            actionType: ComponentActionType.removeComponent,
++            component: .homepage
+         )
+         store.dispatch(action)
+     }
+diff --git a/firefox-ios/Client/Frontend/Home/Homepage/Layout/HomepageSectionLayoutProvider.swift b/firefox-ios/Client/Frontend/Home/Homepage/Layout/HomepageSectionLayoutProvider.swift
+index 36fd9291a..97f080aa1 100644
+--- a/firefox-ios/Client/Frontend/Home/Homepage/Layout/HomepageSectionLayoutProvider.swift
++++ b/firefox-ios/Client/Frontend/Home/Homepage/Layout/HomepageSectionLayoutProvider.swift
+@@ -314,7 +314,7 @@ final class HomepageSectionLayoutProvider: FeatureFlaggable {
+         for environment: NSCollectionLayoutEnvironment
+     ) -> NSCollectionLayoutSection {
+         let traitCollection = environment.traitCollection
+-        let storiesHeaderState = store.state.screenState(HomepageState.self, for: .homepage, window: windowUUID)?
++        let storiesHeaderState = store.state.componentState(HomepageState.self, for: .homepage, window: windowUUID)?
+             .merinoState.sectionHeaderState
+             ?? SectionHeaderConfiguration(title: "", a11yIdentifier: "")
+ 
+@@ -602,7 +602,9 @@ final class HomepageSectionLayoutProvider: FeatureFlaggable {
+     }
+ 
+     private func getHeaderLogoHeight(environment: NSCollectionLayoutEnvironment) -> CGFloat {
+-        guard let state = store.state.screenState(HomepageState.self, for: .homepage, window: windowUUID) else { return 0 }
++        guard let state = store.state.componentState(HomepageState.self, for: .homepage, window: windowUUID) else {
++            return 0
++        }
+ 
+         var totalHeight: CGFloat = 0
+         let containerWidth = normalizedDimension(environment.container.contentSize.width)
+@@ -616,7 +618,7 @@ final class HomepageSectionLayoutProvider: FeatureFlaggable {
+ 
+     private func getPrivacyNoticeSectionHeight(environment: NSCollectionLayoutEnvironment) -> CGFloat {
+         // Ensures we should be showing the privacy notice
+-        guard let state = store.state.screenState(HomepageState.self, for: .homepage, window: windowUUID),
++        guard let state = store.state.componentState(HomepageState.self, for: .homepage, window: windowUUID),
+               state.shouldShowPrivacyNotice else { return 0 }
+ 
+         var totalHeight: CGFloat = 0
+@@ -630,7 +632,7 @@ final class HomepageSectionLayoutProvider: FeatureFlaggable {
+ 
+     /// Creates a "dummy" top sites section and returns its height
+     private func getShortcutsSectionHeight(environment: NSCollectionLayoutEnvironment) -> CGFloat {
+-        guard let state = store.state.screenState(HomepageState.self, for: .homepage, window: windowUUID),
++        guard let state = store.state.componentState(HomepageState.self, for: .homepage, window: windowUUID),
+               state.topSitesState.shouldShowSection else { return 0 }
+         var totalHeight: CGFloat = 0
+         let topSitesState = state.topSitesState
+@@ -708,7 +710,10 @@ final class HomepageSectionLayoutProvider: FeatureFlaggable {
+     /// Creates a "dummy" jump back in section and returns its height
+     private func getJumpBackInSectionHeight(environment: NSCollectionLayoutEnvironment) -> CGFloat {
+         // Ensures we have at least 1 jump back in tab to show
+-        guard let state = store.state.screenState(HomepageState.self, for: .homepage, window: windowUUID) else { return 0 }
++        guard let state = store.state.componentState(HomepageState.self, for: .homepage, window: windowUUID) else {
++            return 0
++        }
++
+         let jumpBackInState = state.jumpBackInState
+         guard jumpBackInState.shouldShowSection,
+               jumpBackInState.mostRecentSyncedTab != nil || !jumpBackInState.jumpBackInTabs.isEmpty else { return 0 }
+@@ -790,7 +795,10 @@ final class HomepageSectionLayoutProvider: FeatureFlaggable {
+ 
+     /// Creates a "dummy" stories section and returns its height
+     private func getStoriesSectionHeight(environment: NSCollectionLayoutEnvironment) -> CGFloat {
+-        guard let state = store.state.screenState(HomepageState.self, for: .homepage, window: windowUUID) else { return 0 }
++        guard let state = store.state.componentState(HomepageState.self, for: .homepage, window: windowUUID) else {
++            return 0
++        }
++
+         let storiesState = state.merinoState
+         guard storiesState.shouldShowSection, !storiesState.merinoData.isEmpty else { return 0 }
+         let cellWidth = UX.PocketConstants.getStoriesCellWidth(
+@@ -805,7 +813,9 @@ final class HomepageSectionLayoutProvider: FeatureFlaggable {
+ 
+     /// Creates a "dummy" search bar section and returns its height
+     private func getSearchBarSectionHeight(environment: NSCollectionLayoutEnvironment) -> CGFloat {
+-        guard let state = store.state.screenState(HomepageState.self, for: .homepage, window: windowUUID) else { return 0 }
++        guard let state = store.state.componentState(HomepageState.self, for: .homepage, window: windowUUID) else {
++            return 0
++        }
+ 
+         let searchState = state.searchState
+         let containerWidth = normalizedDimension(environment.container.contentSize.width)
+@@ -912,7 +922,7 @@ final class HomepageSectionLayoutProvider: FeatureFlaggable {
+     }
+ 
+     private func getRawSpacerHeight(environment: NSCollectionLayoutEnvironment) -> CGFloat {
+-        let homepageState = store.state.screenState(HomepageState.self, for: .homepage, window: windowUUID)
++        let homepageState = store.state.componentState(HomepageState.self, for: .homepage, window: windowUUID)
+         let collectionViewHeight = environment.container.contentSize.height
+ 
+         let availableContentHeight = homepageState?.availableContentHeight ?? 0
+@@ -940,7 +950,7 @@ final class HomepageSectionLayoutProvider: FeatureFlaggable {
+     /// Gets the bookmarks measurement (tallest cell height and section height)
+     private func getBookmarksMeasurement(environment: NSCollectionLayoutEnvironment,
+                                          cellWidth: CGFloat) -> HomepageLayoutMeasurementCache.BookmarksMeasurement.Result {
+-        guard let state = store.state.screenState(HomepageState.self, for: .homepage, window: windowUUID) else {
++        guard let state = store.state.componentState(HomepageState.self, for: .homepage, window: windowUUID) else {
+             return HomepageLayoutMeasurementCache.BookmarksMeasurement.Result(
+                 tallestCellHeight: 0,
+                 totalHeight: 0
+@@ -1008,7 +1018,7 @@ final class HomepageSectionLayoutProvider: FeatureFlaggable {
+         environment: NSCollectionLayoutEnvironment,
+         cellWidth: CGFloat
+     ) -> HomepageLayoutMeasurementCache.StoriesMeasurement.Result {
+-        guard let state = store.state.screenState(HomepageState.self, for: .homepage, window: windowUUID) else {
++        guard let state = store.state.componentState(HomepageState.self, for: .homepage, window: windowUUID) else {
+             return HomepageLayoutMeasurementCache.StoriesMeasurement.Result(
+                 tallestCellHeight: 0,
+                 totalHeight: 0
+diff --git a/firefox-ios/Client/Frontend/Home/Homepage/Redux/HomepageState.swift b/firefox-ios/Client/Frontend/Home/Homepage/Redux/HomepageState.swift
+index 1233b170d..781074711 100644
+--- a/firefox-ios/Client/Frontend/Home/Homepage/Redux/HomepageState.swift
++++ b/firefox-ios/Client/Frontend/Home/Homepage/Redux/HomepageState.swift
+@@ -50,7 +50,7 @@ struct HomepageState: ScreenState, Equatable {
+     let availableWallpaperHeight: CGFloat
+ 
+     init(appState: AppState, uuid: WindowUUID) {
+-        guard let homepageState = appState.screenState(
++        guard let homepageState = appState.componentState(
+             HomepageState.self,
+             for: .homepage,
+             window: uuid
+diff --git a/firefox-ios/Client/Frontend/Microsurvey/Survey/MicrosurveyState.swift b/firefox-ios/Client/Frontend/Microsurvey/Survey/MicrosurveyState.swift
+index 2555b3b8e..742754d66 100644
+--- a/firefox-ios/Client/Frontend/Microsurvey/Survey/MicrosurveyState.swift
++++ b/firefox-ios/Client/Frontend/Microsurvey/Survey/MicrosurveyState.swift
+@@ -11,7 +11,7 @@ struct MicrosurveyState: ScreenState {
+     var showPrivacy: Bool
+ 
+     init(appState: AppState, uuid: WindowUUID) {
+-        guard let microsurveyState = appState.screenState(
++        guard let microsurveyState = appState.componentState(
+             MicrosurveyState.self,
+             for: .microsurvey,
+             window: uuid
+diff --git a/firefox-ios/Client/Frontend/Microsurvey/Survey/View/MicrosurveyViewController.swift b/firefox-ios/Client/Frontend/Microsurvey/Survey/View/MicrosurveyViewController.swift
+index 9210d2508..110eccec8 100644
+--- a/firefox-ios/Client/Frontend/Microsurvey/Survey/View/MicrosurveyViewController.swift
++++ b/firefox-ios/Client/Frontend/Microsurvey/Survey/View/MicrosurveyViewController.swift
+@@ -159,9 +159,9 @@ final class MicrosurveyViewController: UIViewController,
+     }
+ 
+     func subscribeToRedux() {
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.showScreen,
+-                                  screen: .microsurvey)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.addComponent,
++                                     component: .microsurvey)
+         store.dispatch(action)
+         let uuid = windowUUID
+         store.subscribe(self, transform: {
+@@ -172,9 +172,9 @@ final class MicrosurveyViewController: UIViewController,
+     }
+ 
+     func unsubscribeFromRedux() {
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.closeScreen,
+-                                  screen: .microsurvey)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.removeComponent,
++                                     component: .microsurvey)
+         store.dispatch(action)
+     }
+ 
+diff --git a/firefox-ios/Client/Frontend/NativeErrorPage/NativeErrorPageState.swift b/firefox-ios/Client/Frontend/NativeErrorPage/NativeErrorPageState.swift
+index 2cdd12cf6..b6b707fde 100644
+--- a/firefox-ios/Client/Frontend/NativeErrorPage/NativeErrorPageState.swift
++++ b/firefox-ios/Client/Frontend/NativeErrorPage/NativeErrorPageState.swift
+@@ -15,7 +15,7 @@ struct NativeErrorPageState: ScreenState {
+     var showGoBackButton: Bool
+ 
+     init(appState: AppState, uuid: WindowUUID) {
+-        guard let nativeErrorPageState = appState.screenState(
++        guard let nativeErrorPageState = appState.componentState(
+             NativeErrorPageState.self,
+             for: .nativeErrorPage,
+             window: uuid
+diff --git a/firefox-ios/Client/Frontend/NativeErrorPage/NativeErrorPageViewController.swift b/firefox-ios/Client/Frontend/NativeErrorPage/NativeErrorPageViewController.swift
+index be3870b16..67425ec80 100644
+--- a/firefox-ios/Client/Frontend/NativeErrorPage/NativeErrorPageViewController.swift
++++ b/firefox-ios/Client/Frontend/NativeErrorPage/NativeErrorPageViewController.swift
+@@ -182,9 +182,9 @@ final class NativeErrorPageViewController: UIViewController,
+     }
+ 
+     func subscribeToRedux() {
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.showScreen,
+-                                  screen: .nativeErrorPage)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.addComponent,
++                                     component: .nativeErrorPage)
+         store.dispatch(action)
+         let uuid = windowUUID
+         store.subscribe(self, transform: {
+@@ -195,9 +195,9 @@ final class NativeErrorPageViewController: UIViewController,
+     }
+ 
+     func unsubscribeFromRedux() {
+-        let action = ScreenAction(windowUUID: self.windowUUID,
+-                                  actionType: ScreenActionType.closeScreen,
+-                                  screen: .nativeErrorPage)
++        let action = ComponentAction(windowUUID: self.windowUUID,
++                                     actionType: ComponentActionType.removeComponent,
++                                     component: .nativeErrorPage)
+         store.dispatch(action)
+     }
+ 
+diff --git a/firefox-ios/Client/Frontend/Onboarding/State/OnboardingViewControllerState.swift b/firefox-ios/Client/Frontend/Onboarding/State/OnboardingViewControllerState.swift
+index 9adb4853b..5e64e029e 100644
+--- a/firefox-ios/Client/Frontend/Onboarding/State/OnboardingViewControllerState.swift
++++ b/firefox-ios/Client/Frontend/Onboarding/State/OnboardingViewControllerState.swift
+@@ -10,7 +10,7 @@ struct OnboardingViewControllerState: ScreenState {
+     let windowUUID: WindowUUID
+ 
+     init(appState: AppState, uuid: WindowUUID) {
+-        guard let introState = appState.screenState(
++        guard let introState = appState.componentState(
+             OnboardingViewControllerState.self,
+             for: .onboardingViewController,
+             window: uuid)
+diff --git a/firefox-ios/Client/Frontend/Onboarding/Views/IntroViewController.swift b/firefox-ios/Client/Frontend/Onboarding/Views/IntroViewController.swift
+index 2165ef772..65d525736 100644
+--- a/firefox-ios/Client/Frontend/Onboarding/Views/IntroViewController.swift
++++ b/firefox-ios/Client/Frontend/Onboarding/Views/IntroViewController.swift
+@@ -144,9 +144,9 @@ class IntroViewController: UIViewController,
+     // MARK: - Redux
+ 
+     func subscribeToRedux() {
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.showScreen,
+-                                  screen: .onboardingViewController)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.addComponent,
++                                     component: .onboardingViewController)
+         store.dispatch(action)
+         let uuid = windowUUID
+         store.subscribe(self, transform: {
+@@ -158,9 +158,9 @@ class IntroViewController: UIViewController,
+ 
+     // Note: actual `store.unsubscribe()` is not strictly needed; Redux uses weak subscribers
+     func unsubscribeFromRedux() {
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.closeScreen,
+-                                  screen: .onboardingViewController)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.removeComponent,
++                                     component: .onboardingViewController)
+         store.dispatch(action)
+     }
+ 
+diff --git a/firefox-ios/Client/Frontend/PasswordGenerator/PasswordGeneratorMiddleware.swift b/firefox-ios/Client/Frontend/PasswordGenerator/PasswordGeneratorMiddleware.swift
+index b8cbc6bf7..2896c3d2e 100644
+--- a/firefox-ios/Client/Frontend/PasswordGenerator/PasswordGeneratorMiddleware.swift
++++ b/firefox-ios/Client/Frontend/PasswordGenerator/PasswordGeneratorMiddleware.swift
+@@ -39,9 +39,9 @@ final class PasswordGeneratorMiddleware {
+ 
+         case PasswordGeneratorActionType.userTappedUsePassword:
+             guard let frameContext = (action as? PasswordGeneratorAction)?.frameContext else { return }
+-            guard let password = state.screenState(PasswordGeneratorState.self,
+-                                                   for: .passwordGenerator,
+-                                                   window: action.windowUUID)?.password else {return}
++            guard let password = state.componentState(PasswordGeneratorState.self,
++                                                      for: .passwordGenerator,
++                                                      window: action.windowUUID)?.password else {return}
+             self.userTappedUsePassword(frameContext: frameContext, password: password)
+ 
+         case PasswordGeneratorActionType.userTappedRefreshPassword:
+diff --git a/firefox-ios/Client/Frontend/PasswordGenerator/PasswordGeneratorState.swift b/firefox-ios/Client/Frontend/PasswordGenerator/PasswordGeneratorState.swift
+index b1b96915b..d73f33436 100644
+--- a/firefox-ios/Client/Frontend/PasswordGenerator/PasswordGeneratorState.swift
++++ b/firefox-ios/Client/Frontend/PasswordGenerator/PasswordGeneratorState.swift
+@@ -12,7 +12,7 @@ struct PasswordGeneratorState: ScreenState {
+     var passwordHidden: Bool
+ 
+     init(appState: AppState, uuid: WindowUUID) {
+-        guard let passwordGeneratorState = appState.screenState(
++        guard let passwordGeneratorState = appState.componentState(
+             PasswordGeneratorState.self,
+             for: .passwordGenerator,
+             window: uuid
+diff --git a/firefox-ios/Client/Frontend/PasswordGenerator/PasswordGeneratorViewController.swift b/firefox-ios/Client/Frontend/PasswordGenerator/PasswordGeneratorViewController.swift
+index 86ebd12f8..191b42ccf 100644
+--- a/firefox-ios/Client/Frontend/PasswordGenerator/PasswordGeneratorViewController.swift
++++ b/firefox-ios/Client/Frontend/PasswordGenerator/PasswordGeneratorViewController.swift
+@@ -206,10 +206,10 @@ class PasswordGeneratorViewController: UIViewController, StoreSubscriber, Themea
+     // MARK: - Redux
+     func subscribeToRedux() {
+         store.dispatch(
+-            ScreenAction(
++            ComponentAction(
+                 windowUUID: windowUUID,
+-                actionType: ScreenActionType.showScreen,
+-                screen: .passwordGenerator
++                actionType: ComponentActionType.addComponent,
++                component: .passwordGenerator
+             )
+         )
+ 
+@@ -223,10 +223,10 @@ class PasswordGeneratorViewController: UIViewController, StoreSubscriber, Themea
+ 
+     func unsubscribeFromRedux() {
+         store.dispatch(
+-            ScreenAction(
++            ComponentAction(
+                 windowUUID: windowUUID,
+-                actionType: ScreenActionType.closeScreen,
+-                screen: .passwordGenerator
++                actionType: ComponentActionType.removeComponent,
++                component: .passwordGenerator
+             )
+         )
+     }
+diff --git a/firefox-ios/Client/Frontend/Settings/ThemeSettings/ThemeSettingsController.swift b/firefox-ios/Client/Frontend/Settings/ThemeSettings/ThemeSettingsController.swift
+index 10554d3b0..bea287239 100644
+--- a/firefox-ios/Client/Frontend/Settings/ThemeSettings/ThemeSettingsController.swift
++++ b/firefox-ios/Client/Frontend/Settings/ThemeSettings/ThemeSettingsController.swift
+@@ -88,9 +88,9 @@ class ThemeSettingsController: ThemedTableViewController, StoreSubscriber, Notif
+     }
+ 
+     func unsubscribeFromRedux() {
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.closeScreen,
+-                                  screen: .themeSettings)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.removeComponent,
++                                     component: .themeSettings)
+         store.dispatch(action)
+     }
+ 
+diff --git a/firefox-ios/Client/Frontend/Settings/ThemeSettings/ThemeSettingsState.swift b/firefox-ios/Client/Frontend/Settings/ThemeSettings/ThemeSettingsState.swift
+index b65e3af63..2e18b8ac8 100644
+--- a/firefox-ios/Client/Frontend/Settings/ThemeSettings/ThemeSettingsState.swift
++++ b/firefox-ios/Client/Frontend/Settings/ThemeSettings/ThemeSettingsState.swift
+@@ -14,7 +14,7 @@ struct ThemeSettingsState: ScreenState {
+     var windowUUID: WindowUUID
+ 
+     init(appState: AppState, uuid: WindowUUID) {
+-        guard let themeState = appState.screenState(
++        guard let themeState = appState.componentState(
+             ThemeSettingsState.self,
+             for: .themeSettings,
+             window: uuid
+diff --git a/firefox-ios/Client/Frontend/Settings/Translation/TranslationPickerSettingsViewController.swift b/firefox-ios/Client/Frontend/Settings/Translation/TranslationPickerSettingsViewController.swift
+index 6f2c19673..63718fd98 100644
+--- a/firefox-ios/Client/Frontend/Settings/Translation/TranslationPickerSettingsViewController.swift
++++ b/firefox-ios/Client/Frontend/Settings/Translation/TranslationPickerSettingsViewController.swift
+@@ -73,10 +73,10 @@ final class TranslationPickerSettingsViewController: UIViewController,
+     // MARK: - Redux
+ 
+     func subscribeToRedux() {
+-        store.dispatch(ScreenAction(
++        store.dispatch(ComponentAction(
+             windowUUID: windowUUID,
+-            actionType: ScreenActionType.showScreen,
+-            screen: .translationSettings
++            actionType: ComponentActionType.addComponent,
++            component: .translationSettings
+         ))
+         let uuid = windowUUID
+         store.subscribe(self, transform: {
+@@ -87,10 +87,10 @@ final class TranslationPickerSettingsViewController: UIViewController,
+     }
+ 
+     func unsubscribeFromRedux() {
+-        store.dispatch(ScreenAction(
++        store.dispatch(ComponentAction(
+             windowUUID: windowUUID,
+-            actionType: ScreenActionType.closeScreen,
+-            screen: .translationSettings
++            actionType: ComponentActionType.removeComponent,
++            component: .translationSettings
+         ))
+         store.unsubscribe(self)
+     }
+diff --git a/firefox-ios/Client/Frontend/Settings/Translation/TranslationSettingsState.swift b/firefox-ios/Client/Frontend/Settings/Translation/TranslationSettingsState.swift
+index 777f0562e..d32224d32 100644
+--- a/firefox-ios/Client/Frontend/Settings/Translation/TranslationSettingsState.swift
++++ b/firefox-ios/Client/Frontend/Settings/Translation/TranslationSettingsState.swift
+@@ -18,7 +18,7 @@ struct TranslationSettingsState: ScreenState, Equatable {
+     var windowUUID: WindowUUID
+ 
+     init(appState: AppState, uuid: WindowUUID) {
+-        guard let state = appState.screenState(
++        guard let state = appState.componentState(
+             TranslationSettingsState.self,
+             for: .translationSettings,
+             window: uuid
+diff --git a/firefox-ios/Client/Frontend/ShortcutsLibrary/Redux/ShortcutsLibraryMiddleware.swift b/firefox-ios/Client/Frontend/ShortcutsLibrary/Redux/ShortcutsLibraryMiddleware.swift
+index 019380fd7..6a31f8394 100644
+--- a/firefox-ios/Client/Frontend/ShortcutsLibrary/Redux/ShortcutsLibraryMiddleware.swift
++++ b/firefox-ios/Client/Frontend/ShortcutsLibrary/Redux/ShortcutsLibraryMiddleware.swift
+@@ -31,9 +31,9 @@ final class ShortcutsLibraryMiddleware {
+ 
+     @MainActor
+     private func handleViewDidAppearAction(state: AppState, action: Action) {
+-        guard let shortcutsLibraryState = state.screenState(ShortcutsLibraryState.self,
+-                                                            for: .shortcutsLibrary,
+-                                                            window: action.windowUUID) else { return }
++        guard let shortcutsLibraryState = state.componentState(ShortcutsLibraryState.self,
++                                                               for: .shortcutsLibrary,
++                                                               window: action.windowUUID) else { return }
+         if shortcutsLibraryState.shouldRecordImpressionTelemetry {
+             self.shortcutsLibraryTelemetry.sendShortcutsLibraryViewedEvent()
+             store.dispatch(
+diff --git a/firefox-ios/Client/Frontend/ShortcutsLibrary/Redux/ShortcutsLibraryState.swift b/firefox-ios/Client/Frontend/ShortcutsLibrary/Redux/ShortcutsLibraryState.swift
+index 59ee7052c..4fbc492d5 100644
+--- a/firefox-ios/Client/Frontend/ShortcutsLibrary/Redux/ShortcutsLibraryState.swift
++++ b/firefox-ios/Client/Frontend/ShortcutsLibrary/Redux/ShortcutsLibraryState.swift
+@@ -11,7 +11,7 @@ struct ShortcutsLibraryState: ScreenState, Equatable {
+     let shouldRecordImpressionTelemetry: Bool
+ 
+     init(appState: AppState, uuid: WindowUUID) {
+-        guard let shortcutsLibraryState = appState.screenState(
++        guard let shortcutsLibraryState = appState.componentState(
+             ShortcutsLibraryState.self,
+             for: .shortcutsLibrary,
+             window: uuid
+diff --git a/firefox-ios/Client/Frontend/ShortcutsLibrary/ShortcutsLibraryViewController.swift b/firefox-ios/Client/Frontend/ShortcutsLibrary/ShortcutsLibraryViewController.swift
+index 0914f067c..b1267a2ed 100644
+--- a/firefox-ios/Client/Frontend/ShortcutsLibrary/ShortcutsLibraryViewController.swift
++++ b/firefox-ios/Client/Frontend/ShortcutsLibrary/ShortcutsLibraryViewController.swift
+@@ -127,10 +127,10 @@ class ShortcutsLibraryViewController: UIViewController,
+ 
+     // MARK: - Redux
+     func subscribeToRedux() {
+-        let action = ScreenAction(
++        let action = ComponentAction(
+             windowUUID: windowUUID,
+-            actionType: ScreenActionType.showScreen,
+-            screen: .shortcutsLibrary
++            actionType: ComponentActionType.addComponent,
++            component: .shortcutsLibrary
+         )
+         store.dispatch(action)
+ 
+@@ -152,10 +152,10 @@ class ShortcutsLibraryViewController: UIViewController,
+     }
+ 
+     func unsubscribeFromRedux() {
+-        let action = ScreenAction(
++        let action = ComponentAction(
+             windowUUID: windowUUID,
+-            actionType: ScreenActionType.closeScreen,
+-            screen: .shortcutsLibrary
++            actionType: ComponentActionType.removeComponent,
++            component: .shortcutsLibrary
+         )
+         store.dispatch(action)
+     }
+@@ -208,7 +208,7 @@ class ShortcutsLibraryViewController: UIViewController,
+         let layout = UICollectionViewCompositionalLayout { [weak self ](sectionIndex, environment)
+             -> NSCollectionLayoutSection? in
+             guard let self else { return nil }
+-            let homepageState = store.state.screenState(HomepageState.self, for: .homepage, window: windowUUID)
++            let homepageState = store.state.componentState(HomepageState.self, for: .homepage, window: windowUUID)
+             let numberOfTilesPerRow = homepageState?.topSitesState.numberOfTilesPerRow ?? 4
+             let section = TopSitesSectionLayoutProvider.createTopSitesSectionLayout(
+                 for: environment.traitCollection,
+diff --git a/firefox-ios/Client/Frontend/TrackingProtection/TrackigProtectionRedux/TrackingProtectionState.swift b/firefox-ios/Client/Frontend/TrackingProtection/TrackigProtectionRedux/TrackingProtectionState.swift
+index 606e14660..64f25c596 100644
+--- a/firefox-ios/Client/Frontend/TrackingProtection/TrackigProtectionRedux/TrackingProtectionState.swift
++++ b/firefox-ios/Client/Frontend/TrackingProtection/TrackigProtectionRedux/TrackingProtectionState.swift
+@@ -32,7 +32,7 @@ struct TrackingProtectionState: ScreenState {
+ 
+     init(appState: AppState,
+          uuid: WindowUUID) {
+-        guard let trackingProtectionState = appState.screenState(
++        guard let trackingProtectionState = appState.componentState(
+             TrackingProtectionState.self,
+             for: .trackingProtection,
+             window: uuid
+diff --git a/firefox-ios/Client/Frontend/TrackingProtection/TrackingProtectionViewController.swift b/firefox-ios/Client/Frontend/TrackingProtection/TrackingProtectionViewController.swift
+index 527b24c55..406faa776 100644
+--- a/firefox-ios/Client/Frontend/TrackingProtection/TrackingProtectionViewController.swift
++++ b/firefox-ios/Client/Frontend/TrackingProtection/TrackingProtectionViewController.swift
+@@ -276,9 +276,9 @@ class TrackingProtectionViewController: UIViewController,
+     }
+ 
+     func subscribeToRedux() {
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.showScreen,
+-                                  screen: .trackingProtection)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.addComponent,
++                                     component: .trackingProtection)
+         store.dispatch(action)
+         let uuid = windowUUID
+         store.subscribe(self, transform: {
+@@ -289,9 +289,9 @@ class TrackingProtectionViewController: UIViewController,
+     }
+ 
+     func unsubscribeFromRedux() {
+-        let action = ScreenAction(windowUUID: self.windowUUID,
+-                                  actionType: ScreenActionType.closeScreen,
+-                                  screen: .trackingProtection)
++        let action = ComponentAction(windowUUID: self.windowUUID,
++                                     actionType: ComponentActionType.removeComponent,
++                                     component: .trackingProtection)
+         store.dispatch(action)
+     }
+ 
+diff --git a/firefox-ios/Client/Frontend/Translations/TranslationsMiddleware.swift b/firefox-ios/Client/Frontend/Translations/TranslationsMiddleware.swift
+index fbcf71cf0..78cd5d687 100644
+--- a/firefox-ios/Client/Frontend/Translations/TranslationsMiddleware.swift
++++ b/firefox-ios/Client/Frontend/Translations/TranslationsMiddleware.swift
+@@ -68,7 +68,7 @@ final class TranslationsMiddleware: FeatureFlaggable {
+               type == .translate
+         else { return }
+ 
+-        guard let toolbarState = state.screenState(
++        guard let toolbarState = state.componentState(
+             ToolbarState.self,
+             for: .toolbar,
+             window: action.windowUUID
+@@ -136,7 +136,7 @@ final class TranslationsMiddleware: FeatureFlaggable {
+     }
+ 
+     private func handleLanguageSelected(for action: TranslationLanguageSelectedAction, and state: AppState) {
+-        guard let toolbarState = state.screenState(
++        guard let toolbarState = state.componentState(
+             ToolbarState.self,
+             for: .toolbar,
+             window: action.windowUUID
+diff --git a/firefox-ios/Client/Redux/GlobalState/ActiveScreenAction.swift b/firefox-ios/Client/Redux/GlobalState/AppComponent.swift
+similarity index 72%
+rename from firefox-ios/Client/Redux/GlobalState/ActiveScreenAction.swift
+rename to firefox-ios/Client/Redux/GlobalState/AppComponent.swift
+index 3822ca78f..8b85d4489 100644
+--- a/firefox-ios/Client/Redux/GlobalState/ActiveScreenAction.swift
++++ b/firefox-ios/Client/Redux/GlobalState/AppComponent.swift
+@@ -3,16 +3,8 @@
+ // file, You can obtain one at http://mozilla.org/MPL/2.0/
+ 
+ import Foundation
+-import Redux
+-import Common
+ 
+-struct ScreenAction: Action {
+-    let windowUUID: WindowUUID
+-    let actionType: ActionType
+-    let screen: AppScreen
+-}
+-
+-enum AppScreen {
++enum AppComponent {
+     case browserViewController
+     case onboardingViewController
+     case homepage
+@@ -32,8 +24,3 @@ enum AppScreen {
+     case shortcutsLibrary
+     case translationSettings
+ }
+-
+-enum ScreenActionType: ActionType {
+-    case showScreen
+-    case closeScreen
+-}
+diff --git a/firefox-ios/Client/Redux/GlobalState/AppState.swift b/firefox-ios/Client/Redux/GlobalState/AppState.swift
+index aaf3f5dae..3ebc83a21 100644
+--- a/firefox-ios/Client/Redux/GlobalState/AppState.swift
++++ b/firefox-ios/Client/Redux/GlobalState/AppState.swift
+@@ -7,18 +7,20 @@ import Redux
+ import Common
+ 
+ struct AppState: StateType, Sendable {
+-    let activeScreens: ActiveScreensState
++    let presentedComponents: PresentedComponentsState
+ 
+     static let reducer: Reducer<Self> = { state, action in
+-        return AppState(activeScreens: ActiveScreensState.reducer(state.activeScreens, action))
++        return AppState(
++            presentedComponents: PresentedComponentsState.reducer(state.presentedComponents, action)
++        )
+     }
+ 
+-    func screenState<S: ScreenState>(_ s: S.Type,
+-                                     for screen: AppScreen,
+-                                     window: WindowUUID?) -> S? {
+-        return activeScreens.screens
++    func componentState<S: ScreenState>(_ s: S.Type,
++                                        for component: AppComponent,
++                                        window: WindowUUID?) -> S? {
++        return presentedComponents.components
+             .compactMap {
+-                switch ($0, screen) {
++                switch ($0, component) {
+                 case (.browserViewController(let state), .browserViewController): return state as? S
+                 case (.homepage(let state), .homepage): return state as? S
+                 case (.mainMenu(let state), .mainMenu): return state as? S
+@@ -52,13 +54,13 @@ struct AppState: StateType, Sendable {
+     }
+ 
+     static func defaultState(from state: AppState) -> AppState {
+-        return AppState(activeScreens: state.activeScreens)
++        return AppState(presentedComponents: state.presentedComponents)
+     }
+ }
+ 
+ extension AppState {
+     init() {
+-        activeScreens = ActiveScreensState()
++        presentedComponents = PresentedComponentsState()
+     }
+ }
+ 
+diff --git a/firefox-ios/Client/Redux/GlobalState/ComponentAction.swift b/firefox-ios/Client/Redux/GlobalState/ComponentAction.swift
+new file mode 100644
+index 000000000..1db8928df
+--- /dev/null
++++ b/firefox-ios/Client/Redux/GlobalState/ComponentAction.swift
+@@ -0,0 +1,18 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++import Foundation
++import Redux
++import Common
++
++struct ComponentAction: Action {
++    let windowUUID: WindowUUID
++    let actionType: ActionType
++    let component: AppComponent
++}
++
++enum ComponentActionType: ActionType {
++    case addComponent
++    case removeComponent
++}
+diff --git a/firefox-ios/Client/Redux/GlobalState/ActiveScreenState.swift b/firefox-ios/Client/Redux/GlobalState/PresentedComponentsState.swift
+similarity index 68%
+rename from firefox-ios/Client/Redux/GlobalState/ActiveScreenState.swift
+rename to firefox-ios/Client/Redux/GlobalState/PresentedComponentsState.swift
+index bc3d70016..cf2fb766a 100644
+--- a/firefox-ios/Client/Redux/GlobalState/ActiveScreenState.swift
++++ b/firefox-ios/Client/Redux/GlobalState/PresentedComponentsState.swift
+@@ -6,7 +6,7 @@ import Foundation
+ import Redux
+ import Common
+ 
+-enum AppScreenState: Sendable, Equatable {
++enum ComponentState: Sendable, Equatable {
+     case browserViewController(BrowserViewControllerState)
+     case homepage(HomepageState)
+     case mainMenu(MainMenuState)
+@@ -53,8 +53,8 @@ enum AppScreenState: Sendable, Equatable {
+         }
+     }
+ 
+-    /// Returns the matching AppScreen enum for a given AppScreenState
+-    var associatedAppScreen: AppScreen {
++    /// Returns the matching AppComponent enum for a given AppComponentState
++    var associatedAppComponent: AppComponent {
+         switch self {
+         case .browserViewController: return .browserViewController
+         case .homepage: return .homepage
+@@ -101,81 +101,81 @@ enum AppScreenState: Sendable, Equatable {
+     }
+ }
+ 
+-struct ActiveScreensState: Sendable, Equatable {
+-    let screens: [AppScreenState]
++struct PresentedComponentsState: Sendable, Equatable {
++    let components: [ComponentState]
+ 
+     init() {
+-        self.screens = []
++        self.components = []
+     }
+ 
+-    init(screens: [AppScreenState]) {
+-        self.screens = screens
++    init(components: [ComponentState]) {
++        self.components = components
+     }
+ 
+     static let reducer: Reducer<Self> = { state, action in
+-        // Add or remove screens from the active screen list as needed
+-        var screens = updateActiveScreens(action: action, screens: state.screens)
++        // Add or remove components from the active component list as needed
++        var components = updateActiveComponents(action: action, components: state.components)
+ 
+-        // Reduce each screen state
+-        screens = screens.map { AppScreenState.reducer($0, action) }
++        // Reduce each component state
++        components = components.map { ComponentState.reducer($0, action) }
+ 
+-        return ActiveScreensState(screens: screens)
++        return PresentedComponentsState(components: components)
+     }
+ 
+-    private static func updateActiveScreens(action: Action, screens: [AppScreenState]) -> [AppScreenState] {
+-        guard let action = action as? ScreenAction else { return screens }
++    private static func updateActiveComponents(action: Action, components: [ComponentState]) -> [ComponentState] {
++        guard let action = action as? ComponentAction else { return components }
+ 
+-        var screens = screens
++        var components = components
+ 
+         switch action.actionType {
+-        case ScreenActionType.closeScreen:
+-            screens = screens.filter({
+-                return $0.associatedAppScreen != action.screen || $0.windowUUID != action.windowUUID
++        case ComponentActionType.removeComponent:
++            components = components.filter({
++                return $0.associatedAppComponent != action.component || $0.windowUUID != action.windowUUID
+             })
+-        case ScreenActionType.showScreen:
++        case ComponentActionType.addComponent:
+             let uuid = action.windowUUID
+-            switch action.screen {
++            switch action.component {
+             case .browserViewController:
+-                screens.append(.browserViewController(BrowserViewControllerState(windowUUID: uuid)))
++                components.append(.browserViewController(BrowserViewControllerState(windowUUID: uuid)))
+             case .homepage:
+-                screens.append(.homepage(HomepageState(windowUUID: uuid)))
++                components.append(.homepage(HomepageState(windowUUID: uuid)))
+             case .mainMenu:
+-                screens.append(.mainMenu(MainMenuState(windowUUID: uuid)))
++                components.append(.mainMenu(MainMenuState(windowUUID: uuid)))
+             case .microsurvey:
+-                screens.append(.microsurvey(MicrosurveyState(windowUUID: uuid)))
++                components.append(.microsurvey(MicrosurveyState(windowUUID: uuid)))
+             case .onboardingViewController:
+-                screens.append(.onboardingViewController(OnboardingViewControllerState(windowUUID: uuid)))
++                components.append(.onboardingViewController(OnboardingViewControllerState(windowUUID: uuid)))
+             case .remoteTabsPanel:
+-                screens.append(.remoteTabsPanel(RemoteTabsPanelState(windowUUID: uuid)))
++                components.append(.remoteTabsPanel(RemoteTabsPanelState(windowUUID: uuid)))
+             case .tabsTray:
+-                screens.append(.tabsTray(TabTrayState(windowUUID: uuid)))
++                components.append(.tabsTray(TabTrayState(windowUUID: uuid)))
+             case .tabsPanel:
+-                screens.append(.tabsPanel(TabsPanelState(windowUUID: uuid)))
++                components.append(.tabsPanel(TabsPanelState(windowUUID: uuid)))
+             case .tabPeek:
+-                screens.append(.tabPeek(TabPeekState(windowUUID: uuid)))
++                components.append(.tabPeek(TabPeekState(windowUUID: uuid)))
+             case .themeSettings:
+-                screens.append(.themeSettings(ThemeSettingsState(windowUUID: uuid)))
++                components.append(.themeSettings(ThemeSettingsState(windowUUID: uuid)))
+             case .termsOfUse:
+-                screens.append(.termsOfUse(TermsOfUseState(windowUUID: uuid)))
++                components.append(.termsOfUse(TermsOfUseState(windowUUID: uuid)))
+             case .trackingProtection:
+-                screens.append(.trackingProtection(TrackingProtectionState(windowUUID: uuid)))
++                components.append(.trackingProtection(TrackingProtectionState(windowUUID: uuid)))
+             case .toolbar:
+-                screens.append(.toolbar(ToolbarState(windowUUID: uuid)))
++                components.append(.toolbar(ToolbarState(windowUUID: uuid)))
+             case .searchEngineSelection:
+-                screens.append(.searchEngineSelection(SearchEngineSelectionState(windowUUID: uuid)))
++                components.append(.searchEngineSelection(SearchEngineSelectionState(windowUUID: uuid)))
+             case .passwordGenerator:
+-                screens.append(.passwordGenerator(PasswordGeneratorState(windowUUID: uuid)))
++                components.append(.passwordGenerator(PasswordGeneratorState(windowUUID: uuid)))
+             case .nativeErrorPage:
+-                screens.append(.nativeErrorPage(NativeErrorPageState(windowUUID: uuid)))
++                components.append(.nativeErrorPage(NativeErrorPageState(windowUUID: uuid)))
+             case .shortcutsLibrary:
+-                screens.append(.shortcutsLibrary(ShortcutsLibraryState(windowUUID: uuid)))
++                components.append(.shortcutsLibrary(ShortcutsLibraryState(windowUUID: uuid)))
+             case .translationSettings:
+-                screens.append(.translationSettings(TranslationSettingsState(windowUUID: uuid)))
++                components.append(.translationSettings(TranslationSettingsState(windowUUID: uuid)))
+             }
+         default:
+-            return screens
++            return components
+         }
+ 
+-        return screens
++        return components
+     }
+ }
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/BrowserViewController/BrowserViewControllerKVOTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/BrowserViewController/BrowserViewControllerKVOTests.swift
+index 3ec1253c1..cf0201ad1 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/BrowserViewController/BrowserViewControllerKVOTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/BrowserViewController/BrowserViewControllerKVOTests.swift
+@@ -250,8 +250,8 @@ final class BrowserViewControllerKVOTests: XCTestCase, StoreTestUtility {
+ 
+     func setupAppState() -> Client.AppState {
+         let appState = AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .browserViewController(
+                         BrowserViewControllerState(
+                             windowUUID: .XCTestDefaultUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/BrowserViewController/BrowserViewControllerStateTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/BrowserViewController/BrowserViewControllerStateTests.swift
+index faefc0f20..25ff99a9c 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/BrowserViewController/BrowserViewControllerStateTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/BrowserViewController/BrowserViewControllerStateTests.swift
+@@ -531,8 +531,8 @@ final class BrowserViewControllerStateTests: XCTestCase, StoreTestUtility {
+ 
+         StoreTestUtilityHelper.setupStore(
+             with: AppState(
+-                activeScreens: ActiveScreensState(
+-                    screens: [
++                presentedComponents: PresentedComponentsState(
++                    components: [
+                         .browserViewController(
+                             BrowserViewControllerState(
+                                 windowUUID: .XCTestDefaultUUID
+@@ -551,8 +551,8 @@ final class BrowserViewControllerStateTests: XCTestCase, StoreTestUtility {
+     // MARK: StoreTestUtility
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .browserViewController(
+                         BrowserViewControllerState(
+                             windowUUID: .XCTestDefaultUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/BrowserViewController/BrowserViewControllerTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/BrowserViewController/BrowserViewControllerTests.swift
+index c378cace2..558578612 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/BrowserViewController/BrowserViewControllerTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/BrowserViewController/BrowserViewControllerTests.swift
+@@ -652,8 +652,8 @@ class BrowserViewControllerTests: XCTestCase, StoreTestUtility {
+                 )
+             )
+         mockStore = MockStoreForMiddleware(state: AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .browserViewController(
+                         BrowserViewControllerState(
+                             windowUUID: .XCTestDefaultUUID
+@@ -671,8 +671,8 @@ class BrowserViewControllerTests: XCTestCase, StoreTestUtility {
+     // MARK: - StoreTestUtility
+     func setupAppState() -> Client.AppState {
+         let appState = AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .browserViewController(
+                         BrowserViewControllerState(
+                             windowUUID: .XCTestDefaultUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Browser/RemoteTabsPanelTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Browser/RemoteTabsPanelTests.swift
+index fe856a6e3..d524d7c9b 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Browser/RemoteTabsPanelTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Browser/RemoteTabsPanelTests.swift
+@@ -34,11 +34,11 @@ final class RemoteTabsPanelTests: XCTestCase, StoreTestUtility {
+         subject.loadViewIfNeeded()
+ 
+         let action1 = try XCTUnwrap(mockStore.dispatchedActions[0])
+-        let action1Type = try XCTUnwrap(action1.actionType as? ScreenActionType)
++        let action1Type = try XCTUnwrap(action1.actionType as? ComponentActionType)
+         let action2 = try XCTUnwrap(mockStore.dispatchedActions[1])
+         let action2Type = try XCTUnwrap(action2.actionType as? RemoteTabsPanelActionType)
+ 
+-        XCTAssertEqual(action1Type, ScreenActionType.showScreen)
++        XCTAssertEqual(action1Type, ComponentActionType.addComponent)
+         XCTAssertEqual(action2Type, RemoteTabsPanelActionType.panelDidAppear)
+         XCTAssertEqual(mockStore.subscribeCallCount, 1)
+     }
+@@ -48,13 +48,13 @@ final class RemoteTabsPanelTests: XCTestCase, StoreTestUtility {
+         subject.unsubscribeFromRedux()
+ 
+         let action = try XCTUnwrap(mockStore.dispatchedActions.last)
+-        let actionType = try XCTUnwrap(action.actionType as? ScreenActionType)
++        let actionType = try XCTUnwrap(action.actionType as? ComponentActionType)
+ 
+-        XCTAssertEqual(actionType, ScreenActionType.closeScreen)
++        XCTAssertEqual(actionType, ComponentActionType.removeComponent)
+     }
+ 
+     // MARK: - Actions
+-    func testTableViewControllerDidPullToRefresh_dispatchesRefreshsTabsAction() throws {
++    func testTableViewControllerDidPullToRefresh_dispatchesRefreshTabsAction() throws {
+         let subject = createSubject()
+         subject.tableViewControllerDidPullToRefresh()
+ 
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Browser/SearchEngines/SearchEngineSelectionMiddlewareTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Browser/SearchEngines/SearchEngineSelectionMiddlewareTests.swift
+index 776980a49..88690172e 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Browser/SearchEngines/SearchEngineSelectionMiddlewareTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Browser/SearchEngines/SearchEngineSelectionMiddlewareTests.swift
+@@ -80,8 +80,8 @@ final class SearchEngineSelectionMiddlewareTests: XCTestCase, StoreTestUtility {
+ 
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .searchEngineSelection(
+                         SearchEngineSelectionState(windowUUID: .XCTestDefaultUUID)
+                     )
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/BookmarksMiddlewareTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/BookmarksMiddlewareTests.swift
+index a712b9732..df2fa4bd1 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/BookmarksMiddlewareTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/BookmarksMiddlewareTests.swift
+@@ -78,8 +78,8 @@ final class BookmarksMiddlewareTests: XCTestCase, StoreTestUtility {
+     // MARK: StoreTestUtility
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .homepage(
+                         HomepageState(
+                             windowUUID: .XCTestDefaultUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/HomepageMiddlewareTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/HomepageMiddlewareTests.swift
+index 5d8e0775c..e359b0ee0 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/HomepageMiddlewareTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/HomepageMiddlewareTests.swift
+@@ -599,8 +599,8 @@ final class HomepageMiddlewareTests: XCTestCase, StoreTestUtility {
+     // MARK: StoreTestUtility
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .homepage(
+                         HomepageState(
+                             windowUUID: .XCTestDefaultUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/MerinoMiddlewareTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/MerinoMiddlewareTests.swift
+index b3c4510f3..9d522c517 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/MerinoMiddlewareTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/MerinoMiddlewareTests.swift
+@@ -245,8 +245,8 @@ final class MerinoMiddlewareTests: XCTestCase, StoreTestUtility {
+     // MARK: StoreTestUtility
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .homepage(
+                         HomepageState(
+                             windowUUID: .XCTestDefaultUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/MessageCardMiddlewareTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/MessageCardMiddlewareTests.swift
+index de6b4094d..ac46d9ee8 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/MessageCardMiddlewareTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/Redux/MessageCardMiddlewareTests.swift
+@@ -135,8 +135,8 @@ final class MessageCardMiddlewareTests: XCTestCase, StoreTestUtility {
+     // MARK: StoreTestUtility
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .homepage(
+                         HomepageState(
+                             windowUUID: .XCTestDefaultUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/ShortcutsLibrary/Redux/ShortcutsLibraryMiddlewareTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/ShortcutsLibrary/Redux/ShortcutsLibraryMiddlewareTests.swift
+index 010571830..92e7b572f 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/ShortcutsLibrary/Redux/ShortcutsLibraryMiddlewareTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/ShortcutsLibrary/Redux/ShortcutsLibraryMiddlewareTests.swift
+@@ -115,8 +115,8 @@ final class ShortcutsLibraryMiddlewareTests: XCTestCase, StoreTestUtility {
+         let newState = reducer(initialState, action)
+ 
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .shortcutsLibrary(newState)
+                 ]
+             )
+@@ -132,8 +132,8 @@ final class ShortcutsLibraryMiddlewareTests: XCTestCase, StoreTestUtility {
+     // MARK: StoreTestUtility
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .shortcutsLibrary(
+                         ShortcutsLibraryState(
+                             windowUUID: .DefaultUITestingUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Summarizer/SummarizerMiddlewareTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Summarizer/SummarizerMiddlewareTests.swift
+index 23fd2a707..e9cd2366e 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Summarizer/SummarizerMiddlewareTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Summarizer/SummarizerMiddlewareTests.swift
+@@ -312,8 +312,8 @@ final class SummarizerMiddlewareTests: XCTestCase, StoreTestUtility {
+     // MARK: StoreTestUtility
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .homepage(
+                         HomepageState(
+                             windowUUID: .XCTestDefaultUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Microsurvey/MicrosurveyMiddlewareTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Microsurvey/MicrosurveyMiddlewareTests.swift
+index 826a2893b..ae46c9446 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Microsurvey/MicrosurveyMiddlewareTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Microsurvey/MicrosurveyMiddlewareTests.swift
+@@ -111,8 +111,8 @@ final class MicrosurveyMiddlewareIntegrationTests: XCTestCase, StoreTestUtility
+     // MARK: StoreTestUtility
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .browserViewController(
+                         BrowserViewControllerState(
+                             windowUUID: .XCTestDefaultUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Microsurvey/Mock/MicrosurveyPromptMiddlewareTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Microsurvey/Mock/MicrosurveyPromptMiddlewareTests.swift
+index 40eaa8bdd..009a88c71 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Microsurvey/Mock/MicrosurveyPromptMiddlewareTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Microsurvey/Mock/MicrosurveyPromptMiddlewareTests.swift
+@@ -103,8 +103,8 @@ final class MicrosurveyPromptMiddlewareTests: XCTestCase {
+     // MARK: StoreTestUtility
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .microsurvey(
+                         MicrosurveyState(
+                             windowUUID: .XCTestDefaultUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/NativeErrorPage/NativeErrorPageMiddlewareTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/NativeErrorPage/NativeErrorPageMiddlewareTests.swift
+index c13dba07a..339475889 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/NativeErrorPage/NativeErrorPageMiddlewareTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/NativeErrorPage/NativeErrorPageMiddlewareTests.swift
+@@ -77,7 +77,7 @@ final class NativeErrorPageMiddlewareTests: XCTestCase, StoreTestUtility {
+ 
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
++            presentedComponents: PresentedComponentState(
+                 screens: [
+                     .browserViewController(
+                         BrowserViewControllerState(windowUUID: .XCTestDefaultUUID)
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/OnboardingTests/OnboardingViewControllerStateTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/OnboardingTests/OnboardingViewControllerStateTests.swift
+index 704d23e9a..b3fffd1f2 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/OnboardingTests/OnboardingViewControllerStateTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/OnboardingTests/OnboardingViewControllerStateTests.swift
+@@ -37,9 +37,9 @@ final class OnboardingViewControllerStateTests: XCTestCase {
+         let initialState = createSubject()
+         let reducer = onboardingReducer()
+ 
+-        let action = ScreenAction(windowUUID: windowUUID,
+-                                  actionType: ScreenActionType.closeScreen,
+-                                  screen: .onboardingViewController)
++        let action = ComponentAction(windowUUID: windowUUID,
++                                     actionType: ComponentActionType.removeComponent,
++                                     component: .onboardingViewController)
+         let newState = reducer(initialState, action)
+ 
+         XCTAssertEqual(newState.windowUUID, windowUUID)
+@@ -50,9 +50,9 @@ final class OnboardingViewControllerStateTests: XCTestCase {
+         let initialState = createSubject()
+         let reducer = onboardingReducer()
+ 
+-        let action = ScreenAction(windowUUID: .unavailable,
+-                                  actionType: ScreenActionType.closeScreen,
+-                                  screen: .onboardingViewController)
++        let action = ComponentAction(windowUUID: .unavailable,
++                                     actionType: ComponentActionType.removeComponent,
++                                     component: .onboardingViewController)
+         let newState = reducer(initialState, action)
+ 
+         XCTAssertEqual(newState.windowUUID, windowUUID)
+@@ -64,9 +64,9 @@ final class OnboardingViewControllerStateTests: XCTestCase {
+         let reducer = onboardingReducer()
+         let differentUUID: WindowUUID = .XCTestDefaultUUID
+ 
+-        let action = ScreenAction(windowUUID: differentUUID,
+-                                  actionType: ScreenActionType.closeScreen,
+-                                  screen: .onboardingViewController)
++        let action = ComponentAction(windowUUID: differentUUID,
++                                     actionType: ComponentActionType.removeComponent,
++                                     component: .onboardingViewController)
+         let newState = reducer(initialState, action)
+ 
+         // Should return defaultState (preserves original windowUUID)
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Settings/ThemeSettingsControllerTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Settings/ThemeSettingsControllerTests.swift
+index 1a1ab9806..e7ba3d365 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Settings/ThemeSettingsControllerTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Settings/ThemeSettingsControllerTests.swift
+@@ -126,9 +126,9 @@ class ThemeSettingsControllerTests: XCTestCase, StoreTestUtility {
+     private func createSubject(file: StaticString = #filePath,
+                                line: UInt = #line) -> ThemeSettingsController {
+         let subject = ThemeSettingsController(windowUUID: .XCTestDefaultUUID)
+-        let action = ScreenAction(windowUUID: .XCTestDefaultUUID,
+-                                  actionType: ScreenActionType.showScreen,
+-                                  screen: .themeSettings)
++        let action = ComponentAction(windowUUID: .XCTestDefaultUUID,
++                                     actionType: ComponentActionType.addComponent,
++                                     component: .themeSettings)
+         store.dispatch(action)
+         trackForMemoryLeaks(subject, file: file, line: line)
+         return subject
+@@ -143,8 +143,8 @@ class ThemeSettingsControllerTests: XCTestCase, StoreTestUtility {
+     // MARK: StoreTestUtility
+     func setupAppState() -> Client.AppState {
+         let appState = AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .themeSettings(
+                         ThemeSettingsState(
+                             windowUUID: .XCTestDefaultUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Settings/TranslationPickerSettingsViewControllerTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Settings/TranslationPickerSettingsViewControllerTests.swift
+index b1aeb0517..b6eb02ce3 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Settings/TranslationPickerSettingsViewControllerTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Settings/TranslationPickerSettingsViewControllerTests.swift
+@@ -76,8 +76,8 @@ final class TranslationPickerSettingsViewControllerTests: XCTestCase, StoreTestU
+ 
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .translationSettings(
+                         TranslationSettingsState(windowUUID: .XCTestDefaultUUID)
+                     )
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Settings/TranslationSettingsMiddlewareTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Settings/TranslationSettingsMiddlewareTests.swift
+index 5f1d62bc5..b5dfcb890 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Settings/TranslationSettingsMiddlewareTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Settings/TranslationSettingsMiddlewareTests.swift
+@@ -191,8 +191,8 @@ final class TranslationSettingsMiddlewareTests: XCTestCase, StoreTestUtility {
+ 
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .translationSettings(
+                         TranslationSettingsState(windowUUID: .XCTestDefaultUUID)
+                     )
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/StartAtHome/StartAtHomeMiddlewareTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/StartAtHome/StartAtHomeMiddlewareTests.swift
+index 06faec192..26094141b 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/StartAtHome/StartAtHomeMiddlewareTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/StartAtHome/StartAtHomeMiddlewareTests.swift
+@@ -137,8 +137,8 @@ final class StartAtHomeMiddlewareTests: XCTestCase, StoreTestUtility {
+     // MARK: StoreTestUtility
+     func setupAppState() -> Client.AppState {
+         let appState = AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .browserViewController(
+                         BrowserViewControllerState(
+                             windowUUID: .XCTestDefaultUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/TabTray/TabManagerMiddlewareTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/TabTray/TabManagerMiddlewareTests.swift
+index 22d75599e..3c11cf88c 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/TabTray/TabManagerMiddlewareTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/TabTray/TabManagerMiddlewareTests.swift
+@@ -499,8 +499,8 @@ final class TabManagerMiddlewareTests: XCTestCase, StoreTestUtility {
+     // MARK: StoreTestUtility
+     func setupAppState() -> Client.AppState {
+         let appState = AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .tabsPanel(
+                         TabsPanelState(
+                             windowUUID: .XCTestDefaultUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Toolbar/AddressBarStateTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Toolbar/AddressBarStateTests.swift
+index db261a34b..607524730 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Toolbar/AddressBarStateTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Toolbar/AddressBarStateTests.swift
+@@ -1004,8 +1004,8 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
+     // MARK: Helper
+     func setupAppState(with initialToolbarState: ToolbarState) -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .browserViewController(
+                         BrowserViewControllerState(
+                             windowUUID: windowUUID
+@@ -1053,8 +1053,8 @@ final class AddressBarStateTests: XCTestCase, StoreTestUtility {
+     // MARK: StoreTestUtility
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .browserViewController(
+                         BrowserViewControllerState(
+                             windowUUID: windowUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Toolbar/NavigationBarStateTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Toolbar/NavigationBarStateTests.swift
+index 3397440bc..b048d7407 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Toolbar/NavigationBarStateTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Toolbar/NavigationBarStateTests.swift
+@@ -271,8 +271,8 @@ final class NavigationBarStateTests: XCTestCase, StoreTestUtility {
+     // MARK: StoreTestUtility
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .browserViewController(
+                         BrowserViewControllerState(
+                             windowUUID: windowUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Toolbar/ToolbarMiddlewareTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Toolbar/ToolbarMiddlewareTests.swift
+index b2fa27b11..95ef35a91 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Toolbar/ToolbarMiddlewareTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Toolbar/ToolbarMiddlewareTests.swift
+@@ -916,8 +916,8 @@ final class ToolbarMiddlewareTests: XCTestCase, StoreTestUtility {
+         toolbarState.isPrivateMode = true
+ 
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .browserViewController(
+                         BrowserViewControllerState(
+                             windowUUID: windowUUID
+@@ -934,8 +934,8 @@ final class ToolbarMiddlewareTests: XCTestCase, StoreTestUtility {
+         toolbarState.toolbarPosition = .bottom
+ 
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .browserViewController(
+                         BrowserViewControllerState(
+                             windowUUID: windowUUID
+@@ -950,8 +950,8 @@ final class ToolbarMiddlewareTests: XCTestCase, StoreTestUtility {
+     // MARK: StoreTestUtility
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .browserViewController(
+                         BrowserViewControllerState(
+                             windowUUID: windowUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Toolbar/ToolbarStateTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Toolbar/ToolbarStateTests.swift
+index b91c88af7..8373a024d 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Toolbar/ToolbarStateTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Toolbar/ToolbarStateTests.swift
+@@ -589,8 +589,8 @@ final class ToolbarStateTests: XCTestCase, StoreTestUtility {
+     // MARK: StoreTestUtility
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .browserViewController(
+                         BrowserViewControllerState(
+                             windowUUID: windowUUID
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/TranslationsTests/TranslationsMiddlewareTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/TranslationsTests/TranslationsMiddlewareTests.swift
+index 7ae3a750a..ced2940e4 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/TranslationsTests/TranslationsMiddlewareTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/TranslationsTests/TranslationsMiddlewareTests.swift
+@@ -659,8 +659,8 @@ final class TranslationsMiddlewareIntegrationTests: XCTestCase, StoreTestUtility
+     // MARK: StoreTestUtility
+     func setupAppState() -> AppState {
+         return AppState(
+-            activeScreens: ActiveScreensState(
+-                screens: [
++            presentedComponents: PresentedComponentsState(
++                components: [
+                     .browserViewController(
+                         BrowserViewControllerState(
+                             windowUUID: .XCTestDefaultUUID

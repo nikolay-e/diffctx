@@ -1,0 +1,32 @@
+From 131c075ede1bc005244e68295fcc09d34ed420e9 Mon Sep 17 00:00:00 2001
+From: Isabella <173110554+ih-codes@users.noreply.github.com>
+Date: Mon, 8 Jun 2026 09:57:22 -0600
+Subject: [PATCH] Add FXIOS-11866 [Quick Actions] [Localization] [l10n] Add new
+ "App Icon" string to InfoPlist.strings for localization (#34089)
+
+Add new InfoPlist.strings key for translation.
+---
+ firefox-ios/Client/en-US.lproj/InfoPlist.strings | 3 +++
+ firefox-ios/Client/en.lproj/InfoPlist.strings    | 1 +
+ 2 files changed, 4 insertions(+)
+
+diff --git a/firefox-ios/Client/en-US.lproj/InfoPlist.strings b/firefox-ios/Client/en-US.lproj/InfoPlist.strings
+index 4518590f4..48b375182 100644
+--- a/firefox-ios/Client/en-US.lproj/InfoPlist.strings
++++ b/firefox-ios/Client/en-US.lproj/InfoPlist.strings
+@@ -1,3 +1,6 @@
++/* iOS Home screen shortcut menu: Option to launch the app to the app icon customization screen */
++"App Icon" = "App Icon";
++
+ /* (No Comment) */
+ "New Private Tab" = "New Private Tab";
+ 
+diff --git a/firefox-ios/Client/en.lproj/InfoPlist.strings b/firefox-ios/Client/en.lproj/InfoPlist.strings
+index 4405ef186..631b0ca2d 100644
+--- a/firefox-ios/Client/en.lproj/InfoPlist.strings
++++ b/firefox-ios/Client/en.lproj/InfoPlist.strings
+@@ -6,3 +6,4 @@ NSMicrophoneUsageDescription = "Firefox uses your microphone to record and uploa
+ "New Tab" = "New Tab";
+ "New Private Tab" = "New Private Tab";
+ "Scan QR Code" = "Scan QR Code";
++"App Icon" = "App Icon";

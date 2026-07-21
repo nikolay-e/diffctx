@@ -1,0 +1,400 @@
+From ead5683ff9994c0fbfc6c38e0911d9455777550b Mon Sep 17 00:00:00 2001
+From: Luuk van Baal <luukvbaal@gmail.com>
+Date: Tue, 7 Jan 2025 14:20:45 +0100
+Subject: [PATCH] feat(api): add err field to nvim_echo() opts
+
+Problem:  We want to deprecate `nvim_err_write(ln)()` but there is no
+          obvious replacement (from Lua). Meanwhile we already have
+          `nvim_echo()` with an `opts` argument.
+Solution: Add `err` argument to `nvim_echo()` that directly maps to
+          `:echoerr`.
+---
+ runtime/doc/api.txt                   |  2 +
+ runtime/doc/news.txt                  |  2 +
+ runtime/lua/vim/_meta/api.lua         |  2 +
+ runtime/lua/vim/_meta/api_keysets.lua |  1 +
+ src/nvim/api/keysets_defs.h           |  1 +
+ src/nvim/api/private/helpers.c        |  4 +-
+ src/nvim/api/vim.c                    |  6 ++-
+ src/nvim/eval.c                       |  3 +-
+ src/nvim/ex_docmd.c                   |  2 +-
+ src/nvim/lua/executor.c               |  2 +-
+ src/nvim/message.c                    | 55 ++++++++++++++++++---------
+ test/functional/api/vim_spec.lua      | 24 ++++++++++++
+ test/functional/ui/messages_spec.lua  | 15 ++++++++
+ 13 files changed, 92 insertions(+), 27 deletions(-)
+
+diff --git a/runtime/doc/api.txt b/runtime/doc/api.txt
+index c8e0dcd0c..514479b8b 100644
+--- a/runtime/doc/api.txt
++++ b/runtime/doc/api.txt
+@@ -662,6 +662,8 @@ nvim_echo({chunks}, {history}, {opts})                           *nvim_echo()*
+                    `hl_group` element can be omitted for no highlight.
+       • {history}  if true, add to |message-history|.
+       • {opts}     Optional parameters.
++                   • err: Treat the message like |:echoerr|. Omitted `hlgroup`
++                     uses |hl-ErrorMsg| instead.
+                    • verbose: Message is printed as a result of 'verbose'
+                      option. If Nvim was invoked with -V3log_file, the message
+                      will be redirected to the log_file and suppressed from
+diff --git a/runtime/doc/news.txt b/runtime/doc/news.txt
+index b7606e65f..cb7916d0e 100644
+--- a/runtime/doc/news.txt
++++ b/runtime/doc/news.txt
+@@ -178,6 +178,8 @@ API
+ 
+ • Improved API "meta" docstrings and :help documentation.
+ • |nvim__ns_set()| can set properties for a namespace
++• |nvim_echo()| `err` field to print error messages and `chunks` accepts
++  highlight group IDs.
+ 
+ DEFAULTS
+ 
+diff --git a/runtime/lua/vim/_meta/api.lua b/runtime/lua/vim/_meta/api.lua
+index 7297c8ad3..b0651efca 100644
+--- a/runtime/lua/vim/_meta/api.lua
++++ b/runtime/lua/vim/_meta/api.lua
+@@ -1104,6 +1104,8 @@ function vim.api.nvim_del_var(name) end
+ --- `hl_group` element can be omitted for no highlight.
+ --- @param history boolean if true, add to `message-history`.
+ --- @param opts vim.api.keyset.echo_opts Optional parameters.
++--- - err: Treat the message like `:echoerr`. Omitted `hlgroup`
++---   uses `hl-ErrorMsg` instead.
+ --- - verbose: Message is printed as a result of 'verbose' option.
+ ---   If Nvim was invoked with -V3log_file, the message will be
+ ---   redirected to the log_file and suppressed from direct output.
+diff --git a/runtime/lua/vim/_meta/api_keysets.lua b/runtime/lua/vim/_meta/api_keysets.lua
+index e11dddb2d..1baae2fd7 100644
+--- a/runtime/lua/vim/_meta/api_keysets.lua
++++ b/runtime/lua/vim/_meta/api_keysets.lua
+@@ -88,6 +88,7 @@ error('Cannot require a meta file')
+ --- @field pattern? string|string[]
+ 
+ --- @class vim.api.keyset.echo_opts
++--- @field err? boolean
+ --- @field verbose? boolean
+ 
+ --- @class vim.api.keyset.empty
+diff --git a/src/nvim/api/keysets_defs.h b/src/nvim/api/keysets_defs.h
+index 48f5f7246..17287e083 100644
+--- a/src/nvim/api/keysets_defs.h
++++ b/src/nvim/api/keysets_defs.h
+@@ -325,6 +325,7 @@ typedef struct {
+ } Dict(cmd_opts);
+ 
+ typedef struct {
++  Boolean err;
+   Boolean verbose;
+ } Dict(echo_opts);
+ 
+diff --git a/src/nvim/api/private/helpers.c b/src/nvim/api/private/helpers.c
+index 78aa7c00f..c98635f8f 100644
+--- a/src/nvim/api/private/helpers.c
++++ b/src/nvim/api/private/helpers.c
+@@ -776,7 +776,7 @@ char *api_typename(ObjectType t)
+   UNREACHABLE;
+ }
+ 
+-HlMessage parse_hl_msg(Array chunks, Error *err)
++HlMessage parse_hl_msg(Array chunks, bool is_err, Error *err)
+ {
+   HlMessage hl_msg = KV_INITIAL_VALUE;
+   for (size_t i = 0; i < chunks.size; i++) {
+@@ -791,7 +791,7 @@ HlMessage parse_hl_msg(Array chunks, Error *err)
+ 
+     String str = copy_string(chunk.items[0].data.string, NULL);
+ 
+-    int hl_id = 0;
++    int hl_id = is_err ? HLF_E : 0;
+     if (chunk.size == 2) {
+       hl_id = object_to_hl_id(chunk.items[1], "text highlight", err);
+     }
+diff --git a/src/nvim/api/vim.c b/src/nvim/api/vim.c
+index e3e69f4ff..f0848b7e0 100644
+--- a/src/nvim/api/vim.c
++++ b/src/nvim/api/vim.c
+@@ -775,13 +775,15 @@ void nvim_set_vvar(String name, Object value, Error *err)
+ ///                `hl_group` element can be omitted for no highlight.
+ /// @param history  if true, add to |message-history|.
+ /// @param opts  Optional parameters.
++///          - err: Treat the message like |:echoerr|. Omitted `hlgroup`
++///            uses |hl-ErrorMsg| instead.
+ ///          - verbose: Message is printed as a result of 'verbose' option.
+ ///            If Nvim was invoked with -V3log_file, the message will be
+ ///            redirected to the log_file and suppressed from direct output.
+ void nvim_echo(Array chunks, Boolean history, Dict(echo_opts) *opts, Error *err)
+   FUNC_API_SINCE(7)
+ {
+-  HlMessage hl_msg = parse_hl_msg(chunks, err);
++  HlMessage hl_msg = parse_hl_msg(chunks, opts->err, err);
+   if (ERROR_SET(err)) {
+     goto error;
+   }
+@@ -790,7 +792,7 @@ void nvim_echo(Array chunks, Boolean history, Dict(echo_opts) *opts, Error *err)
+     verbose_enter();
+   }
+ 
+-  msg_multihl(hl_msg, history ? "echomsg" : "echo", history);
++  msg_multihl(hl_msg, opts->err ? "echoerr" : history ? "echomsg" : "echo", history, opts->err);
+ 
+   if (opts->verbose) {
+     verbose_leave();
+diff --git a/src/nvim/eval.c b/src/nvim/eval.c
+index a90f27571..5b91f1248 100644
+--- a/src/nvim/eval.c
++++ b/src/nvim/eval.c
+@@ -7968,8 +7968,7 @@ void ex_execute(exarg_T *eap)
+     } else if (eap->cmdidx == CMD_echoerr) {
+       // We don't want to abort following commands, restore did_emsg.
+       int save_did_emsg = did_emsg;
+-      msg_ext_set_kind("echoerr");
+-      emsg_multiline(ga.ga_data, true);
++      emsg_multiline(ga.ga_data, "echoerr", HLF_E, true);
+       if (!force_abort) {
+         did_emsg = save_did_emsg;
+       }
+diff --git a/src/nvim/ex_docmd.c b/src/nvim/ex_docmd.c
+index 6f9f0f07c..137226e2a 100644
+--- a/src/nvim/ex_docmd.c
++++ b/src/nvim/ex_docmd.c
+@@ -982,7 +982,7 @@ void handle_did_throw(void)
+   if (messages != NULL) {
+     do {
+       msglist_T *next = messages->next;
+-      emsg_multiline(messages->msg, messages->multiline);
++      emsg_multiline(messages->msg, "emsg", HLF_E, messages->multiline);
+       xfree(messages->msg);
+       xfree(messages->sfile);
+       xfree(messages);
+diff --git a/src/nvim/lua/executor.c b/src/nvim/lua/executor.c
+index 0a412b4ca..68d3af607 100644
+--- a/src/nvim/lua/executor.c
++++ b/src/nvim/lua/executor.c
+@@ -958,7 +958,7 @@ static void nlua_print_event(void **argv)
+   HlMessage msg = KV_INITIAL_VALUE;
+   HlMessageChunk chunk = { { .data = argv[0], .size = (size_t)(intptr_t)argv[1] - 1 }, 0 };
+   kv_push(msg, chunk);
+-  msg_multihl(msg, "lua_print", true);
++  msg_multihl(msg, "lua_print", true, false);
+ }
+ 
+ /// Print as a Vim message
+diff --git a/src/nvim/message.c b/src/nvim/message.c
+index d45bc147c..e288353dd 100644
+--- a/src/nvim/message.c
++++ b/src/nvim/message.c
+@@ -293,20 +293,31 @@ void msg_multiline(String str, int hl_id, bool check_int, bool hist, bool *need_
+   }
+ }
+ 
+-void msg_multihl(HlMessage hl_msg, const char *kind, bool history)
++// Avoid starting a new message for each chunk and adding message to history in msg_keep().
++static bool is_multihl = false;
++
++void msg_multihl(HlMessage hl_msg, const char *kind, bool history, bool err)
+ {
+   no_wait_return++;
+   msg_start();
+   msg_clr_eos();
+   bool need_clear = false;
++  msg_ext_history = history;
+   msg_ext_set_kind(kind);
++  is_multihl = true;
+   for (uint32_t i = 0; i < kv_size(hl_msg); i++) {
+     HlMessageChunk chunk = kv_A(hl_msg, i);
+-    msg_multiline(chunk.text, chunk.hl_id, true, false, &need_clear);
++    if (err) {
++      emsg_multiline(chunk.text.data, kind, chunk.hl_id, true);
++    } else {
++      msg_multiline(chunk.text, chunk.hl_id, true, false, &need_clear);
++    }
++    assert(msg_ext_kind == kind);
+   }
+   if (history && kv_size(hl_msg)) {
+     add_msg_hist_multihl(NULL, 0, 0, true, hl_msg);
+   }
++  is_multihl = false;
+   no_wait_return--;
+   msg_end();
+ }
+@@ -342,18 +353,19 @@ bool msg_keep(const char *s, int hl_id, bool keep, bool multiline)
+   }
+   entered++;
+ 
+-  // Add message to history (unless it's a repeated kept message or a
+-  // truncated message)
+-  if (s != keep_msg
+-      || (*s != '<'
+-          && last_msg_hist != NULL
+-          && last_msg_hist->msg != NULL
+-          && strcmp(s, last_msg_hist->msg) != 0)) {
++  // Add message to history (unless it's a truncated, repeated kept or multihl message).
++  if ((s != keep_msg
++       || (*s != '<'
++           && last_msg_hist != NULL
++           && last_msg_hist->msg != NULL
++           && strcmp(s, last_msg_hist->msg) != 0)) && !is_multihl) {
+     add_msg_hist(s, -1, hl_id, multiline);
+   }
+ 
++  if (!is_multihl) {
++    msg_start();
++  }
+   // Truncate the message if needed.
+-  msg_start();
+   char *buf = msg_strtrunc(s, false);
+   if (buf != NULL) {
+     s = buf;
+@@ -368,7 +380,10 @@ bool msg_keep(const char *s, int hl_id, bool keep, bool multiline)
+   if (need_clear) {
+     msg_clr_eos();
+   }
+-  bool retval = msg_end();
++  bool retval = true;
++  if (!is_multihl) {
++    retval = msg_end();
++  }
+ 
+   if (keep && retval && vim_strsize(s) < (Rows - cmdline_row - 1) * Columns + sc_col) {
+     set_keep_msg(s, 0);
+@@ -618,6 +633,9 @@ void msg_source(int hl_id)
+     msg_scroll = true;  // this will take more than one line
+     msg(p, hl_id);
+     xfree(p);
++    if (is_multihl) {
++      msg_start();  // avoided in msg_keep() but need the "msg_didout" newline here
++    }
+   }
+   p = get_emsg_lnum();
+   if (p != NULL) {
+@@ -652,7 +670,7 @@ int emsg_not_now(void)
+   return false;
+ }
+ 
+-bool emsg_multiline(const char *s, bool multiline)
++bool emsg_multiline(const char *s, const char *kind, int hl_id, bool multiline)
+ {
+   bool ignore = false;
+ 
+@@ -750,14 +768,13 @@ bool emsg_multiline(const char *s, bool multiline)
+   }
+ 
+   emsg_on_display = true;     // remember there is an error message
+-  int hl_id = HLF_E;      // set highlight mode for error messages
+   if (msg_scrolled != 0) {
+     need_wait_return = true;  // needed in case emsg() is called after
+   }                           // wait_return() has reset need_wait_return
+                               // and a redraw is expected because
+                               // msg_scrolled is non-zero
+   if (msg_ext_kind == NULL) {
+-    msg_ext_set_kind("emsg");
++    msg_ext_set_kind(kind);
+   }
+ 
+   // Display name and line number for the source of the error.
+@@ -765,7 +782,7 @@ bool emsg_multiline(const char *s, bool multiline)
+   msg_source(hl_id);
+ 
+   if (msg_ext_kind == NULL) {
+-    msg_ext_set_kind("emsg");
++    msg_ext_set_kind(kind);
+   }
+ 
+   // Display the error message itself.
+@@ -781,7 +798,7 @@ bool emsg_multiline(const char *s, bool multiline)
+ /// @return true if wait_return() not called
+ bool emsg(const char *s)
+ {
+-  return emsg_multiline(s, false);
++  return emsg_multiline(s, "emsg", HLF_E, false);
+ }
+ 
+ void emsg_invreg(int name)
+@@ -821,7 +838,7 @@ bool semsg_multiline(const char *const fmt, ...)
+   vim_vsnprintf(errbuf, sizeof(errbuf), fmt, ap);
+   va_end(ap);
+ 
+-  ret = emsg_multiline(errbuf, true);
++  ret = emsg_multiline(errbuf, "emsg", HLF_E, true);
+ 
+   return ret;
+ }
+@@ -905,7 +922,7 @@ void msg_schedule_semsg(const char *const fmt, ...)
+ static void msg_semsg_multiline_event(void **argv)
+ {
+   char *s = argv[0];
+-  emsg_multiline(s, true);
++  emsg_multiline(s, "emsg", HLF_E, true);
+   xfree(s);
+ }
+ 
+@@ -1196,7 +1213,7 @@ void ex_messages(exarg_T *eap)
+     msg_hist_off = true;
+     for (; p != NULL && !got_int; p = p->next) {
+       if (kv_size(p->multihl)) {
+-        msg_multihl(p->multihl, p->kind, false);
++        msg_multihl(p->multihl, p->kind, false, false);
+       } else if (p->msg != NULL) {
+         msg_keep(p->msg, p->hl_id, false, p->multiline);
+       }
+diff --git a/test/functional/api/vim_spec.lua b/test/functional/api/vim_spec.lua
+index 578fa361e..e0ab31f70 100644
+--- a/test/functional/api/vim_spec.lua
++++ b/test/functional/api/vim_spec.lua
+@@ -3680,6 +3680,30 @@ describe('API', function()
+       async_meths.nvim_echo({ { 'msg\nmsg' }, { 'msg' } }, false, {})
+       eq('', exec_capture('messages'))
+     end)
++
++    it('can print error message', function()
++      async_meths.nvim_echo({ { 'Error\nMessage' } }, false, { err = true })
++      screen:expect([[
++                                                |
++        {1:~                                       }|*3
++        {3:                                        }|
++        {9:Error}                                   |
++        {9:Message}                                 |
++        {6:Press ENTER or type command to continue}^ |
++      ]])
++      feed(':messages<CR>')
++      screen:expect([[
++        ^                                        |
++        {1:~                                       }|*6
++                                                |
++      ]])
++      async_meths.nvim_echo({ { 'Error' }, { 'Message', 'Special' } }, false, { err = true })
++      screen:expect([[
++        ^                                        |
++        {1:~                                       }|*6
++        {9:Error}{16:Message}                            |
++      ]])
++    end)
+   end)
+ 
+   describe('nvim_open_term', function()
+diff --git a/test/functional/ui/messages_spec.lua b/test/functional/ui/messages_spec.lua
+index 77ffc475b..06048c665 100644
+--- a/test/functional/ui/messages_spec.lua
++++ b/test/functional/ui/messages_spec.lua
+@@ -315,6 +315,21 @@ describe('ui/ext_messages', function()
+     })
+     feed('<Esc>')
+     command('set showmode')
++
++    -- kind=echoerr for nvim_echo() err
++    feed(':call nvim_echo([["Error"], ["Message", "Special"]], 1, #{ err:1 })<CR>')
++    screen:expect({
++      cmdline = { {
++        abort = false,
++      } },
++      messages = {
++        {
++          content = { { 'Error', 9, 6 }, { 'Message', 16, 99 } },
++          history = true,
++          kind = 'echoerr',
++        },
++      },
++    })
+   end)
+ 
+   it(':echoerr', function()

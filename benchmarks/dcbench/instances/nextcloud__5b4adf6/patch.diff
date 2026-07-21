@@ -1,0 +1,1340 @@
+From 5b4adf66e51e21b3ecbd683397a362b60f792a50 Mon Sep 17 00:00:00 2001
+From: Morris Jobke <hey@morrisjobke.de>
+Date: Fri, 7 Apr 2017 15:42:43 -0500
+Subject: [PATCH] Move OC_Defaults to OCP\Defaults
+
+* currently there are two ways to access default values:
+  OCP\Defaults or OC_Defaults (which is extended by
+  OCA\Theming\ThemingDefaults)
+* our code used a mixture of both of them, which made
+  it hard to work on theme values
+* this extended the public interface with the missing
+  methods and uses them everywhere to only rely on the
+  public interface
+
+Signed-off-by: Morris Jobke <hey@morrisjobke.de>
+---
+ .../settings-personal.php                     |  3 +-
+ .../files_sharing/lib/AppInfo/Application.php |  3 +-
+ .../lib/Controller/ShareController.php        |  4 +-
+ .../tests/Controller/ShareControllerTest.php  |  2 +-
+ .../lib/AppInfo/Application.php               |  3 +-
+ .../lib/Controller/UsersController.php        |  8 ++--
+ .../tests/Controller/UsersControllerTest.php  |  6 +--
+ .../theming/lib/Controller/IconController.php |  8 ++--
+ .../tests/Controller/IconControllerTest.php   |  6 +--
+ core/Application.php                          | 22 ---------
+ core/Command/Maintenance/Install.php          |  3 +-
+ core/Controller/LostController.php            |  7 +--
+ core/Controller/OCJSController.php            |  5 ++-
+ core/templates/404.php                        |  2 +-
+ lib/base.php                                  |  2 +-
+ lib/private/Mail/EMailTemplate.php            | 10 ++---
+ lib/private/Mail/IEMailTemplate.php           |  8 ++--
+ lib/private/Mail/Mailer.php                   |  7 +--
+ lib/private/Server.php                        | 10 ++++-
+ lib/private/Setup.php                         | 12 ++---
+ lib/private/Share/MailNotifications.php       |  1 -
+ lib/private/Template/Base.php                 |  6 ++-
+ lib/private/Template/JSConfigHelper.php       |  7 +--
+ lib/private/TemplateLayout.php                |  3 +-
+ lib/private/legacy/defaults.php               | 18 ++++++++
+ lib/private/legacy/template.php               |  3 +-
+ lib/private/legacy/util.php                   |  2 +-
+ lib/public/Defaults.php                       | 45 +++++++++++++++++--
+ settings/Application.php                      |  7 +--
+ settings/Mailer/NewUserMailHelper.php         |  8 ++--
+ settings/templates/personal.php               |  2 +-
+ tests/Core/Controller/LostControllerTest.php  |  6 +--
+ .../Controller/UsersControllerTest.php        |  2 -
+ .../Settings/Mailer/NewUserMailHelperTest.php | 21 +++++----
+ .../data/emails/new-account-email-custom.html |  2 +-
+ tests/data/emails/new-account-email.html      |  2 +-
+ tests/lib/Accounts/AccountsManagerTest.php    |  1 -
+ tests/lib/Mail/EMailTemplateTest.php          | 14 ++----
+ tests/lib/Mail/MailerTest.php                 |  6 +--
+ tests/lib/SetupTest.php                       | 17 +++----
+ tests/lib/Template/SCSSCacherTest.php         |  2 -
+ tests/lib/TestCase.php                        | 12 +++--
+ 42 files changed, 184 insertions(+), 134 deletions(-)
+
+diff --git a/apps/federatedfilesharing/settings-personal.php b/apps/federatedfilesharing/settings-personal.php
+index 71353cdef2..d70f4e491a 100644
+--- a/apps/federatedfilesharing/settings-personal.php
++++ b/apps/federatedfilesharing/settings-personal.php
+@@ -41,7 +41,8 @@ if (count($matches) > 0 && $matches[1] <= 9) {
+ $cloudID = \OC::$server->getUserSession()->getUser()->getCloudId();
+ $url = 'https://nextcloud.com/federation#' . $cloudID;
+ $logoPath = \OC::$server->getURLGenerator()->imagePath('core', 'logo-icon.svg');
+-$theme = \OC::$server->getThemingDefaults();
++/** @var \OCP\Defaults $theme */
++$theme = \OC::$server->query(\OCP\Defaults::class);
+ $color = $theme->getColorPrimary();
+ $textColor = "#ffffff";
+ if(\OC::$server->getAppManager()->isEnabledForUser("theming")) {
+diff --git a/apps/files_sharing/lib/AppInfo/Application.php b/apps/files_sharing/lib/AppInfo/Application.php
+index c8cf723630..f9540df3ff 100644
+--- a/apps/files_sharing/lib/AppInfo/Application.php
++++ b/apps/files_sharing/lib/AppInfo/Application.php
+@@ -35,6 +35,7 @@ use OC\AppFramework\Utility\SimpleContainer;
+ use OCA\Files_Sharing\Controller\ExternalSharesController;
+ use OCA\Files_Sharing\Controller\ShareController;
+ use OCA\Files_Sharing\Middleware\SharingCheckMiddleware;
++use OCP\Defaults;
+ use OCP\Federation\ICloudIdManager;
+ use \OCP\IContainer;
+ use OCP\IServerContainer;
+@@ -67,7 +68,7 @@ class Application extends App {
+ 				$federatedSharingApp->getFederatedShareProvider(),
+ 				$server->getEventDispatcher(),
+ 				$server->getL10N($c->query('AppName')),
+-				$server->getThemingDefaults()
++				$server->query(Defaults::class)
+ 			);
+ 		});
+ 		$container->registerService('ExternalSharesController', function (SimpleContainer $c) {
+diff --git a/apps/files_sharing/lib/Controller/ShareController.php b/apps/files_sharing/lib/Controller/ShareController.php
+index bf3b6c77f9..2c6e953a0f 100644
+--- a/apps/files_sharing/lib/Controller/ShareController.php
++++ b/apps/files_sharing/lib/Controller/ShareController.php
+@@ -106,7 +106,7 @@ class ShareController extends Controller {
+ 	 * @param FederatedShareProvider $federatedShareProvider
+ 	 * @param EventDispatcherInterface $eventDispatcher
+ 	 * @param IL10N $l10n
+-	 * @param \OC_Defaults $defaults
++	 * @param Defaults $defaults
+ 	 */
+ 	public function __construct($appName,
+ 								IRequest $request,
+@@ -122,7 +122,7 @@ class ShareController extends Controller {
+ 								FederatedShareProvider $federatedShareProvider,
+ 								EventDispatcherInterface $eventDispatcher,
+ 								IL10N $l10n,
+-								\OC_Defaults $defaults) {
++								Defaults $defaults) {
+ 		parent::__construct($appName, $request);
+ 
+ 		$this->config = $config;
+diff --git a/apps/files_sharing/tests/Controller/ShareControllerTest.php b/apps/files_sharing/tests/Controller/ShareControllerTest.php
+index dae7740b3a..c9a1d5ecb2 100644
+--- a/apps/files_sharing/tests/Controller/ShareControllerTest.php
++++ b/apps/files_sharing/tests/Controller/ShareControllerTest.php
+@@ -111,7 +111,7 @@ class ShareControllerTest extends \Test\TestCase {
+ 			$this->federatedShareProvider,
+ 			$this->eventDispatcher,
+ 			$this->getMockBuilder('\OCP\IL10N')->getMock(),
+-			$this->getMockBuilder('\OC_Defaults')->getMock()
++			$this->getMockBuilder('\OCP\Defaults')->getMock()
+ 		);
+ 
+ 
+diff --git a/apps/provisioning_api/lib/AppInfo/Application.php b/apps/provisioning_api/lib/AppInfo/Application.php
+index fd03fd41e1..b1c257de68 100644
+--- a/apps/provisioning_api/lib/AppInfo/Application.php
++++ b/apps/provisioning_api/lib/AppInfo/Application.php
+@@ -7,6 +7,7 @@ use OC\AppFramework\Utility\TimeFactory;
+ use OC\Settings\Mailer\NewUserMailHelper;
+ use OCA\Provisioning_API\Middleware\ProvisioningApiMiddleware;
+ use OCP\AppFramework\App;
++use OCP\Defaults;
+ use OCP\Util;
+ 
+ class Application extends App {
+@@ -18,7 +19,7 @@ class Application extends App {
+ 
+ 		$container->registerService(NewUserMailHelper::class, function(SimpleContainer $c) use ($server) {
+ 			return new NewUserMailHelper(
+-				$server->getThemingDefaults(),
++				$server->query(Defaults::class),
+ 				$server->getURLGenerator(),
+ 				$server->getL10N('settings'),
+ 				$server->getMailer(),
+diff --git a/apps/provisioning_api/lib/Controller/UsersController.php b/apps/provisioning_api/lib/Controller/UsersController.php
+index 9684c7f565..d2aeac540d 100644
+--- a/apps/provisioning_api/lib/Controller/UsersController.php
++++ b/apps/provisioning_api/lib/Controller/UsersController.php
+@@ -33,10 +33,10 @@ use OC\Accounts\AccountManager;
+ use OC\Settings\Mailer\NewUserMailHelper;
+ use \OC_Helper;
+ use OCP\AppFramework\Http\DataResponse;
+-use OCP\AppFramework\Http\TemplateResponse;
+ use OCP\AppFramework\OCS\OCSException;
+ use OCP\AppFramework\OCS\OCSForbiddenException;
+ use OCP\AppFramework\OCSController;
++use OCP\Defaults;
+ use OCP\Files\NotFoundException;
+ use OCP\IConfig;
+ use OCP\IGroup;
+@@ -69,7 +69,7 @@ class UsersController extends OCSController {
+ 	private $urlGenerator;
+ 	/** @var IMailer */
+ 	private $mailer;
+-	/** @var \OC_Defaults */
++	/** @var Defaults */
+ 	private $defaults;
+ 	/** @var IFactory */
+ 	private $l10nFactory;
+@@ -88,7 +88,7 @@ class UsersController extends OCSController {
+ 	 * @param string $fromMailAddress
+ 	 * @param IURLGenerator $urlGenerator
+ 	 * @param IMailer $mailer
+-	 * @param \OC_Defaults $defaults
++	 * @param Defaults $defaults
+ 	 * @param IFactory $l10nFactory
+ 	 * @param NewUserMailHelper $newUserMailHelper
+ 	 */
+@@ -103,7 +103,7 @@ class UsersController extends OCSController {
+ 								$fromMailAddress,
+ 								IURLGenerator $urlGenerator,
+ 								IMailer $mailer,
+-								\OC_Defaults $defaults,
++								Defaults $defaults,
+ 								IFactory $l10nFactory,
+ 								NewUserMailHelper $newUserMailHelper) {
+ 		parent::__construct($appName, $request);
+diff --git a/apps/provisioning_api/tests/Controller/UsersControllerTest.php b/apps/provisioning_api/tests/Controller/UsersControllerTest.php
+index 24516840a7..24de84a069 100644
+--- a/apps/provisioning_api/tests/Controller/UsersControllerTest.php
++++ b/apps/provisioning_api/tests/Controller/UsersControllerTest.php
+@@ -37,10 +37,10 @@ use OC\Settings\Mailer\NewUserMailHelper;
+ use OC\SubAdmin;
+ use OCA\Provisioning_API\Controller\UsersController;
+ use OCP\AppFramework\Http\DataResponse;
++use OCP\Defaults;
+ use OCP\IConfig;
+ use OCP\IGroup;
+ use OCP\ILogger;
+-use OCP\AppFramework\Http\TemplateResponse;
+ use OCP\IL10N;
+ use OCP\IRequest;
+ use OCP\IURLGenerator;
+@@ -74,7 +74,7 @@ class UsersControllerTest extends TestCase {
+ 	private $urlGenerator;
+ 	/** @var IMailer|PHPUnit_Framework_MockObject_MockObject */
+ 	private $mailer;
+-	/** @var \OC_Defaults|PHPUnit_Framework_MockObject_MockObject */
++	/** @var Defaults|PHPUnit_Framework_MockObject_MockObject */
+ 	private $defaults;
+ 	/** @var IFactory|PHPUnit_Framework_MockObject_MockObject */
+ 	private $l10nFactory;
+@@ -93,7 +93,7 @@ class UsersControllerTest extends TestCase {
+ 		$this->accountManager = $this->createMock(AccountManager::class);
+ 		$this->urlGenerator = $this->createMock(IURLGenerator::class);
+ 		$this->mailer = $this->createMock(IMailer::class);
+-		$this->defaults = $this->createMock(\OC_Defaults::class);
++		$this->defaults = $this->createMock(Defaults::class);
+ 		$this->l10nFactory = $this->createMock(IFactory::class);
+ 		$this->newUserMailHelper = $this->createMock(NewUserMailHelper::class);
+ 
+diff --git a/apps/theming/lib/Controller/IconController.php b/apps/theming/lib/Controller/IconController.php
+index 7c4e209d0d..ddd1240fab 100644
+--- a/apps/theming/lib/Controller/IconController.php
++++ b/apps/theming/lib/Controller/IconController.php
+@@ -24,19 +24,19 @@ namespace OCA\Theming\Controller;
+ 
+ use OCA\Theming\IconBuilder;
+ use OCA\Theming\ImageManager;
+-use OCA\Theming\ThemingDefaults;
+ use OCP\AppFramework\Controller;
+ use OCP\AppFramework\Http;
+ use OCP\AppFramework\Http\NotFoundResponse;
+ use OCP\AppFramework\Http\FileDisplayResponse;
+ use OCP\AppFramework\Utility\ITimeFactory;
++use OCP\Defaults;
+ use OCP\Files\NotFoundException;
+ use OCP\IRequest;
+ use OCA\Theming\Util;
+ use OCP\IConfig;
+ 
+ class IconController extends Controller {
+-	/** @var ThemingDefaults */
++	/** @var Defaults */
+ 	private $themingDefaults;
+ 	/** @var Util */
+ 	private $util;
+@@ -54,7 +54,7 @@ class IconController extends Controller {
+ 	 *
+ 	 * @param string $appName
+ 	 * @param IRequest $request
+-	 * @param ThemingDefaults $themingDefaults
++	 * @param Defaults $themingDefaults
+ 	 * @param Util $util
+ 	 * @param ITimeFactory $timeFactory
+ 	 * @param IConfig $config
+@@ -64,7 +64,7 @@ class IconController extends Controller {
+ 	public function __construct(
+ 		$appName,
+ 		IRequest $request,
+-		ThemingDefaults $themingDefaults,
++		Defaults $themingDefaults,
+ 		Util $util,
+ 		ITimeFactory $timeFactory,
+ 		IConfig $config,
+diff --git a/apps/theming/tests/Controller/IconControllerTest.php b/apps/theming/tests/Controller/IconControllerTest.php
+index 591c107549..ce053ff0ea 100644
+--- a/apps/theming/tests/Controller/IconControllerTest.php
++++ b/apps/theming/tests/Controller/IconControllerTest.php
+@@ -26,8 +26,8 @@ namespace OCA\Theming\Tests\Controller;
+ use OC\Files\SimpleFS\SimpleFile;
+ use OCA\Theming\ImageManager;
+ use OCP\AppFramework\Http;
+-use OCP\AppFramework\Http\DataDisplayResponse;
+ use OCP\AppFramework\Http\NotFoundResponse;
++use OCP\Defaults;
+ use OCP\Files\IRootFolder;
+ use OCP\Files\NotFoundException;
+ use OCP\IConfig;
+@@ -41,7 +41,7 @@ use OCP\AppFramework\Http\FileDisplayResponse;
+ class IconControllerTest extends TestCase {
+ 	/** @var IRequest|\PHPUnit_Framework_MockObject_MockObject */
+ 	private $request;
+-	/** @var IConfig|\PHPUnit_Framework_MockObject_MockObject */
++	/** @var Defaults|\PHPUnit_Framework_MockObject_MockObject */
+ 	private $themingDefaults;
+ 	/** @var Util */
+ 	private $util;
+@@ -58,7 +58,7 @@ class IconControllerTest extends TestCase {
+ 
+ 	public function setUp() {
+ 		$this->request = $this->getMockBuilder('OCP\IRequest')->getMock();
+-		$this->themingDefaults = $this->getMockBuilder('OCA\Theming\ThemingDefaults')
++		$this->themingDefaults = $this->getMockBuilder('OCP\Defaults')
+ 			->disableOriginalConstructor()->getMock();
+ 		$this->util = $this->getMockBuilder('\OCA\Theming\Util')->disableOriginalConstructor()
+ 			->setMethods(['getAppImage', 'getAppIcon', 'elementColor'])->getMock();
+diff --git a/core/Application.php b/core/Application.php
+index 33b7dd1b33..6fa301e590 100644
+--- a/core/Application.php
++++ b/core/Application.php
+@@ -30,11 +30,8 @@
+ 
+ namespace OC\Core;
+ 
+-use OC\AppFramework\Utility\SimpleContainer;
+ use OC\Core\Controller\JsController;
+-use OC\Core\Controller\OCJSController;
+ use OC\Security\IdentityProof\Manager;
+-use OC\Server;
+ use OCP\AppFramework\App;
+ use OC\Core\Controller\CssController;
+ use OCP\AppFramework\Utility\ITimeFactory;
+@@ -70,25 +67,6 @@ class Application extends App {
+ 				$container->query(ITimeFactory::class)
+ 			);
+ 		});
+-		$container->registerService(OCJSController::class, function () use ($container) {
+-			/** @var Server $server */
+-			$server = $container->getServer();
+-			return new OCJSController(
+-				$container->query('appName'),
+-				$server->getRequest(),
+-				$server->getL10N('core'),
+-				// This is required for the theming to overwrite the `OC_Defaults`, see
+-				// https://github.com/nextcloud/server/issues/3148
+-				$server->getThemingDefaults(),
+-				$server->getAppManager(),
+-				$server->getSession(),
+-				$server->getUserSession(),
+-				$server->getConfig(),
+-				$server->getGroupManager(),
+-				$server->getIniWrapper(),
+-				$server->getURLGenerator()
+-			);
+-		});
+ 		$container->registerService(JsController::class, function () use ($container) {
+ 			return new JsController(
+ 				$container->query('AppName'),
+diff --git a/core/Command/Maintenance/Install.php b/core/Command/Maintenance/Install.php
+index 86180489fa..fa6262d24a 100644
+--- a/core/Command/Maintenance/Install.php
++++ b/core/Command/Maintenance/Install.php
+@@ -30,6 +30,7 @@ namespace OC\Core\Command\Maintenance;
+ use InvalidArgumentException;
+ use OC\Setup;
+ use OC\SystemConfig;
++use OCP\Defaults;
+ use Symfony\Component\Console\Command\Command;
+ use Symfony\Component\Console\Helper\QuestionHelper;
+ use Symfony\Component\Console\Input\InputInterface;
+@@ -70,7 +71,7 @@ class Install extends Command {
+ 		// validate the environment
+ 		$server = \OC::$server;
+ 		$setupHelper = new Setup($this->config, $server->getIniWrapper(),
+-			$server->getL10N('lib'), $server->getThemingDefaults(), $server->getLogger(),
++			$server->getL10N('lib'), $server->query(Defaults::class), $server->getLogger(),
+ 			$server->getSecureRandom());
+ 		$sysInfo = $setupHelper->getSystemInfo(true);
+ 		$errors = $sysInfo['errors'];
+diff --git a/core/Controller/LostController.php b/core/Controller/LostController.php
+index 4de1cf5eb0..639dd9da57 100644
+--- a/core/Controller/LostController.php
++++ b/core/Controller/LostController.php
+@@ -34,6 +34,7 @@ use OCA\Encryption\Exceptions\PrivateKeyMissingException;
+ use \OCP\AppFramework\Controller;
+ use \OCP\AppFramework\Http\TemplateResponse;
+ use OCP\AppFramework\Utility\ITimeFactory;
++use OCP\Defaults;
+ use OCP\Encryption\IManager;
+ use \OCP\IURLGenerator;
+ use \OCP\IRequest;
+@@ -58,7 +59,7 @@ class LostController extends Controller {
+ 	protected $urlGenerator;
+ 	/** @var IUserManager */
+ 	protected $userManager;
+-	/** @var \OC_Defaults */
++	/** @var Defaults */
+ 	protected $defaults;
+ 	/** @var IL10N */
+ 	protected $l10n;
+@@ -82,7 +83,7 @@ class LostController extends Controller {
+ 	 * @param IRequest $request
+ 	 * @param IURLGenerator $urlGenerator
+ 	 * @param IUserManager $userManager
+-	 * @param \OC_Defaults $defaults
++	 * @param Defaults $defaults
+ 	 * @param IL10N $l10n
+ 	 * @param IConfig $config
+ 	 * @param ISecureRandom $secureRandom
+@@ -96,7 +97,7 @@ class LostController extends Controller {
+ 								IRequest $request,
+ 								IURLGenerator $urlGenerator,
+ 								IUserManager $userManager,
+-								\OC_Defaults $defaults,
++								Defaults $defaults,
+ 								IL10N $l10n,
+ 								IConfig $config,
+ 								ISecureRandom $secureRandom,
+diff --git a/core/Controller/OCJSController.php b/core/Controller/OCJSController.php
+index c2292a6733..9c19f0c0ad 100644
+--- a/core/Controller/OCJSController.php
++++ b/core/Controller/OCJSController.php
+@@ -28,6 +28,7 @@ use OCP\App\IAppManager;
+ use OCP\AppFramework\Controller;
+ use OCP\AppFramework\Http;
+ use OCP\AppFramework\Http\DataDisplayResponse;
++use OCP\Defaults;
+ use OCP\IConfig;
+ use OCP\IGroupManager;
+ use OCP\IL10N;
+@@ -47,7 +48,7 @@ class OCJSController extends Controller {
+ 	 * @param string $appName
+ 	 * @param IRequest $request
+ 	 * @param IL10N $l
+-	 * @param \OC_Defaults $defaults
++	 * @param Defaults $defaults
+ 	 * @param IAppManager $appManager
+ 	 * @param ISession $session
+ 	 * @param IUserSession $userSession
+@@ -59,7 +60,7 @@ class OCJSController extends Controller {
+ 	public function __construct($appName,
+ 								IRequest $request,
+ 								IL10N $l,
+-								\OC_Defaults $defaults,
++								Defaults $defaults,
+ 								IAppManager $appManager,
+ 								ISession $session,
+ 								IUserSession $userSession,
+diff --git a/core/templates/404.php b/core/templates/404.php
+index 79a67b3ce2..cc45cbeaf5 100644
+--- a/core/templates/404.php
++++ b/core/templates/404.php
+@@ -1,7 +1,7 @@
+ <?php
+ /** @var $_ array */
+ /** @var $l \OCP\IL10N */
+-/** @var $theme OC_Theme */
++/** @var $theme OCP\Defaults */
+ // @codeCoverageIgnoreStart
+ if(!isset($_)) {//also provide standalone error page
+ 	require_once '../../lib/base.php';
+diff --git a/lib/base.php b/lib/base.php
+index a6601a2dd6..feb54ec033 100644
+--- a/lib/base.php
++++ b/lib/base.php
+@@ -912,7 +912,7 @@ class OC {
+ 		if (!$systemConfig->getValue('installed', false)) {
+ 			\OC::$server->getSession()->clear();
+ 			$setupHelper = new OC\Setup(\OC::$server->getSystemConfig(), \OC::$server->getIniWrapper(),
+-				\OC::$server->getL10N('lib'), \OC::$server->getThemingDefaults(), \OC::$server->getLogger(),
++				\OC::$server->getL10N('lib'), \OC::$server->query(\OCP\Defaults::class), \OC::$server->getLogger(),
+ 				\OC::$server->getSecureRandom());
+ 			$controller = new OC\Core\Controller\SetupController($setupHelper);
+ 			$controller->run($_POST);
+diff --git a/lib/private/Mail/EMailTemplate.php b/lib/private/Mail/EMailTemplate.php
+index 7d3ca51c50..c84af6331d 100644
+--- a/lib/private/Mail/EMailTemplate.php
++++ b/lib/private/Mail/EMailTemplate.php
+@@ -25,7 +25,7 @@
+ 
+ namespace OC\Mail;
+ 
+-use OCA\Theming\ThemingDefaults;
++use OCP\Defaults;
+ use OCP\IL10N;
+ use OCP\IURLGenerator;
+ 
+@@ -38,7 +38,7 @@ use OCP\IURLGenerator;
+  * @package OC\Mail
+  */
+ class EMailTemplate implements IEMailTemplate {
+-	/** @var ThemingDefaults */
++	/** @var Defaults */
+ 	protected $themingDefaults;
+ 	/** @var IURLGenerator */
+ 	protected $urlGenerator;
+@@ -264,11 +264,11 @@ EOF;
+ EOF;
+ 
+ 	/**
+-	 * @param ThemingDefaults $themingDefaults
++	 * @param Defaults $themingDefaults
+ 	 * @param IURLGenerator $urlGenerator
+ 	 * @param IL10N $l10n
+ 	 */
+-	public function __construct(ThemingDefaults $themingDefaults,
++	public function __construct(Defaults $themingDefaults,
+ 								IURLGenerator $urlGenerator,
+ 								IL10N $l10n) {
+ 		$this->themingDefaults = $themingDefaults;
+@@ -286,7 +286,7 @@ EOF;
+ 		}
+ 		$this->headerAdded = true;
+ 
+-		$logoUrl = $this->urlGenerator->getAbsoluteURL($this->themingDefaults->getLogo()) . '?v='. $this->themingDefaults->getCacheBusterCounter();
++		$logoUrl = $this->urlGenerator->getAbsoluteURL($this->themingDefaults->getLogo());
+ 		$this->htmlBody .= vsprintf($this->header, [$this->themingDefaults->getColorPrimary(), $logoUrl]);
+ 	}
+ 
+diff --git a/lib/private/Mail/IEMailTemplate.php b/lib/private/Mail/IEMailTemplate.php
+index 0d660a3551..baa2973598 100644
+--- a/lib/private/Mail/IEMailTemplate.php
++++ b/lib/private/Mail/IEMailTemplate.php
+@@ -23,6 +23,8 @@
+ 
+ namespace OC\Mail;
+ 
++use OCP\Defaults;
++
+ /**
+  * Interface IEMailTemplate
+  *
+@@ -32,7 +34,7 @@ namespace OC\Mail;
+  *
+  * <?php
+  *
+- * $emailTemplate = new EMailTemplate($this->defaults);
++ * $emailTemplate = new EMailTemplate($this->defaults, $this->urlGenerator, $this->l10n);
+  *
+  * $emailTemplate->addHeader();
+  * $emailTemplate->addHeading('Welcome aboard');
+@@ -50,11 +52,11 @@ namespace OC\Mail;
+  */
+ interface IEMailTemplate {
+ 	/**
+-	 * @param \OCA\Theming\ThemingDefaults $themingDefaults
++	 * @param Defaults $themingDefaults
+ 	 * @param \OCP\IURLGenerator $urlGenerator
+ 	 * @param \OCP\IL10N $l10n
+ 	 */
+-	public function __construct(\OCA\Theming\ThemingDefaults $themingDefaults,
++	public function __construct(Defaults $themingDefaults,
+ 								\OCP\IURLGenerator $urlGenerator,
+ 								\OCP\IL10N $l10n);
+ 
+diff --git a/lib/private/Mail/Mailer.php b/lib/private/Mail/Mailer.php
+index e704e8e349..8a6b6fce89 100644
+--- a/lib/private/Mail/Mailer.php
++++ b/lib/private/Mail/Mailer.php
+@@ -22,6 +22,7 @@
+ 
+ namespace OC\Mail;
+ 
++use OCP\Defaults;
+ use OCP\IConfig;
+ use OCP\Mail\IMailer;
+ use OCP\ILogger;
+@@ -51,17 +52,17 @@ class Mailer implements IMailer {
+ 	private $config;
+ 	/** @var ILogger */
+ 	private $logger;
+-	/** @var \OC_Defaults */
++	/** @var Defaults */
+ 	private $defaults;
+ 
+ 	/**
+ 	 * @param IConfig $config
+ 	 * @param ILogger $logger
+-	 * @param \OC_Defaults $defaults
++	 * @param Defaults $defaults
+ 	 */
+ 	function __construct(IConfig $config,
+ 						 ILogger $logger,
+-						 \OC_Defaults $defaults) {
++						 Defaults $defaults) {
+ 		$this->config = $config;
+ 		$this->logger = $logger;
+ 		$this->defaults = $defaults;
+diff --git a/lib/private/Server.php b/lib/private/Server.php
+index 0d05bfe0dc..9b2380ac7a 100644
+--- a/lib/private/Server.php
++++ b/lib/private/Server.php
+@@ -95,6 +95,7 @@ use OC\Session\CryptoWrapper;
+ use OC\Tagging\TagMapper;
+ use OCA\Theming\ThemingDefaults;
+ use OCP\App\IAppManager;
++use OCP\Defaults;
+ use OCP\Federation\ICloudIdManager;
+ use OCP\Authentication\LoginCredentials\IStore;
+ use OCP\ICacheFactory;
+@@ -726,7 +727,7 @@ class Server extends ServerContainer implements IServerContainer {
+ 			return new Mailer(
+ 				$c->getConfig(),
+ 				$c->getLogger(),
+-				$c->getThemingDefaults()
++				$c->query(Defaults::class)
+ 			);
+ 		});
+ 		$this->registerAlias('Mailer', \OCP\Mail\IMailer::class);
+@@ -955,6 +956,13 @@ class Server extends ServerContainer implements IServerContainer {
+ 		$this->registerAlias(\OCP\AppFramework\Utility\ITimeFactory::class, \OC\AppFramework\Utility\TimeFactory::class);
+ 		$this->registerAlias('TimeFactory', \OCP\AppFramework\Utility\ITimeFactory::class);
+ 
++		$this->registerService(Defaults::class, function (Server $c) {
++			return new Defaults(
++				$c->getThemingDefaults()
++			);
++		});
++		$this->registerAlias('Defaults', \OCP\Defaults::class);
++
+ 		$this->registerService(\OCP\ISession::class, function(SimpleContainer $c) {
+ 			return $c->query(\OCP\IUserSession::class)->getSession();
+ 		});
+diff --git a/lib/private/Setup.php b/lib/private/Setup.php
+index 7a2957b5fb..e2806efad4 100644
+--- a/lib/private/Setup.php
++++ b/lib/private/Setup.php
+@@ -41,7 +41,7 @@ namespace OC;
+ 
+ use bantu\IniGetWrapper\IniGetWrapper;
+ use Exception;
+-use OCP\IConfig;
++use OCP\Defaults;
+ use OCP\IL10N;
+ use OCP\ILogger;
+ use OCP\Security\ISecureRandom;
+@@ -53,7 +53,7 @@ class Setup {
+ 	protected $iniWrapper;
+ 	/** @var IL10N */
+ 	protected $l10n;
+-	/** @var \OC_Defaults */
++	/** @var Defaults */
+ 	protected $defaults;
+ 	/** @var ILogger */
+ 	protected $logger;
+@@ -63,12 +63,14 @@ class Setup {
+ 	/**
+ 	 * @param SystemConfig $config
+ 	 * @param IniGetWrapper $iniWrapper
+-	 * @param \OC_Defaults $defaults
++	 * @param Defaults $defaults
++	 * @param ILogger $logger
++	 * @param ISecureRandom $random
+ 	 */
+ 	function __construct(SystemConfig $config,
+ 						 IniGetWrapper $iniWrapper,
+ 						 IL10N $l10n,
+-						 \OC_Defaults $defaults,
++						 Defaults $defaults,
+ 						 ILogger $logger,
+ 						 ISecureRandom $random
+ 		) {
+@@ -422,7 +424,7 @@ class Setup {
+ 		}
+ 
+ 		$setupHelper = new \OC\Setup($config, \OC::$server->getIniWrapper(),
+-			\OC::$server->getL10N('lib'), \OC::$server->getThemingDefaults(), \OC::$server->getLogger(),
++			\OC::$server->getL10N('lib'), \OC::$server->query(Defaults::class), \OC::$server->getLogger(),
+ 			\OC::$server->getSecureRandom());
+ 
+ 		$htaccessContent = file_get_contents($setupHelper->pathToHtaccess());
+diff --git a/lib/private/Share/MailNotifications.php b/lib/private/Share/MailNotifications.php
+index 1bbd365699..1ea053fc49 100644
+--- a/lib/private/Share/MailNotifications.php
++++ b/lib/private/Share/MailNotifications.php
+@@ -30,7 +30,6 @@
+ 
+ namespace OC\Share;
+ 
+-use DateTime;
+ use OCP\IL10N;
+ use OCP\IURLGenerator;
+ use OCP\IUser;
+diff --git a/lib/private/Template/Base.php b/lib/private/Template/Base.php
+index 6af679f0a6..18cf632408 100644
+--- a/lib/private/Template/Base.php
++++ b/lib/private/Template/Base.php
+@@ -28,6 +28,8 @@
+ 
+ namespace OC\Template;
+ 
++use OCP\Defaults;
++
+ class Base {
+ 	private $template; // The template
+ 	private $vars; // Vars
+@@ -35,14 +37,14 @@ class Base {
+ 	/** @var \OCP\IL10N */
+ 	private $l10n;
+ 
+-	/** @var \OC_Defaults */
++	/** @var Defaults */
+ 	private $theme;
+ 
+ 	/**
+ 	 * @param string $template
+ 	 * @param string $requestToken
+ 	 * @param \OCP\IL10N $l10n
+-	 * @param \OC_Defaults $theme
++	 * @param Defaults $theme
+ 	 */
+ 	public function __construct($template, $requestToken, $l10n, $theme ) {
+ 		$this->vars = array();
+diff --git a/lib/private/Template/JSConfigHelper.php b/lib/private/Template/JSConfigHelper.php
+index 4fc2168021..9a11e84f8d 100644
+--- a/lib/private/Template/JSConfigHelper.php
++++ b/lib/private/Template/JSConfigHelper.php
+@@ -24,6 +24,7 @@ namespace OC\Template;
+ 
+ use bantu\IniGetWrapper\IniGetWrapper;
+ use OCP\App\IAppManager;
++use OCP\Defaults;
+ use OCP\IConfig;
+ use OCP\IGroupManager;
+ use OCP\IL10N;
+@@ -36,7 +37,7 @@ class JSConfigHelper {
+ 	/** @var IL10N */
+ 	private $l;
+ 
+-	/** @var \OC_Defaults */
++	/** @var Defaults */
+ 	private $defaults;
+ 
+ 	/** @var IAppManager */
+@@ -62,7 +63,7 @@ class JSConfigHelper {
+ 
+ 	/**
+ 	 * @param IL10N $l
+-	 * @param \OC_Defaults $defaults
++	 * @param Defaults $defaults
+ 	 * @param IAppManager $appManager
+ 	 * @param ISession $session
+ 	 * @param IUser|null $currentUser
+@@ -72,7 +73,7 @@ class JSConfigHelper {
+ 	 * @param IURLGenerator $urlGenerator
+ 	 */
+ 	public function __construct(IL10N $l,
+-								\OC_Defaults $defaults,
++								Defaults $defaults,
+ 								IAppManager $appManager,
+ 								ISession $session,
+ 								$currentUser,
+diff --git a/lib/private/TemplateLayout.php b/lib/private/TemplateLayout.php
+index 6dc925f8f8..7a5984a492 100644
+--- a/lib/private/TemplateLayout.php
++++ b/lib/private/TemplateLayout.php
+@@ -38,6 +38,7 @@ namespace OC;
+ use OC\Template\JSCombiner;
+ use OC\Template\JSConfigHelper;
+ use OC\Template\SCSSCacher;
++use OCP\Defaults;
+ 
+ class TemplateLayout extends \OC_Template {
+ 
+@@ -135,7 +136,7 @@ class TemplateLayout extends \OC_Template {
+ 			if (\OC::$server->getContentSecurityPolicyNonceManager()->browserSupportsCspV3()) {
+ 				$jsConfigHelper = new JSConfigHelper(
+ 					\OC::$server->getL10N('core'),
+-					\OC::$server->getThemingDefaults(),
++					\OC::$server->query(Defaults::class),
+ 					\OC::$server->getAppManager(),
+ 					\OC::$server->getSession(),
+ 					\OC::$server->getUserSession()->getUser(),
+diff --git a/lib/private/legacy/defaults.php b/lib/private/legacy/defaults.php
+index 9fd9b621a1..10dd935d26 100644
+--- a/lib/private/legacy/defaults.php
++++ b/lib/private/legacy/defaults.php
+@@ -47,6 +47,8 @@ class OC_Defaults {
+ 	private $defaultSlogan;
+ 	private $defaultLogoClaim;
+ 	private $defaultColorPrimary;
++	private $defaultLogoUrl;
++	private $defaultCacheBuster;
+ 
+ 	function __construct() {
+ 		$this->l = \OC::$server->getL10N('lib');
+@@ -64,6 +66,8 @@ class OC_Defaults {
+ 		$this->defaultSlogan = $this->l->t('a safe home for all your data');
+ 		$this->defaultLogoClaim = '';
+ 		$this->defaultColorPrimary = '#0082c9';
++		$this->defaultLogoUrl = \OC::$server->getURLGenerator()->imagePath('core','logo.svg');
++		$this->defaultLogoUrl .=  '?v=' . hash('sha1', implode('.', \OCP\Util::getVersion()));
+ 
+ 		$themePath = OC::$SERVERROOT . '/themes/' . OC_Util::getTheme() . '/defaults.php';
+ 		if (file_exists($themePath)) {
+@@ -263,6 +267,7 @@ class OC_Defaults {
+ 
+ 	/**
+ 	 * @param string $key
++	 * @return string URL to doc with key
+ 	 */
+ 	public function buildDocLinkToKey($key) {
+ 		if ($this->themeExist('buildDocLinkToKey')) {
+@@ -289,4 +294,17 @@ class OC_Defaults {
+ 	public function shouldReplaceIcons() {
+ 		return false;
+ 	}
++
++	/**
++	 * Themed logo url
++	 *
++	 * @return string
++	 */
++	public function getLogo() {
++		if ($this->themeExist('getLogo')) {
++			return $this->theme->getLogo();
++		}
++
++		return $this->defaultLogoUrl;
++	}
+ }
+diff --git a/lib/private/legacy/template.php b/lib/private/legacy/template.php
+index 969f517427..19b5e41811 100644
+--- a/lib/private/legacy/template.php
++++ b/lib/private/legacy/template.php
+@@ -79,7 +79,8 @@ class OC_Template extends \OC\Template\Base {
+ 
+ 		$parts = explode('/', $app); // fix translation when app is something like core/lostpassword
+ 		$l10n = \OC::$server->getL10N($parts[0]);
+-		$themeDefaults = \OC::$server->getThemingDefaults();
++		/** @var \OCP\Defaults $themeDefaults */
++		$themeDefaults = \OC::$server->query(\OCP\Defaults::class);
+ 
+ 		list($path, $template) = $this->findTemplate($theme, $app, $name);
+ 
+diff --git a/lib/private/legacy/util.php b/lib/private/legacy/util.php
+index 0672fefbe0..f067a12cb7 100644
+--- a/lib/private/legacy/util.php
++++ b/lib/private/legacy/util.php
+@@ -651,7 +651,7 @@ class OC_Util {
+ 
+ 		$webServerRestart = false;
+ 		$setup = new \OC\Setup($config, \OC::$server->getIniWrapper(), \OC::$server->getL10N('lib'),
+-			\OC::$server->getThemingDefaults(), \OC::$server->getLogger(), \OC::$server->getSecureRandom());
++			\OC::$server->query(\OCP\Defaults::class), \OC::$server->getLogger(), \OC::$server->getSecureRandom());
+ 
+ 		$urlGenerator = \OC::$server->getURLGenerator();
+ 
+diff --git a/lib/public/Defaults.php b/lib/public/Defaults.php
+index ae873831b8..591da18c7e 100644
+--- a/lib/public/Defaults.php
++++ b/lib/public/Defaults.php
+@@ -42,7 +42,6 @@ class Defaults {
+ 
+ 	/**
+ 	 * \OC_Defaults instance to retrieve the defaults
+-	 * @return string
+ 	 * @since 6.0.0
+ 	 */
+ 	private $defaults;
+@@ -52,8 +51,11 @@ class Defaults {
+ 	 * actual defaults
+ 	 * @since 6.0.0
+ 	 */
+-	function __construct() {
+-		$this->defaults = \OC::$server->getThemingDefaults();
++	function __construct(\OC_Defaults $defaults = null) {
++		if ($defaults === null) {
++			$defaults = \OC::$server->getThemingDefaults();
++		}
++		$this->defaults = $defaults;
+ 	}
+ 
+ 	/**
+@@ -172,4 +174,41 @@ class Defaults {
+ 	public function getiTunesAppId() {
+ 		return $this->defaults->getiTunesAppId();
+ 	}
++
++	/**
++	 * Themed logo url
++	 *
++	 * @return string
++	 * @since 12.0.0
++	 */
++	public function getLogo() {
++		return $this->defaults->getLogo();
++	}
++
++	/**
++	 * Returns primary color
++	 * @return string
++	 * @since 12.0.0
++	 */
++	public function getColorPrimary() {
++		return $this->defaults->getColorPrimary();
++	}
++
++	/**
++	 * @param string $key
++	 * @return string URL to doc with key
++	 * @since 12.0.0
++	 */
++	public function buildDocLinkToKey($key) {
++		return $this->defaults->buildDocLinkToKey($key);
++	}
++
++	/**
++	 * Returns the title
++	 * @return string title
++	 * @since 12.0.0
++	 */
++	public function getTitle() {
++		return $this->defaults->getTitle();
++	}
+ }
+diff --git a/settings/Application.php b/settings/Application.php
+index bf149def94..8ec8d5eb8a 100644
+--- a/settings/Application.php
++++ b/settings/Application.php
+@@ -35,11 +35,10 @@ use OC\App\AppStore\Fetcher\CategoryFetcher;
+ use OC\AppFramework\Utility\TimeFactory;
+ use OC\Authentication\Token\IProvider;
+ use OC\Server;
+-use OC\ServerContainer;
+ use OC\Settings\Mailer\NewUserMailHelper;
+ use OC\Settings\Middleware\SubadminMiddleware;
+-use OCA\Theming\ThemingDefaults;
+ use OCP\AppFramework\App;
++use OCP\Defaults;
+ use OCP\IContainer;
+ use OCP\Settings\IManager;
+ use OCP\Util;
+@@ -94,9 +93,11 @@ class Application extends App {
+ 		$container->registerService(NewUserMailHelper::class, function (IContainer $c) {
+ 			/** @var Server $server */
+ 			$server = $c->query('ServerContainer');
++			/** @var Defaults $defaults */
++			$defaults = $server->query(Defaults::class);
+ 
+ 			return new NewUserMailHelper(
+-				$server->getThemingDefaults(),
++				$defaults,
+ 				$server->getURLGenerator(),
+ 				$server->getL10N('settings'),
+ 				$server->getMailer(),
+diff --git a/settings/Mailer/NewUserMailHelper.php b/settings/Mailer/NewUserMailHelper.php
+index 15b912f803..a381c32efb 100644
+--- a/settings/Mailer/NewUserMailHelper.php
++++ b/settings/Mailer/NewUserMailHelper.php
+@@ -23,8 +23,8 @@ namespace OC\Settings\Mailer;
+ 
+ use OC\Mail\EMailTemplate;
+ use OC\Mail\IEMailTemplate;
+-use OCA\Theming\ThemingDefaults;
+ use OCP\AppFramework\Utility\ITimeFactory;
++use OCP\Defaults;
+ use OCP\IConfig;
+ use OCP\IL10N;
+ use OCP\IURLGenerator;
+@@ -34,7 +34,7 @@ use OCP\Security\ICrypto;
+ use OCP\Security\ISecureRandom;
+ 
+ class NewUserMailHelper {
+-	/** @var ThemingDefaults */
++	/** @var Defaults */
+ 	private $themingDefaults;
+ 	/** @var IURLGenerator */
+ 	private $urlGenerator;
+@@ -54,7 +54,7 @@ class NewUserMailHelper {
+ 	private $fromAddress;
+ 
+ 	/**
+-	 * @param ThemingDefaults $themingDefaults
++	 * @param Defaults $themingDefaults
+ 	 * @param IURLGenerator $urlGenerator
+ 	 * @param IL10N $l10n
+ 	 * @param IMailer $mailer
+@@ -64,7 +64,7 @@ class NewUserMailHelper {
+ 	 * @param ICrypto $crypto
+ 	 * @param string $fromAddress
+ 	 */
+-	public function __construct(ThemingDefaults $themingDefaults,
++	public function __construct(Defaults $themingDefaults,
+ 								IURLGenerator $urlGenerator,
+ 								IL10N $l10n,
+ 								IMailer $mailer,
+diff --git a/settings/templates/personal.php b/settings/templates/personal.php
+index d94fbb3377..1fe8f859fe 100644
+--- a/settings/templates/personal.php
++++ b/settings/templates/personal.php
+@@ -5,7 +5,7 @@
+  */
+ 
+ /** @var $_ mixed[]|\OCP\IURLGenerator[] */
+-/** @var \OC_Defaults $theme */
++/** @var \OCP\Defaults $theme */
+ ?>
+ 
+ <div id="app-navigation">
+diff --git a/tests/Core/Controller/LostControllerTest.php b/tests/Core/Controller/LostControllerTest.php
+index 255c6ace35..c8b8f87e73 100644
+--- a/tests/Core/Controller/LostControllerTest.php
++++ b/tests/Core/Controller/LostControllerTest.php
+@@ -23,9 +23,9 @@ namespace Tests\Core\Controller;
+ 
+ use OC\Core\Controller\LostController;
+ use OC\Mail\Message;
+-use OCA\Encryption\Exceptions\PrivateKeyMissingException;
+ use OCP\AppFramework\Http\TemplateResponse;
+ use OCP\AppFramework\Utility\ITimeFactory;
++use OCP\Defaults;
+ use OCP\Encryption\IManager;
+ use OCP\IConfig;
+ use OCP\IL10N;
+@@ -55,7 +55,7 @@ class LostControllerTest extends \Test\TestCase {
+ 	private $l10n;
+ 	/** @var IUserManager | PHPUnit_Framework_MockObject_MockObject */
+ 	private $userManager;
+-	/** @var \OC_Defaults */
++	/** @var Defaults */
+ 	private $defaults;
+ 	/** @var IConfig | PHPUnit_Framework_MockObject_MockObject */
+ 	private $config;
+@@ -94,7 +94,7 @@ class LostControllerTest extends \Test\TestCase {
+ 			->will($this->returnCallback(function($text, $parameters = array()) {
+ 				return vsprintf($text, $parameters);
+ 			}));
+-		$this->defaults = $this->getMockBuilder('\OC_Defaults')
++		$this->defaults = $this->getMockBuilder('\OCP\Defaults')
+ 			->disableOriginalConstructor()->getMock();
+ 		$this->userManager = $this->getMockBuilder('\OCP\IUserManager')
+ 			->disableOriginalConstructor()->getMock();
+diff --git a/tests/Settings/Controller/UsersControllerTest.php b/tests/Settings/Controller/UsersControllerTest.php
+index d7961e2332..79e6dd6181 100644
+--- a/tests/Settings/Controller/UsersControllerTest.php
++++ b/tests/Settings/Controller/UsersControllerTest.php
+@@ -52,8 +52,6 @@ class UsersControllerTest extends \Test\TestCase {
+ 	private $config;
+ 	/** @var ILogger|\PHPUnit_Framework_MockObject_MockObject */
+ 	private $logger;
+-	/** @var \OC_Defaults|\PHPUnit_Framework_MockObject_MockObject */
+-	private $defaults;
+ 	/** @var IMailer|\PHPUnit_Framework_MockObject_MockObject */
+ 	private $mailer;
+ 	/** @var IURLGenerator|\PHPUnit_Framework_MockObject_MockObject */
+diff --git a/tests/Settings/Mailer/NewUserMailHelperTest.php b/tests/Settings/Mailer/NewUserMailHelperTest.php
+index e77e8e197b..f38eed0745 100644
+--- a/tests/Settings/Mailer/NewUserMailHelperTest.php
++++ b/tests/Settings/Mailer/NewUserMailHelperTest.php
+@@ -21,12 +21,11 @@
+ 
+ namespace Tests\Settings\Mailer;
+ 
+-use OC\Mail\EMailTemplate;
+ use OC\Mail\IEMailTemplate;
+ use OC\Mail\Message;
+ use OC\Settings\Mailer\NewUserMailHelper;
+-use OCA\Theming\ThemingDefaults;
+ use OCP\AppFramework\Utility\ITimeFactory;
++use OCP\Defaults;
+ use OCP\IConfig;
+ use OCP\IL10N;
+ use OCP\IURLGenerator;
+@@ -37,8 +36,8 @@ use OCP\Security\ISecureRandom;
+ use Test\TestCase;
+ 
+ class NewUserMailHelperTest extends TestCase {
+-	/** @var ThemingDefaults|\PHPUnit_Framework_MockObject_MockObject */
+-	private $themingDefaults;
++	/** @var Defaults|\PHPUnit_Framework_MockObject_MockObject */
++	private $defaults;
+ 	/** @var IURLGenerator|\PHPUnit_Framework_MockObject_MockObject */
+ 	private $urlGenerator;
+ 	/** @var IL10N|\PHPUnit_Framework_MockObject_MockObject */
+@@ -59,7 +58,7 @@ class NewUserMailHelperTest extends TestCase {
+ 	public function setUp() {
+ 		parent::setUp();
+ 
+-		$this->themingDefaults = $this->createMock(ThemingDefaults::class);
++		$this->defaults = $this->createMock(Defaults::class);
+ 		$this->urlGenerator = $this->createMock(IURLGenerator::class);
+ 		$this->l10n = $this->createMock(IL10N::class);
+ 		$this->mailer = $this->createMock(IMailer::class);
+@@ -73,7 +72,7 @@ class NewUserMailHelperTest extends TestCase {
+ 			}));
+ 
+ 		$this->newUserMailHelper = new NewUserMailHelper(
+-			$this->themingDefaults,
++			$this->defaults,
+ 			$this->urlGenerator,
+ 			$this->l10n,
+ 			$this->mailer,
+@@ -144,7 +143,7 @@ class NewUserMailHelperTest extends TestCase {
+ 			->expects($this->at(5))
+ 			->method('getUID')
+ 			->willReturn('john');
+-		$this->themingDefaults
++		$this->defaults
+ 			->expects($this->at(0))
+ 			->method('getName')
+ 			->willReturn('TestCloud');
+@@ -175,7 +174,7 @@ class NewUserMailHelperTest extends TestCase {
+ 							<tbody>
+ 							<tr style="padding:0;text-align:left;vertical-align:top">
+ 								<center data-parsed="" style="min-width:580px;width:100%">
+-									<img class="logo float-center" src="?v=" alt="logo" align="center" style="-ms-interpolation-mode:bicubic;Margin:0 auto;clear:both;display:block;float:none;margin:0 auto;max-height:100%;max-width:100px;outline:0;text-align:center;text-decoration:none;width:auto">
++									<img class="logo float-center" src="" alt="logo" align="center" style="-ms-interpolation-mode:bicubic;Margin:0 auto;clear:both;display:block;float:none;margin:0 auto;max-height:100%;max-width:100px;outline:0;text-align:center;text-decoration:none;width:auto">
+ 								</center>
+ 							</tr>
+ 							</tbody>
+@@ -376,7 +375,7 @@ EOF;
+ 			->expects($this->at(1))
+ 			->method('getUID')
+ 			->willReturn('john');
+-		$this->themingDefaults
++		$this->defaults
+ 			->expects($this->any())
+ 			->method('getName')
+ 			->willReturn('TestCloud');
+@@ -407,7 +406,7 @@ EOF;
+ 							<tbody>
+ 							<tr style="padding:0;text-align:left;vertical-align:top">
+ 								<center data-parsed="" style="min-width:580px;width:100%">
+-									<img class="logo float-center" src="?v=" alt="logo" align="center" style="-ms-interpolation-mode:bicubic;Margin:0 auto;clear:both;display:block;float:none;margin:0 auto;max-height:100%;max-width:100px;outline:0;text-align:center;text-decoration:none;width:auto">
++									<img class="logo float-center" src="" alt="logo" align="center" style="-ms-interpolation-mode:bicubic;Margin:0 auto;clear:both;display:block;float:none;margin:0 auto;max-height:100%;max-width:100px;outline:0;text-align:center;text-decoration:none;width:auto">
+ 								</center>
+ 							</tr>
+ 							</tbody>
+@@ -609,7 +608,7 @@ EOF;
+ 			->expects($this->at(0))
+ 			->method('setTo')
+ 			->with(['recipient@example.com' => 'John Doe']);
+-		$this->themingDefaults
++		$this->defaults
+ 			->expects($this->exactly(2))
+ 			->method('getName')
+ 			->willReturn('TestCloud');
+diff --git a/tests/data/emails/new-account-email-custom.html b/tests/data/emails/new-account-email-custom.html
+index 10d3330604..c754412e68 100644
+--- a/tests/data/emails/new-account-email-custom.html
++++ b/tests/data/emails/new-account-email-custom.html
+@@ -23,7 +23,7 @@
+ 							<tbody>
+ 							<tr style="padding:0;text-align:left;vertical-align:top">
+ 								<center data-parsed="" style="min-width:580px;width:100%">
+-									<img class="logo float-center" src="https://example.org/img/logo-mail-header.png?v=48" alt="logo" align="center" style="-ms-interpolation-mode:bicubic;Margin:0 auto;clear:both;display:block;float:none;margin:0 auto;max-height:100%;max-width:100px;outline:0;text-align:center;text-decoration:none;width:auto">
++									<img class="logo float-center" src="https://example.org/img/logo-mail-header.png" alt="logo" align="center" style="-ms-interpolation-mode:bicubic;Margin:0 auto;clear:both;display:block;float:none;margin:0 auto;max-height:100%;max-width:100px;outline:0;text-align:center;text-decoration:none;width:auto">
+ 								</center>
+ 							</tr>
+ 							</tbody>
+diff --git a/tests/data/emails/new-account-email.html b/tests/data/emails/new-account-email.html
+index a32ad61c49..4fb6f5af15 100644
+--- a/tests/data/emails/new-account-email.html
++++ b/tests/data/emails/new-account-email.html
+@@ -23,7 +23,7 @@
+ 							<tbody>
+ 							<tr style="padding:0;text-align:left;vertical-align:top">
+ 								<center data-parsed="" style="min-width:580px;width:100%">
+-									<img class="logo float-center" src="https://example.org/img/logo-mail-header.png?v=48" alt="logo" align="center" style="-ms-interpolation-mode:bicubic;Margin:0 auto;clear:both;display:block;float:none;margin:0 auto;max-height:100%;max-width:100px;outline:0;text-align:center;text-decoration:none;width:auto">
++									<img class="logo float-center" src="https://example.org/img/logo-mail-header.png" alt="logo" align="center" style="-ms-interpolation-mode:bicubic;Margin:0 auto;clear:both;display:block;float:none;margin:0 auto;max-height:100%;max-width:100px;outline:0;text-align:center;text-decoration:none;width:auto">
+ 								</center>
+ 							</tr>
+ 							</tbody>
+diff --git a/tests/lib/Accounts/AccountsManagerTest.php b/tests/lib/Accounts/AccountsManagerTest.php
+index 60811140e7..84ffa47e35 100644
+--- a/tests/lib/Accounts/AccountsManagerTest.php
++++ b/tests/lib/Accounts/AccountsManagerTest.php
+@@ -24,7 +24,6 @@ namespace Test\Accounts;
+ 
+ 
+ use OC\Accounts\AccountManager;
+-use OC\Mail\Mailer;
+ use OCP\IUser;
+ use Symfony\Component\EventDispatcher\EventDispatcherInterface;
+ use Test\TestCase;
+diff --git a/tests/lib/Mail/EMailTemplateTest.php b/tests/lib/Mail/EMailTemplateTest.php
+index 47fe09aabb..ab90dc4aa0 100644
+--- a/tests/lib/Mail/EMailTemplateTest.php
++++ b/tests/lib/Mail/EMailTemplateTest.php
+@@ -24,13 +24,13 @@
+ namespace Test\Mail;
+ 
+ use OC\Mail\EMailTemplate;
+-use OCA\Theming\ThemingDefaults;
++use OCP\Defaults;
+ use OCP\IL10N;
+ use OCP\IURLGenerator;
+ use Test\TestCase;
+ 
+ class EMailTemplateTest extends TestCase {
+-	/** @var ThemingDefaults|\PHPUnit_Framework_MockObject_MockObject */
++	/** @var Defaults|\PHPUnit_Framework_MockObject_MockObject */
+ 	private $defaults;
+ 	/** @var IURLGenerator|\PHPUnit_Framework_MockObject_MockObject */
+ 	private $urlGenerator;
+@@ -42,7 +42,7 @@ class EMailTemplateTest extends TestCase {
+ 	public function setUp() {
+ 		parent::setUp();
+ 
+-		$this->defaults = $this->createMock(ThemingDefaults::class);
++		$this->defaults = $this->createMock(Defaults::class);
+ 		$this->urlGenerator = $this->createMock(IURLGenerator::class);
+ 		$this->l10n = $this->createMock(IL10N::class);
+ 
+@@ -62,10 +62,6 @@ class EMailTemplateTest extends TestCase {
+ 			->expects($this->any())
+ 			->method('getLogo')
+ 			->willReturn('/img/logo-mail-header.png');
+-		$this->defaults
+-			->expects($this->any())
+-			->method('getCacheBusterCounter')
+-			->willReturn('48');
+ 		$this->urlGenerator
+ 			->expects($this->once())
+ 			->method('getAbsoluteURL')
+@@ -107,10 +103,6 @@ class EMailTemplateTest extends TestCase {
+ 			->expects($this->any())
+ 			->method('getLogo')
+ 			->willReturn('/img/logo-mail-header.png');
+-		$this->defaults
+-			->expects($this->any())
+-			->method('getCacheBusterCounter')
+-			->willReturn('48');
+ 		$this->urlGenerator
+ 			->expects($this->once())
+ 			->method('getAbsoluteURL')
+diff --git a/tests/lib/Mail/MailerTest.php b/tests/lib/Mail/MailerTest.php
+index 7a7ce0392e..02f7bdc658 100644
+--- a/tests/lib/Mail/MailerTest.php
++++ b/tests/lib/Mail/MailerTest.php
+@@ -9,15 +9,15 @@
+ namespace Test\Mail;
+ 
+ use OC\Mail\Mailer;
++use OCP\Defaults;
+ use OCP\IConfig;
+-use OC_Defaults;
+ use OCP\ILogger;
+ use Test\TestCase;
+ 
+ class MailerTest extends TestCase {
+ 	/** @var IConfig */
+ 	private $config;
+-	/** @var OC_Defaults */
++	/** @var Defaults */
+ 	private $defaults;
+ 	/** @var ILogger */
+ 	private $logger;
+@@ -29,7 +29,7 @@ class MailerTest extends TestCase {
+ 
+ 		$this->config = $this->getMockBuilder('\OCP\IConfig')
+ 			->disableOriginalConstructor()->getMock();
+-		$this->defaults = $this->getMockBuilder('\OC_Defaults')
++		$this->defaults = $this->getMockBuilder('\OCP\Defaults')
+ 			->disableOriginalConstructor()->getMock();
+ 		$this->logger = $this->getMockBuilder('\OCP\ILogger')
+ 			->disableOriginalConstructor()->getMock();
+diff --git a/tests/lib/SetupTest.php b/tests/lib/SetupTest.php
+index d0e38cf407..78c35a5b0b 100644
+--- a/tests/lib/SetupTest.php
++++ b/tests/lib/SetupTest.php
+@@ -10,25 +10,26 @@ namespace Test;
+ 
+ use bantu\IniGetWrapper\IniGetWrapper;
+ use OC\SystemConfig;
++use OCP\Defaults;
+ use OCP\IL10N;
+ use OCP\ILogger;
+ use OCP\Security\ISecureRandom;
+ 
+ class SetupTest extends \Test\TestCase {
+ 
+-	/** @var SystemConfig | \PHPUnit_Framework_MockObject_MockObject */
++	/** @var SystemConfig|\PHPUnit_Framework_MockObject_MockObject */
+ 	protected $config;
+-	/** @var \bantu\IniGetWrapper\IniGetWrapper | \PHPUnit_Framework_MockObject_MockObject */
++	/** @var \bantu\IniGetWrapper\IniGetWrapper|\PHPUnit_Framework_MockObject_MockObject */
+ 	private $iniWrapper;
+-	/** @var \OCP\IL10N | \PHPUnit_Framework_MockObject_MockObject */
++	/** @var \OCP\IL10N|\PHPUnit_Framework_MockObject_MockObject */
+ 	private $l10n;
+-	/** @var \OC_Defaults | \PHPUnit_Framework_MockObject_MockObject */
++	/** @var Defaults|\PHPUnit_Framework_MockObject_MockObject */
+ 	private $defaults;
+-	/** @var \OC\Setup | \PHPUnit_Framework_MockObject_MockObject */
++	/** @var \OC\Setup|\PHPUnit_Framework_MockObject_MockObject */
+ 	protected $setupClass;
+-	/** @var \OCP\ILogger | \PHPUnit_Framework_MockObject_MockObject */
++	/** @var \OCP\ILogger|\PHPUnit_Framework_MockObject_MockObject */
+ 	protected $logger;
+-	/** @var \OCP\Security\ISecureRandom | \PHPUnit_Framework_MockObject_MockObject */
++	/** @var \OCP\Security\ISecureRandom|\PHPUnit_Framework_MockObject_MockObject */
+ 	protected $random;
+ 
+ 	protected function setUp() {
+@@ -37,7 +38,7 @@ class SetupTest extends \Test\TestCase {
+ 		$this->config = $this->createMock(SystemConfig::class);
+ 		$this->iniWrapper = $this->createMock(IniGetWrapper::class);
+ 		$this->l10n = $this->createMock(IL10N::class);
+-		$this->defaults = $this->createMock(\OC_Defaults::class);
++		$this->defaults = $this->createMock(Defaults::class);
+ 		$this->logger = $this->createMock(ILogger::class);
+ 		$this->random = $this->createMock(ISecureRandom::class);
+ 		$this->setupClass = $this->getMockBuilder('\OC\Setup')
+diff --git a/tests/lib/Template/SCSSCacherTest.php b/tests/lib/Template/SCSSCacherTest.php
+index 24865b9ae4..08084e6838 100644
+--- a/tests/lib/Template/SCSSCacherTest.php
++++ b/tests/lib/Template/SCSSCacherTest.php
+@@ -42,8 +42,6 @@ class SCSSCacherTest extends \Test\TestCase {
+ 	protected $urlGenerator;
+ 	/** @var IConfig|\PHPUnit_Framework_MockObject_MockObject */
+ 	protected $config;
+-	/** @var \OC_Defaults|\PHPUnit_Framework_MockObject_MockObject */
+-	protected $defaults;
+ 	/** @var SCSSCacher */
+ 	protected $scssCacher;
+ 	/** @var ICache|\PHPUnit_Framework_MockObject_MockObject */
+diff --git a/tests/lib/TestCase.php b/tests/lib/TestCase.php
+index 23a66f73ec..c3aa2c73c9 100644
+--- a/tests/lib/TestCase.php
++++ b/tests/lib/TestCase.php
+@@ -24,12 +24,11 @@ namespace Test;
+ 
+ use DOMDocument;
+ use DOMNode;
+-use OC\Cache\CappedMemoryCache;
+ use OC\Command\QueueBus;
+ use OC\Files\Filesystem;
+ use OC\Template\Base;
+-use OC_Defaults;
+ use OCP\DB\QueryBuilder\IQueryBuilder;
++use OCP\Defaults;
+ use OCP\IDBConnection;
+ use OCP\IL10N;
+ use OCP\Security\ISecureRandom;
+@@ -483,8 +482,13 @@ abstract class TestCase extends \PHPUnit_Framework_TestCase {
+ 		require_once __DIR__.'/../../lib/private/legacy/template/functions.php';
+ 
+ 		$requestToken = 12345;
+-		$theme = new OC_Defaults();
+-		/** @var IL10N | \PHPUnit_Framework_MockObject_MockObject $l10n */
++		/** @var Defaults|\PHPUnit_Framework_MockObject_MockObject $l10n */
++		$theme = $this->getMockBuilder('\OCP\Defaults')
++			->disableOriginalConstructor()->getMock();
++		$theme->expects($this->any())
++			->method('getName')
++			->willReturn('Nextcloud');
++		/** @var IL10N|\PHPUnit_Framework_MockObject_MockObject $l10n */
+ 		$l10n = $this->getMockBuilder('\OCP\IL10N')
+ 			->disableOriginalConstructor()->getMock();
+ 		$l10n

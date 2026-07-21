@@ -1,0 +1,339 @@
+From 57e0f60a7b332c21efefb184b7843dcefb209c6a Mon Sep 17 00:00:00 2001
+From: tyxia <72890320+tyxia@users.noreply.github.com>
+Date: Fri, 29 May 2026 14:45:30 -0400
+Subject: [PATCH] tls: Remove deprecated enforce_rsa_key_usage and
+ was_key_usage_invalid (#45326)
+
+BoringSSL will remove the `SSL_set_enforce_rsa_key_usage` and
+`SSL_was_key_usage_invalid` API.
+
+enfore_ras_key_usage has been default to True in Envoy for several
+months and was_key_usage_invaild stas has been in Envoy for 2+ years.
+Both of them aim to capture invalid key usage, no issues and report has
+been reported so far. Thus, we assume it is safe to deprecate the
+related code in Envoy as BoringSSL will remove those APIs anyway.
+
+<!--
+!!!ATTENTION!!!
+
+If you are fixing **any** crash or **any** potential security issue,
+**do not
+open a pull request**.
+
+Instead, please
+[open a GitHub Security
+Advisory](https://github.com/envoyproxy/envoy/security/advisories/new)
+(preferred). Alternatively, you may email
+envoy-security@googlegroups.com.
+
+Thank you in advance for helping to keep Envoy secure.
+
+!!!ATTENTION!!!
+
+For an explanation of how to fill out the fields, please see the
+relevant section
+in
+[PULL_REQUESTS.md](https://github.com/envoyproxy/envoy/blob/main/PULL_REQUESTS.md)
+
+!!!ATTENTION!!!
+
+Please check the [use of generative AI
+policy](https://github.com/envoyproxy/envoy/blob/main/CONTRIBUTING.md?plain=1#L41).
+
+You may use generative AI only if you fully understand the code. You
+need to disclose
+this usage in the PR description to ensure transparency.
+-->
+
+Commit Message:
+Additional Description:
+Risk Level:
+Testing:
+Docs Changes:
+Release Notes:
+Platform Specific Features:
+[Optional Runtime guard:]
+[Optional Fixes #Issue]
+[Optional Fixes commit #PR or SHA]
+[Optional Deprecated:]
+[Optional [API
+Considerations](https://github.com/envoyproxy/envoy/blob/main/api/review_checklist.md):]
+
+---------
+
+Signed-off-by: tyxia <tyxia@google.com>
+---
+ .../transport_sockets/tls/v3/tls.proto        | 11 ++--
+ changelogs/current.yaml                       |  7 +++
+ docs/root/_include/ssl_stats.rst              |  1 -
+ envoy/ssl/context_config.h                    |  6 --
+ source/common/tls/client_context_impl.cc      |  3 -
+ source/common/tls/client_context_impl.h       |  2 +-
+ source/common/tls/context_config_impl.cc      | 10 ----
+ source/common/tls/context_config_impl.h       |  4 +-
+ source/common/tls/context_impl.cc             |  7 ---
+ source/common/tls/stats.h                     |  4 +-
+ test/common/tls/ssl_socket_test.cc            | 57 -------------------
+ test/mocks/ssl/mocks.h                        |  2 +-
+ 12 files changed, 17 insertions(+), 97 deletions(-)
+
+diff --git a/api/envoy/extensions/transport_sockets/tls/v3/tls.proto b/api/envoy/extensions/transport_sockets/tls/v3/tls.proto
+index 4f470c945..648dd5b56 100644
+--- a/api/envoy/extensions/transport_sockets/tls/v3/tls.proto
++++ b/api/envoy/extensions/transport_sockets/tls/v3/tls.proto
+@@ -73,14 +73,13 @@ message UpstreamTlsContext {
+   // Defaults to 1, setting this to 0 disables session resumption.
+   google.protobuf.UInt32Value max_session_keys = 4;
+ 
+-  // Controls enforcement of the ``keyUsage`` extension in peer certificates. If set to ``true``, the handshake will fail if
+-  // the ``keyUsage`` is incompatible with TLS usage.
++  // Controls enforcement of the ``keyUsage`` extension in peer certificates. If set to ``true``,
++  // the handshake will fail if the ``keyUsage`` is incompatible with TLS usage.
+   //
+-  // .. note::
+-  //   The default value is ``true`` (i.e., enforcement on).
++  // .. attention::
+   //
+-  // The ``ssl.was_key_usage_invalid`` in :ref:`listener metrics <config_listener_stats>` metric will be incremented
+-  // for configurations that would fail if this option were enabled.
++  //   This field is deprecated and ignored. Envoy now always enforces the ``keyUsage`` extension
++  //   in peer certificates, making this option unconfigurable.
+   google.protobuf.BoolValue enforce_rsa_key_usage = 5
+       [deprecated = true, (envoy.annotations.deprecated_at_minor_version) = "3.0"];
+ }
+diff --git a/changelogs/current.yaml b/changelogs/current.yaml
+index 107532cc8..c8a825614 100644
+--- a/changelogs/current.yaml
++++ b/changelogs/current.yaml
+@@ -1,5 +1,12 @@
+ date: Pending
+ 
++behavior_changes:
++- area: tls
++  change: |
++    The :ref:`enforce_rsa_key_usage <envoy_v3_api_field_extensions.transport_sockets.tls.v3.UpstreamTlsContext.enforce_rsa_key_usage>`
++    configuration option has been deprecated and ignored. Envoy now always enforces the ``keyUsage`` extension in peer
++    certificates. Configurations setting this option to ``false`` will no longer have any effect and enforcement will be used.
++
+ new_features:
+ - area: network_ext_proc
+   change: |
+diff --git a/docs/root/_include/ssl_stats.rst b/docs/root/_include/ssl_stats.rst
+index 4dbeddd4d..93f9b247a 100644
+--- a/docs/root/_include/ssl_stats.rst
++++ b/docs/root/_include/ssl_stats.rst
+@@ -18,4 +18,3 @@
+    curves.<curve>, Counter, Total successful TLS connections that used ECDHE curve <curve>
+    sigalgs.<sigalg>, Counter, Total successful TLS connections that used signature algorithm <sigalg>
+    versions.<version>, Counter, Total successful TLS connections that used protocol version <version>
+-   was_key_usage_invalid, Counter, Total successful TLS connections that used an `invalid keyUsage extension <https://github.com/google/boringssl/blob/6f13380d27835e70ec7caf807da7a1f239b10da6/ssl/internal.h#L3117>`_.
+diff --git a/envoy/ssl/context_config.h b/envoy/ssl/context_config.h
+index dba2861df..f5081378f 100644
+--- a/envoy/ssl/context_config.h
++++ b/envoy/ssl/context_config.h
+@@ -158,12 +158,6 @@ public:
+    */
+   virtual size_t maxSessionKeys() const PURE;
+ 
+-  /**
+-   * @return true if the enforcement that handshake will fail if the keyUsage extension is present
+-   * and incompatible with the TLS usage is enabled.
+-   */
+-  virtual bool enforceRsaKeyUsage() const PURE;
+-
+   /**
+    * @return an optional factory which can be used to create TLS context provider instances.
+    */
+diff --git a/source/common/tls/client_context_impl.cc b/source/common/tls/client_context_impl.cc
+index 89f7bafc6..a323d807e 100644
+--- a/source/common/tls/client_context_impl.cc
++++ b/source/common/tls/client_context_impl.cc
+@@ -64,7 +64,6 @@ ClientContextImpl::ClientContextImpl(
+       server_name_indication_(config.serverNameIndication()),
+       auto_host_sni_(config.autoHostServerNameIndication()),
+       allow_renegotiation_(config.allowRenegotiation()),
+-      enforce_rsa_key_usage_(config.enforceRsaKeyUsage()),
+       max_session_keys_(config.maxSessionKeys()) {
+   if (!creation_status.ok()) {
+     return;
+@@ -176,8 +175,6 @@ ClientContextImpl::newSsl(const Network::TransportSocketOptionsConstSharedPtr& o
+     SSL_set_renegotiate_mode(ssl_con.get(), ssl_renegotiate_freely);
+   }
+ 
+-  SSL_set_enforce_rsa_key_usage(ssl_con.get(), enforce_rsa_key_usage_);
+-
+   if (max_session_keys_ > 0) {
+     if (session_keys_single_use_) {
+       // Stored single-use session keys, use write/write locks.
+diff --git a/source/common/tls/client_context_impl.h b/source/common/tls/client_context_impl.h
+index 0a9552602..32c19e865 100644
+--- a/source/common/tls/client_context_impl.h
++++ b/source/common/tls/client_context_impl.h
+@@ -67,7 +67,7 @@ private:
+   const std::string server_name_indication_;
+   const bool auto_host_sni_;
+   const bool allow_renegotiation_;
+-  const bool enforce_rsa_key_usage_;
++
+   const size_t max_session_keys_;
+   absl::Mutex session_keys_mu_;
+   std::deque<bssl::UniquePtr<SSL_SESSION>> session_keys_ ABSL_GUARDED_BY(session_keys_mu_);
+diff --git a/source/common/tls/context_config_impl.cc b/source/common/tls/context_config_impl.cc
+index d5f493e87..237648299 100644
+--- a/source/common/tls/context_config_impl.cc
++++ b/source/common/tls/context_config_impl.cc
+@@ -429,18 +429,8 @@ ClientContextConfigImpl::ClientContextConfigImpl(
+           FIPS_mode() ? DEFAULT_CURVES_FIPS : DEFAULT_CURVES, factory_context, creation_status),
+       server_name_indication_(config.sni()), auto_host_sni_(config.auto_host_sni()),
+       allow_renegotiation_(config.allow_renegotiation()),
+-      enforce_rsa_key_usage_(PROTOBUF_GET_WRAPPED_OR_DEFAULT(config, enforce_rsa_key_usage, true)),
+       max_session_keys_(PROTOBUF_GET_WRAPPED_OR_DEFAULT(config, max_session_keys, 1)) {
+ 
+-  if (!enforce_rsa_key_usage_) {
+-    ENVOY_LOG(
+-        warn,
+-        "The 'enforce_rsa_key_usage' option is set to false, which disables the enforcement of RSA "
+-        "key usage. This option will be removed in the next version. The handshake will fail "
+-        "if the keyUsage extension is present and incompatible with the "
+-        "TLS usage. Please update the certificates to be compliant.");
+-  }
+-
+   // BoringSSL treats this as a C string, so embedded NULL characters will not
+   // be handled correctly.
+   if (server_name_indication_.find('\0') != std::string::npos) {
+diff --git a/source/common/tls/context_config_impl.h b/source/common/tls/context_config_impl.h
+index 8686afb5c..77f46a645 100644
+--- a/source/common/tls/context_config_impl.h
++++ b/source/common/tls/context_config_impl.h
+@@ -156,7 +156,7 @@ public:
+   bool autoSniSanMatch() const override { return auto_sni_san_match_; }
+   bool allowRenegotiation() const override { return allow_renegotiation_; }
+   size_t maxSessionKeys() const override { return max_session_keys_; }
+-  bool enforceRsaKeyUsage() const override { return enforce_rsa_key_usage_; }
++
+   void setSecretUpdateCallback(std::function<absl::Status()> callback) override;
+   OptRef<Ssl::UpstreamTlsCertificateSelectorFactory>
+   tlsCertificateSelectorFactory() const override {
+@@ -176,7 +176,7 @@ private:
+   const std::string server_name_indication_;
+   const bool auto_host_sni_ : 1;
+   const bool allow_renegotiation_ : 1;
+-  const bool enforce_rsa_key_usage_ : 1;
++
+   const size_t max_session_keys_;
+   // Certificate selector contains a reference to this context so should be destroyed first.
+   Ssl::UpstreamTlsCertificateSelectorFactoryPtr tls_certificate_selector_factory_;
+diff --git a/source/common/tls/context_impl.cc b/source/common/tls/context_impl.cc
+index d4230532a..626797b05 100644
+--- a/source/common/tls/context_impl.cc
++++ b/source/common/tls/context_impl.cc
+@@ -571,13 +571,6 @@ void ContextImpl::logHandshake(SSL* ssl) const {
+   if (!cert.get()) {
+     stats_.no_certificate_.inc();
+   }
+-
+-  // Increment the `was_key_usage_invalid_` stats to indicate the given cert would have triggered an
+-  // error but is allowed because the enforcement that rsa key usage and tls usage need to be
+-  // matched has been disabled.
+-  if (SSL_was_key_usage_invalid(ssl)) {
+-    stats_.was_key_usage_invalid_.inc();
+-  }
+ }
+ 
+ std::vector<Ssl::PrivateKeyMethodProviderSharedPtr> ContextImpl::getPrivateKeyMethodProviders() {
+diff --git a/source/common/tls/stats.h b/source/common/tls/stats.h
+index cb7112c86..5d200b167 100644
+--- a/source/common/tls/stats.h
++++ b/source/common/tls/stats.h
+@@ -20,9 +20,7 @@ namespace Tls {
+   COUNTER(ocsp_staple_failed)                                                                      \
+   COUNTER(ocsp_staple_omitted)                                                                     \
+   COUNTER(ocsp_staple_responses)                                                                   \
+-  COUNTER(ocsp_staple_requests)                                                                    \
+-  COUNTER(was_key_usage_invalid)
+-
++  COUNTER(ocsp_staple_requests)
+ /**
+  * Wrapper struct for SSL stats. @see stats_macros.h
+  */
+diff --git a/test/common/tls/ssl_socket_test.cc b/test/common/tls/ssl_socket_test.cc
+index b76019a36..3fe2a5d6d 100644
+--- a/test/common/tls/ssl_socket_test.cc
++++ b/test/common/tls/ssl_socket_test.cc
+@@ -8147,63 +8147,6 @@ BORINGSSL_TEST_P(SslSocketTest, AsyncCustomCertValidatorFails) {
+                .setExpectedVerifyErrorCode(X509_V_ERR_CERT_REVOKED));
+ }
+ 
+-BORINGSSL_TEST_P(SslSocketTest, RsaKeyUsageVerificationEnforcementOff) {
+-  envoy::config::listener::v3::Listener listener;
+-  envoy::config::listener::v3::FilterChain* filter_chain = listener.add_filter_chains();
+-  envoy::extensions::transport_sockets::tls::v3::DownstreamTlsContext server_tls_context;
+-  envoy::extensions::transport_sockets::tls::v3::TlsCertificate* server_cert =
+-      server_tls_context.mutable_common_tls_context()->add_tls_certificates();
+-  // Bad server certificate to cause the mismatch between TLS usage and key usage.
+-  server_cert->mutable_certificate_chain()->set_filename(
+-      TestEnvironment::substitute("{{ test_rundir "
+-                                  "}}/test/common/tls/test_data/bad_rsa_key_usage_cert.pem"));
+-  server_cert->mutable_private_key()->set_filename(
+-      TestEnvironment::substitute("{{ test_rundir "
+-                                  "}}/test/common/tls/test_data/bad_rsa_key_usage_key.pem"));
+-
+-  updateFilterChain(server_tls_context, *filter_chain);
+-
+-  envoy::extensions::transport_sockets::tls::v3::UpstreamTlsContext client_tls_context;
+-
+-  // Disable the rsa_key_usage enforcement.
+-  client_tls_context.mutable_enforce_rsa_key_usage()->set_value(false);
+-  // Both server connection (Client->Envoy) and client connection (Envoy->Backend) are expected to
+-  // be successful.
+-  TestUtilOptionsV2 test_options(listener, client_tls_context, true, version_);
+-  // `was_key_usage_invalid` stats is expected to set to report the mismatched usage.
+-  if (!FIPS_mode()) {
+-    test_options.setExpectedClientStats("ssl.was_key_usage_invalid");
+-  }
+-  testUtilV2(test_options);
+-}
+-
+-BORINGSSL_TEST_P(SslSocketTest, RsaKeyUsageVerificationEnforcementOn) {
+-  envoy::config::listener::v3::Listener listener;
+-  envoy::config::listener::v3::FilterChain* filter_chain = listener.add_filter_chains();
+-  envoy::extensions::transport_sockets::tls::v3::DownstreamTlsContext server_tls_context;
+-  envoy::extensions::transport_sockets::tls::v3::TlsCertificate* server_cert =
+-      server_tls_context.mutable_common_tls_context()->add_tls_certificates();
+-  // Bad server certificate to cause the mismatch between TLS usage and key usage.
+-  server_cert->mutable_certificate_chain()->set_filename(
+-      TestEnvironment::substitute("{{ test_rundir "
+-                                  "}}/test/common/tls/test_data/bad_rsa_key_usage_cert.pem"));
+-  server_cert->mutable_private_key()->set_filename(
+-      TestEnvironment::substitute("{{ test_rundir "
+-                                  "}}/test/common/tls/test_data/bad_rsa_key_usage_key.pem"));
+-
+-  updateFilterChain(server_tls_context, *filter_chain);
+-
+-  envoy::extensions::transport_sockets::tls::v3::UpstreamTlsContext client_tls_context;
+-
+-  TestUtilOptionsV2 test_options(listener, client_tls_context, /*expect_success=*/false, version_,
+-                                 /*skip_server_failure_reason_check=*/true);
+-  // Client connection is failed with key_usage_mismatch.
+-  test_options.setExpectedTransportFailureReasonContains("KEY_USAGE_BIT_INCORRECT");
+-  // Server connection error was not populated in this case.
+-  test_options.setExpectedServerStats("");
+-  testUtilV2(test_options);
+-}
+-
+ // Test that TLS handshakes succeed when certificate compression is enabled via runtime flag.
+ // This verifies the certificate compression feature (RFC 8879) integration with brotli, zstd,
+ // and zlib algorithms when the runtime flag is enabled.
+diff --git a/test/mocks/ssl/mocks.h b/test/mocks/ssl/mocks.h
+index 45f4e143a..bf3eac87e 100644
+--- a/test/mocks/ssl/mocks.h
++++ b/test/mocks/ssl/mocks.h
+@@ -120,7 +120,7 @@ public:
+   MOCK_METHOD(bool, autoHostServerNameIndication, (), (const));
+   MOCK_METHOD(bool, autoSniSanMatch, (), (const));
+   MOCK_METHOD(bool, allowRenegotiation, (), (const));
+-  MOCK_METHOD(bool, enforceRsaKeyUsage, (), (const));
++
+   MOCK_METHOD(size_t, maxSessionKeys, (), (const));
+   MOCK_METHOD(const Network::Address::IpList&, tlsKeyLogLocal, (), (const));
+   MOCK_METHOD(const Network::Address::IpList&, tlsKeyLogRemote, (), (const));

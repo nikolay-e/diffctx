@@ -1,0 +1,3023 @@
+From a3ea604656c036e5b7faaf00eb36727d5aa37d42 Mon Sep 17 00:00:00 2001
+From: Peter Leng <yleng@pinterest.com>
+Date: Thu, 12 Feb 2026 08:33:26 -0800
+Subject: [PATCH] http: add sse_to_metadata filter for stream parsing (#42762)
+
+Commit Message: Add sse_to_metadata HTTP filter
+
+Additional Description:
+This PR introduces a new HTTP filter for extracting values from
+Server-Sent Events (SSE) response streams and writing them into dynamic
+metadata. The filter uses a pluggable content parser architecture that
+separates SSE protocol
+handling from content-specific parsing logic, making it extensible for
+future parser types (XML, plaintext, regex, etc.).
+
+The primary use case is extracting token usage information from LLM
+streaming responses (e.g., OpenAI, Anthropic) for logging, observability
+and rate-limit token reporting.
+
+**Key Architecture**
+- Filter Layer (envoy.filters.http.sse_to_metadata): Handles SSE
+protocol parsing, buffering, and metadata writing
+- Parser Interface (envoy.content_parser): Generic interface for parsing
+SSE event data fields
+- JSON Parser (envoy.content_parsers.json): First implementation
+supporting JSON path-based extraction with
+on_present/on_missing/on_error semantics
+
+This layered design allows future parsers (XML, plaintext, regex) to be
+added without modifying the filter.
+
+**Key Features**
+- SSE Protocol Compliance:
+https://html.spec.whatwg.org/multipage/server-sent-events.html
+including:
+    - CRLF/CR/LF line endings
+    - Comment handling (: comment lines)
+    - Multiple data fields per event
+    - Chunked transfer encoding
+    - Event buffering with configurable size limits
+  - JSON Content Parser:
+    - Path-based value extraction (e.g., ["usage", "total_tokens"])
+    - Type conversion (STRING, NUMBER, PROTOBUF_VALUE)
+    - Conditional metadata writing: on_present, on_missing, on_error
+    - Hardcoded fallback values for error conditions
+  - Pluggable Architecture:
+    - TypedExtensionConfig for parser selection
+    - Filter agnostic to parser internals
+    - Easy to add new parsers (XML, plaintext, regex, etc.)
+  - Metadata Writing:
+    - Use multiple rules for writing to different namespaces
+    - Preserve existing metadata option
+  - Protection Mechanisms:
+    - Configurable max_event_size (default: 8KB, max: 10MB)
+    - Prevents unbounded buffer growth from malformed streams
+    - Content-Type validation (text/event-stream)
+  - Flexible Matching:
+- stop_processing_after_matches: Extract first occurrence (set to 1) or
+last occurrence (default: 0)
+    - Per-rule configuration
+    - Deferred execution for on_missing/on_error fallback values
+
+Risk Level: Low (new filter)
+Testing: Filter unit and integration tests
+Docs Changes: Added documentation for sse_to_metadata filter.
+Release Notes: http: Added ``envoy.filters.http.sse_to_metadata`` filter
+for extracting values from Server-Sent Events (SSE) streams and writing
+them to dynamic metadata.
+implementation. Useful for logging and observability of LLM streaming
+APIs.
+Platform Specific Features: N/A
+
+Fixes #29758
+
+---------
+
+Signed-off-by: Peter Leng <yleng@pinterest.com>
+---
+ CODEOWNERS                                    |    2 +
+ api/BUILD                                     |    1 +
+ .../filters/http/sse_to_metadata/v3/BUILD     |   13 +
+ .../sse_to_metadata/v3/sse_to_metadata.proto  |   67 +
+ api/versioning/BUILD                          |    1 +
+ .../content_parsers/content_parsers.rst       |    2 -
+ .../_include/sse-to-metadata-filter.yaml      |   72 ++
+ .../http/http_filters/http_filters.rst        |    1 +
+ .../http_filters/sse_to_metadata_filter.rst   |  374 ++++++
+ source/common/common/logger.h                 |    1 +
+ source/common/http/sse/sse_parser.h           |   10 +-
+ source/extensions/extensions_build_config.bzl |    1 +
+ source/extensions/extensions_metadata.yaml    |    7 +
+ .../filters/http/sse_to_metadata/BUILD        |   41 +
+ .../filters/http/sse_to_metadata/config.cc    |   33 +
+ .../filters/http/sse_to_metadata/config.h     |   33 +
+ .../filters/http/sse_to_metadata/filter.cc    |  228 ++++
+ .../filters/http/sse_to_metadata/filter.h     |  120 ++
+ .../filters/http/sse_to_metadata/BUILD        |   53 +
+ .../http/sse_to_metadata/config_test.cc       |  298 +++++
+ .../http/sse_to_metadata/filter_test.cc       | 1079 +++++++++++++++++
+ .../http/sse_to_metadata/integration_test.cc  |  277 +++++
+ tools/spelling/spelling_dictionary.txt        |    1 +
+ 23 files changed, 2709 insertions(+), 6 deletions(-)
+ create mode 100644 api/envoy/extensions/filters/http/sse_to_metadata/v3/BUILD
+ create mode 100644 api/envoy/extensions/filters/http/sse_to_metadata/v3/sse_to_metadata.proto
+ create mode 100644 docs/root/configuration/http/http_filters/_include/sse-to-metadata-filter.yaml
+ create mode 100644 docs/root/configuration/http/http_filters/sse_to_metadata_filter.rst
+ create mode 100644 source/extensions/filters/http/sse_to_metadata/BUILD
+ create mode 100644 source/extensions/filters/http/sse_to_metadata/config.cc
+ create mode 100644 source/extensions/filters/http/sse_to_metadata/config.h
+ create mode 100644 source/extensions/filters/http/sse_to_metadata/filter.cc
+ create mode 100644 source/extensions/filters/http/sse_to_metadata/filter.h
+ create mode 100644 test/extensions/filters/http/sse_to_metadata/BUILD
+ create mode 100644 test/extensions/filters/http/sse_to_metadata/config_test.cc
+ create mode 100644 test/extensions/filters/http/sse_to_metadata/filter_test.cc
+ create mode 100644 test/extensions/filters/http/sse_to_metadata/integration_test.cc
+
+diff --git a/CODEOWNERS b/CODEOWNERS
+index 8481be088..1d752c6e8 100644
+--- a/CODEOWNERS
++++ b/CODEOWNERS
+@@ -348,6 +348,8 @@ extensions/upstreams/tcp @ggreenway @mattklein123
+ /*/extensions/filters/http/header_to_metadata @zuercher @JuniorHsu
+ # Json to metadata
+ /*/extensions/filters/http/json_to_metadata @cqi1217 @JuniorHsu @kbaichoo
++# SSE to metadata
++/*/extensions/filters/http/sse_to_metadata @JuniorHsu @PeterL328 @tyxia
+ # zookeeper
+ /*/extensions/filters/network/zookeeper_proxy @JuniorHsu @Winbobob @mattklein123
+ # Custom response filter
+diff --git a/api/BUILD b/api/BUILD
+index 5e17442f6..c1dc8d159 100644
+--- a/api/BUILD
++++ b/api/BUILD
+@@ -236,6 +236,7 @@ proto_library(
+         "//envoy/extensions/filters/http/router/v3:pkg",
+         "//envoy/extensions/filters/http/set_filter_state/v3:pkg",
+         "//envoy/extensions/filters/http/set_metadata/v3:pkg",
++        "//envoy/extensions/filters/http/sse_to_metadata/v3:pkg",
+         "//envoy/extensions/filters/http/stateful_session/v3:pkg",
+         "//envoy/extensions/filters/http/tap/v3:pkg",
+         "//envoy/extensions/filters/http/thrift_to_metadata/v3:pkg",
+diff --git a/api/envoy/extensions/filters/http/sse_to_metadata/v3/BUILD b/api/envoy/extensions/filters/http/sse_to_metadata/v3/BUILD
+new file mode 100644
+index 000000000..3962396d6
+--- /dev/null
++++ b/api/envoy/extensions/filters/http/sse_to_metadata/v3/BUILD
+@@ -0,0 +1,13 @@
++# DO NOT EDIT. This file is generated by tools/proto_format/proto_sync.py.
++
++load("@envoy_api//bazel:api_build_system.bzl", "api_proto_package")
++
++licenses(["notice"])  # Apache 2
++
++api_proto_package(
++    deps = [
++        "//envoy/config/core/v3:pkg",
++        "@xds//udpa/annotations:pkg",
++        "@xds//xds/annotations/v3:pkg",
++    ],
++)
+diff --git a/api/envoy/extensions/filters/http/sse_to_metadata/v3/sse_to_metadata.proto b/api/envoy/extensions/filters/http/sse_to_metadata/v3/sse_to_metadata.proto
+new file mode 100644
+index 000000000..3d445ab5b
+--- /dev/null
++++ b/api/envoy/extensions/filters/http/sse_to_metadata/v3/sse_to_metadata.proto
+@@ -0,0 +1,67 @@
++syntax = "proto3";
++
++package envoy.extensions.filters.http.sse_to_metadata.v3;
++
++import "envoy/config/core/v3/extension.proto";
++
++import "google/protobuf/wrappers.proto";
++
++import "xds/annotations/v3/status.proto";
++
++import "udpa/annotations/status.proto";
++import "validate/validate.proto";
++
++option java_package = "io.envoyproxy.envoy.extensions.filters.http.sse_to_metadata.v3";
++option java_outer_classname = "SseToMetadataProto";
++option java_multiple_files = true;
++option go_package = "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/sse_to_metadata/v3;sse_to_metadatav3";
++option (udpa.annotations.file_status).package_version_status = ACTIVE;
++option (xds.annotations.v3.file_status).work_in_progress = true;
++
++// [#protodoc-title: SSE-To-Metadata Filter]
++//
++// The SSE-To-Metadata filter extracts values from Server-Sent Events (SSE) HTTP response bodies
++// and writes them to dynamic metadata. This is useful for LLM token usage tracking,
++// logging, and other observability use cases.
++//
++// The filter specifically handles SSE format (text/event-stream) and uses pluggable content
++// parsers to extract values from the SSE data fields. The content parser is a typed extension
++// that can be configured to handle different content types (JSON, plaintext, XML, etc.).
++//
++// The filter only processes responses with Content-Type "text/event-stream"
++// (the standard SSE content type). Content-Type parameters such as charset are ignored.
++//
++// See SSE-To-Metadata :ref:`configuration overview <config_http_filters_sse_to_metadata>` for more details.
++// [#extension: envoy.filters.http.sse_to_metadata]
++
++message SseToMetadata {
++  // Rules for processing SSE streams and extracting metadata.
++  //
++  // The filter parses the SSE protocol (events delimited by blank lines), then delegates
++  // to a content parser to parse event content and extract metadata. The content parser
++  // determines which values to extract and how to write them to metadata.
++  message ProcessingRules {
++    // Content parser configuration for parsing event content and extracting metadata.
++    //
++    // The content parser specifies:
++    // - How to parse the event data (e.g., JSON, XML, plaintext)
++    // - Which values to extract from the parsed content (e.g., JSON paths like usage.total_tokens)
++    // - How to map extracted values to metadata (namespace, key, type conversions)
++    // - When to write metadata (on_present, on_missing, on_error actions)
++    // [#extension-category: envoy.content_parsers]
++    config.core.v3.TypedExtensionConfig content_parser = 1
++        [(validate.rules).message = {required: true}];
++
++    // Maximum size in bytes for a single SSE event before it's considered invalid
++    // and discarded. This protects against unbounded memory growth from malicious
++    // or malformed streams that never send event delimiters (blank lines).
++    //
++    // Default is 8192 bytes (8KB), which is sufficient for most legitimate events.
++    // Set to 0 to disable the limit (not recommended for production).
++    // Maximum allowed value is 10485760 bytes (10MB).
++    google.protobuf.UInt32Value max_event_size = 2 [(validate.rules).uint32 = {lte: 10485760}];
++  }
++
++  // Rules for processing SSE response streams.
++  ProcessingRules response_rules = 1 [(validate.rules).message = {required: true}];
++}
+diff --git a/api/versioning/BUILD b/api/versioning/BUILD
+index 099cafed5..4acc1162f 100644
+--- a/api/versioning/BUILD
++++ b/api/versioning/BUILD
+@@ -175,6 +175,7 @@ proto_library(
+         "//envoy/extensions/filters/http/router/v3:pkg",
+         "//envoy/extensions/filters/http/set_filter_state/v3:pkg",
+         "//envoy/extensions/filters/http/set_metadata/v3:pkg",
++        "//envoy/extensions/filters/http/sse_to_metadata/v3:pkg",
+         "//envoy/extensions/filters/http/stateful_session/v3:pkg",
+         "//envoy/extensions/filters/http/tap/v3:pkg",
+         "//envoy/extensions/filters/http/thrift_to_metadata/v3:pkg",
+diff --git a/docs/root/api-v3/config/content_parsers/content_parsers.rst b/docs/root/api-v3/config/content_parsers/content_parsers.rst
+index c89f49382..dd0f6c971 100644
+--- a/docs/root/api-v3/config/content_parsers/content_parsers.rst
++++ b/docs/root/api-v3/config/content_parsers/content_parsers.rst
+@@ -1,5 +1,3 @@
+-.. _extension_category_envoy.content_parsers:
+-
+ Content parsers
+ ===============
+ 
+diff --git a/docs/root/configuration/http/http_filters/_include/sse-to-metadata-filter.yaml b/docs/root/configuration/http/http_filters/_include/sse-to-metadata-filter.yaml
+new file mode 100644
+index 000000000..06b623cc8
+--- /dev/null
++++ b/docs/root/configuration/http/http_filters/_include/sse-to-metadata-filter.yaml
+@@ -0,0 +1,72 @@
++static_resources:
++  listeners:
++  - address:
++      socket_address:
++        address: 0.0.0.0
++        port_value: 8080
++    filter_chains:
++    - filters:
++      - name: envoy.filters.network.http_connection_manager
++        typed_config:
++          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
++          codec_type: AUTO
++          stat_prefix: ingress_http
++          route_config:
++            name: local_route
++            virtual_hosts:
++            - name: llm_service
++              domains:
++              - "*"
++              routes:
++              - match:
++                  prefix: "/chat"
++                route:
++                  cluster: llm-cluster
++          http_filters:
++          - name: envoy.filters.http.sse_to_metadata
++            typed_config:
++              "@type": type.googleapis.com/envoy.extensions.filters.http.sse_to_metadata.v3.SseToMetadata
++              response_rules:
++                content_parser:
++                  name: envoy.content_parsers.json
++                  typed_config:
++                    "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++                    rules:
++                    - rule:
++                        selectors:
++                        - key: "usage"
++                        - key: "total_tokens"
++                        on_present:
++                          metadata_namespace: envoy.lb
++                          key: tokens
++                          type: NUMBER
++                    - rule:
++                        selectors:
++                        - key: "model"
++                        on_present:
++                          metadata_namespace: envoy.lb
++                          key: model_name
++                          type: STRING
++                      stop_processing_after_matches: 1
++          - name: envoy.filters.http.router
++            typed_config:
++              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
++
++  clusters:
++  - name: llm-cluster
++    type: STRICT_DNS
++    lb_policy: ROUND_ROBIN
++    load_assignment:
++      cluster_name: llm-cluster
++      endpoints:
++      - lb_endpoints:
++        - endpoint:
++            address:
++              socket_address:
++                address: api.openai.com
++                port_value: 443
++    transport_socket:
++      name: envoy.transport_sockets.tls
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.transport_sockets.tls.v3.UpstreamTlsContext
++        sni: api.openai.com
+diff --git a/docs/root/configuration/http/http_filters/http_filters.rst b/docs/root/configuration/http/http_filters/http_filters.rst
+index 60dd52c50..a99655a33 100644
+--- a/docs/root/configuration/http/http_filters/http_filters.rst
++++ b/docs/root/configuration/http/http_filters/http_filters.rst
+@@ -65,6 +65,7 @@ HTTP filters
+   router_filter
+   set_filter_state
+   set_metadata_filter
++  sse_to_metadata_filter
+   stateful_session_filter
+   sxg_filter
+   tap_filter
+diff --git a/docs/root/configuration/http/http_filters/sse_to_metadata_filter.rst b/docs/root/configuration/http/http_filters/sse_to_metadata_filter.rst
+new file mode 100644
+index 000000000..e5ce0beb9
+--- /dev/null
++++ b/docs/root/configuration/http/http_filters/sse_to_metadata_filter.rst
+@@ -0,0 +1,374 @@
++.. _config_http_filters_sse_to_metadata:
++
++SSE-To-Metadata Filter
++======================
++* This filter should be configured with the type URL ``type.googleapis.com/envoy.extensions.filters.http.sse_to_metadata.v3.SseToMetadata``.
++* :ref:`v3 API reference <envoy_v3_api_msg_extensions.filters.http.sse_to_metadata.v3.SseToMetadata>`
++
++The SSE-To-Metadata filter extracts values from streaming HTTP bodies and writes them to dynamic metadata.
++Currently, the filter processes response bodies only. This is particularly useful for observability, logging, and
++custom filters that need to access values that only appear in streaming responses.
++
++The filter uses a **typed extension architecture** for content parsing, allowing pluggable parser implementations
++for different data formats. The filter handles the SSE protocol parsing, while content parsers handle the payload
++format (e.g., JSON, XML, protobuf).
++
++The filter is configured with:
++
++* A **content parser** that specifies how to parse and extract values from event payloads (e.g., JSON parser)
++* **Rules** within the content parser that define selector paths and metadata actions
++* Configuration for the SSE protocol (allowed content types, max event size)
++
++When a rule matches, the extracted value is written to the configured metadata namespace and key.
++The metadata can then be consumed from access logs, used by custom filters, exported to metrics systems, or
++attached to trace spans.
++
++Use Cases
++---------
++
++**Observability and Cost Tracking for LLM APIs**
++
++Large Language Model (LLM) APIs like OpenAI return token usage information at the end of streaming responses.
++This filter can extract the token count and other metadata, making it available for logging, metrics, and observability:
++
++.. literalinclude:: _include/sse-to-metadata-filter.yaml
++    :language: yaml
++    :lines: 25-46
++    :lineno-start: 25
++    :linenos:
++    :emphasize-lines: 2-19
++
++In this example, the filter extracts ``total_tokens`` and ``model`` from the SSE stream and writes them to
++the ``envoy.lb`` metadata namespace. This metadata can then be:
++
++* **Logged**: Access logs can reference dynamic metadata using ``%DYNAMIC_METADATA(envoy.lb:tokens)%``
++* **Exported to metrics**: Custom stats sinks can consume the metadata
++* **Used by custom filters**: Downstream filters can read and act on this metadata
++* **Sent to tracing systems**: Metadata can be attached to trace spans
++
++.. note::
++
++  The standard Envoy rate_limit filter executes during the request phase (before the response is received),
++  so it cannot directly consume metadata extracted from response bodies. For token-based rate limiting,
++  you would need a custom filter that reports usage after the response or a quota management system that
++  tracks usage across requests.
++
++**Additional Metadata Extraction**
++
++Extract multiple values from streaming responses for logging and monitoring:
++
++.. code-block:: yaml
++
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++        - rule:
++            selectors:
++            - key: "usage"
++            - key: "total_tokens"
++            on_present:
++              metadata_namespace: envoy.audit
++              key: tokens
++              type: NUMBER
++        - rule:
++            selectors:
++            - key: "model"
++            on_present:
++              metadata_namespace: envoy.audit
++              key: model_name
++              type: STRING
++
++How It Works
++------------
++
++For Server-Sent Events (SSE) format with JSON content parser:
++
++1. The filter checks the response ``Content-Type`` header against the allowed content type (``text/event-stream``).
++   Matching is performed on the media type (type/subtype) only, ignoring parameters like ``charset``.
++2. It parses the SSE stream according to the `SSE specification <https://html.spec.whatwg.org/multipage/server-sent-events.html>`_,
++   handling CRLF, CR, and LF line endings, and properly managing events split across multiple data chunks
++3. For each complete SSE event, it extracts the value from the ``data`` field(s) and delegates to the configured **content parser**
++4. The JSON content parser parses the data as JSON and navigates the object using the configured selectors (e.g., ``selectors: [{key: "usage"}, {key: "total_tokens"}]`` extracts ``json["usage"]["total_tokens"]``)
++5. Based on the result, it writes metadata according to the configured rules defined in the content parser:
++
++   * **on_present**: Executes immediately when the selector successfully extracts a value from any event
++   * **on_missing**: Deferred until end-of-stream. Executes only if ``on_present`` never executed and the selector path was not found in at least one event
++   * **on_error**: Deferred until end-of-stream. Executes only if ``on_present`` never executed and a JSON parse error occurred. Takes priority over ``on_missing`` if both conditions are met
++
++6. The deferred execution of ``on_missing`` and ``on_error`` ensures that early events without the desired field (common in LLM streams) don't prevent later successful extractions
++7. By default, each rule processes the entire stream (``stop_processing_after_matches: 0``). Set ``stop_processing_after_matches: 1`` on a rule to stop evaluating that rule after its first match. The filter only stops processing the entire stream when ALL rules have limits AND they've all been reached (see :ref:`Performance Considerations <config_http_filters_sse_to_metadata_performance>` for details)
++
++Configuration
++-------------
++
++Complete Example
++~~~~~~~~~~~~~~~~
++
++.. literalinclude:: _include/sse-to-metadata-filter.yaml
++    :language: yaml
++    :lines: 33-51
++    :lineno-start: 33
++    :linenos:
++    :caption: :download:`sse-to-metadata-filter.yaml <_include/sse-to-metadata-filter.yaml>`
++
++Key Configuration Options
++~~~~~~~~~~~~~~~~~~~~~~~~~
++
++**response_rules**
++  Configuration for processing SSE response streams. Contains:
++
++**response_rules.content_parser**
++  A :ref:`typed extension <envoy_v3_api_msg_config.core.v3.TypedExtensionConfig>` that specifies how to parse
++  and extract values from event payloads. Available parsers:
++
++  * **envoy.content_parsers.json**: Parses JSON content and extracts values using JSONPath-like selectors.
++    See :ref:`v3 API reference <envoy_v3_api_msg_extensions.content_parsers.json.v3.JsonContentParser>`
++    for configuration options.
++
++**JSON Content Parser Configuration**
++
++When using ``envoy.content_parsers.json``, configure rules within the typed_config:
++
++**rules**
++  A list of rules to apply. Each rule contains:
++
++  * **rule**: The json-to-metadata rule configuration with the following fields:
++
++    - **selectors**: A list of selectors that specifies how to extract a value from the JSON payload. Each selector has a ``key`` field representing one level of nesting in the JSON object (e.g., ``selectors: [{key: "usage"}, {key: "total_tokens"}]`` extracts ``json_object["usage"]["total_tokens"]``). At least one selector must be specified.
++
++    - **on_present**: Metadata to write when the selector successfully extracts a value.
++      Executes immediately when a match is found. Specifies:
++
++      * ``metadata_namespace``: The metadata namespace (e.g., ``envoy.lb``). If empty, defaults to ``envoy.content_parsers.json``.
++      * ``key``: The metadata key
++      * ``value``: Optional hardcoded value. If set, writes this instead of the extracted value.
++      * ``type``: The value type (``PROTOBUF_VALUE``, ``STRING``, or ``NUMBER``)
++      * ``preserve_existing_metadata_value``: If true, don't overwrite existing metadata. Default false.
++
++    - **on_missing**: Metadata to write when the selector path is not found in the JSON.
++      Executes at end-of-stream if ``on_present`` never executed. Write a fallback/sentinel value (e.g., -1) to ensure metadata is always present for downstream consumers.
++      **Must** have ``value`` set to a fallback. This handles the case where legitimate JSON exists but lacks the expected field.
++
++    - **on_error**: Metadata to write when a JSON parse error occurs.
++      Executes at end-of-stream if ``on_present`` never executed and takes priority over ``on_missing``. Write a safe default (e.g., 0) to ensure metadata is always present even when errors occur.
++      **Must** have ``value`` set to a fallback. This handles malformed JSON data.
++
++  * **stop_processing_after_matches**: Optional per-rule field that controls processing behavior.
++
++    - If set to ``0`` (default): Process all content items. Later matches overwrite earlier values (unless ``preserve_existing_metadata_value`` is set), effectively extracting the LAST occurrence.
++    - If set to ``1``: Stop evaluating this specific rule after the first successful match. Use this for values that appear early in the stream.
++    - If set to ``N > 1``: Reserved for future use (e.g., aggregating multiple values).
++
++  .. note::
++
++    At least one of ``on_present``, ``on_missing``, or ``on_error`` must be specified in each rule.
++    The ``on_missing`` and ``on_error`` actions are deferred and only execute at the end of the stream if ``on_present`` never executes.
++    This prevents early error/missing content from overwriting later successful extractions (common in LLM streams where usage data appears in the final content).
++
++**response_rules.max_event_size**
++  Maximum size in bytes for a single event before it's considered invalid and discarded.
++  This protects against unbounded memory growth from malicious or malformed streams that
++  never send event delimiters (blank lines). Default is 8192 bytes (8KB). Set to 0 to
++  disable the limit (not recommended for production). Maximum allowed value is 10485760 bytes (10MB).
++
++Advanced Configurations
++~~~~~~~~~~~~~~~~~~~~~~~
++
++**Writing to Multiple Namespaces**
++
++Write the same value to multiple metadata namespaces, useful during migrations:
++
++.. code-block:: yaml
++
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++        - rule:
++            selectors:
++            - key: "usage"
++            - key: "total_tokens"
++            on_present:
++              metadata_namespace: old.namespace
++              key: tokens
++              type: NUMBER
++        - rule:
++            selectors:
++            - key: "usage"
++            - key: "total_tokens"
++            on_present:
++              metadata_namespace: new.namespace
++              key: tokens
++              type: NUMBER
++
++**Preserving Existing Metadata**
++
++Avoid overwriting previously set metadata values:
++
++.. code-block:: yaml
++
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++        - rule:
++            selectors:
++            - key: "usage"
++            - key: "total_tokens"
++            on_present:
++              metadata_namespace: envoy.lb
++              key: tokens
++              type: NUMBER
++              preserve_existing_metadata_value: true
++
++**Using on_present, on_missing, and on_error Together**
++
++Write fallback values when extraction fails to ensure metadata is always available for downstream processing:
++
++.. code-block:: yaml
++
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++        - rule:
++            selectors:
++            - key: "usage"
++            - key: "total_tokens"
++            on_present:
++              metadata_namespace: envoy.lb
++              key: tokens
++              type: NUMBER
++            on_missing:
++              metadata_namespace: envoy.lb
++              key: tokens
++              value:
++                number_value: -1
++            on_error:
++              metadata_namespace: envoy.lb
++              key: tokens
++              value:
++                number_value: 0
++
++In this configuration:
++
++* When the value is successfully extracted, it's written to metadata
++* When the ``usage.total_tokens`` path doesn't exist in any event, ``-1`` is written at end-of-stream as a sentinel value
++* When JSON parsing fails, ``0`` is written at end-of-stream as a safe default
++* The deferred execution ensures that error/missing states don't overwrite a successful extraction from a later event
++
++Statistics
++----------
++
++The sse_to_metadata filter outputs statistics in the ``http.<stat_prefix>.sse_to_metadata.resp.<parser_prefix>*`` namespace.
++The :ref:`stat prefix <envoy_v3_api_field_extensions.filters.network.http_connection_manager.v3.HttpConnectionManager.stat_prefix>`
++comes from the owning HTTP connection manager, and ``<parser_prefix>`` comes from the content parser (e.g., ``json.`` for the JSON parser).
++
++For example, with the JSON content parser, the metrics will be under ``http.<stat_prefix>.sse_to_metadata.resp.json.*``.
++
++.. csv-table::
++  :header: Name, Type, Description
++  :widths: 1, 1, 2
++
++  resp.<parser_prefix>.metadata_added, Counter, Total number of metadata entries successfully written (includes both extracted values and fallback values)
++  resp.<parser_prefix>.metadata_from_fallback, Counter, Total number of metadata entries written using on_missing or on_error fallback values (subset of metadata_added)
++  resp.<parser_prefix>.mismatched_content_type, Counter, Total number of responses with content types that don't match the expected type
++  resp.<parser_prefix>.no_data_field, Counter, Total number of SSE events without a data field
++  resp.<parser_prefix>.parse_error, Counter, Total number of events where the content parser failed to parse the data field
++  resp.<parser_prefix>.preserved_existing_metadata, Counter, Total number of times metadata was not written due to preserve_existing_metadata_value being true
++  resp.<parser_prefix>.event_too_large, Counter, Total number of events discarded because they exceeded max_event_size
++
++SSE Specification Compliance
++----------------------------
++
++The filter implements full `SSE specification <https://html.spec.whatwg.org/multipage/server-sent-events.html>`_ compliance:
++
++* **Line Endings**: Supports CRLF (``\r\n``), CR (``\r``), and LF (``\n``) line endings, including mixed usage
++* **Comments**: Lines starting with ``:`` are properly ignored as comments
++* **Field Parsing**: Handles both ``data: value`` and ``data:value`` (with and without space after colon)
++* **Multiple Data Fields**: Properly concatenates multiple ``data:`` lines with newlines per the specification
++* **Field Ordering**: Correctly processes events regardless of field order
++* **Chunked Transfer**: Handles events split across multiple TCP packets/HTTP chunks, properly buffering incomplete events
++
++.. _config_http_filters_sse_to_metadata_performance:
++
++Performance Considerations
++--------------------------
++
++**Memory Usage**
++
++* The filter buffers incomplete SSE events in memory until they are complete
++* Once a complete event is found, it is processed immediately and removed from the buffer
++* The ``max_event_size`` configuration (default: 8KB) protects against unbounded memory growth
++
++**Stream Processing Optimization**
++
++* By default, ``stop_processing_after_matches: 0`` processes all events for a rule throughout the entire stream
++* Set ``stop_processing_after_matches: 1`` on a rule to stop evaluating that specific rule after its first match
++* For extracting values that appear at the end (e.g., LLM token usage), use ``stop_processing_after_matches: 0`` (default)
++
++**When Early Termination Occurs**
++
++The filter can stop processing the SSE stream early **only when ALL rules** have ``stop_processing_after_matches > 0`` AND
++all those limits have been reached. This provides significant performance benefits by avoiding parsing of remaining events:
++
++.. code-block:: yaml
++
++  rules:
++  - rule:
++      selectors: [{ key: "request_id" }]
++      on_present: { ... }
++    stop_processing_after_matches: 1  # Stop after first match
++  - rule:
++      selectors: [{ key: "model" }]
++      on_present: { ... }
++    stop_processing_after_matches: 1  # Stop after first match
++
++In this example, after both ``request_id`` and ``model`` are extracted from the first event, the filter stops processing
++the stream entirely, providing **substantial CPU and memory savings** for long-running streams.
++
++**Mixed Strategies - Limited Performance Benefit**
++
++When mixing rules with different strategies (some with limits, some without), the performance benefit is **minimal**:
++
++.. code-block:: yaml
++
++  rules:
++  - rule:
++      selectors: [{ key: "model" }]
++      on_present: { ... }
++    stop_processing_after_matches: 1  # Extract first occurrence
++  - rule:
++      selectors: [{ key: "usage" }, { key: "total_tokens" }]
++      on_present: { ... }
++    # Default: 0 - extract last occurrence
++
++**Result**: The filter must process the **entire stream** to get the final token count. The only savings are skipping
++the ``model`` selector evaluation after the first match (negligible CPU cost compared to JSON parsing).
++
++.. note::
++
++  For the common LLM streaming use case (extracting final token usage along with early metadata), the filter
++  must process the entire stream regardless of per-rule ``stop_processing_after_matches`` settings.
++  The real performance benefit comes from scenarios where ALL metadata can be extracted early, such as
++  pure request/response correlation without needing end-of-stream values
++
++Security Considerations
++-----------------------
++
++* The ``max_event_size`` configuration (default: 8KB) protects against unbounded memory growth
++  from malicious streams that never send event delimiters
++* When an event exceeds ``max_event_size``, the buffered data is discarded and the
++  ``event_too_large`` counter is incremented
++* For production deployments, it's recommended to keep ``max_event_size`` at a reasonable value
++  (the default 8KB is sufficient for most legitimate SSE events)
++* Setting ``max_event_size: 0`` disables the limit but is not recommended for untrusted upstream sources
+diff --git a/source/common/common/logger.h b/source/common/common/logger.h
+index 80f8d3508..cd298c465 100644
+--- a/source/common/common/logger.h
++++ b/source/common/common/logger.h
+@@ -93,6 +93,7 @@ const static bool should_log = true;
+   FUNCTION(runtime)                                                                                \
+   FUNCTION(stats)                                                                                  \
+   FUNCTION(secret)                                                                                 \
++  FUNCTION(sse)                                                                                    \
+   FUNCTION(tap)                                                                                    \
+   FUNCTION(testing)                                                                                \
+   FUNCTION(thrift)                                                                                 \
+diff --git a/source/common/http/sse/sse_parser.h b/source/common/http/sse/sse_parser.h
+index dd032a10b..2f9ae6644 100644
+--- a/source/common/http/sse/sse_parser.h
++++ b/source/common/http/sse/sse_parser.h
+@@ -23,9 +23,11 @@ namespace Sse {
+  * - Partial events split across chunks
+  * - End-of-stream handling
+  *
+- * Example usage:
+- *   std::string buffer_;
+- *   absl::string_view buffer_view(buffer_);
++ * Example usage with Envoy's Buffer::OwnedImpl:
++ *   Buffer::OwnedImpl buffer_;
++ *   // ... append incoming data with buffer_.add(data) ...
++ *   const uint64_t length = buffer_.length();
++ *   absl::string_view buffer_view(static_cast<const char*>(buffer_.linearize(length)), length);
+  *   while (!buffer_view.empty()) {
+  *     auto result = findEventEnd(buffer_view, end_stream);
+  *     if (result.event_start == absl::string_view::npos) break;
+@@ -36,7 +38,7 @@ namespace Sse {
+  *     }
+  *     buffer_view = buffer_view.substr(result.next_start);
+  *   }
+- *   buffer_.erase(0, buffer_.size() - buffer_view.size());
++ *   buffer_.drain(length - buffer_view.size());
+  */
+ class SseParser {
+ public:
+diff --git a/source/extensions/extensions_build_config.bzl b/source/extensions/extensions_build_config.bzl
+index 693006c32..40ea359de 100644
+--- a/source/extensions/extensions_build_config.bzl
++++ b/source/extensions/extensions_build_config.bzl
+@@ -214,6 +214,7 @@ EXTENSIONS = {
+     "envoy.filters.http.thrift_to_metadata":            "//source/extensions/filters/http/thrift_to_metadata:config",
+     "envoy.filters.http.wasm":                          "//source/extensions/filters/http/wasm:config",
+     "envoy.filters.http.stateful_session":              "//source/extensions/filters/http/stateful_session:config",
++    "envoy.filters.http.sse_to_metadata":               "//source/extensions/filters/http/sse_to_metadata:config",
+     "envoy.filters.http.header_mutation":               "//source/extensions/filters/http/header_mutation:config",
+     "envoy.filters.http.transform":                     "//source/extensions/filters/http/transform:config",
+ 
+diff --git a/source/extensions/extensions_metadata.yaml b/source/extensions/extensions_metadata.yaml
+index 8aa44eb5d..c7900e79d 100644
+--- a/source/extensions/extensions_metadata.yaml
++++ b/source/extensions/extensions_metadata.yaml
+@@ -720,6 +720,13 @@ envoy.filters.http.stateful_session:
+   type_urls:
+   - envoy.extensions.filters.http.stateful_session.v3.StatefulSession
+   - envoy.extensions.filters.http.stateful_session.v3.StatefulSessionPerRoute
++envoy.filters.http.sse_to_metadata:
++  categories:
++  - envoy.filters.http
++  security_posture: robust_to_untrusted_downstream
++  status: alpha
++  type_urls:
++  - envoy.extensions.filters.http.sse_to_metadata.v3.SseToMetadata
+ envoy.filters.http.header_mutation:
+   categories:
+   - envoy.filters.http
+diff --git a/source/extensions/filters/http/sse_to_metadata/BUILD b/source/extensions/filters/http/sse_to_metadata/BUILD
+new file mode 100644
+index 000000000..1560f2f8d
+--- /dev/null
++++ b/source/extensions/filters/http/sse_to_metadata/BUILD
+@@ -0,0 +1,41 @@
++load(
++    "//bazel:envoy_build_system.bzl",
++    "envoy_cc_extension",
++    "envoy_cc_library",
++    "envoy_extension_package",
++)
++
++licenses(["notice"])  # Apache 2
++
++envoy_extension_package()
++
++envoy_cc_library(
++    name = "sse_to_metadata_lib",
++    srcs = ["filter.cc"],
++    hdrs = ["filter.h"],
++    deps = [
++        "//envoy/content_parser:config_interface",
++        "//envoy/content_parser:factory_interface",
++        "//envoy/content_parser:parser_interface",
++        "//envoy/server:filter_config_interface",
++        "//source/common/http:header_utility_lib",
++        "//source/common/http:utility_lib",
++        "//source/common/http/sse:sse_parser_lib",
++        "//source/extensions/filters/http/common:pass_through_filter_lib",
++        "@envoy_api//envoy/extensions/filters/http/sse_to_metadata/v3:pkg_cc_proto",
++    ],
++)
++
++envoy_cc_extension(
++    name = "config",
++    srcs = ["config.cc"],
++    hdrs = ["config.h"],
++    deps = [
++        ":sse_to_metadata_lib",
++        "//envoy/content_parser:config_interface",
++        "//envoy/registry",
++        "//source/extensions/content_parsers/json:config",
++        "//source/extensions/filters/http/common:factory_base_lib",
++        "@envoy_api//envoy/extensions/filters/http/sse_to_metadata/v3:pkg_cc_proto",
++    ],
++)
+diff --git a/source/extensions/filters/http/sse_to_metadata/config.cc b/source/extensions/filters/http/sse_to_metadata/config.cc
+new file mode 100644
+index 000000000..57aafbce0
+--- /dev/null
++++ b/source/extensions/filters/http/sse_to_metadata/config.cc
+@@ -0,0 +1,33 @@
++#include "source/extensions/filters/http/sse_to_metadata/config.h"
++
++#include "envoy/registry/registry.h"
++
++#include "source/extensions/filters/http/sse_to_metadata/filter.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace SseToMetadata {
++
++absl::StatusOr<Http::FilterFactoryCb> SseToMetadataConfig::createFilterFactoryFromProtoTyped(
++    const envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata& proto_config,
++    const std::string&, Server::Configuration::FactoryContext& context) {
++
++  // Create shared config (which instantiates the parser from TypedExtensionConfig)
++  // Note: content_parser is validated as required by proto validation rules
++  auto config = std::make_shared<FilterConfig>(proto_config, context.serverFactoryContext());
++
++  return [config](Http::FilterChainFactoryCallbacks& callbacks) -> void {
++    callbacks.addStreamEncoderFilter(std::make_shared<Filter>(config));
++  };
++}
++
++/**
++ * Static registration for the SSE to Metadata filter. @see RegisterFactory.
++ */
++REGISTER_FACTORY(SseToMetadataConfig, Server::Configuration::NamedHttpFilterConfigFactory);
++
++} // namespace SseToMetadata
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/sse_to_metadata/config.h b/source/extensions/filters/http/sse_to_metadata/config.h
+new file mode 100644
+index 000000000..cabddd7d9
+--- /dev/null
++++ b/source/extensions/filters/http/sse_to_metadata/config.h
+@@ -0,0 +1,33 @@
++#pragma once
++
++#include <string>
++
++#include "envoy/extensions/filters/http/sse_to_metadata/v3/sse_to_metadata.pb.h"
++#include "envoy/extensions/filters/http/sse_to_metadata/v3/sse_to_metadata.pb.validate.h"
++
++#include "source/extensions/filters/http/common/factory_base.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace SseToMetadata {
++
++/**
++ * Config registration for the SSE to Metadata filter.
++ */
++class SseToMetadataConfig
++    : public Extensions::HttpFilters::Common::ExceptionFreeFactoryBase<
++          envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata> {
++public:
++  SseToMetadataConfig() : ExceptionFreeFactoryBase("envoy.filters.http.sse_to_metadata") {}
++
++private:
++  absl::StatusOr<Http::FilterFactoryCb> createFilterFactoryFromProtoTyped(
++      const envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata& proto_config,
++      const std::string& stats_prefix, Server::Configuration::FactoryContext& context) override;
++};
++
++} // namespace SseToMetadata
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/sse_to_metadata/filter.cc b/source/extensions/filters/http/sse_to_metadata/filter.cc
+new file mode 100644
+index 000000000..1e7716ca5
+--- /dev/null
++++ b/source/extensions/filters/http/sse_to_metadata/filter.cc
+@@ -0,0 +1,228 @@
++#include "source/extensions/filters/http/sse_to_metadata/filter.h"
++
++#include <functional>
++#include <string>
++
++#include "source/common/common/utility.h"
++#include "source/common/config/utility.h"
++#include "source/common/http/sse/sse_parser.h"
++#include "source/common/http/utility.h"
++#include "source/common/protobuf/utility.h"
++
++#include "absl/strings/match.h"
++#include "absl/strings/strip.h"
++#include "fmt/format.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace SseToMetadata {
++
++namespace {
++constexpr absl::string_view SseContentType{"text/event-stream"};
++
++// Check if content type is text/event-stream, ignoring parameters like charset.
++// HTTP Content-Type is case-insensitive.
++bool isSseContentType(absl::string_view content_type) {
++  absl::string_view normalized = StringUtil::trim(StringUtil::cropRight(content_type, ";"));
++  return absl::EqualsIgnoreCase(normalized, SseContentType);
++}
++
++} // namespace
++
++FilterConfig::FilterConfig(
++    const envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata& config,
++    Server::Configuration::ServerFactoryContext& context)
++    : parser_factory_(std::invoke([&config, &context]() {
++        // Create the parser factory from TypedExtensionConfig
++        auto& factory =
++            Config::Utility::getAndCheckFactory<ContentParser::NamedContentParserConfigFactory>(
++                config.response_rules().content_parser());
++        auto message = Config::Utility::translateAnyToFactoryConfig(
++            config.response_rules().content_parser().typed_config(),
++            context.messageValidationVisitor(), factory);
++        return factory.createParserFactory(*message, context);
++      })),
++      stats_(generateStats(fmt::format("sse_to_metadata.resp.{}", parser_factory_->statsPrefix()),
++                           context.scope())),
++      max_event_size_(
++          PROTOBUF_GET_WRAPPED_OR_DEFAULT(config.response_rules(), max_event_size, 8192)) {}
++
++Filter::Filter(std::shared_ptr<FilterConfig> config)
++    : config_(std::move(config)), parser_(config_->parserFactory().createParser()) {}
++
++Http::FilterHeadersStatus Filter::encodeHeaders(Http::ResponseHeaderMap& headers, bool) {
++  absl::string_view content_type = headers.getContentTypeValue();
++  if (!content_type.empty() && isSseContentType(content_type)) {
++    content_type_matched_ = true;
++  } else {
++    if (content_type.empty()) {
++      ENVOY_LOG(trace, "Missing Content-Type header (SSE streams require text/event-stream)");
++    } else {
++      ENVOY_LOG(trace, "Content-Type '{}' is not text/event-stream", content_type);
++    }
++    config_->stats().mismatched_content_type_.inc();
++  }
++
++  return Http::FilterHeadersStatus::Continue;
++}
++
++Http::FilterDataStatus Filter::encodeData(Buffer::Instance& data, bool end_stream) {
++  if (!content_type_matched_ || processing_complete_) {
++    return Http::FilterDataStatus::Continue;
++  }
++
++  if (data.length() > 0) {
++    buffer_.add(data);
++    processBuffer(end_stream);
++  }
++
++  // Finalize rules at end of stream or when processing stopped early
++  if (end_stream || processing_complete_) {
++    finalizeRules();
++  }
++
++  return Http::FilterDataStatus::Continue;
++}
++
++Http::FilterTrailersStatus Filter::encodeTrailers(Http::ResponseTrailerMap&) {
++  // Finalize rules if not already done (only if Content-Type matched)
++  if (content_type_matched_ && !processing_complete_) {
++    finalizeRules();
++  }
++  return Http::FilterTrailersStatus::Continue;
++}
++
++void Filter::processBuffer(bool end_stream) {
++  // Linearize buffer to get contiguous memory for string_view.
++  const uint64_t length = buffer_.length();
++  absl::string_view buffer_view(static_cast<const char*>(buffer_.linearize(length)), length);
++
++  while (!buffer_view.empty() && !processing_complete_) {
++    auto result = Http::Sse::SseParser::findEventEnd(buffer_view, end_stream);
++
++    if (result.event_start == absl::string_view::npos) {
++      // No complete event found. Check if buffer exceeds max size.
++      const uint32_t max_size = config_->maxEventSize();
++      if (max_size > 0 && buffer_view.size() > max_size) {
++        ENVOY_LOG(
++            warn,
++            "SSE event exceeds max_event_size ({} bytes). Discarding {} bytes of buffered data.",
++            max_size, buffer_view.size());
++        config_->stats().event_too_large_.inc();
++        buffer_.drain(buffer_.length());
++        return;
++      }
++      break;
++    }
++
++    absl::string_view event =
++        buffer_view.substr(result.event_start, result.event_end - result.event_start);
++    ENVOY_LOG(trace, "Processing SSE event: {}", absl::CEscape(event));
++
++    if (processSseEvent(event)) {
++      processing_complete_ = true;
++      break;
++    }
++
++    buffer_view = buffer_view.substr(result.next_start);
++  }
++
++  // Drain processed bytes from the front of the buffer.
++  buffer_.drain(length - buffer_view.size());
++}
++
++bool Filter::processSseEvent(absl::string_view event) {
++  auto parsed_event = Http::Sse::SseParser::parseEvent(event);
++
++  if (!parsed_event.data.has_value() || parsed_event.data.value().empty()) {
++    ENVOY_LOG(debug, "Event does not contain 'data' field");
++    config_->stats().no_data_field_.inc();
++    return false;
++  }
++
++  auto result = parser_->parse(parsed_event.data.value());
++
++  if (result.error_message.has_value()) {
++    ENVOY_LOG(debug, "Parser reported error: {}", result.error_message.value());
++    config_->stats().parse_error_.inc();
++    return false;
++  }
++
++  // Execute immediate actions returned by parser
++  for (const auto& action : result.immediate_actions) {
++    if (writeMetadata(action)) {
++      config_->stats().metadata_added_.inc();
++    }
++  }
++
++  return result.stop_processing;
++}
++
++void Filter::finalizeRules() {
++  // Get all deferred actions from parser (handles on_error/on_missing for unmatched rules)
++  auto deferred_actions = parser_->getAllDeferredActions();
++
++  if (!deferred_actions.empty()) {
++    ENVOY_LOG(trace, "Executing {} deferred actions at end of stream", deferred_actions.size());
++  }
++
++  for (const auto& action : deferred_actions) {
++    if (writeMetadata(action)) {
++      config_->stats().metadata_added_.inc();
++      config_->stats().metadata_from_fallback_.inc();
++    }
++  }
++
++  processing_complete_ = true;
++}
++
++bool Filter::writeMetadata(const ContentParser::MetadataAction& action) {
++  // Parser is responsible for applying namespace defaults.
++  // If namespace is empty here, it's a parser implementation issue.
++  const std::string& namespace_str = action.namespace_;
++
++  // Check preserve_existing
++  if (action.preserve_existing) {
++    const auto& filter_metadata =
++        encoder_callbacks_->streamInfo().dynamicMetadata().filter_metadata();
++    const auto entry_it = filter_metadata.find(namespace_str);
++    if (entry_it != filter_metadata.end()) {
++      const auto& metadata = entry_it->second;
++      if (metadata.fields().contains(action.key)) {
++        ENVOY_LOG(trace, "Preserving existing metadata value for key {} in namespace {}",
++                  action.key, namespace_str);
++        config_->stats().preserved_existing_metadata_.inc();
++        return false;
++      }
++    }
++  }
++
++  // Check if value is set
++  if (!action.value.has_value()) {
++    ENVOY_LOG(warn, "No value to write for key {} in namespace {}", action.key, namespace_str);
++    return false;
++  }
++
++  // Write to dynamic metadata using the Protobuf::Value directly
++  const Protobuf::Value& proto_value = action.value.value();
++
++  // Check if the Protobuf::Value has a valid type set
++  if (proto_value.kind_case() == Protobuf::Value::KIND_NOT_SET) {
++    ENVOY_LOG(warn, "Value type conversion failed for key {} in namespace {}", action.key,
++              namespace_str);
++    return false;
++  }
++
++  Protobuf::Struct metadata;
++  (*metadata.mutable_fields())[action.key] = proto_value;
++  encoder_callbacks_->streamInfo().setDynamicMetadata(namespace_str, metadata);
++
++  ENVOY_LOG(trace, "Wrote metadata: namespace={}, key={}", namespace_str, action.key);
++  return true;
++}
++
++} // namespace SseToMetadata
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/sse_to_metadata/filter.h b/source/extensions/filters/http/sse_to_metadata/filter.h
+new file mode 100644
+index 000000000..189d0902b
+--- /dev/null
++++ b/source/extensions/filters/http/sse_to_metadata/filter.h
+@@ -0,0 +1,120 @@
++#pragma once
++
++#include <string>
++#include <vector>
++
++#include "envoy/content_parser/config.h"
++#include "envoy/content_parser/factory.h"
++#include "envoy/content_parser/parser.h"
++#include "envoy/extensions/filters/http/sse_to_metadata/v3/sse_to_metadata.pb.h"
++#include "envoy/server/factory_context.h"
++#include "envoy/server/filter_config.h"
++#include "envoy/stats/scope.h"
++#include "envoy/stats/stats.h"
++#include "envoy/stats/stats_macros.h"
++
++#include "source/common/buffer/buffer_impl.h"
++#include "source/extensions/filters/http/common/pass_through_filter.h"
++
++#include "absl/strings/string_view.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace SseToMetadata {
++
++/**
++ * All stats for the SSE to Metadata filter. @see stats_macros.h
++ */
++#define ALL_SSE_TO_METADATA_FILTER_STATS(COUNTER)                                                  \
++  COUNTER(metadata_added)                                                                          \
++  COUNTER(metadata_from_fallback)                                                                  \
++  COUNTER(mismatched_content_type)                                                                 \
++  COUNTER(no_data_field)                                                                           \
++  COUNTER(parse_error)                                                                             \
++  COUNTER(preserved_existing_metadata)                                                             \
++  COUNTER(event_too_large)
++
++/**
++ * Wrapper struct for SSE to Metadata filter stats. @see stats_macros.h
++ */
++struct SseToMetadataStats {
++  ALL_SSE_TO_METADATA_FILTER_STATS(GENERATE_COUNTER_STRUCT)
++};
++
++/**
++ * Configuration for the SSE to Metadata filter.
++ */
++class FilterConfig {
++public:
++  FilterConfig(const envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata& config,
++               Server::Configuration::ServerFactoryContext& context);
++
++  const SseToMetadataStats& stats() const { return stats_; }
++  ContentParser::ParserFactory& parserFactory() { return *parser_factory_; }
++  uint32_t maxEventSize() const { return max_event_size_; }
++
++private:
++  static SseToMetadataStats generateStats(const std::string& prefix, Stats::Scope& scope) {
++    return SseToMetadataStats{ALL_SSE_TO_METADATA_FILTER_STATS(POOL_COUNTER_PREFIX(scope, prefix))};
++  }
++
++  ContentParser::ParserFactoryPtr parser_factory_;
++  const SseToMetadataStats stats_;
++  const uint32_t max_event_size_;
++};
++
++/**
++ * HTTP SSE to Metadata Filter.
++ * Extracts values from Server-Sent Events (SSE) HTTP response bodies and writes them to dynamic
++ * metadata. Uses pluggable content parsers to extract values from SSE data fields.
++ */
++class Filter : public Http::PassThroughEncoderFilter, Logger::Loggable<Logger::Id::sse> {
++public:
++  Filter(std::shared_ptr<FilterConfig> config);
++  ~Filter() override = default;
++
++  // Http::PassThroughEncoderFilter
++  Http::FilterHeadersStatus encodeHeaders(Http::ResponseHeaderMap& headers, bool) override;
++  Http::FilterDataStatus encodeData(Buffer::Instance& data, bool end_stream) override;
++  Http::FilterTrailersStatus encodeTrailers(Http::ResponseTrailerMap&) override;
++
++private:
++  /**
++   * Process the buffered data to find complete SSE events and extract metadata.
++   * @param end_stream whether this is the last chunk of data.
++   */
++  void processBuffer(bool end_stream);
++
++  /**
++   * Process a single complete SSE event.
++   * @param event the event content (without trailing blank line).
++   * @return true if processing should stop (all rules have reached their match limits).
++   */
++  bool processSseEvent(absl::string_view event);
++
++  /**
++   * Finalize rules at end of stream. Executes deferred actions for rules that haven't matched.
++   */
++  void finalizeRules();
++
++  /**
++   * Write a metadata action to dynamic metadata.
++   * @return true if metadata was successfully written, false otherwise.
++   */
++  bool writeMetadata(const ContentParser::MetadataAction& action);
++
++  const std::shared_ptr<FilterConfig> config_;
++  // Parser instance for this stream
++  ContentParser::ParserPtr parser_;
++  // Set to true if Content-Type header matches allowed types.
++  bool content_type_matched_{false};
++  // Set to true when all rules have reached their match limits. Stops further processing.
++  bool processing_complete_{false};
++  Buffer::OwnedImpl buffer_;
++};
++
++} // namespace SseToMetadata
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/test/extensions/filters/http/sse_to_metadata/BUILD b/test/extensions/filters/http/sse_to_metadata/BUILD
+new file mode 100644
+index 000000000..ade1cc370
+--- /dev/null
++++ b/test/extensions/filters/http/sse_to_metadata/BUILD
+@@ -0,0 +1,53 @@
++load(
++    "//bazel:envoy_build_system.bzl",
++    "envoy_package",
++)
++load(
++    "//test/extensions:extensions_build_system.bzl",
++    "envoy_extension_cc_test",
++)
++
++licenses(["notice"])  # Apache 2
++
++envoy_package()
++
++envoy_extension_cc_test(
++    name = "config_test",
++    srcs = ["config_test.cc"],
++    extension_names = ["envoy.filters.http.sse_to_metadata"],
++    deps = [
++        "//source/extensions/filters/http/sse_to_metadata:config",
++        "//test/mocks/server:factory_context_mocks",
++        "//test/test_common:utility_lib",
++        "@envoy_api//envoy/extensions/content_parsers/json/v3:pkg_cc_proto",
++    ],
++)
++
++envoy_extension_cc_test(
++    name = "filter_test",
++    srcs = ["filter_test.cc"],
++    extension_names = ["envoy.filters.http.sse_to_metadata"],
++    deps = [
++        "//source/common/config:metadata_lib",
++        "//source/extensions/filters/http/sse_to_metadata:config",
++        "//source/extensions/filters/http/sse_to_metadata:sse_to_metadata_lib",
++        "//test/common/stream_info:test_util",
++        "//test/mocks/http:http_mocks",
++        "//test/mocks/server:factory_context_mocks",
++        "//test/mocks/stream_info:stream_info_mocks",
++        "//test/test_common:utility_lib",
++        "@envoy_api//envoy/extensions/content_parsers/json/v3:pkg_cc_proto",
++    ],
++)
++
++envoy_extension_cc_test(
++    name = "integration_test",
++    srcs = ["integration_test.cc"],
++    extension_names = ["envoy.filters.http.sse_to_metadata"],
++    deps = [
++        "//source/extensions/filters/http/sse_to_metadata:config",
++        "//test/integration:http_protocol_integration_lib",
++        "//test/test_common:utility_lib",
++        "@envoy_api//envoy/extensions/filters/http/sse_to_metadata/v3:pkg_cc_proto",
++    ],
++)
+diff --git a/test/extensions/filters/http/sse_to_metadata/config_test.cc b/test/extensions/filters/http/sse_to_metadata/config_test.cc
+new file mode 100644
+index 000000000..9976b1d41
+--- /dev/null
++++ b/test/extensions/filters/http/sse_to_metadata/config_test.cc
+@@ -0,0 +1,298 @@
++#include "envoy/extensions/content_parsers/json/v3/json_content_parser.pb.h"
++
++#include "source/extensions/filters/http/sse_to_metadata/config.h"
++#include "source/extensions/filters/http/sse_to_metadata/filter.h"
++
++#include "test/mocks/server/factory_context.h"
++
++#include "gmock/gmock.h"
++#include "gtest/gtest.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace SseToMetadata {
++namespace {
++
++TEST(SseToMetadataConfigTest, ValidConfig) {
++  const std::string yaml = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                type: NUMBER
++  )EOF";
++
++  envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata proto_config;
++  TestUtility::loadFromYamlAndValidate(yaml, proto_config);
++
++  NiceMock<Server::Configuration::MockFactoryContext> context;
++
++  SseToMetadataConfig factory;
++  auto cb_or = factory.createFilterFactoryFromProto(proto_config, "stats", context);
++  EXPECT_TRUE(cb_or.ok());
++
++  Http::MockFilterChainFactoryCallbacks filter_callback;
++  EXPECT_CALL(filter_callback, addStreamEncoderFilter(_));
++  cb_or.value()(filter_callback);
++}
++
++TEST(SseToMetadataConfigTest, MultipleMetadataDescriptors) {
++  const std::string yaml = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                type: NUMBER
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.audit"
++                key: "token_count"
++                type: NUMBER
++                preserve_existing_metadata_value: true
++  )EOF";
++
++  envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata proto_config;
++  TestUtility::loadFromYamlAndValidate(yaml, proto_config);
++
++  NiceMock<Server::Configuration::MockFactoryContext> context;
++
++  SseToMetadataConfig factory;
++  auto cb_or = factory.createFilterFactoryFromProto(proto_config, "stats", context);
++  EXPECT_TRUE(cb_or.ok());
++
++  Http::MockFilterChainFactoryCallbacks filter_callback;
++  EXPECT_CALL(filter_callback, addStreamEncoderFilter(_));
++  cb_or.value()(filter_callback);
++}
++
++TEST(SseToMetadataConfigTest, MultipleRules) {
++  const std::string yaml = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                type: NUMBER
++          - rule:
++              selectors:
++                - key: "model"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "model_name"
++                type: STRING
++  )EOF";
++
++  envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata proto_config;
++  TestUtility::loadFromYamlAndValidate(yaml, proto_config);
++
++  NiceMock<Server::Configuration::MockFactoryContext> context;
++
++  SseToMetadataConfig factory;
++  auto cb_or = factory.createFilterFactoryFromProto(proto_config, "stats", context);
++  EXPECT_TRUE(cb_or.ok());
++}
++
++TEST(SseToMetadataConfigTest, EmptyConfig) {
++  NiceMock<Server::Configuration::MockFactoryContext> context;
++
++  SseToMetadataConfig factory;
++
++  envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata empty_proto_config =
++      *dynamic_cast<envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata*>(
++          factory.createEmptyConfigProto().get());
++
++  // Empty config should fail validation (no response_rules - required field)
++  EXPECT_THROW_WITH_REGEX(
++      factory.createFilterFactoryFromProto(empty_proto_config, "stats", context).IgnoreError(),
++      EnvoyException, "Proto constraint validation failed.*value is required");
++}
++
++TEST(SseToMetadataConfigTest, InvalidConfigMissingPath) {
++  const std::string yaml = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++  )EOF";
++
++  envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata proto_config;
++  TestUtility::loadFromYaml(yaml, proto_config);
++
++  // Should fail during proto validation (selectors must have at least 1 item)
++  NiceMock<Server::Configuration::MockFactoryContext> context;
++  SseToMetadataConfig factory;
++  EXPECT_THROW_WITH_REGEX(
++      factory.createFilterFactoryFromProto(proto_config, "stats", context).IgnoreError(),
++      EnvoyException, "Proto constraint validation failed.*Selectors.*at least 1 item");
++}
++
++TEST(SseToMetadataConfigTest, InvalidConfigEmptyPath) {
++  const std::string yaml = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors: []
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++  )EOF";
++
++  envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata proto_config;
++  TestUtility::loadFromYaml(yaml, proto_config);
++
++  // Should fail during proto validation (selectors must have at least 1 item)
++  NiceMock<Server::Configuration::MockFactoryContext> context;
++  SseToMetadataConfig factory;
++  EXPECT_THROW_WITH_REGEX(
++      factory.createFilterFactoryFromProto(proto_config, "stats", context).IgnoreError(),
++      EnvoyException, "Proto constraint validation failed.*Selectors.*at least 1 item");
++}
++
++TEST(SseToMetadataConfigTest, EmptyNamespaceDefaultsToFilterName) {
++  const std::string yaml = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++              on_present:
++                key: "tokens"
++  )EOF";
++
++  // Empty namespace is now valid - it defaults to filter name
++  envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata proto_config;
++  TestUtility::loadFromYamlAndValidate(yaml, proto_config);
++
++  NiceMock<Server::Configuration::MockFactoryContext> context;
++  SseToMetadataConfig factory;
++  auto cb_or = factory.createFilterFactoryFromProto(proto_config, "stats", context);
++  EXPECT_TRUE(cb_or.ok());
++}
++
++TEST(SseToMetadataConfigTest, InvalidConfigMissingKey) {
++  const std::string yaml = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++              on_present:
++                metadata_namespace: "envoy.lb"
++  )EOF";
++
++  envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata proto_config;
++  TestUtility::loadFromYaml(yaml, proto_config);
++
++  // Should fail during proto validation or factory creation (missing required 'key' field)
++  NiceMock<Server::Configuration::MockFactoryContext> context;
++  SseToMetadataConfig factory;
++  EXPECT_THROW(factory.createFilterFactoryFromProto(proto_config, "stats", context).IgnoreError(),
++               EnvoyException);
++}
++
++TEST(SseToMetadataConfigTest, InvalidConfigNoSelector) {
++  // Create a config programmatically with an empty selector
++  const std::string yaml = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++  )EOF";
++
++  envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata proto_config;
++  TestUtility::loadFromYaml(yaml, proto_config);
++
++  // Should fail during proto validation (selectors must have at least 1 item)
++  NiceMock<Server::Configuration::MockFactoryContext> context;
++  SseToMetadataConfig factory;
++  EXPECT_THROW_WITH_REGEX(
++      factory.createFilterFactoryFromProto(proto_config, "stats", context).IgnoreError(),
++      EnvoyException, "Proto constraint validation failed.*Selectors.*at least 1 item");
++}
++
++TEST(SseToMetadataConfigTest, RequiresAtLeastOneAction) {
++  // Create config with no on_present, on_missing, or on_error
++  const std::string yaml = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++  )EOF";
++
++  envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata proto_config;
++  TestUtility::loadFromYaml(yaml, proto_config);
++
++  NiceMock<Server::Configuration::MockFactoryContext> context;
++  SseToMetadataConfig factory;
++
++  // Should fail because no on_present, on_missing, or on_error specified
++  EXPECT_THROW_WITH_MESSAGE(
++      factory.createFilterFactoryFromProto(proto_config, "stats", context).IgnoreError(),
++      EnvoyException, "At least one of on_present, on_missing, or on_error must be specified");
++}
++
++} // namespace
++} // namespace SseToMetadata
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/test/extensions/filters/http/sse_to_metadata/filter_test.cc b/test/extensions/filters/http/sse_to_metadata/filter_test.cc
+new file mode 100644
+index 000000000..f0234da64
+--- /dev/null
++++ b/test/extensions/filters/http/sse_to_metadata/filter_test.cc
+@@ -0,0 +1,1079 @@
++#include "envoy/extensions/content_parsers/json/v3/json_content_parser.pb.h"
++
++#include "source/common/config/metadata.h"
++#include "source/extensions/filters/http/sse_to_metadata/config.h"
++#include "source/extensions/filters/http/sse_to_metadata/filter.h"
++
++#include "test/common/stream_info/test_util.h"
++#include "test/mocks/http/mocks.h"
++#include "test/mocks/server/factory_context.h"
++#include "test/mocks/stream_info/mocks.h"
++#include "test/test_common/utility.h"
++
++#include "gmock/gmock.h"
++#include "gtest/gtest.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace SseToMetadata {
++namespace {
++
++using testing::NiceMock;
++using testing::ReturnRef;
++
++class SseToMetadataFilterTest : public testing::Test {
++public:
++  SseToMetadataFilterTest()
++      : stream_info_(time_source_, nullptr, StreamInfo::FilterState::LifeSpan::FilterChain) {}
++
++  void SetUp() override {
++    ON_CALL(context_, scope()).WillByDefault(ReturnRef(*stats_store_.rootScope()));
++    setupFilter(basic_config_);
++  }
++
++  void setupFilter(const std::string& yaml) {
++    envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata proto_config;
++    TestUtility::loadFromYaml(yaml, proto_config);
++
++    config_ = std::make_shared<FilterConfig>(proto_config, context_);
++    filter_ = std::make_unique<Filter>(config_);
++    filter_->setEncoderFilterCallbacks(encoder_callbacks_);
++
++    ON_CALL(encoder_callbacks_, streamInfo()).WillByDefault(ReturnRef(stream_info_));
++  }
++
++  uint64_t findCounter(const std::string& name) {
++    const auto counter = TestUtility::findCounter(stats_store_, name);
++    return counter != nullptr ? counter->value() : 0;
++  }
++
++  void addEncodeDataChunks(const std::string& data, bool end_stream = false) {
++    response_data_.add(data);
++    EXPECT_EQ(Http::FilterDataStatus::Continue, filter_->encodeData(response_data_, end_stream));
++    response_data_.drain(response_data_.length());
++  }
++
++  Protobuf::Value getMetadata(const std::string& ns, const std::string& key) {
++    return Envoy::Config::Metadata::metadataValue(
++        &encoder_callbacks_.streamInfo().dynamicMetadata(), ns, key);
++  }
++
++  const std::string basic_config_ = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                type: NUMBER
++  )EOF";
++
++  const std::string multi_namespace_config_ = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                type: NUMBER
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.audit"
++                key: "token_count"
++                type: NUMBER
++  )EOF";
++
++  const std::string preserve_config_ = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                type: NUMBER
++                preserve_existing_metadata_value: true
++  )EOF";
++
++  const std::string multi_rule_config_ = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                type: NUMBER
++          - rule:
++              selectors:
++                - key: "model"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "model_name"
++                type: STRING
++  )EOF";
++
++  const std::string no_stop_config_ = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                type: NUMBER
++  )EOF";
++
++  NiceMock<Http::MockStreamEncoderFilterCallbacks> encoder_callbacks_;
++  NiceMock<MockTimeSystem> time_source_;
++  StreamInfo::StreamInfoImpl stream_info_;
++  NiceMock<Stats::MockIsolatedStatsStore> stats_store_;
++  NiceMock<Server::Configuration::MockServerFactoryContext> context_;
++  std::shared_ptr<FilterConfig> config_;
++  std::unique_ptr<Filter> filter_;
++
++  Http::TestResponseHeaderMapImpl response_headers_{{"content-type", "text/event-stream"}};
++  Http::TestResponseHeaderMapImpl response_headers_with_params_{
++      {"content-type", "text/event-stream; charset=utf-8"}};
++  Buffer::OwnedImpl response_data_;
++
++  static constexpr absl::string_view delimiter_ = "\n\n";
++};
++
++TEST_F(SseToMetadataFilterTest, BadContentType) {
++  Http::TestResponseHeaderMapImpl bad_headers{{"content-type", "application/json"}};
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(bad_headers, false));
++
++  addEncodeDataChunks("data: {\"test\": \"value\"}\n\n", true);
++
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 0);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.mismatched_content_type"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, NoContentTypeHeader) {
++  Http::TestResponseHeaderMapImpl no_ct_headers;
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(no_ct_headers, false));
++
++  addEncodeDataChunks("data: {\"test\": \"value\"}\n\n", true);
++
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 0);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.mismatched_content_type"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, ContentTypeWithParameters) {
++  // Content-type matching strips parameters, so "text/event-stream; charset=utf-8"
++  // should match the required "text/event-stream" content type.
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue,
++            filter_->encodeHeaders(response_headers_with_params_, false));
++
++  const std::string data =
++      "data: {\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":20,\"total_tokens\":30}}\n\n";
++  addEncodeDataChunks(data, true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.kind_case(), Protobuf::Value::kNumberValue);
++  EXPECT_EQ(metadata.number_value(), 30);
++
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.mismatched_content_type"), 0);
++}
++
++TEST_F(SseToMetadataFilterTest, BadContentTypeSkipsProcessing) {
++  envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata proto_config;
++  auto* response_rules = proto_config.mutable_response_rules();
++
++  // Set up content parser config
++  auto* content_parser = response_rules->mutable_content_parser();
++  content_parser->set_name("envoy.content_parsers.json");
++
++  envoy::extensions::content_parsers::json::v3::JsonContentParser json_config;
++  auto* rule = json_config.add_rules()->mutable_rule();
++  rule->add_selectors()->set_key("usage");
++  rule->add_selectors()->set_key("total_tokens");
++
++  auto* on_error = rule->mutable_on_error();
++  on_error->set_metadata_namespace("envoy.lb");
++  on_error->set_key("tokens");
++  on_error->mutable_value()->set_number_value(-1);
++
++  content_parser->mutable_typed_config()->PackFrom(json_config);
++
++  config_ = std::make_shared<FilterConfig>(proto_config, context_);
++  filter_ = std::make_unique<Filter>(config_);
++  filter_->setEncoderFilterCallbacks(encoder_callbacks_);
++  ON_CALL(encoder_callbacks_, streamInfo()).WillByDefault(ReturnRef(stream_info_));
++
++  // Send response with wrong content-type
++  Http::TestResponseHeaderMapImpl bad_headers{{"content-type", "application/json"}};
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(bad_headers, false));
++  addEncodeDataChunks("data: {\"test\": \"value\"}\n\n", true);
++
++  // Filter skips processing
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.kind_case(), Protobuf::Value::KIND_NOT_SET);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.mismatched_content_type"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, MultipleEventsStopOnFirstMatch) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  addEncodeDataChunks("data: {\"id\":\"1\",\"delta\":{\"content\":\"Hello\"}}\n\n");
++  addEncodeDataChunks("data: {\"usage\":{\"total_tokens\":30}}\n\n");
++  addEncodeDataChunks("data: [DONE]\n\n", true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 30);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, MultipleEventsInSingleChunk) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  const std::string data = "data: {\"id\":\"1\"}\n\n"
++                           "data: {\"usage\":{\"total_tokens\":30}}\n\n"
++                           "data: [DONE]\n\n";
++  addEncodeDataChunks(data, true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 30);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, EventSplitAcrossChunks) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  addEncodeDataChunks("data: {\"usage\":{\"tota");
++  addEncodeDataChunks("l_tokens\":30}}\n\n", true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 30);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, EventSplitAcrossThreeChunks) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  addEncodeDataChunks("data: {\"usa");
++  addEncodeDataChunks("ge\":{\"total_to");
++  addEncodeDataChunks("kens\":30}}\n\n", true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 30);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, MultipleMetadataNamespaces) {
++  setupFilter(multi_namespace_config_);
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  addEncodeDataChunks("data: {\"usage\":{\"total_tokens\":30}}\n\n", true);
++
++  auto metadata1 = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata1.number_value(), 30);
++
++  auto metadata2 = getMetadata("envoy.audit", "token_count");
++  EXPECT_EQ(metadata2.number_value(), 30);
++
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 2);
++}
++
++TEST_F(SseToMetadataFilterTest, PreserveExistingMetadata) {
++  setupFilter(preserve_config_);
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Set existing metadata
++  Protobuf::Struct existing_metadata;
++  (*existing_metadata.mutable_fields())["tokens"].set_number_value(100);
++  encoder_callbacks_.streamInfo().setDynamicMetadata("envoy.lb", existing_metadata);
++
++  addEncodeDataChunks("data: {\"usage\":{\"total_tokens\":30}}\n\n", true);
++
++  // Should still be 100
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 100);
++
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 0);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.preserved_existing_metadata"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, OverwriteExistingMetadata) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Set existing metadata
++  Protobuf::Struct existing_metadata;
++  (*existing_metadata.mutable_fields())["tokens"].set_number_value(100);
++  encoder_callbacks_.streamInfo().setDynamicMetadata("envoy.lb", existing_metadata);
++
++  addEncodeDataChunks("data: {\"usage\":{\"total_tokens\":30}}\n\n", true);
++
++  // Should be overwritten to 30
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 30);
++
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.preserved_existing_metadata"), 0);
++}
++
++TEST_F(SseToMetadataFilterTest, MultipleRules) {
++  setupFilter(multi_rule_config_);
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  addEncodeDataChunks("data: {\"model\":\"gpt-4\",\"usage\":{\"total_tokens\":30}}\n\n", true);
++
++  auto tokens = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(tokens.number_value(), 30);
++
++  auto model = getMetadata("envoy.lb", "model_name");
++  EXPECT_EQ(model.string_value(), "gpt-4");
++
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 2);
++}
++
++TEST_F(SseToMetadataFilterTest, NoDataField) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  addEncodeDataChunks("event: message\nid: 123\n\n", true);
++
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 0);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.no_data_field"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, CRLFLineEndings) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  const std::string data = "data: {\"usage\":{\"total_tokens\":30}}\r\n\r\n";
++  addEncodeDataChunks(data, true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 30);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, CRLineEndings) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  const std::string data = "data: {\"usage\":{\"total_tokens\":30}}\r\r";
++  addEncodeDataChunks(data, true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 30);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, MixedLineEndings) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  const std::string data = "data: {\"usage\":{\"total_tokens\":30}}\r\n"
++                           "event: usage\n\n";
++  addEncodeDataChunks(data, true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 30);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, CRLFSplitAcrossChunks) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  addEncodeDataChunks("data: {\"usage\":{\"total_tokens\":30}}\r");
++  addEncodeDataChunks("\n\n", true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 30);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, NoSpaceAfterColon) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  addEncodeDataChunks("data:{\"usage\":{\"total_tokens\":30}}\n\n", true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 30);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, CommentLines) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  const std::string data = ": this is a comment\n"
++                           "data: {\"usage\":{\"total_tokens\":30}}\n\n";
++  addEncodeDataChunks(data, true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 30);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, CommentOnlyEvent) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  addEncodeDataChunks(": keep-alive\n\n", true);
++
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 0);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.no_data_field"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, DataFieldAfterOtherFields) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  const std::string data = "event: usage\n"
++                           "id: 12345\n"
++                           "data: {\"usage\":{\"total_tokens\":30}}\n\n";
++  addEncodeDataChunks(data, true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 30);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, MultipleDataFieldsConcatenated) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Multiple data fields should be concatenated with newline
++  const std::string data = "data: {\"usage\":{\n"
++                           "data: \"total_tokens\":30}}\n\n";
++  addEncodeDataChunks(data, true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 30);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, UnterminatedEventAtStreamEnd) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Event without trailing blank line
++  addEncodeDataChunks("data: {\"usage\":{\"total_tokens\":30}}", true);
++
++  // Event is incomplete, should not be processed
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 0);
++}
++
++TEST_F(SseToMetadataFilterTest, EmptyDataChunk) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  addEncodeDataChunks("", false);
++  addEncodeDataChunks("data: {\"usage\":{\"total_tokens\":30}}\n\n", true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 30);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, StopProcessingDisabled) {
++  setupFilter(no_stop_config_);
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Even after finding a match, should continue processing
++  addEncodeDataChunks("data: {\"usage\":{\"total_tokens\":30}}\n\n");
++  addEncodeDataChunks("data: {\"usage\":{\"total_tokens\":40}}\n\n", true);
++
++  // Should have processed both events
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 40); // Last write wins
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 2);
++}
++
++TEST_F(SseToMetadataFilterTest, ComplexRealWorldScenario) {
++  setupFilter(multi_rule_config_);
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Simulate real OpenAI-like streaming response
++  addEncodeDataChunks(
++      "data: {\"id\":\"1\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4\","
++      "\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n");
++  addEncodeDataChunks(
++      "data: {\"id\":\"2\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4\","
++      "\"choices\":[{\"delta\":{\"content\":\" world\"}}]}\n\n");
++  addEncodeDataChunks(
++      "data: {\"id\":\"3\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4\","
++      "\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":20,"
++      "\"total_tokens\":30}}\n\n");
++  addEncodeDataChunks("data: [DONE]\n\n", true);
++
++  auto tokens = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(tokens.number_value(), 30);
++
++  auto model = getMetadata("envoy.lb", "model_name");
++  EXPECT_EQ(model.string_value(), "gpt-4");
++
++  // First rule matches once and stops (tokens), second rule matches multiple times
++  EXPECT_GE(findCounter("sse_to_metadata.resp.json.metadata_added"), 2);
++}
++
++TEST_F(SseToMetadataFilterTest, EventExceedsMaxSize) {
++  const std::string config_with_small_limit = R"EOF(
++  response_rules:
++    max_event_size: 100
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                type: NUMBER
++  )EOF";
++
++  setupFilter(config_with_small_limit);
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Send a large chunk without event delimiter (blank line) that exceeds 100 bytes
++  std::string large_data = "data: {\"usage\":{\"total_tokens\":30";
++  while (large_data.size() < 110) {
++    large_data += ",\"extra\":\"padding\"";
++  }
++  addEncodeDataChunks(large_data, false);
++
++  // Buffer should exceed limit and be discarded
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.event_too_large"), 1);
++
++  // Now send a valid event, it should process normally
++  addEncodeDataChunks("data: {\"usage\":{\"total_tokens\":42}}\n\n", true);
++
++  auto tokens = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(tokens.number_value(), 42);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, EventWithinMaxSize) {
++  const std::string config_with_large_limit = R"EOF(
++  response_rules:
++    max_event_size: 1000
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                type: NUMBER
++  )EOF";
++
++  setupFilter(config_with_large_limit);
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Send event that's under the limit
++  addEncodeDataChunks("data: {\"usage\":{\"total_tokens\":50}}\n\n", true);
++
++  auto tokens = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(tokens.number_value(), 50);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.event_too_large"), 0);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, MaxSizeDisabled) {
++  const std::string config_no_limit = R"EOF(
++  response_rules:
++    max_event_size: 0
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                type: NUMBER
++  )EOF";
++
++  setupFilter(config_no_limit);
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Send a very large chunk without limit
++  std::string large_data = "data: {\"usage\":{\"total_tokens\":30";
++  while (large_data.size() < 10000) {
++    large_data += ",\"extra\":\"x\"";
++  }
++  large_data += "}}\n\n";
++  addEncodeDataChunks(large_data, true);
++
++  // Should process successfully even though it's large
++  auto tokens = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(tokens.number_value(), 30);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.event_too_large"), 0);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, FieldWithoutColon) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Field name without colon (treated as field with empty value per SSE spec)
++  const std::string data = "data\n\n";
++  addEncodeDataChunks(data, true);
++
++  // Empty data field
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 0);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.no_data_field"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, StopProcessingOnMatch) {
++  const std::string config = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                type: NUMBER
++            stop_processing_after_matches: 1
++  )EOF";
++  setupFilter(config);
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // First event matches and should stop processing
++  addEncodeDataChunks("data: {\"usage\":{\"total_tokens\":30}}\n\n");
++
++  // This should not be processed due to stop_processing_on_match
++  addEncodeDataChunks("data: {\"usage\":{\"total_tokens\":99}}\n\n", true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 30); // First value, not 99
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, EventWithEmptyLines) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // SSE event with empty lines (per SSE spec, empty lines are event delimiters)
++  const std::string data = "\n"
++                           "data: {\"usage\":{\"total_tokens\":42}}\n"
++                           "\n"
++                           "\n";
++  addEncodeDataChunks(data, true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 42);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, EventStartingWithEmptyLine) {
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Event starting with empty line followed by data
++  // This ensures empty line parsing returns {"", ""} correctly
++  const std::string data = "\n\ndata: {\"usage\":{\"total_tokens\":55}}\n\n";
++  addEncodeDataChunks(data, true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 55);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, ContentTypeWithMultipleParameters) {
++  // Test content-type with multiple parameters
++  Http::TestResponseHeaderMapImpl headers_multi_params{
++      {"content-type", "text/event-stream; charset=utf-8; boundary=foo"}};
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue,
++            filter_->encodeHeaders(headers_multi_params, false));
++
++  addEncodeDataChunks("data: {\"usage\":{\"total_tokens\":42}}\n\n", true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 42);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.mismatched_content_type"), 0);
++}
++
++TEST_F(SseToMetadataFilterTest, ContentTypeWithSpaceBeforeSemicolon) {
++  // Test content-type with space before semicolon
++  Http::TestResponseHeaderMapImpl headers_space{
++      {"content-type", "text/event-stream ; charset=utf-8"}};
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(headers_space, false));
++
++  addEncodeDataChunks("data: {\"usage\":{\"total_tokens\":99}}\n\n", true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 99);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, ContentTypeWithTrailingSpaces) {
++  Http::TestResponseHeaderMapImpl headers_trailing{{"content-type", "text/event-stream  "}};
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(headers_trailing, false));
++
++  addEncodeDataChunks("data: {\"usage\":{\"total_tokens\":77}}\n\n", true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 77);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, ContentTypeStillRejectsWrongMediaType) {
++  // Ensure parameter stripping doesn't accept wrong media types
++  Http::TestResponseHeaderMapImpl wrong_type{{"content-type", "application/json; charset=utf-8"}};
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(wrong_type, false));
++
++  addEncodeDataChunks("data: {\"usage\":{\"total_tokens\":88}}\n\n", true);
++
++  // Should still be rejected
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.kind_case(), 0); // Not set
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 0);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.mismatched_content_type"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, OnErrorJsonParseFails) {
++  const std::string config = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                type: NUMBER
++              on_error:
++                  metadata_namespace: "envoy.lb"
++                  key: "tokens"
++                  value:
++                    number_value: 0
++  )EOF";
++
++  setupFilter(config);
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Send malformed JSON. Should trigger on_error.
++  addEncodeDataChunks(std::string("data: {malformed json}") + std::string(delimiter_), true);
++
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 0); // Fallback value
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.parse_error"), 1);
++}
++
++// Test that events without a data field are skipped (not treated as errors)
++TEST_F(SseToMetadataFilterTest, NoDataFieldSkipsEvent) {
++  // Events without a data field (like ping/keepalive) are simply skipped.
++  // This is not an error condition - on_error does NOT trigger.
++  envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata proto_config;
++  auto* response_rules = proto_config.mutable_response_rules();
++
++  // Set up content parser config
++  auto* content_parser = response_rules->mutable_content_parser();
++  content_parser->set_name("envoy.content_parsers.json");
++
++  envoy::extensions::content_parsers::json::v3::JsonContentParser json_config;
++  auto* rule = json_config.add_rules()->mutable_rule();
++  rule->add_selectors()->set_key("usage");
++  rule->add_selectors()->set_key("total_tokens");
++
++  auto* on_error = rule->mutable_on_error();
++  on_error->set_metadata_namespace("envoy.lb");
++  on_error->set_key("tokens");
++  on_error->mutable_value()->set_string_value("error");
++
++  content_parser->mutable_typed_config()->PackFrom(json_config);
++
++  config_ = std::make_shared<FilterConfig>(proto_config, context_);
++  filter_ = std::make_unique<Filter>(config_);
++  filter_->setEncoderFilterCallbacks(encoder_callbacks_);
++  ON_CALL(encoder_callbacks_, streamInfo()).WillByDefault(ReturnRef(stream_info_));
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Send event with no data field
++  addEncodeDataChunks(std::string("event: ping") + std::string(delimiter_), true);
++
++  // No metadata written
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.kind_case(), Protobuf::Value::KIND_NOT_SET);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.no_data_field"), 1);
++}
++
++// Test hardcoded value in on_present: uses descriptor.value instead of extracted
++// Test on_error doesn't execute if on_present already executed (even with prior errors)
++TEST_F(SseToMetadataFilterTest, OnErrorDoesNotOverwriteOnPresent) {
++  const std::string config = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                type: NUMBER
++              on_error:
++                  metadata_namespace: "envoy.lb"
++                  key: "tokens"
++                  value:
++                    number_value: 0
++  )EOF";
++
++  setupFilter(config);
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Event 1: Error (malformed JSON)
++  addEncodeDataChunks(std::string("data: {malformed json}") + std::string(delimiter_), false);
++
++  // Event 2: Success (good value)
++  addEncodeDataChunks(
++      std::string("data: {\"usage\": {\"total_tokens\": 42}}") + std::string(delimiter_), false);
++
++  // Event 3: Error again
++  addEncodeDataChunks(std::string("data: {another error}") + std::string(delimiter_), true);
++
++  // Should have the good value, not the error fallback
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 42); // Good value preserved
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.metadata_added"), 1);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.parse_error"), 2);
++}
++
++// Test on_error takes priority over on_missing
++TEST_F(SseToMetadataFilterTest, OnErrorPriorityOverOnMissing) {
++  const std::string config = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_missing:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                value:
++                  number_value: -1
++              on_error:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                value:
++                  number_value: 0
++  )EOF";
++
++  setupFilter(config);
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Event 1: Error
++  addEncodeDataChunks(std::string("data: {malformed json}") + std::string(delimiter_), false);
++
++  // Event 2: Valid JSON but missing path
++  addEncodeDataChunks(std::string("data: {\"model\": \"gpt-4\"}") + std::string(delimiter_), true);
++
++  // Should use on_error (priority) not on_missing
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 0); // on_error value, not -1
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.parse_error"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, TrailersFinalizesRules) {
++  // Create config programmatically to ensure on_missing value is set correctly
++  envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata proto_config;
++  auto* response_rules = proto_config.mutable_response_rules();
++
++  // Set up content parser config
++  auto* content_parser = response_rules->mutable_content_parser();
++  content_parser->set_name("envoy.content_parsers.json");
++
++  envoy::extensions::content_parsers::json::v3::JsonContentParser json_config;
++  auto* rule = json_config.add_rules()->mutable_rule();
++  rule->add_selectors()->set_key("usage");
++  rule->add_selectors()->set_key("total_tokens");
++
++  auto* on_missing = rule->mutable_on_missing();
++  on_missing->set_metadata_namespace("envoy.lb");
++  on_missing->set_key("tokens");
++  on_missing->mutable_value()->set_number_value(-1);
++
++  content_parser->mutable_typed_config()->PackFrom(json_config);
++
++  config_ = std::make_shared<FilterConfig>(proto_config, context_);
++  filter_ = std::make_unique<Filter>(config_);
++  filter_->setEncoderFilterCallbacks(encoder_callbacks_);
++  ON_CALL(encoder_callbacks_, streamInfo()).WillByDefault(ReturnRef(stream_info_));
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Send data with end_stream=false (trailers will follow)
++  addEncodeDataChunks(std::string("data: {\"model\": \"gpt-4\"}") + std::string(delimiter_), false);
++
++  // At this point, on_missing should NOT be executed yet
++  auto metadata_before = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata_before.kind_case(), 0);
++
++  // Send trailers
++  Http::TestResponseTrailerMapImpl trailers{{"x-test-trailer", "value"}};
++  EXPECT_EQ(Http::FilterTrailersStatus::Continue, filter_->encodeTrailers(trailers));
++
++  // After trailers, on_missing should have been executed
++  auto metadata_after = getMetadata("envoy.lb", "tokens");
++  EXPECT_NE(metadata_after.kind_case(), 0);
++  EXPECT_EQ(metadata_after.number_value(), -1);
++}
++
++TEST_F(SseToMetadataFilterTest, TrailersWithContentTypeMismatch) {
++  const std::string config = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_error:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                value:
++                  number_value: 0
++  )EOF";
++
++  setupFilter(config);
++  Http::TestResponseHeaderMapImpl wrong_headers{{":status", "200"},
++                                                {"content-type", "application/json"}};
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(wrong_headers, false));
++
++  // Send some data
++  addEncodeDataChunks("{\"some\": \"json\"}", false);
++
++  // Send trailers
++  Http::TestResponseTrailerMapImpl trailers{{"x-test-trailer", "value"}};
++  EXPECT_EQ(Http::FilterTrailersStatus::Continue, filter_->encodeTrailers(trailers));
++
++  // Should execute on_error due to content-type mismatch
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.number_value(), 0);
++  EXPECT_EQ(findCounter("sse_to_metadata.resp.json.mismatched_content_type"), 1);
++}
++
++TEST_F(SseToMetadataFilterTest, OnMissingWithoutValueDoesNotWriteMetadata) {
++  // Create config programmatically
++  envoy::extensions::filters::http::sse_to_metadata::v3::SseToMetadata proto_config;
++  auto* response_rules = proto_config.mutable_response_rules();
++
++  auto* content_parser = response_rules->mutable_content_parser();
++  content_parser->set_name("envoy.content_parsers.json");
++
++  envoy::extensions::content_parsers::json::v3::JsonContentParser json_config;
++  auto* rule = json_config.add_rules()->mutable_rule();
++  rule->add_selectors()->set_key("nonexistent");
++  rule->add_selectors()->set_key("path");
++
++  auto* on_missing = rule->mutable_on_missing();
++  on_missing->set_metadata_namespace("envoy.lb");
++  on_missing->set_key("tokens");
++
++  content_parser->mutable_typed_config()->PackFrom(json_config);
++
++  config_ = std::make_shared<FilterConfig>(proto_config, context_);
++  filter_ = std::make_unique<Filter>(config_);
++  filter_->setEncoderFilterCallbacks(encoder_callbacks_);
++  ON_CALL(encoder_callbacks_, streamInfo()).WillByDefault(ReturnRef(stream_info_));
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Send valid JSON that doesn't have the selector path
++  addEncodeDataChunks(std::string("data: {\"model\": \"gpt-4\"}") + std::string(delimiter_), true);
++
++  // on_missing fires but has no value. Metadata should not be written
++  auto metadata = getMetadata("envoy.lb", "tokens");
++  EXPECT_EQ(metadata.kind_case(), Protobuf::Value::KIND_NOT_SET);
++}
++
++TEST_F(SseToMetadataFilterTest, StringToNumberConversionFailureDoesNotWriteMetadata) {
++  const std::string config = R"EOF(
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "model"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "model_as_number"
++                type: NUMBER
++  )EOF";
++
++  setupFilter(config);
++  EXPECT_EQ(Http::FilterHeadersStatus::Continue, filter_->encodeHeaders(response_headers_, false));
++
++  // Send JSON with a string value that cannot be converted to a number
++  addEncodeDataChunks(std::string("data: {\"model\": \"gpt-4-turbo\"}") + std::string(delimiter_),
++                      true);
++
++  // The string "gpt-4-turbo" cannot be parsed as a number, so kind_case will be KIND_NOT_SET
++  // and metadata should not be written
++  auto metadata = getMetadata("envoy.lb", "model_as_number");
++  EXPECT_EQ(metadata.kind_case(), Protobuf::Value::KIND_NOT_SET);
++}
++
++} // namespace
++} // namespace SseToMetadata
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/test/extensions/filters/http/sse_to_metadata/integration_test.cc b/test/extensions/filters/http/sse_to_metadata/integration_test.cc
+new file mode 100644
+index 000000000..252bb9408
+--- /dev/null
++++ b/test/extensions/filters/http/sse_to_metadata/integration_test.cc
+@@ -0,0 +1,277 @@
++#include "envoy/extensions/filters/http/sse_to_metadata/v3/sse_to_metadata.pb.h"
++
++#include "test/integration/http_protocol_integration.h"
++#include "test/test_common/utility.h"
++
++#include "gtest/gtest.h"
++
++namespace Envoy {
++namespace {
++
++class SseToMetadataIntegrationTest : public HttpProtocolIntegrationTest {
++public:
++  void initializeFilter() {
++    config_helper_.prependFilter(filter_config_);
++    initialize();
++  }
++
++  void runTest(const Http::RequestHeaderMap& request_headers, const std::string& request_body,
++               const Http::ResponseHeaderMap& response_headers, const std::string& response_body,
++               const size_t chunk_size = 20) {
++    codec_client_ = makeHttpConnection(lookupPort("http"));
++    IntegrationStreamDecoderPtr response;
++    if (request_body.empty()) {
++      response = codec_client_->makeHeaderOnlyRequest(request_headers);
++    } else {
++      auto encoder_decoder = codec_client_->startRequest(request_headers);
++      request_encoder_ = &encoder_decoder.first;
++      response = std::move(encoder_decoder.second);
++      Buffer::OwnedImpl buffer(request_body);
++      codec_client_->sendData(*request_encoder_, buffer, true);
++    }
++
++    ASSERT_TRUE(fake_upstreams_[0]->waitForHttpConnection(*dispatcher_, fake_upstream_connection_));
++    ASSERT_TRUE(fake_upstream_connection_->waitForNewStream(*dispatcher_, upstream_request_));
++    ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
++
++    // Send chunked SSE response
++    upstream_request_->encodeHeaders(response_headers, false);
++    size_t i = 0;
++    for (; i < response_body.length() / chunk_size; i++) {
++      Buffer::OwnedImpl buffer(response_body.substr(i * chunk_size, chunk_size));
++      upstream_request_->encodeData(buffer, false);
++    }
++    // Send the last chunk flagged as end_stream
++    Buffer::OwnedImpl buffer(
++        response_body.substr(i * chunk_size, response_body.length() % chunk_size));
++    upstream_request_->encodeData(buffer, true);
++
++    ASSERT_TRUE(response->waitForEndStream());
++    EXPECT_TRUE(response->complete());
++
++    // cleanup
++    codec_client_->close();
++    ASSERT_TRUE(fake_upstream_connection_->close());
++    ASSERT_TRUE(fake_upstream_connection_->waitForDisconnect());
++  }
++
++  const std::string filter_config_ = R"EOF(
++name: envoy.filters.http.sse_to_metadata
++typed_config:
++  "@type": type.googleapis.com/envoy.extensions.filters.http.sse_to_metadata.v3.SseToMetadata
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "tokens"
++                type: NUMBER
++          - rule:
++              selectors:
++                - key: "model"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "model_name"
++                type: STRING
++)EOF";
++
++  Http::TestRequestHeaderMapImpl request_headers_{
++      {":scheme", "http"}, {":path", "/chat"}, {":method", "POST"}, {":authority", "host"}};
++
++  Http::TestResponseHeaderMapImpl response_headers_{{":status", "200"},
++                                                    {"content-type", "text/event-stream"}};
++
++  const std::string sse_response_body_ =
++      "data: "
++      "{\"id\":\"1\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4\",\"choices\":[{"
++      "\"delta\":{\"content\":\"Hello\"}}]}\n\n"
++      "data: "
++      "{\"id\":\"2\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4\",\"choices\":[{"
++      "\"delta\":{\"content\":\" world\"}}]}\n\n"
++      "data: "
++      "{\"id\":\"3\",\"object\":\"chat.completion.chunk\",\"model\":\"gpt-4\",\"choices\":[],"
++      "\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":20,\"total_tokens\":30}}\n\n"
++      "data: [DONE]\n\n";
++};
++
++// TODO(#26236): Fix test suite for HTTP/3.
++INSTANTIATE_TEST_SUITE_P(
++    Protocols, SseToMetadataIntegrationTest,
++    testing::ValuesIn(HttpProtocolIntegrationTest::getProtocolTestParamsWithoutHTTP3()),
++    HttpProtocolIntegrationTest::protocolTestParamsToString);
++
++TEST_P(SseToMetadataIntegrationTest, BasicSseTokenExtraction) {
++  initializeFilter();
++  runTest(request_headers_, "", response_headers_, sse_response_body_);
++
++  // Verify stats
++  // - Events 1,2: only model_name matches (2 successes)
++  // - Event 3: both tokens and model_name match (2 successes)
++  // - Event 4: [DONE] is invalid JSON (1 parse_error)
++  // Total: 4 successes, 1 parse_error
++  EXPECT_EQ(4UL, test_server_->counter("sse_to_metadata.resp.json.metadata_added")->value());
++  EXPECT_EQ(0UL,
++            test_server_->counter("sse_to_metadata.resp.json.mismatched_content_type")->value());
++  EXPECT_EQ(0UL, test_server_->counter("sse_to_metadata.resp.json.no_data_field")->value());
++  EXPECT_EQ(1UL, test_server_->counter("sse_to_metadata.resp.json.parse_error")->value());
++}
++
++TEST_P(SseToMetadataIntegrationTest, SseWithSmallChunks) {
++  initializeFilter();
++  // Test with very small chunks to ensure buffering works correctly
++  runTest(request_headers_, "", response_headers_, sse_response_body_, 5);
++
++  EXPECT_EQ(4UL, test_server_->counter("sse_to_metadata.resp.json.metadata_added")->value());
++  EXPECT_EQ(0UL,
++            test_server_->counter("sse_to_metadata.resp.json.mismatched_content_type")->value());
++  EXPECT_EQ(0UL, test_server_->counter("sse_to_metadata.resp.json.no_data_field")->value());
++  EXPECT_EQ(1UL, test_server_->counter("sse_to_metadata.resp.json.parse_error")->value());
++}
++
++TEST_P(SseToMetadataIntegrationTest, SseWithLargeChunks) {
++  initializeFilter();
++  // Test with large chunks
++  runTest(request_headers_, "", response_headers_, sse_response_body_, 100);
++
++  EXPECT_EQ(4UL, test_server_->counter("sse_to_metadata.resp.json.metadata_added")->value());
++  EXPECT_EQ(0UL,
++            test_server_->counter("sse_to_metadata.resp.json.mismatched_content_type")->value());
++  EXPECT_EQ(0UL, test_server_->counter("sse_to_metadata.resp.json.no_data_field")->value());
++  EXPECT_EQ(1UL, test_server_->counter("sse_to_metadata.resp.json.parse_error")->value());
++}
++
++TEST_P(SseToMetadataIntegrationTest, MismatchedContentType) {
++  Http::TestResponseHeaderMapImpl json_headers{{":status", "200"},
++                                               {"content-type", "application/json"}};
++  initializeFilter();
++  const std::string json_body = R"({"result": "not an SSE stream"})";
++  runTest(request_headers_, "", json_headers, json_body);
++
++  // Content-type mismatch should not process the response
++  EXPECT_EQ(0UL, test_server_->counter("sse_to_metadata.resp.json.metadata_added")->value());
++  EXPECT_EQ(1UL,
++            test_server_->counter("sse_to_metadata.resp.json.mismatched_content_type")->value());
++  EXPECT_EQ(0UL, test_server_->counter("sse_to_metadata.resp.json.no_data_field")->value());
++  EXPECT_EQ(0UL, test_server_->counter("sse_to_metadata.resp.json.parse_error")->value());
++}
++
++TEST_P(SseToMetadataIntegrationTest, VerifyMetadataValues) {
++  // Configure access log to capture and verify actual metadata values
++  config_helper_.prependFilter(filter_config_);
++  useAccessLog("%DYNAMIC_METADATA(envoy.lb)%");
++  initialize();
++
++  codec_client_ = makeHttpConnection(lookupPort("http"));
++  auto response = codec_client_->makeHeaderOnlyRequest(request_headers_);
++
++  ASSERT_TRUE(fake_upstreams_[0]->waitForHttpConnection(*dispatcher_, fake_upstream_connection_));
++  ASSERT_TRUE(fake_upstream_connection_->waitForNewStream(*dispatcher_, upstream_request_));
++  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
++
++  // Send SSE response
++  upstream_request_->encodeHeaders(response_headers_, false);
++  Buffer::OwnedImpl buffer(sse_response_body_);
++  upstream_request_->encodeData(buffer, true);
++
++  ASSERT_TRUE(response->waitForEndStream());
++  EXPECT_TRUE(response->complete());
++
++  // Cleanup
++  codec_client_->close();
++  ASSERT_TRUE(fake_upstream_connection_->close());
++  ASSERT_TRUE(fake_upstream_connection_->waitForDisconnect());
++
++  // Verify metadata was extracted correctly
++  // The last matching event (event 3) has total_tokens: 30 and model: "gpt-4"
++  // These are the final values written to metadata (last wins)
++  std::string log = waitForAccessLog(access_log_name_);
++  EXPECT_THAT(log, testing::HasSubstr(R"("tokens":30)"));
++  EXPECT_THAT(log, testing::HasSubstr(R"("model_name":"gpt-4")"));
++
++  // Also verify stats
++  EXPECT_EQ(4UL, test_server_->counter("sse_to_metadata.resp.json.metadata_added")->value());
++  EXPECT_EQ(1UL, test_server_->counter("sse_to_metadata.resp.json.parse_error")->value());
++}
++
++// Test extraction of prompt_tokens and completion_tokens for input/output token-based rate limiting
++TEST_P(SseToMetadataIntegrationTest, VerifyTokenBreakdown) {
++  const std::string token_breakdown_config = R"EOF(
++name: envoy.filters.http.sse_to_metadata
++typed_config:
++  "@type": type.googleapis.com/envoy.extensions.filters.http.sse_to_metadata.v3.SseToMetadata
++  response_rules:
++    content_parser:
++      name: envoy.content_parsers.json
++      typed_config:
++        "@type": type.googleapis.com/envoy.extensions.content_parsers.json.v3.JsonContentParser
++        rules:
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "prompt_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "input_tokens"
++                type: NUMBER
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "completion_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "output_tokens"
++                type: NUMBER
++          - rule:
++              selectors:
++                - key: "usage"
++                - key: "total_tokens"
++              on_present:
++                metadata_namespace: "envoy.lb"
++                key: "total_tokens"
++                type: NUMBER
++)EOF";
++
++  config_helper_.prependFilter(token_breakdown_config);
++  useAccessLog("%DYNAMIC_METADATA(envoy.lb)%");
++  initialize();
++
++  codec_client_ = makeHttpConnection(lookupPort("http"));
++  auto response = codec_client_->makeHeaderOnlyRequest(request_headers_);
++
++  ASSERT_TRUE(fake_upstreams_[0]->waitForHttpConnection(*dispatcher_, fake_upstream_connection_));
++  ASSERT_TRUE(fake_upstream_connection_->waitForNewStream(*dispatcher_, upstream_request_));
++  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
++
++  // Send SSE response
++  upstream_request_->encodeHeaders(response_headers_, false);
++  Buffer::OwnedImpl buffer(sse_response_body_);
++  upstream_request_->encodeData(buffer, true);
++
++  ASSERT_TRUE(response->waitForEndStream());
++  EXPECT_TRUE(response->complete());
++
++  // Cleanup
++  codec_client_->close();
++  ASSERT_TRUE(fake_upstream_connection_->close());
++  ASSERT_TRUE(fake_upstream_connection_->waitForDisconnect());
++
++  // Verify all token metadata was extracted correctly
++  // From event 3: prompt_tokens: 10, completion_tokens: 20, total_tokens: 30
++  std::string log = waitForAccessLog(access_log_name_);
++  EXPECT_THAT(log, testing::HasSubstr(R"("input_tokens":10)"));
++  EXPECT_THAT(log, testing::HasSubstr(R"("output_tokens":20)"));
++  EXPECT_THAT(log, testing::HasSubstr(R"("total_tokens":30)"));
++
++  // Verify stats: 3 token fields extracted from event 3
++  EXPECT_EQ(3UL, test_server_->counter("sse_to_metadata.resp.json.metadata_added")->value());
++}
++
++} // namespace
++} // namespace Envoy
+diff --git a/tools/spelling/spelling_dictionary.txt b/tools/spelling/spelling_dictionary.txt
+index 56622c231..9650e9fba 100644
+--- a/tools/spelling/spelling_dictionary.txt
++++ b/tools/spelling/spelling_dictionary.txt
+@@ -325,6 +325,7 @@ lang
+ libcurl
+ libsxg
+ LLVM
++LLM
+ LPT
+ LRS
+ Loggable

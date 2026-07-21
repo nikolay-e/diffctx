@@ -100,7 +100,7 @@ depth class no current repo generates):
 | Perl/perl5 | Perl, C | grammar + legacy scale |
 | jgm/pandoc | Haskell | grammar, mono-language isolation |
 | tigerbeetle/tigerbeetle | Zig | grammar, exemplary commit hygiene |
-| gitlab-data/analytics (gitlab.com) | dbt, SQL | data-stack dimension |
+| mattermost/mattermost-data-warehouse | dbt, SQL | data-stack dimension (gitlab-data/analytics went private, 401) |
 
 B-tier (only with spare sweep budget): JuliaLang/julia, tidyverse/ggplot2,
 nix-community/home-manager, sveltejs/kit. LaTeX/nim/openapi: not worth the

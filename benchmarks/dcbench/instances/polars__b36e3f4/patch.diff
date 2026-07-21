@@ -1,0 +1,3943 @@
+From b36e3f444e1efb8238f3ab3648b27c9365204301 Mon Sep 17 00:00:00 2001
+From: Ritchie Vink <ritchie46@gmail.com>
+Date: Fri, 22 Sep 2023 09:19:49 +0200
+Subject: [PATCH] chore(rust): move (almost) all join related code from
+ polars-core to polars-ops. (#11228)
+
+---
+ .../logical/categorical/builder.rs            |  10 +-
+ .../logical/categorical/merge.rs              |   4 +-
+ .../logical/categorical/ops/append.rs         |   2 +-
+ .../logical/categorical/ops/zip.rs            |   2 +-
+ .../logical/categorical/stringcache.rs        |   6 +-
+ .../src/chunked_array/ops/unique/mod.rs       |   6 +-
+ .../polars-core/src/frame/group_by/hashing.rs |   6 +-
+ crates/polars-core/src/frame/hash_join/mod.rs | 363 +-----------
+ .../frame/hash_join/single_keys_dispatch.rs   | 543 ------------------
+ crates/polars-core/src/frame/mod.rs           |  14 +-
+ crates/polars-core/src/hashing/identity.rs    |   6 +-
+ crates/polars-core/src/hashing/mod.rs         |   4 +-
+ .../polars-core/src/hashing/vector_hasher.rs  | 100 +---
+ crates/polars-core/src/prelude.rs             |   4 -
+ .../src/series/implementations/categorical.rs |   4 +-
+ crates/polars-core/src/series/ops/unique.rs   |   4 +-
+ crates/polars-core/src/utils/flatten.rs       |   2 +-
+ crates/polars-core/src/utils/mod.rs           |  11 -
+ crates/polars-lazy/Cargo.toml                 |   6 +-
+ crates/polars-lazy/src/frame/mod.rs           |   1 -
+ .../src/physical_plan/executors/join.rs       |   2 -
+ .../src/physical_plan/expressions/window.rs   |   6 +-
+ crates/polars-lazy/src/physical_plan/state.rs |   2 +-
+ .../src/physical_plan/streaming/checks.rs     |   2 +-
+ crates/polars-lazy/src/prelude.rs             |   1 +
+ crates/polars-ops/Cargo.toml                  |   5 +
+ crates/polars-ops/src/frame/hashing.rs        | 102 ++++
+ .../src/frame/join}/args.rs                   |   6 +
+ .../src/frame/join/asof/default.rs}           |   0
+ .../src/frame/join/asof}/groups.rs            |  41 +-
+ .../src/frame/join/asof}/mod.rs               | 177 +++---
+ crates/polars-ops/src/frame/join/checks.rs    |  10 +
+ crates/polars-ops/src/frame/join/general.rs   |  47 ++
+ .../src/frame/join/hash_join/mod.rs           | 343 +++++++++++
+ .../frame/join}/hash_join/multiple_keys.rs    |  39 +-
+ .../src/frame/join}/hash_join/single_keys.rs  |  22 +-
+ .../join/hash_join/single_keys_dispatch.rs    | 466 +++++++++++++++
+ .../join}/hash_join/single_keys_inner.rs      |  34 +-
+ .../frame/join}/hash_join/single_keys_left.rs |  27 +-
+ .../join}/hash_join/single_keys_outer.rs      |  18 +-
+ .../join}/hash_join/single_keys_semi_anti.rs  |  42 +-
+ .../src/frame/join}/hash_join/sort_merge.rs   |  10 +-
+ crates/polars-ops/src/frame/join/mod.rs       |  55 +-
+ crates/polars-ops/src/frame/mod.rs            |   3 +-
+ crates/polars-ops/src/lib.rs                  |   2 +-
+ crates/polars-ops/src/prelude.rs              |   1 +
+ crates/polars-ops/src/series/ops/is_in.rs     |   2 +-
+ .../executors/sinks/joins/generic_build.rs    |   1 +
+ .../src/executors/sinks/joins/inner_left.rs   |   3 +-
+ .../src/executors/sinks/joins/mod.rs          |   1 +
+ crates/polars-pipe/src/pipeline/convert.rs    |   1 +
+ crates/polars-plan/src/dsl/options.rs         |   2 +-
+ crates/polars-time/src/upsample.rs            |   1 -
+ crates/polars/Cargo.toml                      |   2 +-
+ py-polars/Cargo.lock                          |   5 +
+ py-polars/Cargo.toml                          |  68 ++-
+ py-polars/src/conversion.rs                   |   1 -
+ py-polars/src/lazyframe.rs                    |   2 +-
+ 58 files changed, 1332 insertions(+), 1318 deletions(-)
+ delete mode 100644 crates/polars-core/src/frame/hash_join/single_keys_dispatch.rs
+ create mode 100644 crates/polars-ops/src/frame/hashing.rs
+ rename crates/{polars-core/src/frame/hash_join => polars-ops/src/frame/join}/args.rs (97%)
+ rename crates/{polars-core/src/frame/asof_join/asof.rs => polars-ops/src/frame/join/asof/default.rs} (100%)
+ rename crates/{polars-core/src/frame/asof_join => polars-ops/src/frame/join/asof}/groups.rs (97%)
+ rename crates/{polars-core/src/frame/asof_join => polars-ops/src/frame/join/asof}/mod.rs (53%)
+ create mode 100644 crates/polars-ops/src/frame/join/checks.rs
+ create mode 100644 crates/polars-ops/src/frame/join/general.rs
+ create mode 100644 crates/polars-ops/src/frame/join/hash_join/mod.rs
+ rename crates/{polars-core/src/frame => polars-ops/src/frame/join}/hash_join/multiple_keys.rs (93%)
+ rename crates/{polars-core/src/frame => polars-ops/src/frame/join}/hash_join/single_keys.rs (72%)
+ create mode 100644 crates/polars-ops/src/frame/join/hash_join/single_keys_dispatch.rs
+ rename crates/{polars-core/src/frame => polars-ops/src/frame/join}/hash_join/single_keys_inner.rs (84%)
+ rename crates/{polars-core/src/frame => polars-ops/src/frame/join}/hash_join/single_keys_left.rs (90%)
+ rename crates/{polars-core/src/frame => polars-ops/src/frame/join}/hash_join/single_keys_outer.rs (89%)
+ rename crates/{polars-core/src/frame => polars-ops/src/frame/join}/hash_join/single_keys_semi_anti.rs (72%)
+ rename crates/{polars-core/src/frame => polars-ops/src/frame/join}/hash_join/sort_merge.rs (98%)
+
+diff --git a/crates/polars-core/src/chunked_array/logical/categorical/builder.rs b/crates/polars-core/src/chunked_array/logical/categorical/builder.rs
+index ff7b6fefd..69568d554 100644
+--- a/crates/polars-core/src/chunked_array/logical/categorical/builder.rs
++++ b/crates/polars-core/src/chunked_array/logical/categorical/builder.rs
+@@ -6,7 +6,7 @@ use hashbrown::hash_map::{Entry, RawEntryMut};
+ use polars_arrow::trusted_len::TrustedLenPush;
+ 
+ use crate::datatypes::PlHashMap;
+-use crate::hashing::HASHMAP_INIT_SIZE;
++use crate::hashing::_HASHMAP_INIT_SIZE;
+ use crate::prelude::*;
+ use crate::{using_string_cache, StringCache, POOL};
+ 
+@@ -287,8 +287,10 @@ impl<'a> CategoricalChunkedBuilder<'a> {
+             self.hashes = Vec::with_capacity(iter.size_hint().0 / 10)
+         }
+         // It is important that we use the same hash builder as the global `StringCache` does.
+-        self.local_mapping =
+-            PlHashMap::with_capacity_and_hasher(HASHMAP_INIT_SIZE, StringCache::get_hash_builder());
++        self.local_mapping = PlHashMap::with_capacity_and_hasher(
++            _HASHMAP_INIT_SIZE,
++            StringCache::get_hash_builder(),
++        );
+         for opt_s in &mut iter {
+             match opt_s {
+                 Some(s) => self.push_impl(s, store_hashes),
+@@ -484,7 +486,7 @@ impl CategoricalChunked {
+     pub unsafe fn from_global_indices_unchecked(cats: UInt32Chunked) -> CategoricalChunked {
+         let cache = crate::STRING_CACHE.read_map();
+ 
+-        let cap = std::cmp::min(std::cmp::min(cats.len(), cache.len()), HASHMAP_INIT_SIZE);
++        let cap = std::cmp::min(std::cmp::min(cats.len(), cache.len()), _HASHMAP_INIT_SIZE);
+         let mut rev_map = PlHashMap::with_capacity(cap);
+         let mut str_values = MutableUtf8Array::with_capacities(cap, cap * 24);
+ 
+diff --git a/crates/polars-core/src/chunked_array/logical/categorical/merge.rs b/crates/polars-core/src/chunked_array/logical/categorical/merge.rs
+index f5e6a66cb..2e53a4e5f 100644
+--- a/crates/polars-core/src/chunked_array/logical/categorical/merge.rs
++++ b/crates/polars-core/src/chunked_array/logical/categorical/merge.rs
+@@ -143,7 +143,7 @@ pub(crate) fn merge_rev_map(
+ }
+ 
+ impl CategoricalChunked {
+-    pub(crate) fn merge_categorical_map(&self, other: &Self) -> PolarsResult<Arc<RevMapping>> {
++    pub fn _merge_categorical_map(&self, other: &Self) -> PolarsResult<Arc<RevMapping>> {
+         merge_rev_map(self.get_rev_map(), other.get_rev_map())
+     }
+ }
+@@ -167,7 +167,7 @@ mod test {
+         builder2.drain_iter(vec![Some("hello"), None, Some("world"), Some("bar")].into_iter());
+         let ca1 = builder1.finish();
+         let ca2 = builder2.finish();
+-        let rev_map = ca1.merge_categorical_map(&ca2).unwrap();
++        let rev_map = ca1._merge_categorical_map(&ca2).unwrap();
+ 
+         let mut ca = UInt32Chunked::new("", &[0, 1, 2, 3]);
+         ca.categorical_map = Some(rev_map);
+diff --git a/crates/polars-core/src/chunked_array/logical/categorical/ops/append.rs b/crates/polars-core/src/chunked_array/logical/categorical/ops/append.rs
+index 44587e704..6385cfba3 100644
+--- a/crates/polars-core/src/chunked_array/logical/categorical/ops/append.rs
++++ b/crates/polars-core/src/chunked_array/logical/categorical/ops/append.rs
+@@ -20,7 +20,7 @@ impl CategoricalChunked {
+             polars_bail!(string_cache_mismatch);
+         } else {
+             let len = self.len();
+-            let new_rev_map = self.merge_categorical_map(other)?;
++            let new_rev_map = self._merge_categorical_map(other)?;
+             unsafe { self.set_rev_map(new_rev_map, false) };
+ 
+             self.logical_mut().length += other.len() as IdxSize;
+diff --git a/crates/polars-core/src/chunked_array/logical/categorical/ops/zip.rs b/crates/polars-core/src/chunked_array/logical/categorical/ops/zip.rs
+index 732266ee7..7fcad0c73 100644
+--- a/crates/polars-core/src/chunked_array/logical/categorical/ops/zip.rs
++++ b/crates/polars-core/src/chunked_array/logical/categorical/ops/zip.rs
+@@ -15,7 +15,7 @@ impl CategoricalChunked {
+             },
+             _ => self.logical().zip_with(mask, other.logical())?,
+         };
+-        let new_state = self.merge_categorical_map(other)?;
++        let new_state = self._merge_categorical_map(other)?;
+ 
+         // Safety:
+         // we checked the rev_maps.
+diff --git a/crates/polars-core/src/chunked_array/logical/categorical/stringcache.rs b/crates/polars-core/src/chunked_array/logical/categorical/stringcache.rs
+index 8c7a20692..be590fa40 100644
+--- a/crates/polars-core/src/chunked_array/logical/categorical/stringcache.rs
++++ b/crates/polars-core/src/chunked_array/logical/categorical/stringcache.rs
+@@ -8,7 +8,7 @@ use once_cell::sync::Lazy;
+ use smartstring::{LazyCompact, SmartString};
+ 
+ use crate::datatypes::PlIdHashMap;
+-use crate::hashing::HASHMAP_INIT_SIZE;
++use crate::hashing::_HASHMAP_INIT_SIZE;
+ use crate::prelude::InitHashMaps;
+ 
+ /// We use atomic reference counting
+@@ -179,9 +179,9 @@ impl SCacheInner {
+ impl Default for SCacheInner {
+     fn default() -> Self {
+         Self {
+-            map: PlIdHashMap::with_capacity(HASHMAP_INIT_SIZE),
++            map: PlIdHashMap::with_capacity(_HASHMAP_INIT_SIZE),
+             uuid: STRING_CACHE_UUID_CTR.fetch_add(1, Ordering::AcqRel),
+-            payloads: Vec::with_capacity(HASHMAP_INIT_SIZE),
++            payloads: Vec::with_capacity(_HASHMAP_INIT_SIZE),
+         }
+     }
+ }
+diff --git a/crates/polars-core/src/chunked_array/ops/unique/mod.rs b/crates/polars-core/src/chunked_array/ops/unique/mod.rs
+index c8954e691..4a43f2e07 100644
+--- a/crates/polars-core/src/chunked_array/ops/unique/mod.rs
++++ b/crates/polars-core/src/chunked_array/ops/unique/mod.rs
+@@ -11,7 +11,7 @@ use crate::datatypes::PlHashSet;
+ use crate::frame::group_by::GroupsProxy;
+ #[cfg(feature = "mode")]
+ use crate::frame::group_by::IntoGroupsProxy;
+-use crate::hashing::HASHMAP_INIT_SIZE;
++use crate::hashing::_HASHMAP_INIT_SIZE;
+ use crate::prelude::*;
+ use crate::series::IsSorted;
+ 
+@@ -255,7 +255,7 @@ impl ChunkUnique<BinaryType> for BinaryChunked {
+         match self.null_count() {
+             0 => {
+                 let mut set =
+-                    PlHashSet::with_capacity(std::cmp::min(HASHMAP_INIT_SIZE, self.len()));
++                    PlHashSet::with_capacity(std::cmp::min(_HASHMAP_INIT_SIZE, self.len()));
+                 for arr in self.downcast_iter() {
+                     set.extend(arr.values_iter())
+                 }
+@@ -266,7 +266,7 @@ impl ChunkUnique<BinaryType> for BinaryChunked {
+             },
+             _ => {
+                 let mut set =
+-                    PlHashSet::with_capacity(std::cmp::min(HASHMAP_INIT_SIZE, self.len()));
++                    PlHashSet::with_capacity(std::cmp::min(_HASHMAP_INIT_SIZE, self.len()));
+                 for arr in self.downcast_iter() {
+                     set.extend(arr.iter())
+                 }
+diff --git a/crates/polars-core/src/frame/group_by/hashing.rs b/crates/polars-core/src/frame/group_by/hashing.rs
+index 7b2d2e5ef..462e10fbe 100644
+--- a/crates/polars-core/src/frame/group_by/hashing.rs
++++ b/crates/polars-core/src/frame/group_by/hashing.rs
+@@ -10,7 +10,7 @@ use super::GroupsProxy;
+ use crate::datatypes::PlHashMap;
+ use crate::frame::group_by::{GroupsIdx, IdxItem};
+ use crate::hashing::{
+-    df_rows_to_hashes_threaded_vertical, series_to_hashes, this_partition, AsU64, IdBuildHasher,
++    _df_rows_to_hashes_threaded_vertical, series_to_hashes, this_partition, AsU64, IdBuildHasher,
+     IdxHash, *,
+ };
+ use crate::prelude::compare_inner::PartialEqInner;
+@@ -23,7 +23,7 @@ fn get_init_size() -> usize {
+     // we don't want to pre-allocate this much if executed
+     // group_tuples in a parallel iterator as that explodes allocation
+     if POOL.current_thread_index().is_none() {
+-        HASHMAP_INIT_SIZE
++        _HASHMAP_INIT_SIZE
+     } else {
+         0
+     }
+@@ -383,7 +383,7 @@ pub(crate) fn group_by_threaded_multiple_keys_flat(
+     sorted: bool,
+ ) -> PolarsResult<GroupsProxy> {
+     let dfs = split_df(&mut keys, n_partitions).unwrap();
+-    let (hashes, _random_state) = df_rows_to_hashes_threaded_vertical(&dfs, None)?;
++    let (hashes, _random_state) = _df_rows_to_hashes_threaded_vertical(&dfs, None)?;
+     let n_partitions = n_partitions as u64;
+ 
+     let init_size = get_init_size();
+diff --git a/crates/polars-core/src/frame/hash_join/mod.rs b/crates/polars-core/src/frame/hash_join/mod.rs
+index 3e47d4f9e..a3f14bbb2 100644
+--- a/crates/polars-core/src/frame/hash_join/mod.rs
++++ b/crates/polars-core/src/frame/hash_join/mod.rs
+@@ -1,120 +1,8 @@
+-mod args;
+-pub(crate) mod multiple_keys;
+-pub(super) mod single_keys;
+-mod single_keys_dispatch;
+-mod single_keys_inner;
+-mod single_keys_left;
+-mod single_keys_outer;
+-#[cfg(feature = "semi_anti_join")]
+-mod single_keys_semi_anti;
+-pub(super) mod sort_merge;
+ mod zip_outer;
+ 
+-use std::fmt::{Debug, Display, Formatter};
+-use std::hash::{BuildHasher, Hash, Hasher};
+-
+-use ahash::RandomState;
+-pub use args::*;
+-#[cfg(feature = "chunked_ids")]
+-use arrow::Either;
+-use hashbrown::hash_map::{Entry, RawEntryMut};
+-use hashbrown::HashMap;
+-use polars_arrow::utils::CustomIterTools;
+-use rayon::prelude::*;
+-#[cfg(feature = "serde")]
+-use serde::{Deserialize, Serialize};
+-#[cfg(feature = "asof_join")]
+-pub(crate) use single_keys::build_tables;
+-#[cfg(feature = "asof_join")]
+-pub(crate) use single_keys_dispatch::prepare_bytes;
+-use single_keys_left::*;
+-use single_keys_outer::*;
+-#[cfg(feature = "semi_anti_join")]
+-use single_keys_semi_anti::*;
+-pub use sort_merge::*;
+ pub(crate) use zip_outer::*;
+ 
+-pub use self::multiple_keys::private_left_join_multiple_keys;
+-use crate::datatypes::PlHashMap;
+-pub use crate::frame::hash_join::multiple_keys::{
+-    _inner_join_multiple_keys, _left_join_multiple_keys, _outer_join_multiple_keys,
+-};
+-#[cfg(feature = "semi_anti_join")]
+-pub use crate::frame::hash_join::multiple_keys::{
+-    _left_anti_multiple_keys, _left_semi_multiple_keys,
+-};
+-use crate::hashing::{
+-    create_hash_and_keys_threaded_vectorized, prepare_hashed_relation_threaded, this_partition,
+-    AsU64, BytesHash, HASHMAP_INIT_SIZE,
+-};
+ use crate::prelude::*;
+-use crate::utils::{_set_partition_size, slice_slice, split_ca};
+-use crate::POOL;
+-
+-pub fn default_join_ids() -> ChunkJoinOptIds {
+-    #[cfg(feature = "chunked_ids")]
+-    {
+-        Either::Left(vec![])
+-    }
+-    #[cfg(not(feature = "chunked_ids"))]
+-    {
+-        vec![]
+-    }
+-}
+-
+-macro_rules! det_hash_prone_order {
+-    ($self:expr, $other:expr) => {{
+-        // The shortest relation will be used to create a hash table.
+-        let left_first = $self.len() > $other.len();
+-        let a;
+-        let b;
+-        if left_first {
+-            a = $self;
+-            b = $other;
+-        } else {
+-            b = $self;
+-            a = $other;
+-        }
+-
+-        (a, b, !left_first)
+-    }};
+-}
+-
+-pub(super) use det_hash_prone_order;
+-#[cfg(feature = "performant")]
+-use polars_arrow::conversion::primitive_to_vec;
+-use polars_utils::hash_to_partition;
+-
+-use crate::series::IsSorted;
+-
+-/// If Categorical types are created without a global string cache or under
+-/// a different global string cache the mapping will be incorrect.
+-#[cfg(feature = "dtype-categorical")]
+-pub fn _check_categorical_src(l: &DataType, r: &DataType) -> PolarsResult<()> {
+-    if let (DataType::Categorical(Some(l)), DataType::Categorical(Some(r))) = (l, r) {
+-        polars_ensure!(l.same_src(r), string_cache_mismatch);
+-    }
+-    Ok(())
+-}
+-
+-pub(crate) unsafe fn get_hash_tbl_threaded_join_partitioned<Item>(
+-    h: u64,
+-    hash_tables: &[Item],
+-    len: u64,
+-) -> &Item {
+-    let i = hash_to_partition(h, len as usize);
+-    hash_tables.get_unchecked(i)
+-}
+-
+-#[allow(clippy::type_complexity)]
+-unsafe fn get_hash_tbl_threaded_join_mut_partitioned<T, H>(
+-    h: u64,
+-    hash_tables: &mut [HashMap<T, (bool, Vec<IdxSize>), H>],
+-    len: u64,
+-) -> &mut HashMap<T, (bool, Vec<IdxSize>), H> {
+-    let i = hash_to_partition(h, len as usize);
+-    hash_tables.get_unchecked_mut(i)
+-}
+ 
+ pub fn _join_suffix_name(name: &str, suffix: &str) -> String {
+     format!("{name}{suffix}")
+@@ -122,7 +10,7 @@ pub fn _join_suffix_name(name: &str, suffix: &str) -> String {
+ 
+ /// Utility method to finish a join.
+ #[doc(hidden)]
+-pub fn _finish_join(
++pub(crate) fn _finish_join(
+     mut df_left: DataFrame,
+     mut df_right: DataFrame,
+     suffix: Option<&str>,
+@@ -150,252 +38,3 @@ pub fn _finish_join(
+     df_left.hstack_mut(&df_right.columns)?;
+     Ok(df_left)
+ }
+-
+-impl DataFrame {
+-    /// # Safety
+-    /// Join tuples must be in bounds
+-    #[cfg(feature = "chunked_ids")]
+-    unsafe fn create_left_df_chunked(&self, chunk_ids: &[ChunkId], left_join: bool) -> DataFrame {
+-        if left_join && chunk_ids.len() == self.height() {
+-            self.clone()
+-        } else {
+-            // left join keys are in ascending order
+-            let sorted = if left_join {
+-                IsSorted::Ascending
+-            } else {
+-                IsSorted::Not
+-            };
+-            self.take_chunked_unchecked(chunk_ids, sorted)
+-        }
+-    }
+-
+-    /// # Safety
+-    /// Join tuples must be in bounds
+-    pub unsafe fn _create_left_df_from_slice(
+-        &self,
+-        join_tuples: &[IdxSize],
+-        left_join: bool,
+-        sorted_tuple_idx: bool,
+-    ) -> DataFrame {
+-        if left_join && join_tuples.len() == self.height() {
+-            self.clone()
+-        } else {
+-            // left join tuples are always in ascending order
+-            let sorted = if left_join || sorted_tuple_idx {
+-                IsSorted::Ascending
+-            } else {
+-                IsSorted::Not
+-            };
+-
+-            self._take_unchecked_slice_sorted(join_tuples, true, sorted)
+-        }
+-    }
+-
+-    #[cfg(not(feature = "chunked_ids"))]
+-    pub fn _finish_left_join(
+-        &self,
+-        ids: LeftJoinIds,
+-        other: &DataFrame,
+-        args: JoinArgs,
+-    ) -> PolarsResult<DataFrame> {
+-        let (left_idx, right_idx) = ids;
+-        let materialize_left = || {
+-            let mut left_idx = &*left_idx;
+-            if let Some((offset, len)) = args.slice {
+-                left_idx = slice_slice(left_idx, offset, len);
+-            }
+-            unsafe { self._create_left_df_from_slice(left_idx, true, true) }
+-        };
+-
+-        let materialize_right = || {
+-            let mut right_idx = &*right_idx;
+-            if let Some((offset, len)) = args.slice {
+-                right_idx = slice_slice(right_idx, offset, len);
+-            }
+-            unsafe { other.take_unchecked(&right_idx.iter().copied().collect_ca("")) }
+-        };
+-        let (df_left, df_right) = POOL.join(materialize_left, materialize_right);
+-
+-        _finish_join(df_left, df_right, args.suffix.as_deref())
+-    }
+-
+-    #[cfg(feature = "chunked_ids")]
+-    pub fn _finish_left_join(
+-        &self,
+-        ids: LeftJoinIds,
+-        other: &DataFrame,
+-        args: JoinArgs,
+-    ) -> PolarsResult<DataFrame> {
+-        let suffix = &args.suffix;
+-        let slice = args.slice;
+-        let (left_idx, right_idx) = ids;
+-        let materialize_left = || match left_idx {
+-            ChunkJoinIds::Left(left_idx) => {
+-                let mut left_idx = &*left_idx;
+-                if let Some((offset, len)) = slice {
+-                    left_idx = slice_slice(left_idx, offset, len);
+-                }
+-                unsafe { self._create_left_df_from_slice(left_idx, true, true) }
+-            },
+-            ChunkJoinIds::Right(left_idx) => {
+-                let mut left_idx = &*left_idx;
+-                if let Some((offset, len)) = slice {
+-                    left_idx = slice_slice(left_idx, offset, len);
+-                }
+-                unsafe { self.create_left_df_chunked(left_idx, true) }
+-            },
+-        };
+-
+-        let materialize_right = || match right_idx {
+-            ChunkJoinOptIds::Left(right_idx) => {
+-                let mut right_idx = &*right_idx;
+-                if let Some((offset, len)) = slice {
+-                    right_idx = slice_slice(right_idx, offset, len);
+-                }
+-                unsafe { other.take_unchecked(&right_idx.iter().copied().collect_ca("")) }
+-            },
+-            ChunkJoinOptIds::Right(right_idx) => {
+-                let mut right_idx = &*right_idx;
+-                if let Some((offset, len)) = slice {
+-                    right_idx = slice_slice(right_idx, offset, len);
+-                }
+-                unsafe { other.take_opt_chunked_unchecked(right_idx) }
+-            },
+-        };
+-        let (df_left, df_right) = POOL.join(materialize_left, materialize_right);
+-
+-        _finish_join(df_left, df_right, suffix.as_deref())
+-    }
+-
+-    pub fn _left_join_from_series(
+-        &self,
+-        other: &DataFrame,
+-        s_left: &Series,
+-        s_right: &Series,
+-        args: JoinArgs,
+-        verbose: bool,
+-    ) -> PolarsResult<DataFrame> {
+-        #[cfg(feature = "dtype-categorical")]
+-        _check_categorical_src(s_left.dtype(), s_right.dtype())?;
+-
+-        // ensure that the chunks are aligned otherwise we go OOB
+-        let mut left = self.clone();
+-        let mut s_left = s_left.clone();
+-        let mut right = other.clone();
+-        let mut s_right = s_right.clone();
+-        if left.should_rechunk() {
+-            left.as_single_chunk_par();
+-            s_left = s_left.rechunk();
+-        }
+-        if right.should_rechunk() {
+-            right.as_single_chunk_par();
+-            s_right = s_right.rechunk();
+-        }
+-        let ids = sort_or_hash_left(&s_left, &s_right, verbose, args.validation)?;
+-        left._finish_left_join(ids, &right.drop(s_right.name()).unwrap(), args)
+-    }
+-
+-    #[cfg(feature = "semi_anti_join")]
+-    /// # Safety
+-    /// `idx` must be in bounds
+-    pub unsafe fn _finish_anti_semi_join(
+-        &self,
+-        mut idx: &[IdxSize],
+-        slice: Option<(i64, usize)>,
+-    ) -> DataFrame {
+-        if let Some((offset, len)) = slice {
+-            idx = slice_slice(idx, offset, len);
+-        }
+-        // idx from anti-semi join should always be sorted
+-        self._take_unchecked_slice_sorted(idx, true, IsSorted::Ascending)
+-    }
+-
+-    #[cfg(feature = "semi_anti_join")]
+-    pub fn _semi_anti_join_from_series(
+-        &self,
+-        s_left: &Series,
+-        s_right: &Series,
+-        slice: Option<(i64, usize)>,
+-        anti: bool,
+-    ) -> PolarsResult<DataFrame> {
+-        #[cfg(feature = "dtype-categorical")]
+-        _check_categorical_src(s_left.dtype(), s_right.dtype())?;
+-
+-        let idx = s_left.hash_join_semi_anti(s_right, anti);
+-        // Safety:
+-        // indices are in bounds
+-        Ok(unsafe { self._finish_anti_semi_join(&idx, slice) })
+-    }
+-    pub fn _outer_join_from_series(
+-        &self,
+-        other: &DataFrame,
+-        s_left: &Series,
+-        s_right: &Series,
+-        args: JoinArgs,
+-    ) -> PolarsResult<DataFrame> {
+-        #[cfg(feature = "dtype-categorical")]
+-        _check_categorical_src(s_left.dtype(), s_right.dtype())?;
+-
+-        // store this so that we can keep original column order.
+-        let join_column_index = self.iter().position(|s| s.name() == s_left.name()).unwrap();
+-
+-        // Get the indexes of the joined relations
+-        let opt_join_tuples = s_left.hash_join_outer(s_right, args.validation)?;
+-        let mut opt_join_tuples = &*opt_join_tuples;
+-
+-        if let Some((offset, len)) = args.slice {
+-            opt_join_tuples = slice_slice(opt_join_tuples, offset, len);
+-        }
+-
+-        // Take the left and right dataframes by join tuples
+-        let (mut df_left, df_right) = POOL.join(
+-            || unsafe {
+-                self.drop(s_left.name()).unwrap().take_unchecked(
+-                    &opt_join_tuples
+-                        .iter()
+-                        .copied()
+-                        .map(|(left, _right)| left)
+-                        .collect_ca("outer-join-left-indices"),
+-                )
+-            },
+-            || unsafe {
+-                other.drop(s_right.name()).unwrap().take_unchecked(
+-                    &opt_join_tuples
+-                        .iter()
+-                        .copied()
+-                        .map(|(_left, right)| right)
+-                        .collect_ca("outer-join-right-indices"),
+-                )
+-            },
+-        );
+-
+-        let s = unsafe {
+-            s_left
+-                .to_physical_repr()
+-                .zip_outer_join_column(&s_right.to_physical_repr(), opt_join_tuples)
+-                .with_name(s_left.name())
+-        };
+-        let s = match s_left.dtype() {
+-            #[cfg(feature = "dtype-categorical")]
+-            DataType::Categorical(_) => {
+-                let ca_left = s_left.categorical().unwrap();
+-                let new_rev_map = ca_left.merge_categorical_map(s_right.categorical().unwrap())?;
+-                let logical = s.u32().unwrap().clone();
+-                // safety:
+-                // categorical maps are merged
+-                unsafe {
+-                    CategoricalChunked::from_cats_and_rev_map_unchecked(logical, new_rev_map)
+-                        .into_series()
+-                }
+-            },
+-            dt @ DataType::Datetime(_, _)
+-            | dt @ DataType::Time
+-            | dt @ DataType::Date
+-            | dt @ DataType::Duration(_) => s.cast(dt).unwrap(),
+-            _ => s,
+-        };
+-
+-        unsafe { df_left.get_columns_mut().insert(join_column_index, s) };
+-        _finish_join(df_left, df_right, args.suffix.as_deref())
+-    }
+-}
+diff --git a/crates/polars-core/src/frame/hash_join/single_keys_dispatch.rs b/crates/polars-core/src/frame/hash_join/single_keys_dispatch.rs
+deleted file mode 100644
+index 6bcf87273..000000000
+--- a/crates/polars-core/src/frame/hash_join/single_keys_dispatch.rs
++++ /dev/null
+@@ -1,543 +0,0 @@
+-use num_traits::NumCast;
+-
+-use super::single_keys_inner::hash_join_tuples_inner;
+-use super::*;
+-#[cfg(feature = "chunked_ids")]
+-use crate::utils::create_chunked_index_mapping;
+-
+-impl Series {
+-    #[doc(hidden)]
+-    pub fn hash_join_left(
+-        &self,
+-        other: &Series,
+-        validate: JoinValidation,
+-    ) -> PolarsResult<LeftJoinIds> {
+-        let (lhs, rhs) = (self.to_physical_repr(), other.to_physical_repr());
+-        validate.validate_probe(&lhs, &rhs, false)?;
+-
+-        use DataType::*;
+-        match lhs.dtype() {
+-            Utf8 => {
+-                let lhs = lhs.utf8().unwrap();
+-                let rhs = rhs.utf8().unwrap();
+-
+-                let lhs = lhs.as_binary();
+-                let rhs = rhs.as_binary();
+-                lhs.hash_join_left(&rhs, validate)
+-            },
+-            Binary => {
+-                let lhs = lhs.binary().unwrap();
+-                let rhs = rhs.binary().unwrap();
+-                lhs.hash_join_left(rhs, validate)
+-            },
+-            _ => {
+-                if self.bit_repr_is_large() {
+-                    let lhs = lhs.bit_repr_large();
+-                    let rhs = rhs.bit_repr_large();
+-                    num_group_join_left(&lhs, &rhs, validate)
+-                } else {
+-                    let lhs = lhs.bit_repr_small();
+-                    let rhs = rhs.bit_repr_small();
+-                    num_group_join_left(&lhs, &rhs, validate)
+-                }
+-            },
+-        }
+-    }
+-
+-    #[cfg(feature = "semi_anti_join")]
+-    pub(super) fn hash_join_semi_anti(&self, other: &Series, anti: bool) -> Vec<IdxSize> {
+-        let (lhs, rhs) = (self.to_physical_repr(), other.to_physical_repr());
+-
+-        use DataType::*;
+-        match lhs.dtype() {
+-            Utf8 => {
+-                let lhs = lhs.cast(&Binary).unwrap();
+-                let rhs = rhs.cast(&Binary).unwrap();
+-
+-                let lhs = lhs.binary().unwrap();
+-                let rhs = rhs.binary().unwrap();
+-                lhs.hash_join_semi_anti(rhs, anti)
+-            },
+-            Binary => {
+-                let lhs = lhs.binary().unwrap();
+-                let rhs = rhs.binary().unwrap();
+-                lhs.hash_join_semi_anti(rhs, anti)
+-            },
+-            _ => {
+-                if self.bit_repr_is_large() {
+-                    let lhs = lhs.bit_repr_large();
+-                    let rhs = rhs.bit_repr_large();
+-                    num_group_join_anti_semi(&lhs, &rhs, anti)
+-                } else {
+-                    let lhs = lhs.bit_repr_small();
+-                    let rhs = rhs.bit_repr_small();
+-                    num_group_join_anti_semi(&lhs, &rhs, anti)
+-                }
+-            },
+-        }
+-    }
+-
+-    // returns the join tuples and whether or not the lhs tuples are sorted
+-    pub(super) fn hash_join_inner(
+-        &self,
+-        other: &Series,
+-        validate: JoinValidation,
+-    ) -> PolarsResult<(InnerJoinIds, bool)> {
+-        let (lhs, rhs) = (self.to_physical_repr(), other.to_physical_repr());
+-        validate.validate_probe(&lhs, &rhs, true)?;
+-
+-        use DataType::*;
+-        match lhs.dtype() {
+-            Utf8 => {
+-                let lhs = lhs.utf8().unwrap();
+-                let rhs = rhs.utf8().unwrap();
+-
+-                let lhs = lhs.as_binary();
+-                let rhs = rhs.as_binary();
+-                lhs.hash_join_inner(&rhs, validate)
+-            },
+-            Binary => {
+-                let lhs = lhs.binary().unwrap();
+-                let rhs = rhs.binary().unwrap();
+-                lhs.hash_join_inner(rhs, validate)
+-            },
+-            _ => {
+-                if self.bit_repr_is_large() {
+-                    let lhs = self.bit_repr_large();
+-                    let rhs = other.bit_repr_large();
+-                    num_group_join_inner(&lhs, &rhs, validate)
+-                } else {
+-                    let lhs = self.bit_repr_small();
+-                    let rhs = other.bit_repr_small();
+-                    num_group_join_inner(&lhs, &rhs, validate)
+-                }
+-            },
+-        }
+-    }
+-
+-    pub(super) fn hash_join_outer(
+-        &self,
+-        other: &Series,
+-        validate: JoinValidation,
+-    ) -> PolarsResult<Vec<(Option<IdxSize>, Option<IdxSize>)>> {
+-        let (lhs, rhs) = (self.to_physical_repr(), other.to_physical_repr());
+-        validate.validate_probe(&lhs, &rhs, true)?;
+-
+-        use DataType::*;
+-        match lhs.dtype() {
+-            Utf8 => {
+-                let lhs = lhs.utf8().unwrap();
+-                let rhs = rhs.utf8().unwrap();
+-
+-                let lhs = lhs.as_binary();
+-                let rhs = rhs.as_binary();
+-                lhs.hash_join_outer(&rhs, validate)
+-            },
+-            Binary => {
+-                let lhs = lhs.binary().unwrap();
+-                let rhs = rhs.binary().unwrap();
+-                lhs.hash_join_outer(rhs, validate)
+-            },
+-            _ => {
+-                if self.bit_repr_is_large() {
+-                    let lhs = self.bit_repr_large();
+-                    let rhs = other.bit_repr_large();
+-                    lhs.hash_join_outer(&rhs, validate)
+-                } else {
+-                    let lhs = self.bit_repr_small();
+-                    let rhs = other.bit_repr_small();
+-                    lhs.hash_join_outer(&rhs, validate)
+-                }
+-            },
+-        }
+-    }
+-}
+-
+-fn splitted_to_slice<T>(splitted: &[ChunkedArray<T>]) -> Vec<&[T::Native]>
+-where
+-    T: PolarsNumericType,
+-{
+-    splitted.iter().map(|ca| ca.cont_slice().unwrap()).collect()
+-}
+-
+-fn splitted_by_chunks<T>(splitted: &[ChunkedArray<T>]) -> Vec<&[T::Native]>
+-where
+-    T: PolarsNumericType,
+-{
+-    splitted
+-        .iter()
+-        .flat_map(|ca| ca.downcast_iter().map(|arr| arr.values().as_slice()))
+-        .collect()
+-}
+-
+-fn splitted_to_opt_vec<T>(splitted: &[ChunkedArray<T>]) -> Vec<Vec<Option<T::Native>>>
+-where
+-    T: PolarsNumericType,
+-{
+-    POOL.install(|| {
+-        splitted
+-            .par_iter()
+-            .map(|ca| ca.into_iter().collect_trusted::<Vec<_>>())
+-            .collect()
+-    })
+-}
+-
+-// returns the join tuples and whether or not the lhs tuples are sorted
+-fn num_group_join_inner<T>(
+-    left: &ChunkedArray<T>,
+-    right: &ChunkedArray<T>,
+-    validate: JoinValidation,
+-) -> PolarsResult<(InnerJoinIds, bool)>
+-where
+-    T: PolarsIntegerType,
+-    T::Native: Hash + Eq + Send + AsU64 + Copy,
+-    Option<T::Native>: AsU64,
+-{
+-    let n_threads = POOL.current_num_threads();
+-    let (a, b, swapped) = det_hash_prone_order!(left, right);
+-    let splitted_a = split_ca(a, n_threads).unwrap();
+-    let splitted_b = split_ca(b, n_threads).unwrap();
+-    match (
+-        left.null_count() == 0,
+-        right.null_count() == 0,
+-        left.chunks.len(),
+-        right.chunks.len(),
+-    ) {
+-        (true, true, 1, 1) => {
+-            let keys_a = splitted_to_slice(&splitted_a);
+-            let keys_b = splitted_to_slice(&splitted_b);
+-            Ok((
+-                hash_join_tuples_inner(keys_a, keys_b, swapped, validate)?,
+-                !swapped,
+-            ))
+-        },
+-        (true, true, _, _) => {
+-            let keys_a = splitted_by_chunks(&splitted_a);
+-            let keys_b = splitted_by_chunks(&splitted_b);
+-            Ok((
+-                hash_join_tuples_inner(keys_a, keys_b, swapped, validate)?,
+-                !swapped,
+-            ))
+-        },
+-        _ => {
+-            let keys_a = splitted_to_opt_vec(&splitted_a);
+-            let keys_b = splitted_to_opt_vec(&splitted_b);
+-            Ok((
+-                hash_join_tuples_inner(keys_a, keys_b, swapped, validate)?,
+-                !swapped,
+-            ))
+-        },
+-    }
+-}
+-
+-#[cfg(feature = "chunked_ids")]
+-fn create_mappings(
+-    chunks_left: &[ArrayRef],
+-    chunks_right: &[ArrayRef],
+-    left_len: usize,
+-    right_len: usize,
+-) -> (Option<Vec<ChunkId>>, Option<Vec<ChunkId>>) {
+-    let mapping_left = || {
+-        if chunks_left.len() > 1 {
+-            Some(create_chunked_index_mapping(chunks_left, left_len))
+-        } else {
+-            None
+-        }
+-    };
+-
+-    let mapping_right = || {
+-        if chunks_right.len() > 1 {
+-            Some(create_chunked_index_mapping(chunks_right, right_len))
+-        } else {
+-            None
+-        }
+-    };
+-
+-    POOL.join(mapping_left, mapping_right)
+-}
+-
+-#[cfg(not(feature = "chunked_ids"))]
+-fn create_mappings(
+-    _chunks_left: &[ArrayRef],
+-    _chunks_right: &[ArrayRef],
+-    _left_len: usize,
+-    _right_len: usize,
+-) -> (Option<Vec<ChunkId>>, Option<Vec<ChunkId>>) {
+-    (None, None)
+-}
+-
+-fn num_group_join_left<T>(
+-    left: &ChunkedArray<T>,
+-    right: &ChunkedArray<T>,
+-    validate: JoinValidation,
+-) -> PolarsResult<LeftJoinIds>
+-where
+-    T: PolarsIntegerType,
+-    T::Native: Hash + Eq + Send + AsU64,
+-    Option<T::Native>: AsU64,
+-{
+-    let n_threads = POOL.current_num_threads();
+-    let splitted_a = split_ca(left, n_threads).unwrap();
+-    let splitted_b = split_ca(right, n_threads).unwrap();
+-    match (
+-        left.null_count(),
+-        right.null_count(),
+-        left.chunks.len(),
+-        right.chunks.len(),
+-    ) {
+-        (0, 0, 1, 1) => {
+-            let keys_a = splitted_to_slice(&splitted_a);
+-            let keys_b = splitted_to_slice(&splitted_b);
+-            hash_join_tuples_left(keys_a, keys_b, None, None, validate)
+-        },
+-        (0, 0, _, _) => {
+-            let keys_a = splitted_by_chunks(&splitted_a);
+-            let keys_b = splitted_by_chunks(&splitted_b);
+-
+-            let (mapping_left, mapping_right) =
+-                create_mappings(left.chunks(), right.chunks(), left.len(), right.len());
+-            hash_join_tuples_left(
+-                keys_a,
+-                keys_b,
+-                mapping_left.as_deref(),
+-                mapping_right.as_deref(),
+-                validate,
+-            )
+-        },
+-        _ => {
+-            let keys_a = splitted_to_opt_vec(&splitted_a);
+-            let keys_b = splitted_to_opt_vec(&splitted_b);
+-            let (mapping_left, mapping_right) =
+-                create_mappings(left.chunks(), right.chunks(), left.len(), right.len());
+-            hash_join_tuples_left(
+-                keys_a,
+-                keys_b,
+-                mapping_left.as_deref(),
+-                mapping_right.as_deref(),
+-                validate,
+-            )
+-        },
+-    }
+-}
+-
+-impl<T> ChunkedArray<T>
+-where
+-    T: PolarsIntegerType + Sync,
+-    T::Native: Eq + Hash + NumCast,
+-{
+-    fn hash_join_outer(
+-        &self,
+-        other: &ChunkedArray<T>,
+-        validate: JoinValidation,
+-    ) -> PolarsResult<Vec<(Option<IdxSize>, Option<IdxSize>)>> {
+-        let (a, b, swapped) = det_hash_prone_order!(self, other);
+-
+-        let n_partitions = _set_partition_size();
+-        let splitted_a = split_ca(a, n_partitions).unwrap();
+-        let splitted_b = split_ca(b, n_partitions).unwrap();
+-
+-        match (a.null_count(), b.null_count()) {
+-            (0, 0) => {
+-                let iters_a = splitted_a
+-                    .iter()
+-                    .map(|ca| ca.into_no_null_iter())
+-                    .collect::<Vec<_>>();
+-                let iters_b = splitted_b
+-                    .iter()
+-                    .map(|ca| ca.into_no_null_iter())
+-                    .collect::<Vec<_>>();
+-                hash_join_tuples_outer(iters_a, iters_b, swapped, validate)
+-            },
+-            _ => {
+-                let iters_a = splitted_a
+-                    .iter()
+-                    .map(|ca| ca.into_iter())
+-                    .collect::<Vec<_>>();
+-                let iters_b = splitted_b
+-                    .iter()
+-                    .map(|ca| ca.into_iter())
+-                    .collect::<Vec<_>>();
+-                hash_join_tuples_outer(iters_a, iters_b, swapped, validate)
+-            },
+-        }
+-    }
+-}
+-
+-pub(crate) fn prepare_bytes<'a>(
+-    been_split: &'a [BinaryChunked],
+-    hb: &RandomState,
+-) -> Vec<Vec<BytesHash<'a>>> {
+-    POOL.install(|| {
+-        been_split
+-            .par_iter()
+-            .map(|ca| {
+-                ca.into_iter()
+-                    .map(|opt_b| {
+-                        let mut state = hb.build_hasher();
+-                        opt_b.hash(&mut state);
+-                        let hash = state.finish();
+-                        BytesHash::new(opt_b, hash)
+-                    })
+-                    .collect::<Vec<_>>()
+-            })
+-            .collect()
+-    })
+-}
+-
+-impl BinaryChunked {
+-    fn prepare(
+-        &self,
+-        other: &BinaryChunked,
+-        // In inner join and outer join, the shortest relation will be used to create a hash table.
+-        // In left join, always use the right side to create.
+-        build_shortest_table: bool,
+-    ) -> (Vec<Self>, Vec<Self>, bool, RandomState) {
+-        let n_threads = POOL.current_num_threads();
+-
+-        let (a, b, swapped) = if build_shortest_table {
+-            det_hash_prone_order!(self, other)
+-        } else {
+-            (self, other, false)
+-        };
+-
+-        let hb = RandomState::default();
+-        let splitted_a = split_ca(a, n_threads).unwrap();
+-        let splitted_b = split_ca(b, n_threads).unwrap();
+-
+-        (splitted_a, splitted_b, swapped, hb)
+-    }
+-
+-    // returns the join tuples and whether or not the lhs tuples are sorted
+-    fn hash_join_inner(
+-        &self,
+-        other: &BinaryChunked,
+-        validate: JoinValidation,
+-    ) -> PolarsResult<(InnerJoinIds, bool)> {
+-        let (splitted_a, splitted_b, swapped, hb) = self.prepare(other, true);
+-        let str_hashes_a = prepare_bytes(&splitted_a, &hb);
+-        let str_hashes_b = prepare_bytes(&splitted_b, &hb);
+-        Ok((
+-            hash_join_tuples_inner(str_hashes_a, str_hashes_b, swapped, validate)?,
+-            !swapped,
+-        ))
+-    }
+-
+-    fn hash_join_left(
+-        &self,
+-        other: &BinaryChunked,
+-        validate: JoinValidation,
+-    ) -> PolarsResult<LeftJoinIds> {
+-        let (splitted_a, splitted_b, _, hb) = self.prepare(other, false);
+-        let str_hashes_a = prepare_bytes(&splitted_a, &hb);
+-        let str_hashes_b = prepare_bytes(&splitted_b, &hb);
+-
+-        let (mapping_left, mapping_right) =
+-            create_mappings(self.chunks(), other.chunks(), self.len(), other.len());
+-        hash_join_tuples_left(
+-            str_hashes_a,
+-            str_hashes_b,
+-            mapping_left.as_deref(),
+-            mapping_right.as_deref(),
+-            validate,
+-        )
+-    }
+-
+-    #[cfg(feature = "semi_anti_join")]
+-    fn hash_join_semi_anti(&self, other: &BinaryChunked, anti: bool) -> Vec<IdxSize> {
+-        let (splitted_a, splitted_b, _, hb) = self.prepare(other, false);
+-        let str_hashes_a = prepare_bytes(&splitted_a, &hb);
+-        let str_hashes_b = prepare_bytes(&splitted_b, &hb);
+-        if anti {
+-            hash_join_tuples_left_anti(str_hashes_a, str_hashes_b)
+-        } else {
+-            hash_join_tuples_left_semi(str_hashes_a, str_hashes_b)
+-        }
+-    }
+-
+-    fn hash_join_outer(
+-        &self,
+-        other: &BinaryChunked,
+-        validate: JoinValidation,
+-    ) -> PolarsResult<Vec<(Option<IdxSize>, Option<IdxSize>)>> {
+-        let (a, b, swapped) = det_hash_prone_order!(self, other);
+-
+-        let n_partitions = _set_partition_size();
+-        let splitted_a = split_ca(a, n_partitions).unwrap();
+-        let splitted_b = split_ca(b, n_partitions).unwrap();
+-
+-        match (a.has_validity(), b.has_validity()) {
+-            (false, false) => {
+-                let iters_a = splitted_a
+-                    .iter()
+-                    .map(|ca| ca.into_no_null_iter())
+-                    .collect::<Vec<_>>();
+-                let iters_b = splitted_b
+-                    .iter()
+-                    .map(|ca| ca.into_no_null_iter())
+-                    .collect::<Vec<_>>();
+-                hash_join_tuples_outer(iters_a, iters_b, swapped, validate)
+-            },
+-            _ => {
+-                let iters_a = splitted_a
+-                    .iter()
+-                    .map(|ca| ca.into_iter())
+-                    .collect::<Vec<_>>();
+-                let iters_b = splitted_b
+-                    .iter()
+-                    .map(|ca| ca.into_iter())
+-                    .collect::<Vec<_>>();
+-                hash_join_tuples_outer(iters_a, iters_b, swapped, validate)
+-            },
+-        }
+-    }
+-}
+-
+-#[cfg(feature = "semi_anti_join")]
+-fn num_group_join_anti_semi<T>(
+-    left: &ChunkedArray<T>,
+-    right: &ChunkedArray<T>,
+-    anti: bool,
+-) -> Vec<IdxSize>
+-where
+-    T: PolarsIntegerType,
+-    T::Native: Hash + Eq + Send + AsU64,
+-    Option<T::Native>: AsU64,
+-{
+-    let n_threads = POOL.current_num_threads();
+-    let splitted_a = split_ca(left, n_threads).unwrap();
+-    let splitted_b = split_ca(right, n_threads).unwrap();
+-    match (
+-        left.null_count(),
+-        right.null_count(),
+-        left.chunks.len(),
+-        right.chunks.len(),
+-    ) {
+-        (0, 0, 1, 1) => {
+-            let keys_a = splitted_to_slice(&splitted_a);
+-            let keys_b = splitted_to_slice(&splitted_b);
+-            if anti {
+-                hash_join_tuples_left_anti(keys_a, keys_b)
+-            } else {
+-                hash_join_tuples_left_semi(keys_a, keys_b)
+-            }
+-        },
+-        (0, 0, _, _) => {
+-            let keys_a = splitted_by_chunks(&splitted_a);
+-            let keys_b = splitted_by_chunks(&splitted_b);
+-            if anti {
+-                hash_join_tuples_left_anti(keys_a, keys_b)
+-            } else {
+-                hash_join_tuples_left_semi(keys_a, keys_b)
+-            }
+-        },
+-        _ => {
+-            let keys_a = splitted_to_opt_vec(&splitted_a);
+-            let keys_b = splitted_to_opt_vec(&splitted_b);
+-            if anti {
+-                hash_join_tuples_left_anti(keys_a, keys_b)
+-            } else {
+-                hash_join_tuples_left_semi(keys_a, keys_b)
+-            }
+-        },
+-    }
+-}
+diff --git a/crates/polars-core/src/frame/mod.rs b/crates/polars-core/src/frame/mod.rs
+index 03bcf7b14..01e4a893d 100644
+--- a/crates/polars-core/src/frame/mod.rs
++++ b/crates/polars-core/src/frame/mod.rs
+@@ -16,8 +16,6 @@ use crate::utils::{slice_offsets, split_ca, split_df, try_get_supertype, NoNull}
+ 
+ #[cfg(feature = "dataframe_arithmetic")]
+ mod arithmetic;
+-#[cfg(feature = "asof_join")]
+-pub(crate) mod asof_join;
+ mod chunks;
+ #[cfg(feature = "cross_join")]
+ pub(crate) mod cross_join;
+@@ -40,7 +38,7 @@ use smartstring::alias::String as SmartString;
+ #[cfg(feature = "algorithm_group_by")]
+ use crate::frame::group_by::GroupsIndicator;
+ #[cfg(feature = "row_hash")]
+-use crate::hashing::df_rows_to_hashes_threaded_vertical;
++use crate::hashing::_df_rows_to_hashes_threaded_vertical;
+ #[cfg(feature = "zip_with")]
+ use crate::prelude::min_max_binary::min_max_binary_series;
+ use crate::prelude::sort::{argsort_multiple_row_fmt, prepare_arg_sort};
+@@ -3149,7 +3147,7 @@ impl DataFrame {
+         hasher_builder: Option<ahash::RandomState>,
+     ) -> PolarsResult<UInt64Chunked> {
+         let dfs = split_df(self, POOL.current_num_threads())?;
+-        let (cas, _) = df_rows_to_hashes_threaded_vertical(&dfs, hasher_builder)?;
++        let (cas, _) = _df_rows_to_hashes_threaded_vertical(&dfs, hasher_builder)?;
+ 
+         let mut iter = cas.into_iter();
+         let mut acc_ca = iter.next().unwrap();
+@@ -3194,7 +3192,9 @@ impl DataFrame {
+     }
+ 
+     #[cfg(feature = "chunked_ids")]
+-    pub(crate) unsafe fn take_chunked_unchecked(&self, idx: &[ChunkId], sorted: IsSorted) -> Self {
++    /// # Safety
++    /// Doesn't perform any bound checks
++    pub unsafe fn _take_chunked_unchecked(&self, idx: &[ChunkId], sorted: IsSorted) -> Self {
+         let cols = self.apply_columns_par(&|s| match s.dtype() {
+             DataType::Utf8 => s._take_chunked_unchecked_threaded(idx, sorted, true),
+             _ => s._take_chunked_unchecked(idx, sorted),
+@@ -3204,7 +3204,9 @@ impl DataFrame {
+     }
+ 
+     #[cfg(feature = "chunked_ids")]
+-    pub(crate) unsafe fn take_opt_chunked_unchecked(&self, idx: &[Option<ChunkId>]) -> Self {
++    /// # Safety
++    /// Doesn't perform any bound checks
++    pub unsafe fn _take_opt_chunked_unchecked(&self, idx: &[Option<ChunkId>]) -> Self {
+         let cols = self.apply_columns_par(&|s| match s.dtype() {
+             DataType::Utf8 => s._take_opt_chunked_unchecked_threaded(idx, true),
+             _ => s._take_opt_chunked_unchecked(idx),
+diff --git a/crates/polars-core/src/hashing/identity.rs b/crates/polars-core/src/hashing/identity.rs
+index 40e27d8ab..2b09b27c7 100644
+--- a/crates/polars-core/src/hashing/identity.rs
++++ b/crates/polars-core/src/hashing/identity.rs
+@@ -42,11 +42,11 @@ pub type IdBuildHasher = BuildHasherDefault<IdHasher>;
+ /// Contains an idx of a row in a DataFrame and the precomputed hash of that row.
+ /// That hash still needs to be used to create another hash to be able to resize hashmaps without
+ /// accidental quadratic behavior. So do not use an Identity function!
+-pub(crate) struct IdxHash {
++pub struct IdxHash {
+     // idx in row of Series, DataFrame
+-    pub(crate) idx: IdxSize,
++    pub idx: IdxSize,
+     // precomputed hash of T
+-    pub(crate) hash: u64,
++    pub hash: u64,
+ }
+ 
+ impl Hash for IdxHash {
+diff --git a/crates/polars-core/src/hashing/mod.rs b/crates/polars-core/src/hashing/mod.rs
+index c94bc8cc1..ab9ba1478 100644
+--- a/crates/polars-core/src/hashing/mod.rs
++++ b/crates/polars-core/src/hashing/mod.rs
+@@ -23,7 +23,7 @@ pub fn _boost_hash_combine(l: u64, r: u64) -> u64 {
+ 
+ // We must strike a balance between cache
+ // Overallocation seems a lot more expensive than resizing so we start reasonable small.
+-pub(crate) const HASHMAP_INIT_SIZE: usize = 512;
++pub const _HASHMAP_INIT_SIZE: usize = 512;
+ 
+ /// Utility function used as comparison function in the hashmap.
+ /// The rationale is that equality is an AND operation and therefore its probability of success
+@@ -48,7 +48,7 @@ pub(crate) unsafe fn compare_df_rows(keys: &DataFrame, idx_a: usize, idx_b: usiz
+ /// To check if a row is equal the original DataFrame is also passed as ref.
+ /// When a hash collision occurs the indexes are ptrs to the rows and the rows are compared
+ /// on equality.
+-pub(crate) fn populate_multiple_key_hashmap<V, H, F, G>(
++pub fn populate_multiple_key_hashmap<V, H, F, G>(
+     hash_tbl: &mut HashMap<IdxHash, V, H>,
+     // row index
+     idx: IdxSize,
+diff --git a/crates/polars-core/src/hashing/vector_hasher.rs b/crates/polars-core/src/hashing/vector_hasher.rs
+index 4aa7b08a5..5a481e24a 100644
+--- a/crates/polars-core/src/hashing/vector_hasher.rs
++++ b/crates/polars-core/src/hashing/vector_hasher.rs
+@@ -1,9 +1,6 @@
+ use arrow::bitmap::utils::get_bit_unchecked;
+-use hashbrown::hash_map::RawEntryMut;
+-use hashbrown::HashMap;
+ #[cfg(feature = "group_by_list")]
+ use polars_arrow::kernels::list_bytes_iter::numeric_list_bytes_iter;
+-use polars_arrow::utils::CustomIterTools;
+ use rayon::prelude::*;
+ use xxhash_rust::xxh3::xxh3_64_with_seed;
+ 
+@@ -423,7 +420,7 @@ where
+ /// During rehashes, we will rehash the hash instead of the string, that makes rehashing
+ /// cheap and allows cache coherent small hash tables.
+ #[derive(Eq, Copy, Clone, Debug)]
+-pub(crate) struct BytesHash<'a> {
++pub struct BytesHash<'a> {
+     payload: Option<&'a [u8]>,
+     pub(super) hash: u64,
+ }
+@@ -436,7 +433,7 @@ impl<'a> Hash for BytesHash<'a> {
+ 
+ impl<'a> BytesHash<'a> {
+     #[inline]
+-    pub(crate) fn new(s: Option<&'a [u8]>, hash: u64) -> Self {
++    pub fn new(s: Option<&'a [u8]>, hash: u64) -> Self {
+         Self { payload: s, hash }
+     }
+ }
+@@ -448,98 +445,7 @@ impl<'a> PartialEq for BytesHash<'a> {
+     }
+ }
+ 
+-pub(crate) fn prepare_hashed_relation_threaded<T, I>(
+-    iters: Vec<I>,
+-) -> Vec<HashMap<T, (bool, Vec<IdxSize>), RandomState>>
+-where
+-    I: Iterator<Item = T> + Send + TrustedLen,
+-    T: Send + Hash + Eq + Sync + Copy,
+-{
+-    let n_partitions = iters.len();
+-    assert!(n_partitions.is_power_of_two());
+-
+-    let (hashes_and_keys, build_hasher) = create_hash_and_keys_threaded_vectorized(iters, None);
+-
+-    // We will create a hashtable in every thread.
+-    // We use the hash to partition the keys to the matching hashtable.
+-    // Every thread traverses all keys/hashes and ignores the ones that doesn't fall in that partition.
+-    POOL.install(|| {
+-        (0..n_partitions)
+-            .into_par_iter()
+-            .map(|partition_no| {
+-                let build_hasher = build_hasher.clone();
+-                let hashes_and_keys = &hashes_and_keys;
+-                let partition_no = partition_no as u64;
+-                let mut hash_tbl: HashMap<T, (bool, Vec<IdxSize>), RandomState> =
+-                    HashMap::with_hasher(build_hasher);
+-
+-                let n_threads = n_partitions as u64;
+-                let mut offset = 0;
+-                for hashes_and_keys in hashes_and_keys {
+-                    let len = hashes_and_keys.len();
+-                    hashes_and_keys
+-                        .iter()
+-                        .enumerate()
+-                        .for_each(|(idx, (h, k))| {
+-                            let idx = idx as IdxSize;
+-                            // partition hashes by thread no.
+-                            // So only a part of the hashes go to this hashmap
+-                            if this_partition(*h, partition_no, n_threads) {
+-                                let idx = idx + offset;
+-                                let entry = hash_tbl
+-                                    .raw_entry_mut()
+-                                    // uses the key to check equality to find and entry
+-                                    .from_key_hashed_nocheck(*h, k);
+-
+-                                match entry {
+-                                    RawEntryMut::Vacant(entry) => {
+-                                        entry.insert_hashed_nocheck(*h, *k, (false, vec![idx]));
+-                                    },
+-                                    RawEntryMut::Occupied(mut entry) => {
+-                                        let (_k, v) = entry.get_key_value_mut();
+-                                        v.1.push(idx);
+-                                    },
+-                                }
+-                            }
+-                        });
+-
+-                    offset += len as IdxSize;
+-                }
+-                hash_tbl
+-            })
+-            .collect()
+-    })
+-}
+-
+-pub(crate) fn create_hash_and_keys_threaded_vectorized<I, T>(
+-    iters: Vec<I>,
+-    build_hasher: Option<RandomState>,
+-) -> (Vec<Vec<(u64, T)>>, RandomState)
+-where
+-    I: IntoIterator<Item = T> + Send,
+-    I::IntoIter: TrustedLen,
+-    T: Send + Hash + Eq,
+-{
+-    let build_hasher = build_hasher.unwrap_or_default();
+-    let hashes = POOL.install(|| {
+-        iters
+-            .into_par_iter()
+-            .map(|iter| {
+-                // create hashes and keys
+-                iter.into_iter()
+-                    .map(|val| {
+-                        let mut hasher = build_hasher.build_hasher();
+-                        val.hash(&mut hasher);
+-                        (hasher.finish(), val)
+-                    })
+-                    .collect_trusted::<Vec<_>>()
+-            })
+-            .collect()
+-    });
+-    (hashes, build_hasher)
+-}
+-
+-pub(crate) fn df_rows_to_hashes_threaded_vertical(
++pub fn _df_rows_to_hashes_threaded_vertical(
+     keys: &[DataFrame],
+     hasher_builder: Option<RandomState>,
+ ) -> PolarsResult<(Vec<UInt64Chunked>, RandomState)> {
+diff --git a/crates/polars-core/src/prelude.rs b/crates/polars-core/src/prelude.rs
+index dd603402e..b1a4f22d7 100644
+--- a/crates/polars-core/src/prelude.rs
++++ b/crates/polars-core/src/prelude.rs
+@@ -36,15 +36,11 @@ pub use crate::datatypes::{ArrayCollectIterExt, *};
+ pub use crate::error::{
+     polars_bail, polars_ensure, polars_err, polars_warn, PolarsError, PolarsResult,
+ };
+-#[cfg(feature = "asof_join")]
+-pub use crate::frame::asof_join::*;
+ pub use crate::frame::explode::MeltArgs;
+ #[cfg(feature = "algorithm_group_by")]
+ pub(crate) use crate::frame::group_by::aggregations::*;
+ #[cfg(feature = "algorithm_group_by")]
+ pub use crate::frame::group_by::{GroupsIdx, GroupsProxy, GroupsSlice, IntoGroupsProxy};
+-#[cfg(feature = "algorithm_join")]
+-pub use crate::frame::hash_join::{JoinArgs, JoinType};
+ pub use crate::frame::{DataFrame, UniqueKeepStrategy};
+ pub use crate::hashing::{FxHash, VecHash};
+ pub use crate::named_from::{NamedFrom, NamedFromOwned};
+diff --git a/crates/polars-core/src/series/implementations/categorical.rs b/crates/polars-core/src/series/implementations/categorical.rs
+index 836c339e9..8d54a5496 100644
+--- a/crates/polars-core/src/series/implementations/categorical.rs
++++ b/crates/polars-core/src/series/implementations/categorical.rs
+@@ -124,7 +124,7 @@ impl private::PrivateSeries for SeriesWrap<CategoricalChunked> {
+     ) -> Series {
+         let new_rev_map = self
+             .0
+-            .merge_categorical_map(right_column.categorical().unwrap())
++            ._merge_categorical_map(right_column.categorical().unwrap())
+             .unwrap();
+         let left = self.0.logical();
+         let right = right_column
+@@ -194,7 +194,7 @@ impl SeriesTrait for SeriesWrap<CategoricalChunked> {
+         polars_ensure!(self.0.dtype() == other.dtype(), extend);
+         let other = other.categorical()?;
+         self.0.logical_mut().extend(other.logical());
+-        let new_rev_map = self.0.merge_categorical_map(other)?;
++        let new_rev_map = self.0._merge_categorical_map(other)?;
+         // SAFETY
+         // rev_maps are merged
+         unsafe { self.0.set_rev_map(new_rev_map, false) };
+diff --git a/crates/polars-core/src/series/ops/unique.rs b/crates/polars-core/src/series/ops/unique.rs
+index 397fc85d4..9daee8971 100644
+--- a/crates/polars-core/src/series/ops/unique.rs
++++ b/crates/polars-core/src/series/ops/unique.rs
+@@ -2,7 +2,7 @@
+ use std::hash::Hash;
+ 
+ #[cfg(feature = "unique_counts")]
+-use crate::hashing::HASHMAP_INIT_SIZE;
++use crate::hashing::_HASHMAP_INIT_SIZE;
+ use crate::prelude::*;
+ #[cfg(feature = "unique_counts")]
+ use crate::utils::NoNull;
+@@ -13,7 +13,7 @@ where
+     I: Iterator<Item = J>,
+     J: Hash + Eq,
+ {
+-    let mut map = PlIndexMap::with_capacity_and_hasher(HASHMAP_INIT_SIZE, Default::default());
++    let mut map = PlIndexMap::with_capacity_and_hasher(_HASHMAP_INIT_SIZE, Default::default());
+     for item in items {
+         map.entry(item)
+             .and_modify(|cnt| {
+diff --git a/crates/polars-core/src/utils/flatten.rs b/crates/polars-core/src/utils/flatten.rs
+index afc8167a3..7b5b56bde 100644
+--- a/crates/polars-core/src/utils/flatten.rs
++++ b/crates/polars-core/src/utils/flatten.rs
+@@ -37,7 +37,7 @@ pub fn flatten_series(s: &Series) -> Vec<Series> {
+     }
+ }
+ 
+-pub(crate) fn cap_and_offsets<I>(v: &[Vec<I>]) -> (usize, Vec<usize>) {
++pub fn cap_and_offsets<I>(v: &[Vec<I>]) -> (usize, Vec<usize>) {
+     let cap = v.iter().map(|v| v.len()).sum::<usize>();
+     let offsets = v
+         .iter()
+diff --git a/crates/polars-core/src/utils/mod.rs b/crates/polars-core/src/utils/mod.rs
+index 0eb20558c..6e1691728 100644
+--- a/crates/polars-core/src/utils/mod.rs
++++ b/crates/polars-core/src/utils/mod.rs
+@@ -808,17 +808,6 @@ pub(crate) fn index_to_chunked_index<
+     (current_chunk_idx, index_remainder)
+ }
+ 
+-#[cfg(feature = "chunked_ids")]
+-pub(crate) fn create_chunked_index_mapping(chunks: &[ArrayRef], len: usize) -> Vec<ChunkId> {
+-    let mut vals = Vec::with_capacity(len);
+-
+-    for (chunk_i, chunk) in chunks.iter().enumerate() {
+-        vals.extend((0..chunk.len()).map(|array_i| [chunk_i as IdxSize, array_i as IdxSize]))
+-    }
+-
+-    vals
+-}
+-
+ pub(crate) fn first_non_null<'a, I>(iter: I) -> Option<usize>
+ where
+     I: Iterator<Item = Option<&'a Bitmap>>,
+diff --git a/crates/polars-lazy/Cargo.toml b/crates/polars-lazy/Cargo.toml
+index b14604a73..ea4c7e5e0 100644
+--- a/crates/polars-lazy/Cargo.toml
++++ b/crates/polars-lazy/Cargo.toml
+@@ -35,7 +35,7 @@ version_check = { workspace = true }
+ 
+ [features]
+ nightly = ["polars-core/nightly", "polars-pipe?/nightly", "polars-plan/nightly"]
+-streaming = ["chunked_ids", "polars-pipe", "polars-plan/streaming"]
++streaming = ["chunked_ids", "polars-pipe", "polars-plan/streaming", "polars-ops/chunked_ids"]
+ parquet = ["polars-core/parquet", "polars-io/parquet", "polars-plan/parquet", "polars-pipe?/parquet"]
+ async = [
+   "polars-plan/async",
+@@ -84,7 +84,7 @@ is_first_distinct = ["polars-plan/is_first_distinct"]
+ is_last_distinct = ["polars-plan/is_last_distinct"]
+ is_unique = ["polars-plan/is_unique"]
+ cross_join = ["polars-plan/cross_join", "polars-pipe?/cross_join", "polars-ops/cross_join"]
+-asof_join = ["polars-plan/asof_join", "polars-time"]
++asof_join = ["polars-plan/asof_join", "polars-time", "polars-ops/asof_join"]
+ concat_str = ["polars-plan/concat_str"]
+ range = ["polars-plan/range"]
+ mode = ["polars-plan/mode"]
+@@ -108,7 +108,7 @@ unique_counts = ["polars-plan/unique_counts"]
+ log = ["polars-plan/log"]
+ list_eval = []
+ cumulative_eval = []
+-chunked_ids = ["polars-plan/chunked_ids", "polars-core/chunked_ids"]
++chunked_ids = ["polars-plan/chunked_ids", "polars-core/chunked_ids", "polars-ops/chunked_ids"]
+ list_to_struct = ["polars-plan/list_to_struct"]
+ python = ["pyo3", "polars-plan/python", "polars-core/python", "polars-io/python"]
+ row_hash = ["polars-plan/row_hash"]
+diff --git a/crates/polars-lazy/src/frame/mod.rs b/crates/polars-lazy/src/frame/mod.rs
+index baed4c5ae..e8bd66741 100644
+--- a/crates/polars-lazy/src/frame/mod.rs
++++ b/crates/polars-lazy/src/frame/mod.rs
+@@ -33,7 +33,6 @@ pub use ndjson::*;
+ pub use parquet::*;
+ use polars_arrow::prelude::QuantileInterpolOptions;
+ use polars_core::frame::explode::MeltArgs;
+-use polars_core::frame::hash_join::{JoinType, JoinValidation};
+ use polars_core::prelude::*;
+ use polars_io::RowCount;
+ pub use polars_plan::frame::{AllowedOptimizations, OptState};
+diff --git a/crates/polars-lazy/src/physical_plan/executors/join.rs b/crates/polars-lazy/src/physical_plan/executors/join.rs
+index b4c31da43..fa84d46e7 100644
+--- a/crates/polars-lazy/src/physical_plan/executors/join.rs
++++ b/crates/polars-lazy/src/physical_plan/executors/join.rs
+@@ -1,5 +1,3 @@
+-use polars_core::frame::hash_join::JoinArgs;
+-
+ use super::*;
+ 
+ pub struct JoinExec {
+diff --git a/crates/polars-lazy/src/physical_plan/expressions/window.rs b/crates/polars-lazy/src/physical_plan/expressions/window.rs
+index 7f4b117ab..cbae8d370 100644
+--- a/crates/polars-lazy/src/physical_plan/expressions/window.rs
++++ b/crates/polars-lazy/src/physical_plan/expressions/window.rs
+@@ -4,13 +4,13 @@ use std::sync::Arc;
+ use polars_arrow::export::arrow::array::PrimitiveArray;
+ use polars_core::export::arrow::bitmap::Bitmap;
+ use polars_core::frame::group_by::{GroupBy, GroupsProxy};
+-use polars_core::frame::hash_join::{
+-    default_join_ids, private_left_join_multiple_keys, ChunkJoinOptIds, JoinValidation,
+-};
+ use polars_core::prelude::*;
+ use polars_core::series::IsSorted;
+ use polars_core::utils::_split_offsets;
+ use polars_core::{downcast_as_macro_arg_physical, POOL};
++use polars_ops::frame::join::{
++    default_join_ids, private_left_join_multiple_keys, ChunkJoinOptIds, JoinValidation,
++};
+ use polars_utils::format_smartstring;
+ use polars_utils::sort::perfect_sort;
+ use polars_utils::sync::SyncPtr;
+diff --git a/crates/polars-lazy/src/physical_plan/state.rs b/crates/polars-lazy/src/physical_plan/state.rs
+index ebf1e5018..e52ddf57e 100644
+--- a/crates/polars-lazy/src/physical_plan/state.rs
++++ b/crates/polars-lazy/src/physical_plan/state.rs
+@@ -6,8 +6,8 @@ use bitflags::bitflags;
+ use once_cell::sync::OnceCell;
+ use polars_core::config::verbose;
+ use polars_core::frame::group_by::GroupsProxy;
+-use polars_core::frame::hash_join::ChunkJoinOptIds;
+ use polars_core::prelude::*;
++use polars_ops::prelude::ChunkJoinOptIds;
+ #[cfg(any(feature = "parquet", feature = "csv", feature = "ipc"))]
+ use polars_plan::logical_plan::FileFingerPrint;
+ 
+diff --git a/crates/polars-lazy/src/physical_plan/streaming/checks.rs b/crates/polars-lazy/src/physical_plan/streaming/checks.rs
+index 473b429f8..02f6f636e 100644
+--- a/crates/polars-lazy/src/physical_plan/streaming/checks.rs
++++ b/crates/polars-lazy/src/physical_plan/streaming/checks.rs
+@@ -1,4 +1,4 @@
+-use polars_core::prelude::{JoinArgs, JoinType};
++use polars_ops::prelude::*;
+ use polars_plan::prelude::*;
+ 
+ pub(super) fn is_streamable_sort(args: &SortArguments) -> bool {
+diff --git a/crates/polars-lazy/src/prelude.rs b/crates/polars-lazy/src/prelude.rs
+index 177817d7d..f278b82e5 100644
+--- a/crates/polars-lazy/src/prelude.rs
++++ b/crates/polars-lazy/src/prelude.rs
+@@ -1,4 +1,5 @@
+ pub(crate) use polars_ops::prelude::*;
++pub use polars_ops::prelude::{JoinArgs, JoinType, JoinValidation};
+ pub use polars_plan::logical_plan::{
+     AnonymousScan, AnonymousScanOptions, Literal, LiteralValue, LogicalPlan, Null, NULL,
+ };
+diff --git a/crates/polars-ops/Cargo.toml b/crates/polars-ops/Cargo.toml
+index 272cca8e6..a1db94d74 100644
+--- a/crates/polars-ops/Cargo.toml
++++ b/crates/polars-ops/Cargo.toml
+@@ -11,19 +11,24 @@ description = "More operations on Polars data structures"
+ [dependencies]
+ polars-arrow = { workspace = true, default-features = false }
+ polars-core = { workspace = true, features = ["algorithm_group_by", "algorithm_join"], default-features = false }
++polars-error = { workspace = true }
+ polars-json = { workspace = true, optional = true }
+ polars-utils = { workspace = true, default-features = false }
+ 
++ahash = { workspace = true }
+ argminmax = { version = "0.6.1", default-features = false, features = ["float"] }
+ arrow = { workspace = true }
+ base64 = { workspace = true, optional = true }
+ chrono = { workspace = true, optional = true }
+ chrono-tz = { workspace = true, optional = true }
+ either = { workspace = true }
++hashbrown = { workspace = true }
+ hex = { workspace = true, optional = true }
+ indexmap = { workspace = true }
+ jsonpath_lib = { version = "0.3", optional = true, git = "https://github.com/ritchie46/jsonpath", branch = "improve_compiled" }
+ memchr = { workspace = true }
++num-traits = { workspace = true }
++rayon = { workspace = true }
+ regex = { workspace = true }
+ serde = { workspace = true, features = ["derive"], optional = true }
+ serde_json = { workspace = true, optional = true }
+diff --git a/crates/polars-ops/src/frame/hashing.rs b/crates/polars-ops/src/frame/hashing.rs
+new file mode 100644
+index 000000000..57e6fc821
+--- /dev/null
++++ b/crates/polars-ops/src/frame/hashing.rs
+@@ -0,0 +1,102 @@
++use std::hash::{BuildHasher, Hash, Hasher};
++
++use ahash::RandomState;
++use hashbrown::hash_map::RawEntryMut;
++use hashbrown::HashMap;
++use polars_arrow::trusted_len::TrustedLen;
++use polars_arrow::utils::CustomIterTools;
++use polars_core::hashing::partition::this_partition;
++use polars_core::prelude::*;
++use polars_core::POOL;
++use rayon::prelude::*;
++
++pub(crate) fn prepare_hashed_relation_threaded<T, I>(
++    iters: Vec<I>,
++) -> Vec<HashMap<T, (bool, Vec<IdxSize>), RandomState>>
++where
++    I: Iterator<Item = T> + Send + TrustedLen,
++    T: Send + Hash + Eq + Sync + Copy,
++{
++    let n_partitions = iters.len();
++    assert!(n_partitions.is_power_of_two());
++
++    let (hashes_and_keys, build_hasher) = create_hash_and_keys_threaded_vectorized(iters, None);
++
++    // We will create a hashtable in every thread.
++    // We use the hash to partition the keys to the matching hashtable.
++    // Every thread traverses all keys/hashes and ignores the ones that doesn't fall in that partition.
++    POOL.install(|| {
++        (0..n_partitions)
++            .into_par_iter()
++            .map(|partition_no| {
++                let build_hasher = build_hasher.clone();
++                let hashes_and_keys = &hashes_and_keys;
++                let partition_no = partition_no as u64;
++                let mut hash_tbl: HashMap<T, (bool, Vec<IdxSize>), RandomState> =
++                    HashMap::with_hasher(build_hasher);
++
++                let n_threads = n_partitions as u64;
++                let mut offset = 0;
++                for hashes_and_keys in hashes_and_keys {
++                    let len = hashes_and_keys.len();
++                    hashes_and_keys
++                        .iter()
++                        .enumerate()
++                        .for_each(|(idx, (h, k))| {
++                            let idx = idx as IdxSize;
++                            // partition hashes by thread no.
++                            // So only a part of the hashes go to this hashmap
++                            if this_partition(*h, partition_no, n_threads) {
++                                let idx = idx + offset;
++                                let entry = hash_tbl
++                                    .raw_entry_mut()
++                                    // uses the key to check equality to find and entry
++                                    .from_key_hashed_nocheck(*h, k);
++
++                                match entry {
++                                    RawEntryMut::Vacant(entry) => {
++                                        entry.insert_hashed_nocheck(*h, *k, (false, vec![idx]));
++                                    },
++                                    RawEntryMut::Occupied(mut entry) => {
++                                        let (_k, v) = entry.get_key_value_mut();
++                                        v.1.push(idx);
++                                    },
++                                }
++                            }
++                        });
++
++                    offset += len as IdxSize;
++                }
++                hash_tbl
++            })
++            .collect()
++    })
++}
++
++pub(crate) fn create_hash_and_keys_threaded_vectorized<I, T>(
++    iters: Vec<I>,
++    build_hasher: Option<RandomState>,
++) -> (Vec<Vec<(u64, T)>>, RandomState)
++where
++    I: IntoIterator<Item = T> + Send,
++    I::IntoIter: TrustedLen,
++    T: Send + Hash + Eq,
++{
++    let build_hasher = build_hasher.unwrap_or_default();
++    let hashes = POOL.install(|| {
++        iters
++            .into_par_iter()
++            .map(|iter| {
++                // create hashes and keys
++                iter.into_iter()
++                    .map(|val| {
++                        let mut hasher = build_hasher.build_hasher();
++                        val.hash(&mut hasher);
++                        (hasher.finish(), val)
++                    })
++                    .collect_trusted::<Vec<_>>()
++            })
++            .collect()
++    });
++    (hashes, build_hasher)
++}
+diff --git a/crates/polars-core/src/frame/hash_join/args.rs b/crates/polars-ops/src/frame/join/args.rs
+similarity index 97%
+rename from crates/polars-core/src/frame/hash_join/args.rs
+rename to crates/polars-ops/src/frame/join/args.rs
+index f95b294d6..af8509f76 100644
+--- a/crates/polars-core/src/frame/hash_join/args.rs
++++ b/crates/polars-ops/src/frame/join/args.rs
+@@ -15,6 +15,12 @@ pub type ChunkJoinOptIds = Vec<Option<IdxSize>>;
+ #[cfg(not(feature = "chunked_ids"))]
+ pub type ChunkJoinIds = Vec<IdxSize>;
+ 
++#[cfg(feature = "serde")]
++use serde::{Deserialize, Serialize};
++
++#[cfg(feature = "asof_join")]
++use super::asof::AsOfOptions;
++
+ #[derive(Clone, PartialEq, Eq, Debug)]
+ #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+ pub struct JoinArgs {
+diff --git a/crates/polars-core/src/frame/asof_join/asof.rs b/crates/polars-ops/src/frame/join/asof/default.rs
+similarity index 100%
+rename from crates/polars-core/src/frame/asof_join/asof.rs
+rename to crates/polars-ops/src/frame/join/asof/default.rs
+diff --git a/crates/polars-core/src/frame/asof_join/groups.rs b/crates/polars-ops/src/frame/join/asof/groups.rs
+similarity index 97%
+rename from crates/polars-core/src/frame/asof_join/groups.rs
+rename to crates/polars-ops/src/frame/join/asof/groups.rs
+index 616d74b92..128081f40 100644
+--- a/crates/polars-core/src/frame/asof_join/groups.rs
++++ b/crates/polars-ops/src/frame/join/asof/groups.rs
+@@ -5,18 +5,15 @@ use std::ops::{Add, Sub};
+ use ahash::RandomState;
+ use arrow::types::NativeType;
+ use num_traits::{Bounded, Zero};
++use polars_core::hashing::partition::AsU64;
++use polars_core::hashing::{_df_rows_to_hashes_threaded_vertical, _HASHMAP_INIT_SIZE};
++use polars_core::utils::{split_ca, split_df};
++use polars_core::POOL;
+ use rayon::prelude::*;
+ use smartstring::alias::String as SmartString;
+ 
+ use super::*;
+-#[cfg(feature = "dtype-categorical")]
+-use crate::frame::hash_join::_check_categorical_src;
+-use crate::frame::hash_join::{
+-    build_tables, get_hash_tbl_threaded_join_partitioned, multiple_keys as mk, prepare_bytes,
+-};
+-use crate::hashing::{df_rows_to_hashes_threaded_vertical, AsU64, HASHMAP_INIT_SIZE};
+-use crate::utils::{split_ca, split_df};
+-use crate::POOL;
++use crate::frame::IntoDf;
+ 
+ pub(super) unsafe fn join_asof_backward_with_indirection_and_tolerance<
+     T: PartialOrd + Copy + Sub<Output = T> + Debug,
+@@ -397,7 +394,7 @@ where
+                 // assume the result tuples equal length of the no. of hashes processed by this thread.
+                 let mut results = Vec::with_capacity(vals_left.len());
+ 
+-                let mut right_tbl_offsets = PlHashMap::with_capacity(HASHMAP_INIT_SIZE);
++                let mut right_tbl_offsets = PlHashMap::with_capacity(_HASHMAP_INIT_SIZE);
+ 
+                 vals_left.iter().enumerate().for_each(|(idx_a, k)| {
+                     let idx_a = (idx_a + offset) as IdxSize;
+@@ -525,7 +522,7 @@ where
+                 // assume the result tuples equal length of the no. of hashes processed by this thread.
+                 let mut results = Vec::with_capacity(vals_left.len());
+ 
+-                let mut right_tbl_offsets = PlHashMap::with_capacity(HASHMAP_INIT_SIZE);
++                let mut right_tbl_offsets = PlHashMap::with_capacity(_HASHMAP_INIT_SIZE);
+ 
+                 vals_left.iter().enumerate().for_each(|(idx_a, k)| {
+                     let idx_a = (idx_a + offset) as IdxSize;
+@@ -620,9 +617,9 @@ where
+     let dfs_a = split_df(a, n_threads).unwrap();
+     let dfs_b = split_df(b, n_threads).unwrap();
+ 
+-    let (build_hashes, random_state) = df_rows_to_hashes_threaded_vertical(&dfs_b, None).unwrap();
++    let (build_hashes, random_state) = _df_rows_to_hashes_threaded_vertical(&dfs_b, None).unwrap();
+     let (probe_hashes, _) =
+-        df_rows_to_hashes_threaded_vertical(&dfs_a, Some(random_state)).unwrap();
++        _df_rows_to_hashes_threaded_vertical(&dfs_a, Some(random_state)).unwrap();
+ 
+     let hash_tbls = mk::create_probe_table(&build_hashes, b);
+     // early drop to reduce memory pressure
+@@ -643,7 +640,7 @@ where
+ 
+                 // assume the result tuples equal length of the no. of hashes processed by this thread.
+                 let mut results = Vec::with_capacity(probe_hashes.len());
+-                let mut right_tbl_offsets = PlHashMap::with_capacity(HASHMAP_INIT_SIZE);
++                let mut right_tbl_offsets = PlHashMap::with_capacity(_HASHMAP_INIT_SIZE);
+ 
+                 let local_offset = offset;
+ 
+@@ -758,10 +755,10 @@ fn dispatch_join<T: PolarsNumericType>(
+     Ok(out)
+ }
+ 
+-impl DataFrame {
++pub trait AsofJoinBy: IntoDf {
+     #[allow(clippy::too_many_arguments)]
+     #[doc(hidden)]
+-    pub fn _join_asof_by(
++    fn _join_asof_by(
+         &self,
+         other: &DataFrame,
+         left_on: &str,
+@@ -773,7 +770,8 @@ impl DataFrame {
+         suffix: Option<&str>,
+         slice: Option<(i64, usize)>,
+     ) -> PolarsResult<DataFrame> {
+-        let left_asof = self.column(left_on)?.to_physical_repr();
++        let self_df = self.to_df();
++        let left_asof = self_df.column(left_on)?.to_physical_repr();
+         let right_asof = other.column(right_on)?.to_physical_repr();
+         let right_asof_name = right_asof.name();
+         let left_asof_name = left_asof.name();
+@@ -784,7 +782,7 @@ impl DataFrame {
+             left_by.is_empty() && right_by.is_empty(),
+         )?;
+ 
+-        let mut left_by = self.select(left_by)?;
++        let mut left_by = self_df.select(left_by)?;
+         let mut right_by = other.select(right_by)?;
+ 
+         unsafe {
+@@ -837,7 +835,7 @@ impl DataFrame {
+             .collect();
+         let other = DataFrame::new_no_checks(cols);
+ 
+-        let mut left = self.clone();
++        let mut left = self_df.clone();
+         let mut right_join_tuples = &*right_join_tuples;
+ 
+         if let Some((offset, len)) = slice {
+@@ -856,7 +854,7 @@ impl DataFrame {
+     /// The keys must be sorted to perform an asof join. This is a special implementation of an asof join
+     /// that searches for the nearest keys within a subgroup set by `by`.
+     #[allow(clippy::too_many_arguments)]
+-    pub fn join_asof_by<I, S>(
++    fn join_asof_by<I, S>(
+         &self,
+         other: &DataFrame,
+         left_on: &str,
+@@ -870,14 +868,17 @@ impl DataFrame {
+         I: IntoIterator<Item = S>,
+         S: AsRef<str>,
+     {
++        let self_df = self.to_df();
+         let left_by = left_by.into_iter().map(|s| s.as_ref().into()).collect();
+         let right_by = right_by.into_iter().map(|s| s.as_ref().into()).collect();
+-        self._join_asof_by(
++        self_df._join_asof_by(
+             other, left_on, right_on, left_by, right_by, strategy, tolerance, None, None,
+         )
+     }
+ }
+ 
++impl AsofJoinBy for DataFrame {}
++
+ #[cfg(test)]
+ mod test {
+     use super::*;
+diff --git a/crates/polars-core/src/frame/asof_join/mod.rs b/crates/polars-ops/src/frame/join/asof/mod.rs
+similarity index 53%
+rename from crates/polars-core/src/frame/asof_join/mod.rs
+rename to crates/polars-ops/src/frame/join/asof/mod.rs
+index bc5ca09ac..eb1765930 100644
+--- a/crates/polars-core/src/frame/asof_join/mod.rs
++++ b/crates/polars-ops/src/frame/join/asof/mod.rs
+@@ -1,16 +1,24 @@
+-mod asof;
++mod default;
+ mod groups;
+ use std::borrow::Cow;
+ 
+-use asof::*;
++use default::*;
++pub(super) use groups::AsofJoinBy;
+ use num_traits::Bounded;
++use polars_core::prelude::*;
++use polars_core::utils::{ensure_sorted_arg, slice_slice};
++use polars_core::with_match_physical_numeric_polars_type;
+ #[cfg(feature = "serde")]
+ use serde::{Deserialize, Serialize};
+ use smartstring::alias::String as SmartString;
+ 
+-use crate::frame::hash_join::_finish_join;
+-use crate::prelude::*;
+-use crate::utils::{ensure_sorted_arg, slice_slice};
++#[cfg(feature = "dtype-categorical")]
++use super::_check_categorical_src;
++use super::{
++    _finish_join, build_tables, get_hash_tbl_threaded_join_partitioned, multiple_keys as mk,
++    prepare_bytes,
++};
++use crate::frame::IntoDf;
+ 
+ #[derive(Clone, Debug, PartialEq, Eq, Default)]
+ #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+@@ -64,66 +72,64 @@ pub enum AsofStrategy {
+     Nearest,
+ }
+ 
+-impl<T> ChunkedArray<T>
++pub(crate) fn join_asof<T>(
++    input_ca: &ChunkedArray<T>,
++    other: &Series,
++    strategy: AsofStrategy,
++    tolerance: Option<AnyValue<'static>>,
++) -> PolarsResult<Vec<Option<IdxSize>>>
+ where
+     T: PolarsNumericType,
+     T::Native: Bounded + PartialOrd,
+ {
+-    pub(crate) fn join_asof(
+-        &self,
+-        other: &Series,
+-        strategy: AsofStrategy,
+-        tolerance: Option<AnyValue<'static>>,
+-    ) -> PolarsResult<Vec<Option<IdxSize>>> {
+-        let other = self.unpack_series_matching_type(other)?;
+-
+-        // cont_slice requires a single chunk
+-        let ca = self.rechunk();
+-        let other = other.rechunk();
+-
+-        let out = match strategy {
+-            AsofStrategy::Forward => match tolerance {
+-                None => join_asof_forward(ca.cont_slice().unwrap(), other.cont_slice().unwrap()),
+-                Some(tolerance) => {
+-                    let tolerance = tolerance.extract::<T::Native>().unwrap();
+-                    join_asof_forward_with_tolerance(
+-                        ca.cont_slice().unwrap(),
+-                        other.cont_slice().unwrap(),
+-                        tolerance,
+-                    )
+-                },
++    let other = input_ca.unpack_series_matching_type(other)?;
++
++    // cont_slice requires a single chunk
++    let ca = input_ca.rechunk();
++    let other = other.rechunk();
++
++    let out = match strategy {
++        AsofStrategy::Forward => match tolerance {
++            None => join_asof_forward(ca.cont_slice().unwrap(), other.cont_slice().unwrap()),
++            Some(tolerance) => {
++                let tolerance = tolerance.extract::<T::Native>().unwrap();
++                join_asof_forward_with_tolerance(
++                    ca.cont_slice().unwrap(),
++                    other.cont_slice().unwrap(),
++                    tolerance,
++                )
+             },
+-            AsofStrategy::Backward => match tolerance {
+-                None => join_asof_backward(ca.cont_slice().unwrap(), other.cont_slice().unwrap()),
+-                Some(tolerance) => {
+-                    let tolerance = tolerance.extract::<T::Native>().unwrap();
+-                    join_asof_backward_with_tolerance(
+-                        self.cont_slice().unwrap(),
+-                        other.cont_slice().unwrap(),
+-                        tolerance,
+-                    )
+-                },
++        },
++        AsofStrategy::Backward => match tolerance {
++            None => join_asof_backward(ca.cont_slice().unwrap(), other.cont_slice().unwrap()),
++            Some(tolerance) => {
++                let tolerance = tolerance.extract::<T::Native>().unwrap();
++                join_asof_backward_with_tolerance(
++                    input_ca.cont_slice().unwrap(),
++                    other.cont_slice().unwrap(),
++                    tolerance,
++                )
+             },
+-            AsofStrategy::Nearest => match tolerance {
+-                None => join_asof_nearest(ca.cont_slice().unwrap(), other.cont_slice().unwrap()),
+-                Some(tolerance) => {
+-                    let tolerance = tolerance.extract::<T::Native>().unwrap();
+-                    join_asof_nearest_with_tolerance(
+-                        self.cont_slice().unwrap(),
+-                        other.cont_slice().unwrap(),
+-                        tolerance,
+-                    )
+-                },
++        },
++        AsofStrategy::Nearest => match tolerance {
++            None => join_asof_nearest(ca.cont_slice().unwrap(), other.cont_slice().unwrap()),
++            Some(tolerance) => {
++                let tolerance = tolerance.extract::<T::Native>().unwrap();
++                join_asof_nearest_with_tolerance(
++                    input_ca.cont_slice().unwrap(),
++                    other.cont_slice().unwrap(),
++                    tolerance,
++                )
+             },
+-        };
+-        Ok(out)
+-    }
++        },
++    };
++    Ok(out)
+ }
+ 
+-impl DataFrame {
++pub trait AsofJoin: IntoDf {
+     #[doc(hidden)]
+     #[allow(clippy::too_many_arguments)]
+-    pub fn _join_asof(
++    fn _join_asof(
+         &self,
+         other: &DataFrame,
+         left_on: &str,
+@@ -133,7 +139,8 @@ impl DataFrame {
+         suffix: Option<String>,
+         slice: Option<(i64, usize)>,
+     ) -> PolarsResult<DataFrame> {
+-        let left_key = self.column(left_on)?;
++        let self_df = self.to_df();
++        let left_key = self_df.column(left_on)?;
+         let right_key = other.column(right_on)?;
+ 
+         check_asof_columns(left_key, right_key, true)?;
+@@ -141,37 +148,35 @@ impl DataFrame {
+         let right_key = right_key.to_physical_repr();
+ 
+         let take_idx = match left_key.dtype() {
+-            DataType::Int64 => left_key
+-                .i64()
+-                .unwrap()
+-                .join_asof(&right_key, strategy, tolerance),
+-            DataType::Int32 => left_key
+-                .i32()
+-                .unwrap()
+-                .join_asof(&right_key, strategy, tolerance),
+-            DataType::UInt64 => left_key
+-                .u64()
+-                .unwrap()
+-                .join_asof(&right_key, strategy, tolerance),
+-            DataType::UInt32 => left_key
+-                .u32()
+-                .unwrap()
+-                .join_asof(&right_key, strategy, tolerance),
+-            DataType::Float32 => left_key
+-                .f32()
+-                .unwrap()
+-                .join_asof(&right_key, strategy, tolerance),
+-            DataType::Float64 => left_key
+-                .f64()
+-                .unwrap()
+-                .join_asof(&right_key, strategy, tolerance),
++            DataType::Int64 => {
++                let ca = left_key.i64().unwrap();
++                join_asof(ca, &right_key, strategy, tolerance)
++            },
++            DataType::Int32 => {
++                let ca = left_key.i32().unwrap();
++                join_asof(ca, &right_key, strategy, tolerance)
++            },
++            DataType::UInt64 => {
++                let ca = left_key.u64().unwrap();
++                join_asof(ca, &right_key, strategy, tolerance)
++            },
++            DataType::UInt32 => {
++                let ca = left_key.u32().unwrap();
++                join_asof(ca, &right_key, strategy, tolerance)
++            },
++            DataType::Float32 => {
++                let ca = left_key.f32().unwrap();
++                join_asof(ca, &right_key, strategy, tolerance)
++            },
++            DataType::Float64 => {
++                let ca = left_key.f64().unwrap();
++                join_asof(ca, &right_key, strategy, tolerance)
++            },
+             _ => {
+                 let left_key = left_key.cast(&DataType::Int32).unwrap();
+                 let right_key = right_key.cast(&DataType::Int32).unwrap();
+-                left_key
+-                    .i32()
+-                    .unwrap()
+-                    .join_asof(&right_key, strategy, tolerance)
++                let ca = left_key.i32().unwrap();
++                join_asof(ca, &right_key, strategy, tolerance)
+             },
+         }?;
+ 
+@@ -187,7 +192,7 @@ impl DataFrame {
+             Cow::Borrowed(other)
+         };
+ 
+-        let mut left = self.clone();
++        let mut left = self_df.clone();
+         let mut take_idx = &*take_idx;
+ 
+         if let Some((offset, len)) = slice {
+@@ -203,7 +208,7 @@ impl DataFrame {
+ 
+     /// This is similar to a left-join except that we match on nearest key rather than equal keys.
+     /// The keys must be sorted to perform an asof join
+-    pub fn join_asof(
++    fn join_asof(
+         &self,
+         other: &DataFrame,
+         left_on: &str,
+@@ -215,3 +220,5 @@ impl DataFrame {
+         self._join_asof(other, left_on, right_on, strategy, tolerance, suffix, None)
+     }
+ }
++
++impl AsofJoin for DataFrame {}
+diff --git a/crates/polars-ops/src/frame/join/checks.rs b/crates/polars-ops/src/frame/join/checks.rs
+new file mode 100644
+index 000000000..b87baa2f5
+--- /dev/null
++++ b/crates/polars-ops/src/frame/join/checks.rs
+@@ -0,0 +1,10 @@
++use super::*;
++
++/// If Categorical types are created without a global string cache or under
++/// a different global string cache the mapping will be incorrect.
++pub(crate) fn _check_categorical_src(l: &DataType, r: &DataType) -> PolarsResult<()> {
++    if let (DataType::Categorical(Some(l)), DataType::Categorical(Some(r))) = (l, r) {
++        polars_ensure!(l.same_src(r), string_cache_mismatch);
++    }
++    Ok(())
++}
+diff --git a/crates/polars-ops/src/frame/join/general.rs b/crates/polars-ops/src/frame/join/general.rs
+new file mode 100644
+index 000000000..56fd3b11f
+--- /dev/null
++++ b/crates/polars-ops/src/frame/join/general.rs
+@@ -0,0 +1,47 @@
++use super::*;
++
++pub fn _join_suffix_name(name: &str, suffix: &str) -> String {
++    format!("{name}{suffix}")
++}
++
++/// Utility method to finish a join.
++#[doc(hidden)]
++pub fn _finish_join(
++    mut df_left: DataFrame,
++    mut df_right: DataFrame,
++    suffix: Option<&str>,
++) -> PolarsResult<DataFrame> {
++    let mut left_names = PlHashSet::with_capacity(df_left.width());
++
++    df_left.get_columns().iter().for_each(|series| {
++        left_names.insert(series.name());
++    });
++
++    let mut rename_strs = Vec::with_capacity(df_right.width());
++
++    df_right.get_columns().iter().for_each(|series| {
++        if left_names.contains(series.name()) {
++            rename_strs.push(series.name().to_owned())
++        }
++    });
++    let suffix = suffix.unwrap_or("_right");
++
++    for name in rename_strs {
++        df_right.rename(&name, &_join_suffix_name(&name, suffix))?;
++    }
++
++    drop(left_names);
++    df_left.hstack_mut(df_right.get_columns())?;
++    Ok(df_left)
++}
++
++#[cfg(feature = "chunked_ids")]
++pub(crate) fn create_chunked_index_mapping(chunks: &[ArrayRef], len: usize) -> Vec<ChunkId> {
++    let mut vals = Vec::with_capacity(len);
++
++    for (chunk_i, chunk) in chunks.iter().enumerate() {
++        vals.extend((0..chunk.len()).map(|array_i| [chunk_i as IdxSize, array_i as IdxSize]))
++    }
++
++    vals
++}
+diff --git a/crates/polars-ops/src/frame/join/hash_join/mod.rs b/crates/polars-ops/src/frame/join/hash_join/mod.rs
+new file mode 100644
+index 000000000..06e3fdcd5
+--- /dev/null
++++ b/crates/polars-ops/src/frame/join/hash_join/mod.rs
+@@ -0,0 +1,343 @@
++pub(super) mod multiple_keys;
++pub(super) mod single_keys;
++mod single_keys_dispatch;
++mod single_keys_inner;
++mod single_keys_left;
++mod single_keys_outer;
++#[cfg(feature = "semi_anti_join")]
++mod single_keys_semi_anti;
++pub(super) mod sort_merge;
++
++pub use args::*;
++pub use multiple_keys::private_left_join_multiple_keys;
++pub(super) use multiple_keys::*;
++use polars_core::prelude::*;
++use polars_core::utils::{_set_partition_size, slice_slice, split_ca};
++use polars_core::POOL;
++pub(super) use single_keys::*;
++#[cfg(feature = "asof_join")]
++pub(super) use single_keys_dispatch::prepare_bytes;
++pub use single_keys_dispatch::SeriesJoin;
++use single_keys_inner::*;
++use single_keys_left::*;
++use single_keys_outer::*;
++#[cfg(feature = "semi_anti_join")]
++use single_keys_semi_anti::*;
++pub use sort_merge::*;
++
++pub use super::*;
++
++pub fn default_join_ids() -> ChunkJoinOptIds {
++    #[cfg(feature = "chunked_ids")]
++    {
++        Either::Left(vec![])
++    }
++    #[cfg(not(feature = "chunked_ids"))]
++    {
++        vec![]
++    }
++}
++
++macro_rules! det_hash_prone_order {
++    ($self:expr, $other:expr) => {{
++        // The shortest relation will be used to create a hash table.
++        let left_first = $self.len() > $other.len();
++        let a;
++        let b;
++        if left_first {
++            a = $self;
++            b = $other;
++        } else {
++            b = $self;
++            a = $other;
++        }
++
++        (a, b, !left_first)
++    }};
++}
++
++pub(super) use det_hash_prone_order;
++#[cfg(feature = "performant")]
++use polars_arrow::conversion::primitive_to_vec;
++use polars_utils::hash_to_partition;
++
++pub(super) unsafe fn get_hash_tbl_threaded_join_partitioned<Item>(
++    h: u64,
++    hash_tables: &[Item],
++    len: u64,
++) -> &Item {
++    let i = hash_to_partition(h, len as usize);
++    hash_tables.get_unchecked(i)
++}
++
++#[allow(clippy::type_complexity)]
++unsafe fn get_hash_tbl_threaded_join_mut_partitioned<T, H>(
++    h: u64,
++    hash_tables: &mut [HashMap<T, (bool, Vec<IdxSize>), H>],
++    len: u64,
++) -> &mut HashMap<T, (bool, Vec<IdxSize>), H> {
++    let i = hash_to_partition(h, len as usize);
++    hash_tables.get_unchecked_mut(i)
++}
++
++pub trait JoinDispatch: IntoDf {
++    /// # Safety
++    /// Join tuples must be in bounds
++    #[cfg(feature = "chunked_ids")]
++    unsafe fn create_left_df_chunked(&self, chunk_ids: &[ChunkId], left_join: bool) -> DataFrame {
++        let df_self = self.to_df();
++        if left_join && chunk_ids.len() == df_self.height() {
++            df_self.clone()
++        } else {
++            // left join keys are in ascending order
++            let sorted = if left_join {
++                IsSorted::Ascending
++            } else {
++                IsSorted::Not
++            };
++            df_self._take_chunked_unchecked(chunk_ids, sorted)
++        }
++    }
++
++    /// # Safety
++    /// Join tuples must be in bounds
++    unsafe fn _create_left_df_from_slice(
++        &self,
++        join_tuples: &[IdxSize],
++        left_join: bool,
++        sorted_tuple_idx: bool,
++    ) -> DataFrame {
++        let df_self = self.to_df();
++        if left_join && join_tuples.len() == df_self.height() {
++            df_self.clone()
++        } else {
++            // left join tuples are always in ascending order
++            let sorted = if left_join || sorted_tuple_idx {
++                IsSorted::Ascending
++            } else {
++                IsSorted::Not
++            };
++
++            df_self._take_unchecked_slice_sorted(join_tuples, true, sorted)
++        }
++    }
++
++    #[cfg(not(feature = "chunked_ids"))]
++    fn _finish_left_join(
++        &self,
++        ids: LeftJoinIds,
++        other: &DataFrame,
++        args: JoinArgs,
++    ) -> PolarsResult<DataFrame> {
++        let ca_self = self.to_df();
++        let (left_idx, right_idx) = ids;
++        let materialize_left = || {
++            let mut left_idx = &*left_idx;
++            if let Some((offset, len)) = args.slice {
++                left_idx = slice_slice(left_idx, offset, len);
++            }
++            unsafe { ca_self._create_left_df_from_slice(left_idx, true, true) }
++        };
++
++        let materialize_right = || {
++            let mut right_idx = &*right_idx;
++            if let Some((offset, len)) = args.slice {
++                right_idx = slice_slice(right_idx, offset, len);
++            }
++            unsafe { other.take_unchecked(&right_idx.iter().copied().collect_ca("")) }
++        };
++        let (df_left, df_right) = POOL.join(materialize_left, materialize_right);
++
++        _finish_join(df_left, df_right, args.suffix.as_deref())
++    }
++
++    #[cfg(feature = "chunked_ids")]
++    fn _finish_left_join(
++        &self,
++        ids: LeftJoinIds,
++        other: &DataFrame,
++        args: JoinArgs,
++    ) -> PolarsResult<DataFrame> {
++        let ca_self = self.to_df();
++        let suffix = &args.suffix;
++        let slice = args.slice;
++        let (left_idx, right_idx) = ids;
++        let materialize_left = || match left_idx {
++            ChunkJoinIds::Left(left_idx) => {
++                let mut left_idx = &*left_idx;
++                if let Some((offset, len)) = slice {
++                    left_idx = slice_slice(left_idx, offset, len);
++                }
++                unsafe { ca_self._create_left_df_from_slice(left_idx, true, true) }
++            },
++            ChunkJoinIds::Right(left_idx) => {
++                let mut left_idx = &*left_idx;
++                if let Some((offset, len)) = slice {
++                    left_idx = slice_slice(left_idx, offset, len);
++                }
++                unsafe { ca_self.create_left_df_chunked(left_idx, true) }
++            },
++        };
++
++        let materialize_right = || match right_idx {
++            ChunkJoinOptIds::Left(right_idx) => {
++                let mut right_idx = &*right_idx;
++                if let Some((offset, len)) = slice {
++                    right_idx = slice_slice(right_idx, offset, len);
++                }
++                unsafe { other.take_unchecked(&right_idx.iter().copied().collect_ca("")) }
++            },
++            ChunkJoinOptIds::Right(right_idx) => {
++                let mut right_idx = &*right_idx;
++                if let Some((offset, len)) = slice {
++                    right_idx = slice_slice(right_idx, offset, len);
++                }
++                unsafe { other._take_opt_chunked_unchecked(right_idx) }
++            },
++        };
++        let (df_left, df_right) = POOL.join(materialize_left, materialize_right);
++
++        _finish_join(df_left, df_right, suffix.as_deref())
++    }
++
++    fn _left_join_from_series(
++        &self,
++        other: &DataFrame,
++        s_left: &Series,
++        s_right: &Series,
++        args: JoinArgs,
++        verbose: bool,
++    ) -> PolarsResult<DataFrame> {
++        let ca_self = self.to_df();
++        #[cfg(feature = "dtype-categorical")]
++        _check_categorical_src(s_left.dtype(), s_right.dtype())?;
++
++        // ensure that the chunks are aligned otherwise we go OOB
++        let mut left = ca_self.clone();
++        let mut s_left = s_left.clone();
++        let mut right = other.clone();
++        let mut s_right = s_right.clone();
++        if left.should_rechunk() {
++            left.as_single_chunk_par();
++            s_left = s_left.rechunk();
++        }
++        if right.should_rechunk() {
++            right.as_single_chunk_par();
++            s_right = s_right.rechunk();
++        }
++        let ids = sort_or_hash_left(&s_left, &s_right, verbose, args.validation)?;
++        left._finish_left_join(ids, &right.drop(s_right.name()).unwrap(), args)
++    }
++
++    #[cfg(feature = "semi_anti_join")]
++    /// # Safety
++    /// `idx` must be in bounds
++    unsafe fn _finish_anti_semi_join(
++        &self,
++        mut idx: &[IdxSize],
++        slice: Option<(i64, usize)>,
++    ) -> DataFrame {
++        let ca_self = self.to_df();
++        if let Some((offset, len)) = slice {
++            idx = slice_slice(idx, offset, len);
++        }
++        // idx from anti-semi join should always be sorted
++        ca_self._take_unchecked_slice_sorted(idx, true, IsSorted::Ascending)
++    }
++
++    #[cfg(feature = "semi_anti_join")]
++    fn _semi_anti_join_from_series(
++        &self,
++        s_left: &Series,
++        s_right: &Series,
++        slice: Option<(i64, usize)>,
++        anti: bool,
++    ) -> PolarsResult<DataFrame> {
++        let ca_self = self.to_df();
++        #[cfg(feature = "dtype-categorical")]
++        _check_categorical_src(s_left.dtype(), s_right.dtype())?;
++
++        let idx = s_left.hash_join_semi_anti(s_right, anti);
++        // Safety:
++        // indices are in bounds
++        Ok(unsafe { ca_self._finish_anti_semi_join(&idx, slice) })
++    }
++    fn _outer_join_from_series(
++        &self,
++        other: &DataFrame,
++        s_left: &Series,
++        s_right: &Series,
++        args: JoinArgs,
++    ) -> PolarsResult<DataFrame> {
++        let ca_self = self.to_df();
++        #[cfg(feature = "dtype-categorical")]
++        _check_categorical_src(s_left.dtype(), s_right.dtype())?;
++
++        // store this so that we can keep original column order.
++        let join_column_index = ca_self
++            .iter()
++            .position(|s| s.name() == s_left.name())
++            .unwrap();
++
++        // Get the indexes of the joined relations
++        let opt_join_tuples = s_left.hash_join_outer(s_right, args.validation)?;
++        let mut opt_join_tuples = &*opt_join_tuples;
++
++        if let Some((offset, len)) = args.slice {
++            opt_join_tuples = slice_slice(opt_join_tuples, offset, len);
++        }
++
++        // Take the left and right dataframes by join tuples
++        let (mut df_left, df_right) = POOL.join(
++            || unsafe {
++                ca_self.drop(s_left.name()).unwrap().take_unchecked(
++                    &opt_join_tuples
++                        .iter()
++                        .copied()
++                        .map(|(left, _right)| left)
++                        .collect_ca("outer-join-left-indices"),
++                )
++            },
++            || unsafe {
++                other.drop(s_right.name()).unwrap().take_unchecked(
++                    &opt_join_tuples
++                        .iter()
++                        .copied()
++                        .map(|(_left, right)| right)
++                        .collect_ca("outer-join-right-indices"),
++                )
++            },
++        );
++
++        let s = unsafe {
++            s_left
++                .to_physical_repr()
++                .zip_outer_join_column(&s_right.to_physical_repr(), opt_join_tuples)
++                .with_name(s_left.name())
++        };
++        let s = match s_left.dtype() {
++            #[cfg(feature = "dtype-categorical")]
++            DataType::Categorical(_) => {
++                let ca_left = s_left.categorical().unwrap();
++                let new_rev_map = ca_left._merge_categorical_map(s_right.categorical().unwrap())?;
++                let logical = s.u32().unwrap().clone();
++                // safety:
++                // categorical maps are merged
++                unsafe {
++                    CategoricalChunked::from_cats_and_rev_map_unchecked(logical, new_rev_map)
++                        .into_series()
++                }
++            },
++            dt @ DataType::Datetime(_, _)
++            | dt @ DataType::Time
++            | dt @ DataType::Date
++            | dt @ DataType::Duration(_) => s.cast(dt).unwrap(),
++            _ => s,
++        };
++
++        unsafe { df_left.get_columns_mut().insert(join_column_index, s) };
++        _finish_join(df_left, df_right, args.suffix.as_deref())
++    }
++}
++
++impl JoinDispatch for DataFrame {}
+diff --git a/crates/polars-core/src/frame/hash_join/multiple_keys.rs b/crates/polars-ops/src/frame/join/hash_join/multiple_keys.rs
+similarity index 93%
+rename from crates/polars-core/src/frame/hash_join/multiple_keys.rs
+rename to crates/polars-ops/src/frame/join/hash_join/multiple_keys.rs
+index 59502b08c..4cf38665a 100644
+--- a/crates/polars-core/src/frame/hash_join/multiple_keys.rs
++++ b/crates/polars-ops/src/frame/join/hash_join/multiple_keys.rs
+@@ -1,19 +1,12 @@
+ use hashbrown::hash_map::RawEntryMut;
+ use hashbrown::HashMap;
+-use rayon::prelude::*;
++use polars_core::hashing::{
++    populate_multiple_key_hashmap, IdBuildHasher, IdxHash, _HASHMAP_INIT_SIZE,
++};
++use polars_core::utils::{_set_partition_size, split_df};
++use polars_core::POOL;
+ 
+ use super::*;
+-use crate::frame::hash_join::{
+-    get_hash_tbl_threaded_join_mut_partitioned, get_hash_tbl_threaded_join_partitioned,
+-};
+-use crate::hashing::{
+-    df_rows_to_hashes_threaded_vertical, populate_multiple_key_hashmap, this_partition,
+-    IdBuildHasher, IdxHash, HASHMAP_INIT_SIZE,
+-};
+-use crate::prelude::*;
+-use crate::utils::series::_to_physical_and_bit_repr;
+-use crate::utils::{_set_partition_size, split_df};
+-use crate::POOL;
+ 
+ /// Compare the rows of two [`DataFrame`]s
+ pub(crate) unsafe fn compare_df_rows2(
+@@ -45,7 +38,7 @@ pub(crate) fn create_probe_table(
+             .map(|part_no| {
+                 let part_no = part_no as u64;
+                 let mut hash_tbl: HashMap<IdxHash, Vec<IdxSize>, IdBuildHasher> =
+-                    HashMap::with_capacity_and_hasher(HASHMAP_INIT_SIZE, Default::default());
++                    HashMap::with_capacity_and_hasher(_HASHMAP_INIT_SIZE, Default::default());
+ 
+                 let n_partitions = n_partitions as u64;
+                 let mut offset = 0;
+@@ -94,7 +87,7 @@ fn create_build_table_outer(
+         (0..n_partitions).into_par_iter().map(|part_no| {
+             let part_no = part_no as u64;
+             let mut hash_tbl: HashMap<IdxHash, (bool, Vec<IdxSize>), IdBuildHasher> =
+-                HashMap::with_capacity_and_hasher(HASHMAP_INIT_SIZE, Default::default());
++                HashMap::with_capacity_and_hasher(_HASHMAP_INIT_SIZE, Default::default());
+ 
+             let n_partitions = n_partitions as u64;
+             let mut offset = 0;
+@@ -189,9 +182,9 @@ pub fn _inner_join_multiple_keys(
+     let dfs_a = split_df(a, n_threads).unwrap();
+     let dfs_b = split_df(b, n_threads).unwrap();
+ 
+-    let (build_hashes, random_state) = df_rows_to_hashes_threaded_vertical(&dfs_b, None).unwrap();
++    let (build_hashes, random_state) = _df_rows_to_hashes_threaded_vertical(&dfs_b, None).unwrap();
+     let (probe_hashes, _) =
+-        df_rows_to_hashes_threaded_vertical(&dfs_a, Some(random_state)).unwrap();
++        _df_rows_to_hashes_threaded_vertical(&dfs_a, Some(random_state)).unwrap();
+ 
+     let hash_tbls = create_probe_table(&build_hashes, b);
+     // early drop to reduce memory pressure
+@@ -271,9 +264,9 @@ pub fn _left_join_multiple_keys(
+     let dfs_a = split_df(a, n_threads).unwrap();
+     let dfs_b = split_df(b, n_threads).unwrap();
+ 
+-    let (build_hashes, random_state) = df_rows_to_hashes_threaded_vertical(&dfs_b, None).unwrap();
++    let (build_hashes, random_state) = _df_rows_to_hashes_threaded_vertical(&dfs_b, None).unwrap();
+     let (probe_hashes, _) =
+-        df_rows_to_hashes_threaded_vertical(&dfs_a, Some(random_state)).unwrap();
++        _df_rows_to_hashes_threaded_vertical(&dfs_a, Some(random_state)).unwrap();
+ 
+     let hash_tbls = create_probe_table(&build_hashes, b);
+     // early drop to reduce memory pressure
+@@ -355,7 +348,7 @@ pub(crate) fn create_build_table_semi_anti(
+         (0..n_partitions).into_par_iter().map(|part_no| {
+             let part_no = part_no as u64;
+             let mut hash_tbl: HashMap<IdxHash, (), IdBuildHasher> =
+-                HashMap::with_capacity_and_hasher(HASHMAP_INIT_SIZE, Default::default());
++                HashMap::with_capacity_and_hasher(_HASHMAP_INIT_SIZE, Default::default());
+ 
+             let n_partitions = n_partitions as u64;
+             let mut offset = 0;
+@@ -402,9 +395,9 @@ pub(crate) fn semi_anti_join_multiple_keys_impl<'a>(
+     let dfs_a = split_df(a, n_threads).unwrap();
+     let dfs_b = split_df(b, n_threads).unwrap();
+ 
+-    let (build_hashes, random_state) = df_rows_to_hashes_threaded_vertical(&dfs_b, None).unwrap();
++    let (build_hashes, random_state) = _df_rows_to_hashes_threaded_vertical(&dfs_b, None).unwrap();
+     let (probe_hashes, _) =
+-        df_rows_to_hashes_threaded_vertical(&dfs_a, Some(random_state)).unwrap();
++        _df_rows_to_hashes_threaded_vertical(&dfs_a, Some(random_state)).unwrap();
+ 
+     let hash_tbls = create_build_table_semi_anti(&build_hashes, b);
+     // early drop to reduce memory pressure
+@@ -557,9 +550,9 @@ pub fn _outer_join_multiple_keys(
+     let dfs_a = split_df(a, n_threads).unwrap();
+     let dfs_b = split_df(b, n_threads).unwrap();
+ 
+-    let (build_hashes, random_state) = df_rows_to_hashes_threaded_vertical(&dfs_b, None).unwrap();
++    let (build_hashes, random_state) = _df_rows_to_hashes_threaded_vertical(&dfs_b, None).unwrap();
+     let (probe_hashes, _) =
+-        df_rows_to_hashes_threaded_vertical(&dfs_a, Some(random_state)).unwrap();
++        _df_rows_to_hashes_threaded_vertical(&dfs_a, Some(random_state)).unwrap();
+ 
+     let mut hash_tbls = create_build_table_outer(&build_hashes, b);
+     // early drop to reduce memory pressure
+diff --git a/crates/polars-core/src/frame/hash_join/single_keys.rs b/crates/polars-ops/src/frame/join/hash_join/single_keys.rs
+similarity index 72%
+rename from crates/polars-core/src/frame/hash_join/single_keys.rs
+rename to crates/polars-ops/src/frame/join/hash_join/single_keys.rs
+index c19833643..7fac84d9c 100644
+--- a/crates/polars-core/src/frame/hash_join/single_keys.rs
++++ b/crates/polars-ops/src/frame/join/hash_join/single_keys.rs
+@@ -1,9 +1,10 @@
+ use super::*;
+ 
+-pub(crate) fn build_tables<T, IntoSlice>(keys: Vec<IntoSlice>) -> Vec<PlHashMap<T, Vec<IdxSize>>>
++pub(crate) fn build_tables<T, I>(keys: Vec<I>) -> Vec<PlHashMap<T, Vec<IdxSize>>>
+ where
+     T: Send + Hash + Eq + Sync + Copy + AsU64,
+-    IntoSlice: AsRef<[T]> + Send + Sync,
++    I: IntoIterator<Item = T> + Send + Sync + Clone,
++    // <I as IntoIterator>::IntoIter: TrustedLen,
+ {
+     let n_partitions = _set_partition_size();
+ 
+@@ -17,21 +18,21 @@ where
+                 let partition_no = partition_no as u64;
+ 
+                 let mut hash_tbl: PlHashMap<T, Vec<IdxSize>> =
+-                    PlHashMap::with_capacity(HASHMAP_INIT_SIZE);
++                    PlHashMap::with_capacity(_HASHMAP_INIT_SIZE);
+ 
+                 let n_partitions = n_partitions as u64;
+                 let mut offset = 0;
+                 for keys in &keys {
+-                    let keys = keys.as_ref();
+-                    let len = keys.len() as IdxSize;
++                    let keys = keys.clone().into_iter();
++                    let len = keys.size_hint().1.unwrap() as IdxSize;
+ 
+                     let mut cnt = 0;
+-                    keys.iter().for_each(|k| {
++                    keys.for_each(|k| {
+                         let idx = cnt + offset;
+                         cnt += 1;
+ 
+                         if this_partition(k.as_u64(), partition_no, n_partitions) {
+-                            let entry = hash_tbl.entry(*k);
++                            let entry = hash_tbl.entry(k);
+ 
+                             match entry {
+                                 Entry::Vacant(entry) => {
+@@ -53,14 +54,15 @@ where
+ }
+ 
+ // we determine the offset so that we later know which index to store in the join tuples
+-pub(super) fn probe_to_offsets<T, IntoSlice>(probe: &[IntoSlice]) -> Vec<usize>
++pub(super) fn probe_to_offsets<T, I>(probe: &[I]) -> Vec<usize>
+ where
+-    IntoSlice: AsRef<[T]> + Send + Sync,
++    I: IntoIterator<Item = T> + Clone,
++    // <I as IntoIterator>::IntoIter: TrustedLen,
+     T: Send + Hash + Eq + Sync + Copy + AsU64,
+ {
+     probe
+         .iter()
+-        .map(|ph| ph.as_ref().len())
++        .map(|ph| ph.clone().into_iter().size_hint().1.unwrap())
+         .scan(0, |state, val| {
+             let out = *state;
+             *state += val;
+diff --git a/crates/polars-ops/src/frame/join/hash_join/single_keys_dispatch.rs b/crates/polars-ops/src/frame/join/hash_join/single_keys_dispatch.rs
+new file mode 100644
+index 000000000..d22d11e43
+--- /dev/null
++++ b/crates/polars-ops/src/frame/join/hash_join/single_keys_dispatch.rs
+@@ -0,0 +1,466 @@
++use num_traits::NumCast;
++
++use super::*;
++use crate::series::SeriesSealed;
++
++pub trait SeriesJoin: SeriesSealed + Sized {
++    #[doc(hidden)]
++    fn hash_join_left(
++        &self,
++        other: &Series,
++        validate: JoinValidation,
++    ) -> PolarsResult<LeftJoinIds> {
++        let s_self = self.as_series();
++        let (lhs, rhs) = (s_self.to_physical_repr(), other.to_physical_repr());
++        validate.validate_probe(&lhs, &rhs, false)?;
++
++        use DataType::*;
++        match lhs.dtype() {
++            Utf8 => {
++                let lhs = lhs.cast(&Binary).unwrap();
++                let rhs = rhs.cast(&Binary).unwrap();
++                lhs.hash_join_left(&rhs, JoinValidation::ManyToMany)
++            },
++            Binary => {
++                let lhs = lhs.binary().unwrap();
++                let rhs = rhs.binary().unwrap();
++                let (lhs, rhs, _, _) = prepare_binary(lhs, rhs, false);
++                let lhs = lhs.iter().map(|v| v.as_slice()).collect::<Vec<_>>();
++                let rhs = rhs.iter().map(|v| v.as_slice()).collect::<Vec<_>>();
++                hash_join_tuples_left(lhs, rhs, None, None, validate)
++            },
++            _ => {
++                if s_self.bit_repr_is_large() {
++                    let lhs = lhs.bit_repr_large();
++                    let rhs = rhs.bit_repr_large();
++                    num_group_join_left(&lhs, &rhs, validate)
++                } else {
++                    let lhs = lhs.bit_repr_small();
++                    let rhs = rhs.bit_repr_small();
++                    num_group_join_left(&lhs, &rhs, validate)
++                }
++            },
++        }
++    }
++
++    #[cfg(feature = "semi_anti_join")]
++    fn hash_join_semi_anti(&self, other: &Series, anti: bool) -> Vec<IdxSize> {
++        let s_self = self.as_series();
++        let (lhs, rhs) = (s_self.to_physical_repr(), other.to_physical_repr());
++
++        use DataType::*;
++        match lhs.dtype() {
++            Utf8 => {
++                let lhs = lhs.cast(&Binary).unwrap();
++                let rhs = rhs.cast(&Binary).unwrap();
++                lhs.hash_join_semi_anti(&rhs, anti)
++            },
++            Binary => {
++                let lhs = lhs.binary().unwrap();
++                let rhs = rhs.binary().unwrap();
++                let (lhs, rhs, _, _) = prepare_binary(lhs, rhs, false);
++                let lhs = lhs.iter().map(|v| v.as_slice()).collect::<Vec<_>>();
++                let rhs = rhs.iter().map(|v| v.as_slice()).collect::<Vec<_>>();
++                if anti {
++                    hash_join_tuples_left_anti(lhs, rhs)
++                } else {
++                    hash_join_tuples_left_semi(lhs, rhs)
++                }
++            },
++            _ => {
++                if s_self.bit_repr_is_large() {
++                    let lhs = lhs.bit_repr_large();
++                    let rhs = rhs.bit_repr_large();
++                    num_group_join_anti_semi(&lhs, &rhs, anti)
++                } else {
++                    let lhs = lhs.bit_repr_small();
++                    let rhs = rhs.bit_repr_small();
++                    num_group_join_anti_semi(&lhs, &rhs, anti)
++                }
++            },
++        }
++    }
++
++    // returns the join tuples and whether or not the lhs tuples are sorted
++    fn hash_join_inner(
++        &self,
++        other: &Series,
++        validate: JoinValidation,
++    ) -> PolarsResult<(InnerJoinIds, bool)> {
++        let s_self = self.as_series();
++        let (lhs, rhs) = (s_self.to_physical_repr(), other.to_physical_repr());
++        validate.validate_probe(&lhs, &rhs, true)?;
++
++        use DataType::*;
++        match lhs.dtype() {
++            Utf8 => {
++                let lhs = lhs.cast(&Binary).unwrap();
++                let rhs = rhs.cast(&Binary).unwrap();
++                lhs.hash_join_inner(&rhs, JoinValidation::ManyToMany)
++            },
++            Binary => {
++                let lhs = lhs.binary().unwrap();
++                let rhs = rhs.binary().unwrap();
++                let (lhs, rhs, swapped, _) = prepare_binary(lhs, rhs, true);
++                let lhs = lhs.iter().map(|v| v.as_slice()).collect::<Vec<_>>();
++                let rhs = rhs.iter().map(|v| v.as_slice()).collect::<Vec<_>>();
++                Ok((
++                    hash_join_tuples_inner(lhs, rhs, swapped, validate)?,
++                    !swapped,
++                ))
++            },
++            _ => {
++                if s_self.bit_repr_is_large() {
++                    let lhs = s_self.bit_repr_large();
++                    let rhs = other.bit_repr_large();
++                    group_join_inner(&lhs, &rhs, validate)
++                } else {
++                    let lhs = s_self.bit_repr_small();
++                    let rhs = other.bit_repr_small();
++                    group_join_inner(&lhs, &rhs, validate)
++                }
++            },
++        }
++    }
++
++    fn hash_join_outer(
++        &self,
++        other: &Series,
++        validate: JoinValidation,
++    ) -> PolarsResult<Vec<(Option<IdxSize>, Option<IdxSize>)>> {
++        let s_self = self.as_series();
++        let (lhs, rhs) = (s_self.to_physical_repr(), other.to_physical_repr());
++        validate.validate_probe(&lhs, &rhs, true)?;
++
++        use DataType::*;
++        match lhs.dtype() {
++            Utf8 => {
++                let lhs = lhs.cast(&Binary).unwrap();
++                let rhs = rhs.cast(&Binary).unwrap();
++                lhs.hash_join_outer(&rhs, JoinValidation::ManyToMany)
++            },
++            Binary => {
++                let lhs = lhs.binary().unwrap();
++                let rhs = rhs.binary().unwrap();
++                let (lhs, rhs, swapped, _) = prepare_binary(lhs, rhs, true);
++                let lhs = lhs.iter().collect::<Vec<_>>();
++                let rhs = rhs.iter().collect::<Vec<_>>();
++                hash_join_tuples_outer(lhs, rhs, swapped, validate)
++            },
++            _ => {
++                if s_self.bit_repr_is_large() {
++                    let lhs = s_self.bit_repr_large();
++                    let rhs = other.bit_repr_large();
++                    hash_join_outer(&lhs, &rhs, validate)
++                } else {
++                    let lhs = s_self.bit_repr_small();
++                    let rhs = other.bit_repr_small();
++                    hash_join_outer(&lhs, &rhs, validate)
++                }
++            },
++        }
++    }
++}
++
++impl SeriesJoin for Series {}
++
++fn chunks_as_slices<T>(splitted: &[ChunkedArray<T>]) -> Vec<&[T::Native]>
++where
++    T: PolarsNumericType,
++{
++    splitted
++        .iter()
++        .flat_map(|ca| ca.downcast_iter().map(|arr| arr.values().as_slice()))
++        .collect()
++}
++
++fn get_arrays<T: PolarsDataType>(cas: &[ChunkedArray<T>]) -> Vec<&T::Array> {
++    cas.iter().flat_map(|arr| arr.downcast_iter()).collect()
++}
++
++fn group_join_inner<'b, T>(
++    left: &'b ChunkedArray<T>,
++    right: &'b ChunkedArray<T>,
++    validate: JoinValidation,
++) -> PolarsResult<(InnerJoinIds, bool)>
++where
++    T: PolarsDataType,
++    &'b T::Array: IntoIterator<Item = Option<&'b T::Physical<'b>>>,
++    T::Physical<'b>: Hash + Eq + Send + AsU64 + Copy + Send + Sync,
++{
++    let n_threads = POOL.current_num_threads();
++    let (a, b, swapped) = det_hash_prone_order!(left, right);
++    let splitted_a = split_ca(a, n_threads).unwrap();
++    let splitted_b = split_ca(b, n_threads).unwrap();
++    let splitted_a = get_arrays(&splitted_a);
++    let splitted_b = get_arrays(&splitted_b);
++    // SAFETY: extend lifetime. The call to the function's below is sound as the borrow
++    // will never leave the scope of this function.
++    let splitted_a = unsafe { std::mem::transmute::<_, Vec<&'b T::Array>>(splitted_a) };
++    let splitted_b = unsafe { std::mem::transmute::<_, Vec<&'b T::Array>>(splitted_b) };
++
++    match (left.null_count(), right.null_count()) {
++        (0, 0) => {
++            let first = &splitted_a[0];
++            if first.as_slice().is_some() {
++                let splitted_a = splitted_a
++                    .iter()
++                    .map(|arr| arr.as_slice().unwrap())
++                    .collect::<Vec<_>>();
++                let splitted_b = splitted_b
++                    .iter()
++                    .map(|arr| arr.as_slice().unwrap())
++                    .collect::<Vec<_>>();
++                Ok((
++                    hash_join_tuples_inner(splitted_a, splitted_b, swapped, validate)?,
++                    !swapped,
++                ))
++            } else {
++                Ok((
++                    hash_join_tuples_inner(splitted_a, splitted_b, swapped, validate)?,
++                    !swapped,
++                ))
++            }
++        },
++        _ => Ok((
++            hash_join_tuples_inner(splitted_a, splitted_b, swapped, validate)?,
++            !swapped,
++        )),
++    }
++}
++
++#[cfg(feature = "chunked_ids")]
++fn create_mappings(
++    chunks_left: &[ArrayRef],
++    chunks_right: &[ArrayRef],
++    left_len: usize,
++    right_len: usize,
++) -> (Option<Vec<ChunkId>>, Option<Vec<ChunkId>>) {
++    let mapping_left = || {
++        if chunks_left.len() > 1 {
++            Some(create_chunked_index_mapping(chunks_left, left_len))
++        } else {
++            None
++        }
++    };
++
++    let mapping_right = || {
++        if chunks_right.len() > 1 {
++            Some(create_chunked_index_mapping(chunks_right, right_len))
++        } else {
++            None
++        }
++    };
++
++    POOL.join(mapping_left, mapping_right)
++}
++
++#[cfg(not(feature = "chunked_ids"))]
++fn create_mappings(
++    _chunks_left: &[ArrayRef],
++    _chunks_right: &[ArrayRef],
++    _left_len: usize,
++    _right_len: usize,
++) -> (Option<Vec<ChunkId>>, Option<Vec<ChunkId>>) {
++    (None, None)
++}
++
++fn num_group_join_left<T>(
++    left: &ChunkedArray<T>,
++    right: &ChunkedArray<T>,
++    validate: JoinValidation,
++) -> PolarsResult<LeftJoinIds>
++where
++    T: PolarsIntegerType,
++    T::Native: Hash + Eq + Send + AsU64,
++    Option<T::Native>: AsU64,
++{
++    let n_threads = POOL.current_num_threads();
++    let splitted_a = split_ca(left, n_threads).unwrap();
++    let splitted_b = split_ca(right, n_threads).unwrap();
++    match (
++        left.null_count(),
++        right.null_count(),
++        left.chunks().len(),
++        right.chunks().len(),
++    ) {
++        (0, 0, 1, 1) => {
++            let keys_a = chunks_as_slices(&splitted_a);
++            let keys_b = chunks_as_slices(&splitted_b);
++            hash_join_tuples_left(keys_a, keys_b, None, None, validate)
++        },
++        (0, 0, _, _) => {
++            let keys_a = chunks_as_slices(&splitted_a);
++            let keys_b = chunks_as_slices(&splitted_b);
++
++            let (mapping_left, mapping_right) =
++                create_mappings(left.chunks(), right.chunks(), left.len(), right.len());
++            hash_join_tuples_left(
++                keys_a,
++                keys_b,
++                mapping_left.as_deref(),
++                mapping_right.as_deref(),
++                validate,
++            )
++        },
++        _ => {
++            let keys_a = get_arrays(&splitted_a);
++            let keys_b = get_arrays(&splitted_b);
++            let (mapping_left, mapping_right) =
++                create_mappings(left.chunks(), right.chunks(), left.len(), right.len());
++            hash_join_tuples_left(
++                keys_a,
++                keys_b,
++                mapping_left.as_deref(),
++                mapping_right.as_deref(),
++                validate,
++            )
++        },
++    }
++}
++
++fn hash_join_outer<T>(
++    ca_in: &ChunkedArray<T>,
++    other: &ChunkedArray<T>,
++    validate: JoinValidation,
++) -> PolarsResult<Vec<(Option<IdxSize>, Option<IdxSize>)>>
++where
++    T: PolarsIntegerType + Sync,
++    T::Native: Eq + Hash + NumCast,
++{
++    let (a, b, swapped) = det_hash_prone_order!(ca_in, other);
++
++    let n_partitions = _set_partition_size();
++    let splitted_a = split_ca(a, n_partitions).unwrap();
++    let splitted_b = split_ca(b, n_partitions).unwrap();
++
++    match (a.null_count(), b.null_count()) {
++        (0, 0) => {
++            let iters_a = splitted_a
++                .iter()
++                .flat_map(|ca| ca.downcast_iter().map(|arr| arr.values().as_slice()))
++                .collect::<Vec<_>>();
++            let iters_b = splitted_b
++                .iter()
++                .flat_map(|ca| ca.downcast_iter().map(|arr| arr.values().as_slice()))
++                .collect::<Vec<_>>();
++            hash_join_tuples_outer(iters_a, iters_b, swapped, validate)
++        },
++        _ => {
++            let iters_a = splitted_a
++                .iter()
++                .flat_map(|ca| ca.downcast_iter().map(|arr| arr.iter()))
++                .collect::<Vec<_>>();
++            let iters_b = splitted_b
++                .iter()
++                .flat_map(|ca| ca.downcast_iter().map(|arr| arr.iter()))
++                .collect::<Vec<_>>();
++            hash_join_tuples_outer(iters_a, iters_b, swapped, validate)
++        },
++    }
++}
++
++pub fn prepare_bytes<'a>(
++    been_split: &'a [BinaryChunked],
++    hb: &RandomState,
++) -> Vec<Vec<BytesHash<'a>>> {
++    POOL.install(|| {
++        been_split
++            .par_iter()
++            .map(|ca| {
++                ca.into_iter()
++                    .map(|opt_b| {
++                        let mut state = hb.build_hasher();
++                        opt_b.hash(&mut state);
++                        let hash = state.finish();
++                        BytesHash::new(opt_b, hash)
++                    })
++                    .collect::<Vec<_>>()
++            })
++            .collect()
++    })
++}
++
++fn prepare_binary<'a>(
++    ca: &'a BinaryChunked,
++    other: &'a BinaryChunked,
++    // In inner join and outer join, the shortest relation will be used to create a hash table.
++    // In left join, always use the right side to create.
++    build_shortest_table: bool,
++) -> (
++    Vec<Vec<BytesHash<'a>>>,
++    Vec<Vec<BytesHash<'a>>>,
++    bool,
++    RandomState,
++) {
++    let n_threads = POOL.current_num_threads();
++
++    let (a, b, swapped) = if build_shortest_table {
++        det_hash_prone_order!(ca, other)
++    } else {
++        (ca, other, false)
++    };
++
++    let hb = RandomState::default();
++    let splitted_a = split_ca(a, n_threads).unwrap();
++    let splitted_b = split_ca(b, n_threads).unwrap();
++    let str_hashes_a = prepare_bytes(&splitted_a, &hb);
++    let str_hashes_b = prepare_bytes(&splitted_b, &hb);
++
++    // SAFETY:
++    // Splitting a Ca keeps the same buffers, so the lifetime is still valid.
++    let str_hashes_a = unsafe { std::mem::transmute::<_, Vec<Vec<BytesHash<'a>>>>(str_hashes_a) };
++    let str_hashes_b = unsafe { std::mem::transmute::<_, Vec<Vec<BytesHash<'a>>>>(str_hashes_b) };
++
++    (str_hashes_a, str_hashes_b, swapped, hb)
++}
++
++#[cfg(feature = "semi_anti_join")]
++fn num_group_join_anti_semi<T>(
++    left: &ChunkedArray<T>,
++    right: &ChunkedArray<T>,
++    anti: bool,
++) -> Vec<IdxSize>
++where
++    T: PolarsIntegerType,
++    T::Native: Hash + Eq + Send + AsU64,
++    Option<T::Native>: AsU64,
++{
++    let n_threads = POOL.current_num_threads();
++    let splitted_a = split_ca(left, n_threads).unwrap();
++    let splitted_b = split_ca(right, n_threads).unwrap();
++    match (
++        left.null_count(),
++        right.null_count(),
++        left.chunks().len(),
++        right.chunks().len(),
++    ) {
++        (0, 0, 1, 1) => {
++            let keys_a = chunks_as_slices(&splitted_a);
++            let keys_b = chunks_as_slices(&splitted_b);
++            if anti {
++                hash_join_tuples_left_anti(keys_a, keys_b)
++            } else {
++                hash_join_tuples_left_semi(keys_a, keys_b)
++            }
++        },
++        (0, 0, _, _) => {
++            let keys_a = chunks_as_slices(&splitted_a);
++            let keys_b = chunks_as_slices(&splitted_b);
++            if anti {
++                hash_join_tuples_left_anti(keys_a, keys_b)
++            } else {
++                hash_join_tuples_left_semi(keys_a, keys_b)
++            }
++        },
++        _ => {
++            let keys_a = get_arrays(&splitted_a);
++            let keys_b = get_arrays(&splitted_b);
++            if anti {
++                hash_join_tuples_left_anti(keys_a, keys_b)
++            } else {
++                hash_join_tuples_left_semi(keys_a, keys_b)
++            }
++        },
++    }
++}
+diff --git a/crates/polars-core/src/frame/hash_join/single_keys_inner.rs b/crates/polars-ops/src/frame/join/hash_join/single_keys_inner.rs
+similarity index 84%
+rename from crates/polars-core/src/frame/hash_join/single_keys_inner.rs
+rename to crates/polars-ops/src/frame/join/hash_join/single_keys_inner.rs
+index a877fa516..cae187cd7 100644
+--- a/crates/polars-core/src/frame/hash_join/single_keys_inner.rs
++++ b/crates/polars-ops/src/frame/join/hash_join/single_keys_inner.rs
+@@ -1,14 +1,11 @@
++use polars_core::utils::flatten;
+ use polars_utils::iter::EnumerateIdxTrait;
+ use polars_utils::sync::SyncPtr;
+ 
+-use super::single_keys::build_tables;
+ use super::*;
+-use crate::frame::hash_join::single_keys::probe_to_offsets;
+-use crate::utils::flatten;
+ 
+-/// Probe the build table and add tuples to the results (inner join)
+-pub(super) fn probe_inner<T, F>(
+-    probe: &[T],
++pub(super) fn probe_inner<T, F, I>(
++    probe: I,
+     hash_tbls: &[PlHashMap<T, Vec<IdxSize>>],
+     results: &mut Vec<(IdxSize, IdxSize)>,
+     local_offset: IdxSize,
+@@ -16,16 +13,18 @@ pub(super) fn probe_inner<T, F>(
+     swap_fn: F,
+ ) where
+     T: Send + Hash + Eq + Sync + Copy + AsU64,
++    I: IntoIterator<Item = T>,
++    // <I as IntoIterator>::IntoIter: TrustedLen,
+     F: Fn(IdxSize, IdxSize) -> (IdxSize, IdxSize),
+ {
+     assert!(hash_tbls.len().is_power_of_two());
+-    probe.iter().enumerate_idx().for_each(|(idx_a, k)| {
++    probe.into_iter().enumerate_idx().for_each(|(idx_a, k)| {
+         let idx_a = idx_a + local_offset;
+         // probe table that contains the hashed value
+         let current_probe_table =
+             unsafe { get_hash_tbl_threaded_join_partitioned(k.as_u64(), hash_tbls, n_tables) };
+ 
+-        let value = current_probe_table.get(k);
++        let value = current_probe_table.get(&k);
+ 
+         if let Some(indexes_b) = value {
+             let tuples = indexes_b.iter().map(|&idx_b| swap_fn(idx_a, idx_b));
+@@ -34,22 +33,25 @@ pub(super) fn probe_inner<T, F>(
+     });
+ }
+ 
+-pub(super) fn hash_join_tuples_inner<T, IntoSlice>(
+-    probe: Vec<IntoSlice>,
+-    build: Vec<IntoSlice>,
++pub(super) fn hash_join_tuples_inner<T, I>(
++    probe: Vec<I>,
++    build: Vec<I>,
+     // Because b should be the shorter relation we could need to swap to keep left left and right right.
+     swapped: bool,
+     validate: JoinValidation,
+ ) -> PolarsResult<(Vec<IdxSize>, Vec<IdxSize>)>
+ where
+-    IntoSlice: AsRef<[T]> + Send + Sync,
++    I: IntoIterator<Item = T> + Send + Sync + Copy,
++    // <I as IntoIterator>::IntoIter: TrustedLen,
+     T: Send + Hash + Eq + Sync + Copy + AsU64,
+ {
+     // NOTE: see the left join for more elaborate comments
+-
+     // first we hash one relation
+     let hash_tbls = if validate.needs_checks() {
+-        let expected_size = build.iter().map(|v| v.as_ref().len()).sum();
++        let expected_size = build
++            .iter()
++            .map(|v| v.into_iter().size_hint().1.unwrap())
++            .sum();
+         let hash_tbls = build_tables(build);
+         let build_size = hash_tbls.iter().map(|m| m.len()).sum();
+         validate.validate_build(build_size, expected_size, swapped)?;
+@@ -68,10 +70,10 @@ where
+             .into_par_iter()
+             .zip(offsets)
+             .map(|(probe, offset)| {
+-                let probe = probe.as_ref();
++                let probe = probe.into_iter();
+                 // local reference
+                 let hash_tbls = &hash_tbls;
+-                let mut results = Vec::with_capacity(probe.len());
++                let mut results = Vec::with_capacity(probe.size_hint().1.unwrap());
+                 let local_offset = offset as IdxSize;
+ 
+                 // branch is to hoist swap out of the inner loop.
+diff --git a/crates/polars-core/src/frame/hash_join/single_keys_left.rs b/crates/polars-ops/src/frame/join/hash_join/single_keys_left.rs
+similarity index 90%
+rename from crates/polars-core/src/frame/hash_join/single_keys_left.rs
+rename to crates/polars-ops/src/frame/join/hash_join/single_keys_left.rs
+index 9fd51a285..6b80c1f38 100644
+--- a/crates/polars-core/src/frame/hash_join/single_keys_left.rs
++++ b/crates/polars-ops/src/frame/join/hash_join/single_keys_left.rs
+@@ -1,7 +1,6 @@
+-use super::single_keys::build_tables;
++use polars_core::utils::flatten::flatten_par;
++
+ use super::*;
+-use crate::frame::hash_join::single_keys::probe_to_offsets;
+-use crate::utils::flatten::flatten_par;
+ 
+ #[cfg(feature = "chunked_ids")]
+ unsafe fn apply_mapping(idx: Vec<IdxSize>, chunk_mapping: &[ChunkId]) -> Vec<ChunkId> {
+@@ -98,9 +97,9 @@ pub(super) fn flatten_left_join_ids(result: Vec<LeftJoinIds>) -> LeftJoinIds {
+     }
+ }
+ 
+-pub(super) fn hash_join_tuples_left<T, IntoSlice>(
+-    probe: Vec<IntoSlice>,
+-    build: Vec<IntoSlice>,
++pub(super) fn hash_join_tuples_left<T, I>(
++    probe: Vec<I>,
++    build: Vec<I>,
+     // map the global indices to [chunk_idx, array_idx]
+     // only needed if we have non contiguous memory
+     chunk_mapping_left: Option<&[ChunkId]>,
+@@ -108,12 +107,15 @@ pub(super) fn hash_join_tuples_left<T, IntoSlice>(
+     validate: JoinValidation,
+ ) -> PolarsResult<LeftJoinIds>
+ where
+-    IntoSlice: AsRef<[T]> + Send + Sync,
++    I: IntoIterator<Item = T>,
++    <I as IntoIterator>::IntoIter: Send + Sync + Clone,
+     T: Send + Hash + Eq + Sync + Copy + AsU64,
+ {
++    let probe = probe.into_iter().map(|i| i.into_iter()).collect::<Vec<_>>();
++    let build = build.into_iter().map(|i| i.into_iter()).collect::<Vec<_>>();
+     // first we hash one relation
+     let hash_tbls = if validate.needs_checks() {
+-        let expected_size = build.iter().map(|v| v.as_ref().len()).sum();
++        let expected_size = build.iter().map(|v| v.size_hint().1.unwrap()).sum();
+         let hash_tbls = build_tables(build);
+         let build_size = hash_tbls.iter().map(|m| m.len()).sum();
+         validate.validate_build(build_size, expected_size, false)?;
+@@ -138,13 +140,12 @@ where
+             .map(move |(probe, offset)| {
+                 // local reference
+                 let hash_tbls = &hash_tbls;
+-                let probe = probe.as_ref();
+ 
+                 // assume the result tuples equal length of the no. of hashes processed by this thread.
+-                let mut result_idx_left = Vec::with_capacity(probe.len());
+-                let mut result_idx_right = Vec::with_capacity(probe.len());
++                let mut result_idx_left = Vec::with_capacity(probe.size_hint().1.unwrap());
++                let mut result_idx_right = Vec::with_capacity(probe.size_hint().1.unwrap());
+ 
+-                probe.iter().enumerate().for_each(|(idx_a, k)| {
++                probe.enumerate().for_each(|(idx_a, k)| {
+                     let idx_a = (idx_a + offset) as IdxSize;
+                     // probe table that contains the hashed value
+                     let current_probe_table = unsafe {
+@@ -152,7 +153,7 @@ where
+                     };
+ 
+                     // we already hashed, so we don't have to hash again.
+-                    let value = current_probe_table.get(k);
++                    let value = current_probe_table.get(&k);
+ 
+                     match value {
+                         // left and right matches
+diff --git a/crates/polars-core/src/frame/hash_join/single_keys_outer.rs b/crates/polars-ops/src/frame/join/hash_join/single_keys_outer.rs
+similarity index 89%
+rename from crates/polars-core/src/frame/hash_join/single_keys_outer.rs
+rename to crates/polars-ops/src/frame/join/hash_join/single_keys_outer.rs
+index 676f77818..a0c34a432 100644
+--- a/crates/polars-core/src/frame/hash_join/single_keys_outer.rs
++++ b/crates/polars-ops/src/frame/join/hash_join/single_keys_outer.rs
+@@ -67,10 +67,14 @@ pub(super) fn hash_join_tuples_outer<T, I, J>(
+     validate: JoinValidation,
+ ) -> PolarsResult<Vec<(Option<IdxSize>, Option<IdxSize>)>>
+ where
+-    I: Iterator<Item = T> + Send + TrustedLen,
+-    J: Iterator<Item = T> + Send + TrustedLen,
++    I: IntoIterator<Item = T>,
++    J: IntoIterator<Item = T>,
++    <J as IntoIterator>::IntoIter: TrustedLen + Send,
++    <I as IntoIterator>::IntoIter: TrustedLen + Send,
+     T: Hash + Eq + Copy + Sync + Send,
+ {
++    let probe = probe.into_iter().map(|i| i.into_iter()).collect::<Vec<_>>();
++    let build = build.into_iter().map(|i| i.into_iter()).collect::<Vec<_>>();
+     // This function is partially multi-threaded.
+     // Parts that are done in parallel:
+     //  - creation of the probe tables
+@@ -79,8 +83,14 @@ where
+     // during the probe phase values are removed from the tables, that's done single threaded to
+     // keep it lock free.
+ 
+-    let size = probe.iter().map(|a| a.size_hint().0).sum::<usize>()
+-        + build.iter().map(|b| b.size_hint().0).sum::<usize>();
++    let size = probe
++        .iter()
++        .map(|a| a.size_hint().1.unwrap())
++        .sum::<usize>()
++        + build
++            .iter()
++            .map(|b| b.size_hint().1.unwrap())
++            .sum::<usize>();
+     let mut results = Vec::with_capacity(size);
+ 
+     // prepare hash table
+diff --git a/crates/polars-core/src/frame/hash_join/single_keys_semi_anti.rs b/crates/polars-ops/src/frame/join/hash_join/single_keys_semi_anti.rs
+similarity index 72%
+rename from crates/polars-core/src/frame/hash_join/single_keys_semi_anti.rs
+rename to crates/polars-ops/src/frame/join/hash_join/single_keys_semi_anti.rs
+index 616711c03..254c31e8b 100644
+--- a/crates/polars-core/src/frame/hash_join/single_keys_semi_anti.rs
++++ b/crates/polars-ops/src/frame/join/hash_join/single_keys_semi_anti.rs
+@@ -1,11 +1,10 @@
+ use super::*;
+-use crate::frame::hash_join::single_keys::probe_to_offsets;
+ 
+ /// Only keeps track of membership in right table
+-pub(super) fn create_probe_table_semi_anti<T, IntoSlice>(keys: Vec<IntoSlice>) -> Vec<PlHashSet<T>>
++pub(super) fn create_probe_table_semi_anti<T, I>(keys: Vec<I>) -> Vec<PlHashSet<T>>
+ where
+     T: Send + Hash + Eq + Sync + Copy + AsU64,
+-    IntoSlice: AsRef<[T]> + Send + Sync,
++    I: IntoIterator<Item = T> + Copy + Send + Sync,
+ {
+     let n_partitions = _set_partition_size();
+ 
+@@ -16,14 +15,13 @@ where
+         (0..n_partitions).into_par_iter().map(|partition_no| {
+             let partition_no = partition_no as u64;
+ 
+-            let mut hash_tbl: PlHashSet<T> = PlHashSet::with_capacity(HASHMAP_INIT_SIZE);
++            let mut hash_tbl: PlHashSet<T> = PlHashSet::with_capacity(_HASHMAP_INIT_SIZE);
+ 
+             let n_partitions = n_partitions as u64;
+             for keys in &keys {
+-                let keys = keys.as_ref();
+-                keys.iter().for_each(|k| {
++                keys.into_iter().for_each(|k| {
+                     if this_partition(k.as_u64(), partition_no, n_partitions) {
+-                        hash_tbl.insert(*k);
++                        hash_tbl.insert(k);
+                     }
+                 });
+             }
+@@ -33,12 +31,12 @@ where
+     .collect()
+ }
+ 
+-pub(super) fn semi_anti_impl<T, IntoSlice>(
+-    probe: Vec<IntoSlice>,
+-    build: Vec<IntoSlice>,
++pub(super) fn semi_anti_impl<T, I>(
++    probe: Vec<I>,
++    build: Vec<I>,
+ ) -> impl ParallelIterator<Item = (IdxSize, bool)>
+ where
+-    IntoSlice: AsRef<[T]> + Send + Sync,
++    I: IntoIterator<Item = T> + Copy + Send + Sync,
+     T: Send + Hash + Eq + Sync + Copy + AsU64,
+ {
+     // first we hash one relation
+@@ -60,12 +58,12 @@ where
+             .flat_map(move |(probe, offset)| {
+                 // local reference
+                 let hash_sets = &hash_sets;
+-                let probe = probe.as_ref();
++                let probe_iter = probe.into_iter();
+ 
+                 // assume the result tuples equal length of the no. of hashes processed by this thread.
+-                let mut results = Vec::with_capacity(probe.len());
++                let mut results = Vec::with_capacity(probe_iter.size_hint().1.unwrap());
+ 
+-                probe.iter().enumerate().for_each(|(idx_a, k)| {
++                probe_iter.enumerate().for_each(|(idx_a, k)| {
+                     let idx_a = (idx_a + offset) as IdxSize;
+                     // probe table that contains the hashed value
+                     let current_probe_table = unsafe {
+@@ -73,7 +71,7 @@ where
+                     };
+ 
+                     // we already hashed, so we don't have to hash again.
+-                    let value = current_probe_table.get(k);
++                    let value = current_probe_table.get(&k);
+ 
+                     match value {
+                         // left and right matches
+@@ -87,12 +85,9 @@ where
+     })
+ }
+ 
+-pub(super) fn hash_join_tuples_left_anti<T, IntoSlice>(
+-    probe: Vec<IntoSlice>,
+-    build: Vec<IntoSlice>,
+-) -> Vec<IdxSize>
++pub(super) fn hash_join_tuples_left_anti<T, I>(probe: Vec<I>, build: Vec<I>) -> Vec<IdxSize>
+ where
+-    IntoSlice: AsRef<[T]> + Send + Sync,
++    I: IntoIterator<Item = T> + Copy + Send + Sync,
+     T: Send + Hash + Eq + Sync + Copy + AsU64,
+ {
+     semi_anti_impl(probe, build)
+@@ -101,12 +96,9 @@ where
+         .collect()
+ }
+ 
+-pub(super) fn hash_join_tuples_left_semi<T, IntoSlice>(
+-    probe: Vec<IntoSlice>,
+-    build: Vec<IntoSlice>,
+-) -> Vec<IdxSize>
++pub(super) fn hash_join_tuples_left_semi<T, I>(probe: Vec<I>, build: Vec<I>) -> Vec<IdxSize>
+ where
+-    IntoSlice: AsRef<[T]> + Send + Sync,
++    I: IntoIterator<Item = T> + Copy + Send + Sync,
+     T: Send + Hash + Eq + Sync + Copy + AsU64,
+ {
+     semi_anti_impl(probe, build)
+diff --git a/crates/polars-core/src/frame/hash_join/sort_merge.rs b/crates/polars-ops/src/frame/join/hash_join/sort_merge.rs
+similarity index 98%
+rename from crates/polars-core/src/frame/hash_join/sort_merge.rs
+rename to crates/polars-ops/src/frame/join/hash_join/sort_merge.rs
+index 1d00732e7..24f2692d2 100644
+--- a/crates/polars-core/src/frame/hash_join/sort_merge.rs
++++ b/crates/polars-ops/src/frame/join/hash_join/sort_merge.rs
+@@ -1,11 +1,11 @@
+ #[cfg(feature = "performant")]
+ use polars_arrow::kernels::sorted_join;
+-
+-use super::*;
+ #[cfg(feature = "performant")]
+-use crate::utils::_split_offsets;
++use polars_core::utils::_split_offsets;
+ #[cfg(feature = "performant")]
+-use crate::utils::flatten::flatten_par;
++use polars_core::utils::flatten::flatten_par;
++
++use super::*;
+ 
+ #[cfg(feature = "performant")]
+ fn par_sorted_merge_left_impl<T>(
+@@ -169,7 +169,7 @@ fn to_left_join_ids(left_idx: Vec<IdxSize>, right_idx: Vec<Option<IdxSize>>) ->
+ 
+ #[cfg(feature = "performant")]
+ fn create_reverse_map_from_arg_sort(mut arg_sort: IdxCa) -> Vec<IdxSize> {
+-    let arr = arg_sort.chunks.pop().unwrap();
++    let arr = unsafe { arg_sort.chunks_mut() }.pop().unwrap();
+     primitive_to_vec::<IdxSize>(arr).unwrap()
+ }
+ 
+diff --git a/crates/polars-ops/src/frame/join/mod.rs b/crates/polars-ops/src/frame/join/mod.rs
+index 50c6b68d2..12c7c0693 100644
+--- a/crates/polars-ops/src/frame/join/mod.rs
++++ b/crates/polars-ops/src/frame/join/mod.rs
+@@ -1,34 +1,47 @@
++mod args;
++#[cfg(feature = "asof_join")]
++mod asof;
++#[cfg(feature = "dtype-categorical")]
++mod checks;
++mod general;
++mod hash_join;
+ #[cfg(feature = "merge_sorted")]
+ mod merge_sorted;
++
+ #[cfg(feature = "chunked_ids")]
+ use std::borrow::Cow;
+-
++use std::fmt::{Debug, Display, Formatter};
++use std::hash::{BuildHasher, Hash, Hasher};
++
++use ahash::RandomState;
++pub use args::*;
++#[cfg(feature = "asof_join")]
++use asof::AsofJoinBy;
++#[cfg(feature = "asof_join")]
++pub use asof::{AsOfOptions, AsofJoin, AsofStrategy};
++#[cfg(feature = "dtype-categorical")]
++pub(crate) use checks::*;
++#[cfg(feature = "chunked_ids")]
++use either::Either;
++pub use general::_finish_join;
++#[cfg(feature = "chunked_ids")]
++use general::create_chunked_index_mapping;
++pub use hash_join::*;
++use hashbrown::hash_map::{Entry, RawEntryMut};
++use hashbrown::HashMap;
+ #[cfg(feature = "merge_sorted")]
+ pub use merge_sorted::_merge_sorted_dfs;
+-use polars_core::frame::hash_join::*;
++use polars_arrow::trusted_len::TrustedLen;
++use polars_core::hashing::partition::{this_partition, AsU64};
++use polars_core::hashing::{BytesHash, _df_rows_to_hashes_threaded_vertical, _HASHMAP_INIT_SIZE};
+ use polars_core::prelude::*;
++pub(super) use polars_core::series::IsSorted;
+ use polars_core::utils::{_to_physical_and_bit_repr, slice_slice};
+ use polars_core::POOL;
++use rayon::prelude::*;
+ 
+-use super::*;
+-
+-macro_rules! det_hash_prone_order {
+-    ($self:expr, $other:expr) => {{
+-        // The shortest relation will be used to create a hash table.
+-        let left_first = $self.len() > $other.len();
+-        let a;
+-        let b;
+-        if left_first {
+-            a = $self;
+-            b = $other;
+-        } else {
+-            b = $self;
+-            a = $other;
+-        }
+-
+-        (a, b, !left_first)
+-    }};
+-}
++use super::hashing::{create_hash_and_keys_threaded_vectorized, prepare_hashed_relation_threaded};
++use super::IntoDf;
+ 
+ pub trait DataFrameJoinOps: IntoDf {
+     /// Generic join method. Can be used to join on multiple columns.
+diff --git a/crates/polars-ops/src/frame/mod.rs b/crates/polars-ops/src/frame/mod.rs
+index 789458b4e..c2e8b37ac 100644
+--- a/crates/polars-ops/src/frame/mod.rs
++++ b/crates/polars-ops/src/frame/mod.rs
+@@ -1,4 +1,5 @@
+-mod join;
++mod hashing;
++pub mod join;
+ #[cfg(feature = "pivot")]
+ pub mod pivot;
+ 
+diff --git a/crates/polars-ops/src/lib.rs b/crates/polars-ops/src/lib.rs
+index 341d85969..a6237ffca 100644
+--- a/crates/polars-ops/src/lib.rs
++++ b/crates/polars-ops/src/lib.rs
+@@ -5,6 +5,6 @@ extern crate core;
+ pub mod chunked_array;
+ #[cfg(feature = "pivot")]
+ pub use frame::pivot;
+-mod frame;
++pub mod frame;
+ pub mod prelude;
+ mod series;
+diff --git a/crates/polars-ops/src/prelude.rs b/crates/polars-ops/src/prelude.rs
+index 2e929c977..1f0717945 100644
+--- a/crates/polars-ops/src/prelude.rs
++++ b/crates/polars-ops/src/prelude.rs
+@@ -4,5 +4,6 @@ pub(crate) use {crate::series::*, polars_core::export::rayon::prelude::*};
+ pub use crate::chunked_array::*;
+ #[cfg(feature = "merge_sorted")]
+ pub use crate::frame::_merge_sorted_dfs;
++pub use crate::frame::join::*;
+ pub use crate::frame::{DataFrameJoinOps, DataFrameOps};
+ pub use crate::series::*;
+diff --git a/crates/polars-ops/src/series/ops/is_in.rs b/crates/polars-ops/src/series/ops/is_in.rs
+index b5602f5a3..cc3262554 100644
+--- a/crates/polars-ops/src/series/ops/is_in.rs
++++ b/crates/polars-ops/src/series/ops/is_in.rs
+@@ -340,7 +340,7 @@ pub fn is_in(s: &Series, other: &Series) -> PolarsResult<BooleanChunked> {
+     match s.dtype() {
+         #[cfg(feature = "dtype-categorical")]
+         DataType::Categorical(_) => {
+-            use polars_core::frame::hash_join::_check_categorical_src;
++            use crate::frame::join::_check_categorical_src;
+             _check_categorical_src(s.dtype(), other.dtype())?;
+             let ca = s.categorical().unwrap();
+             let ca = ca.logical();
+diff --git a/crates/polars-pipe/src/executors/sinks/joins/generic_build.rs b/crates/polars-pipe/src/executors/sinks/joins/generic_build.rs
+index b37b88ec4..3963a2efc 100644
+--- a/crates/polars-pipe/src/executors/sinks/joins/generic_build.rs
++++ b/crates/polars-pipe/src/executors/sinks/joins/generic_build.rs
+@@ -12,6 +12,7 @@ use polars_core::utils::{_set_partition_size, accumulate_dataframes_vertical_unc
+ use polars_utils::hash_to_partition;
+ use polars_utils::slice::GetSaferUnchecked;
+ 
++use super::*;
+ use crate::executors::sinks::joins::inner_left::GenericJoinProbe;
+ use crate::executors::sinks::utils::{hash_rows, load_vec};
+ use crate::executors::sinks::HASHMAP_INIT_SIZE;
+diff --git a/crates/polars-pipe/src/executors/sinks/joins/inner_left.rs b/crates/polars-pipe/src/executors/sinks/joins/inner_left.rs
+index 4c71815a3..eaeeb8062 100644
+--- a/crates/polars-pipe/src/executors/sinks/joins/inner_left.rs
++++ b/crates/polars-pipe/src/executors/sinks/joins/inner_left.rs
+@@ -5,9 +5,10 @@ use polars_arrow::export::arrow::array::BinaryArray;
+ use polars_core::datatypes::ChunkId;
+ use polars_core::error::PolarsResult;
+ use polars_core::export::ahash::RandomState;
+-use polars_core::frame::hash_join::_finish_join;
+ use polars_core::prelude::*;
+ use polars_core::series::IsSorted;
++use polars_ops::frame::join::_finish_join;
++use polars_ops::prelude::JoinType;
+ use polars_row::RowsEncoded;
+ use polars_utils::hash_to_partition;
+ use polars_utils::slice::GetSaferUnchecked;
+diff --git a/crates/polars-pipe/src/executors/sinks/joins/mod.rs b/crates/polars-pipe/src/executors/sinks/joins/mod.rs
+index 117cdb726..f906f5f1d 100644
+--- a/crates/polars-pipe/src/executors/sinks/joins/mod.rs
++++ b/crates/polars-pipe/src/executors/sinks/joins/mod.rs
+@@ -6,3 +6,4 @@ mod inner_left;
+ #[cfg(feature = "cross_join")]
+ pub(crate) use cross::*;
+ pub(crate) use generic_build::GenericBuild;
++use polars_ops::prelude::JoinType;
+diff --git a/crates/polars-pipe/src/pipeline/convert.rs b/crates/polars-pipe/src/pipeline/convert.rs
+index e1a06d743..cf4bbdb5d 100644
+--- a/crates/polars-pipe/src/pipeline/convert.rs
++++ b/crates/polars-pipe/src/pipeline/convert.rs
+@@ -5,6 +5,7 @@ use std::sync::Arc;
+ use hashbrown::hash_map::Entry;
+ use polars_core::prelude::*;
+ use polars_core::with_match_physical_integer_polars_type;
++use polars_ops::prelude::JoinType;
+ use polars_plan::prelude::*;
+ 
+ use crate::executors::operators::HstackOperator;
+diff --git a/crates/polars-plan/src/dsl/options.rs b/crates/polars-plan/src/dsl/options.rs
+index a5f920215..dc3c445ee 100644
+--- a/crates/polars-plan/src/dsl/options.rs
++++ b/crates/polars-plan/src/dsl/options.rs
+@@ -1,4 +1,4 @@
+-use polars_core::prelude::{JoinArgs, JoinType};
++use polars_ops::prelude::{JoinArgs, JoinType};
+ use polars_utils::IdxSize;
+ #[cfg(feature = "serde")]
+ use serde::{Deserialize, Serialize};
+diff --git a/crates/polars-time/src/upsample.rs b/crates/polars-time/src/upsample.rs
+index f38faf17d..b1804661e 100644
+--- a/crates/polars-time/src/upsample.rs
++++ b/crates/polars-time/src/upsample.rs
+@@ -1,6 +1,5 @@
+ #[cfg(feature = "timezones")]
+ use chrono_tz::Tz;
+-use polars_core::frame::hash_join::JoinArgs;
+ use polars_core::prelude::*;
+ use polars_core::utils::ensure_sorted_arg;
+ use polars_ops::prelude::*;
+diff --git a/crates/polars/Cargo.toml b/crates/polars/Cargo.toml
+index e4071bd68..ce32b6e61 100644
+--- a/crates/polars/Cargo.toml
++++ b/crates/polars/Cargo.toml
+@@ -163,7 +163,7 @@ partition_by = ["polars-core/partition_by"]
+ semi_anti_join = ["polars-core/semi_anti_join", "polars-lazy?/semi_anti_join", "polars-ops/semi_anti_join"]
+ list_eval = ["polars-lazy?/list_eval"]
+ cumulative_eval = ["polars-lazy?/cumulative_eval"]
+-chunked_ids = ["polars-lazy?/chunked_ids", "polars-core/chunked_ids"]
++chunked_ids = ["polars-lazy?/chunked_ids", "polars-core/chunked_ids", "polars-ops/chunked_ids"]
+ to_dummies = ["polars-ops/to_dummies"]
+ bigidx = ["polars-core/bigidx", "polars-lazy?/bigidx", "polars-ops/big_idx"]
+ list_to_struct = ["polars-ops/list_to_struct", "polars-lazy?/list_to_struct"]
+diff --git a/py-polars/Cargo.lock b/py-polars/Cargo.lock
+index 6a2b08e33..a28528d84 100644
+--- a/py-polars/Cargo.lock
++++ b/py-polars/Cargo.lock
+@@ -1784,20 +1784,25 @@ dependencies = [
+ name = "polars-ops"
+ version = "0.33.2"
+ dependencies = [
++ "ahash",
+  "argminmax",
+  "base64",
+  "chrono",
+  "chrono-tz",
+  "either",
++ "hashbrown 0.14.0",
+  "hex",
+  "indexmap 2.0.0",
+  "jsonpath_lib",
+  "memchr",
+  "nano-arrow",
++ "num-traits",
+  "polars-arrow",
+  "polars-core",
++ "polars-error",
+  "polars-json",
+  "polars-utils",
++ "rayon",
+  "regex",
+  "serde",
+  "serde_json",
+diff --git a/py-polars/Cargo.toml b/py-polars/Cargo.toml
+index bc51d7c34..b66a3fbe6 100644
+--- a/py-polars/Cargo.toml
++++ b/py-polars/Cargo.toml
+@@ -143,52 +143,68 @@ extract_groups = ["polars/extract_groups"]
+ ffi_plugin = ["polars-plan/ffi_plugin"]
+ cloud = ["polars/cloud", "polars/aws", "polars/gcp", "polars/azure"]
+ 
+-all = [
++dtypes = [
+   "dtype-i8",
+   "dtype-i16",
+   "dtype-u8",
+   "dtype-u16",
+-  "json",
+-  "parquet",
+-  "ipc",
+-  "ipc_streaming",
+-  "avro",
++  "polars/group_by_list",
++  "object",
++]
++
++operations = [
+   "is_in",
+   "repeat_by",
+   "trigonometry",
+   "sign",
++  "performant",
++  "list_take",
++  "list_count",
++  "list_sets",
++  "list_any_all",
++  "cutqcut",
++  "rle",
++  "extract_groups",
++  "pivot",
++  "extract_jsonpath",
+   "asof_join",
+   "cross_join",
+   "pct_change",
+   "search_sorted",
+   "merge_sorted",
++  "top_k",
++  "propagate_nans",
++  "timezones",
++]
++
++io = [
++  "json",
++  "parquet",
++  "ipc",
++  "ipc_streaming",
++  "avro",
++  "csv",
++  "cloud",
++]
++
++optimizations = [
++  "cse",
++  "polars/fused",
++  "streaming",
++]
++
++all = [
++  "optimizations",
++  "io",
++  "operations",
++  "dtypes",
+   "meta",
+   "decompress",
+   "lazy_regex",
+-  "csv",
+-  "extract_jsonpath",
+-  "timezones",
+-  "object",
+-  "pivot",
+-  "top_k",
+   "build_info",
+-  "cse",
+-  "propagate_nans",
+-  "polars/group_by_list",
+-  "polars/fused",
+   "sql",
+   "binary_encoding",
+-  "streaming",
+-  "performant",
+-  "list_take",
+-  "list_count",
+-  "list_sets",
+-  "list_any_all",
+-  "cutqcut",
+-  "rle",
+-  "extract_groups",
+   "ffi_plugin",
+-  "cloud",
+ ]
+ 
+ # we cannot conditionally activate simd
+diff --git a/py-polars/src/conversion.rs b/py-polars/src/conversion.rs
+index 1672b74fc..b4ad42d4f 100644
+--- a/py-polars/src/conversion.rs
++++ b/py-polars/src/conversion.rs
+@@ -11,7 +11,6 @@ use polars::io::avro::AvroCompression;
+ use polars::io::ipc::IpcCompression;
+ use polars::prelude::AnyValue;
+ use polars::series::ops::NullBehavior;
+-use polars_core::frame::hash_join::JoinValidation;
+ use polars_core::frame::row::any_values_to_dtype;
+ use polars_core::prelude::{IndexOrder, QuantileInterpolOptions};
+ use polars_core::utils::arrow::types::NativeType;
+diff --git a/py-polars/src/lazyframe.rs b/py-polars/src/lazyframe.rs
+index f84831a95..1626facab 100644
+--- a/py-polars/src/lazyframe.rs
++++ b/py-polars/src/lazyframe.rs
+@@ -16,9 +16,9 @@ use polars::prelude::CsvEncoding;
+ use polars::prelude::{ClosedWindow, Field, JoinType, Schema};
+ use polars::time::*;
+ use polars_core::frame::explode::MeltArgs;
+-use polars_core::frame::hash_join::JoinValidation;
+ use polars_core::frame::UniqueKeepStrategy;
+ use polars_core::prelude::*;
++use polars_ops::prelude::AsOfOptions;
+ use pyo3::exceptions::PyValueError;
+ use pyo3::prelude::*;
+ use pyo3::types::{PyBytes, PyDict, PyList};

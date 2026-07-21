@@ -1,0 +1,479 @@
+From d325f677df58770bc55ee696f72081cab304b6d8 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ab=C3=ADlio=20Costa?= <abmantis@users.noreply.github.com>
+Date: Mon, 15 Dec 2025 14:45:35 +0000
+Subject: [PATCH] Deprecate TargetSelectorData in favor of TargetSelection
+ (#158734)
+
+Co-authored-by: Copilot <175728472+Copilot@users.noreply.github.com>
+---
+ .../components/homeassistant/__init__.py      |  4 +-
+ homeassistant/components/homekit/__init__.py  |  4 +-
+ homeassistant/components/lifx/manager.py      |  4 +-
+ homeassistant/components/light/condition.py   |  4 +-
+ .../components/unifiprotect/services.py       | 10 +--
+ .../components/websocket_api/automation.py    |  2 +-
+ .../components/websocket_api/commands.py      |  4 +-
+ homeassistant/helpers/service.py              | 24 +++----
+ homeassistant/helpers/target.py               | 67 +++++++++++--------
+ tests/helpers/test_service.py                 |  2 +-
+ tests/helpers/test_target.py                  |  8 ++-
+ 11 files changed, 74 insertions(+), 59 deletions(-)
+
+diff --git a/homeassistant/components/homeassistant/__init__.py b/homeassistant/components/homeassistant/__init__.py
+index d0892df399..9583857660 100644
+--- a/homeassistant/components/homeassistant/__init__.py
++++ b/homeassistant/components/homeassistant/__init__.py
+@@ -49,7 +49,7 @@ from homeassistant.helpers.service import (
+ from homeassistant.helpers.signal import KEY_HA_STOP
+ from homeassistant.helpers.system_info import async_get_system_info
+ from homeassistant.helpers.target import (
+-    TargetSelectorData,
++    TargetSelection,
+     async_extract_referenced_entity_ids,
+ )
+ from homeassistant.helpers.template import async_load_custom_templates
+@@ -115,7 +115,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:  # noqa:
+     async def async_handle_turn_service(service: ServiceCall) -> None:
+         """Handle calls to homeassistant.turn_on/off."""
+         referenced = async_extract_referenced_entity_ids(
+-            hass, TargetSelectorData(service.data)
++            hass, TargetSelection(service.data)
+         )
+         all_referenced = referenced.referenced | referenced.indirectly_referenced
+ 
+diff --git a/homeassistant/components/homekit/__init__.py b/homeassistant/components/homekit/__init__.py
+index 2d4ebff955..ce08feaaeb 100644
+--- a/homeassistant/components/homekit/__init__.py
++++ b/homeassistant/components/homekit/__init__.py
+@@ -78,7 +78,7 @@ from homeassistant.helpers.reload import async_integration_yaml_config
+ from homeassistant.helpers.service import async_register_admin_service
+ from homeassistant.helpers.start import async_at_started
+ from homeassistant.helpers.target import (
+-    TargetSelectorData,
++    TargetSelection,
+     async_extract_referenced_entity_ids,
+ )
+ from homeassistant.helpers.typing import ConfigType
+@@ -483,7 +483,7 @@ def _async_register_events_and_services(hass: HomeAssistant) -> None:
+     async def async_handle_homekit_unpair(service: ServiceCall) -> None:
+         """Handle unpair HomeKit service call."""
+         referenced = async_extract_referenced_entity_ids(
+-            hass, TargetSelectorData(service.data)
++            hass, TargetSelection(service.data)
+         )
+         dev_reg = dr.async_get(hass)
+         for device_id in referenced.referenced_devices:
+diff --git a/homeassistant/components/lifx/manager.py b/homeassistant/components/lifx/manager.py
+index 76048c0a30..e9beb1d8cc 100644
+--- a/homeassistant/components/lifx/manager.py
++++ b/homeassistant/components/lifx/manager.py
+@@ -29,7 +29,7 @@ from homeassistant.const import ATTR_MODE
+ from homeassistant.core import HomeAssistant, ServiceCall, callback
+ from homeassistant.helpers import config_validation as cv
+ from homeassistant.helpers.target import (
+-    TargetSelectorData,
++    TargetSelection,
+     async_extract_referenced_entity_ids,
+ )
+ 
+@@ -272,7 +272,7 @@ class LIFXManager:
+         async def service_handler(service: ServiceCall) -> None:
+             """Apply a service, i.e. start an effect."""
+             referenced = async_extract_referenced_entity_ids(
+-                self.hass, TargetSelectorData(service.data)
++                self.hass, TargetSelection(service.data)
+             )
+             all_referenced = referenced.referenced | referenced.indirectly_referenced
+             if all_referenced:
+diff --git a/homeassistant/components/light/condition.py b/homeassistant/components/light/condition.py
+index 423b2df6b7..1c1b178c00 100644
+--- a/homeassistant/components/light/condition.py
++++ b/homeassistant/components/light/condition.py
+@@ -81,9 +81,9 @@ class StateConditionBase(Condition):
+         @trace_condition_function
+         def test_state(hass: HomeAssistant, variables: TemplateVarsType = None) -> bool:
+             """Test state condition."""
+-            selector_data = target.TargetSelectorData(self._target)
++            target_selection = target.TargetSelection(self._target)
+             targeted_entities = target.async_extract_referenced_entity_ids(
+-                hass, selector_data, expand_group=False
++                hass, target_selection, expand_group=False
+             )
+             referenced_entity_ids = targeted_entities.referenced.union(
+                 targeted_entities.indirectly_referenced
+diff --git a/homeassistant/components/unifiprotect/services.py b/homeassistant/components/unifiprotect/services.py
+index a6b9a1378b..0acb98e5aa 100644
+--- a/homeassistant/components/unifiprotect/services.py
++++ b/homeassistant/components/unifiprotect/services.py
+@@ -28,7 +28,7 @@ from homeassistant.helpers import (
+     entity_registry as er,
+ )
+ from homeassistant.helpers.target import (
+-    TargetSelectorData,
++    TargetSelection,
+     async_extract_referenced_entity_ids,
+ )
+ from homeassistant.util.json import JsonValueType
+@@ -117,7 +117,7 @@ def _async_get_ufp_instance(hass: HomeAssistant, device_id: str) -> ProtectApiCl
+ 
+ @callback
+ def _async_get_ufp_camera(call: ServiceCall) -> Camera:
+-    ref = async_extract_referenced_entity_ids(call.hass, TargetSelectorData(call.data))
++    ref = async_extract_referenced_entity_ids(call.hass, TargetSelection(call.data))
+     entity_registry = er.async_get(call.hass)
+ 
+     entity_id = ref.indirectly_referenced.pop()
+@@ -135,7 +135,7 @@ def _async_get_protect_from_call(call: ServiceCall) -> set[ProtectApiClient]:
+     return {
+         _async_get_ufp_instance(call.hass, device_id)
+         for device_id in async_extract_referenced_entity_ids(
+-            call.hass, TargetSelectorData(call.data)
++            call.hass, TargetSelection(call.data)
+         ).referenced_devices
+     }
+ 
+@@ -207,7 +207,7 @@ def _async_unique_id_to_mac(unique_id: str) -> str:
+ 
+ async def set_chime_paired_doorbells(call: ServiceCall) -> None:
+     """Set paired doorbells on chime."""
+-    ref = async_extract_referenced_entity_ids(call.hass, TargetSelectorData(call.data))
++    ref = async_extract_referenced_entity_ids(call.hass, TargetSelection(call.data))
+     entity_registry = er.async_get(call.hass)
+ 
+     entity_id = ref.indirectly_referenced.pop()
+@@ -223,7 +223,7 @@ async def set_chime_paired_doorbells(call: ServiceCall) -> None:
+ 
+     call.data = ReadOnlyDict(call.data.get("doorbells") or {})
+     doorbell_refs = async_extract_referenced_entity_ids(
+-        call.hass, TargetSelectorData(call.data)
++        call.hass, TargetSelection(call.data)
+     )
+     doorbell_ids: set[str] = set()
+     for camera_id in doorbell_refs.referenced | doorbell_refs.indirectly_referenced:
+diff --git a/homeassistant/components/websocket_api/automation.py b/homeassistant/components/websocket_api/automation.py
+index b9db16db0b..1cc9019eb4 100644
+--- a/homeassistant/components/websocket_api/automation.py
++++ b/homeassistant/components/websocket_api/automation.py
+@@ -150,7 +150,7 @@ def _async_get_automation_components_for_target(
+     """
+     extracted = target_helpers.async_extract_referenced_entity_ids(
+         hass,
+-        target_helpers.TargetSelectorData(target_selection),
++        target_helpers.TargetSelection(target_selection),
+         expand_group=expand_group,
+     )
+     _LOGGER.debug("Extracted entities for lookup: %s", extracted)
+diff --git a/homeassistant/components/websocket_api/commands.py b/homeassistant/components/websocket_api/commands.py
+index 040811bca4..4302949f10 100644
+--- a/homeassistant/components/websocket_api/commands.py
++++ b/homeassistant/components/websocket_api/commands.py
+@@ -865,9 +865,9 @@ def handle_extract_from_target(
+ ) -> None:
+     """Handle extract from target command."""
+ 
+-    selector_data = target_helpers.TargetSelectorData(msg["target"])
++    target_selection = target_helpers.TargetSelection(msg["target"])
+     extracted = target_helpers.async_extract_referenced_entity_ids(
+-        hass, selector_data, expand_group=msg["expand_group"]
++        hass, target_selection, expand_group=msg["expand_group"]
+     )
+ 
+     extracted_dict = {
+diff --git a/homeassistant/helpers/service.py b/homeassistant/helpers/service.py
+index 8b28df0f19..f759d4ae61 100644
+--- a/homeassistant/helpers/service.py
++++ b/homeassistant/helpers/service.py
+@@ -223,10 +223,10 @@ class ServiceParams(TypedDict):
+ 
+ 
+ @deprecated_class(
+-    "homeassistant.helpers.target.TargetSelectorData",
++    "homeassistant.helpers.target.TargetSelection",
+     breaks_in_ha_version="2026.8",
+ )
+-class ServiceTargetSelector(target_helpers.TargetSelectorData):
++class ServiceTargetSelector(target_helpers.TargetSelection):
+     """Class to hold a target selector for a service."""
+ 
+     def __init__(self, service_call: ServiceCall) -> None:
+@@ -406,9 +406,9 @@ async def async_extract_entities[_EntityT: Entity](
+     if data_ent_id == ENTITY_MATCH_ALL:
+         return [entity for entity in entities if entity.available]
+ 
+-    selector_data = target_helpers.TargetSelectorData(service_call.data)
++    target_selection = target_helpers.TargetSelection(service_call.data)
+     referenced = target_helpers.async_extract_referenced_entity_ids(
+-        service_call.hass, selector_data, expand_group
++        service_call.hass, target_selection, expand_group
+     )
+     combined = referenced.referenced | referenced.indirectly_referenced
+ 
+@@ -438,9 +438,9 @@ async def async_extract_entity_ids(
+ 
+     Will convert group entity ids to the entity ids it represents.
+     """
+-    selector_data = target_helpers.TargetSelectorData(service_call.data)
++    target_selection = target_helpers.TargetSelection(service_call.data)
+     referenced = target_helpers.async_extract_referenced_entity_ids(
+-        service_call.hass, selector_data, expand_group
++        service_call.hass, target_selection, expand_group
+     )
+     return referenced.referenced | referenced.indirectly_referenced
+ 
+@@ -454,9 +454,9 @@ def async_extract_referenced_entity_ids(
+     hass: HomeAssistant, service_call: ServiceCall, expand_group: bool = True
+ ) -> SelectedEntities:
+     """Extract referenced entity IDs from a service call."""
+-    selector_data = target_helpers.TargetSelectorData(service_call.data)
++    target_selection = target_helpers.TargetSelection(service_call.data)
+     selected = target_helpers.async_extract_referenced_entity_ids(
+-        hass, selector_data, expand_group
++        hass, target_selection, expand_group
+     )
+     return SelectedEntities(**dataclasses.asdict(selected))
+ 
+@@ -466,9 +466,9 @@ async def async_extract_config_entry_ids(
+     service_call: ServiceCall, expand_group: bool = True
+ ) -> set[str]:
+     """Extract referenced config entry ids from a service call."""
+-    selector_data = target_helpers.TargetSelectorData(service_call.data)
++    target_selection = target_helpers.TargetSelection(service_call.data)
+     referenced = target_helpers.async_extract_referenced_entity_ids(
+-        service_call.hass, selector_data, expand_group
++        service_call.hass, target_selection, expand_group
+     )
+     ent_reg = entity_registry.async_get(service_call.hass)
+     dev_reg = device_registry.async_get(service_call.hass)
+@@ -752,9 +752,9 @@ async def entity_service_call(
+         all_referenced: set[str] | None = None
+     else:
+         # A set of entities we're trying to target.
+-        selector_data = target_helpers.TargetSelectorData(call.data)
++        target_selection = target_helpers.TargetSelection(call.data)
+         referenced = target_helpers.async_extract_referenced_entity_ids(
+-            hass, selector_data, True
++            hass, target_selection, True
+         )
+         all_referenced = referenced.referenced | referenced.indirectly_referenced
+ 
+diff --git a/homeassistant/helpers/target.py b/homeassistant/helpers/target.py
+index 81edd3eff3..b65ed720a8 100644
+--- a/homeassistant/helpers/target.py
++++ b/homeassistant/helpers/target.py
+@@ -34,6 +34,7 @@ from . import (
+     group,
+     label_registry as lr,
+ )
++from .deprecation import deprecated_class
+ from .event import async_track_state_change_event
+ from .typing import ConfigType
+ 
+@@ -53,8 +54,8 @@ def _has_match(ids: str | list[str] | None) -> TypeGuard[str | list[str]]:
+     return ids not in (None, ENTITY_MATCH_NONE)
+ 
+ 
+-class TargetSelectorData:
+-    """Class to hold data of target selector."""
++class TargetSelection:
++    """Class to represent target selection."""
+ 
+     __slots__ = ("area_ids", "device_ids", "entity_ids", "floor_ids", "label_ids")
+ 
+@@ -81,8 +82,8 @@ class TargetSelectorData:
+         )
+ 
+     @property
+-    def has_any_selector(self) -> bool:
+-        """Determine if any selectors are present."""
++    def has_any_target(self) -> bool:
++        """Determine if any target is present."""
+         return bool(
+             self.entity_ids
+             or self.device_ids
+@@ -92,6 +93,16 @@ class TargetSelectorData:
+         )
+ 
+ 
++@deprecated_class("TargetSelection", breaks_in_ha_version="2026.12.0")
++class TargetSelectorData(TargetSelection):
++    """Class to represent target selector data."""
++
++    @property
++    def has_any_selector(self) -> bool:
++        """Determine if any selectors are present."""
++        return super().has_any_target
++
++
+ @dataclasses.dataclass(slots=True)
+ class SelectedEntities:
+     """Class to hold the selected entities."""
+@@ -135,25 +146,25 @@ class SelectedEntities:
+ 
+ 
+ def async_extract_referenced_entity_ids(
+-    hass: HomeAssistant, selector_data: TargetSelectorData, expand_group: bool = True
++    hass: HomeAssistant, target_selection: TargetSelection, expand_group: bool = True
+ ) -> SelectedEntities:
+-    """Extract referenced entity IDs from a target selector."""
++    """Extract referenced entity IDs from a target selection."""
+     selected = SelectedEntities()
+ 
+-    if not selector_data.has_any_selector:
++    if not target_selection.has_any_target:
+         return selected
+ 
+-    entity_ids: set[str] | list[str] = selector_data.entity_ids
++    entity_ids: set[str] | list[str] = target_selection.entity_ids
+     if expand_group:
+         entity_ids = group.expand_entity_ids(hass, entity_ids)
+ 
+     selected.referenced.update(entity_ids)
+ 
+     if (
+-        not selector_data.device_ids
+-        and not selector_data.area_ids
+-        and not selector_data.floor_ids
+-        and not selector_data.label_ids
++        not target_selection.device_ids
++        and not target_selection.area_ids
++        and not target_selection.floor_ids
++        and not target_selection.label_ids
+     ):
+         return selected
+ 
+@@ -161,23 +172,23 @@ def async_extract_referenced_entity_ids(
+     dev_reg = dr.async_get(hass)
+     area_reg = ar.async_get(hass)
+ 
+-    if selector_data.floor_ids:
++    if target_selection.floor_ids:
+         floor_reg = fr.async_get(hass)
+-        for floor_id in selector_data.floor_ids:
++        for floor_id in target_selection.floor_ids:
+             if floor_id not in floor_reg.floors:
+                 selected.missing_floors.add(floor_id)
+ 
+-    for area_id in selector_data.area_ids:
++    for area_id in target_selection.area_ids:
+         if area_id not in area_reg.areas:
+             selected.missing_areas.add(area_id)
+ 
+-    for device_id in selector_data.device_ids:
++    for device_id in target_selection.device_ids:
+         if device_id not in dev_reg.devices:
+             selected.missing_devices.add(device_id)
+ 
+-    if selector_data.label_ids:
++    if target_selection.label_ids:
+         label_reg = lr.async_get(hass)
+-        for label_id in selector_data.label_ids:
++        for label_id in target_selection.label_ids:
+             if label_id not in label_reg.labels:
+                 selected.missing_labels.add(label_id)
+ 
+@@ -192,15 +203,15 @@ def async_extract_referenced_entity_ids(
+                 selected.referenced_areas.add(area_entry.id)
+ 
+     # Find areas for targeted floors
+-    if selector_data.floor_ids:
++    if target_selection.floor_ids:
+         selected.referenced_areas.update(
+             area_entry.id
+-            for floor_id in selector_data.floor_ids
++            for floor_id in target_selection.floor_ids
+             for area_entry in area_reg.areas.get_areas_for_floor(floor_id)
+         )
+ 
+-    selected.referenced_areas.update(selector_data.area_ids)
+-    selected.referenced_devices.update(selector_data.device_ids)
++    selected.referenced_areas.update(target_selection.area_ids)
++    selected.referenced_devices.update(target_selection.device_ids)
+ 
+     if not selected.referenced_areas and not selected.referenced_devices:
+         return selected
+@@ -263,13 +274,13 @@ class TargetStateChangeTracker:
+     def __init__(
+         self,
+         hass: HomeAssistant,
+-        selector_data: TargetSelectorData,
++        target_selection: TargetSelection,
+         action: Callable[[TargetStateChangedData], Any],
+         entity_filter: Callable[[set[str]], set[str]],
+     ) -> None:
+         """Initialize the state change tracker."""
+         self._hass = hass
+-        self._selector_data = selector_data
++        self._target_selection = target_selection
+         self._action = action
+         self._entity_filter = entity_filter
+ 
+@@ -285,7 +296,7 @@ class TargetStateChangeTracker:
+     def _track_entities_state_change(self) -> None:
+         """Set up state change tracking for currently selected entities."""
+         selected = async_extract_referenced_entity_ids(
+-            self._hass, self._selector_data, expand_group=False
++            self._hass, self._target_selection, expand_group=False
+         )
+ 
+         tracked_entities = self._entity_filter(
+@@ -352,10 +363,10 @@ def async_track_target_selector_state_change_event(
+     entity_filter: Callable[[set[str]], set[str]] = lambda x: x,
+ ) -> CALLBACK_TYPE:
+     """Track state changes for entities referenced directly or indirectly in a target selector."""
+-    selector_data = TargetSelectorData(target_selector_config)
+-    if not selector_data.has_any_selector:
++    target_selection = TargetSelection(target_selector_config)
++    if not target_selection.has_any_target:
+         raise HomeAssistantError(
+             f"Target selector {target_selector_config} does not have any selectors defined"
+         )
+-    tracker = TargetStateChangeTracker(hass, selector_data, action, entity_filter)
++    tracker = TargetStateChangeTracker(hass, target_selection, action, entity_filter)
+     return tracker.async_setup()
+diff --git a/tests/helpers/test_service.py b/tests/helpers/test_service.py
+index 59e9f957eb..570d263d3e 100644
+--- a/tests/helpers/test_service.py
++++ b/tests/helpers/test_service.py
+@@ -2699,7 +2699,7 @@ async def test_deprecated_service_target_selector_class(hass: HomeAssistant) ->
+     assert selector.device_ids == {"device1", "device2"}
+     assert selector.floor_ids == {"first_floor"}
+     assert selector.label_ids == {"label1", "label2"}
+-    assert selector.has_any_selector is True
++    assert selector.has_any_target is True
+ 
+ 
+ async def test_deprecated_selected_entities_class(
+diff --git a/tests/helpers/test_target.py b/tests/helpers/test_target.py
+index 3c19a9c9a4..92a8a0e2ee 100644
+--- a/tests/helpers/test_target.py
++++ b/tests/helpers/test_target.py
+@@ -461,12 +461,16 @@ def registries_mock(hass: HomeAssistant) -> None:
+         ),
+     ],
+ )
++@pytest.mark.parametrize(
++    "selection_class", [target.TargetSelection, target.TargetSelectorData]
++)
+ @pytest.mark.usefixtures("registries_mock")
+ async def test_extract_referenced_entity_ids(
+     hass: HomeAssistant,
+     selector_config: ConfigType,
+     expand_group: bool,
+     expected_selected: target.SelectedEntities,
++    selection_class,
+ ) -> None:
+     """Test extract_entity_ids method."""
+     hass.states.async_set("light.Bowl", STATE_ON)
+@@ -486,10 +490,10 @@ async def test_extract_referenced_entity_ids(
+         order=None,
+     )
+ 
+-    target_data = target.TargetSelectorData(selector_config)
++    target_selection = selection_class(selector_config)
+     assert (
+         target.async_extract_referenced_entity_ids(
+-            hass, target_data, expand_group=expand_group
++            hass, target_selection, expand_group=expand_group
+         )
+         == expected_selected
+     )

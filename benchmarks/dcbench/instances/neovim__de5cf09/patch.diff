@@ -1,0 +1,669 @@
+From de5cf09cf98e20d8d3296ad6933ff2741acf83f7 Mon Sep 17 00:00:00 2001
+From: bfredl <bjorn.linse@gmail.com>
+Date: Mon, 26 Feb 2024 18:00:46 +0100
+Subject: [PATCH] refactor(metadata): generate all metadata in lua
+
+Then we can just load metadata in C as a single msgpack blob. Which also
+can be used directly as binarly data, instead of first unpacking all the
+functions and ui_events metadata to immediately pack it again, which was
+a bit of a silly walk (and one extra usecase of `msgpack_rpc_from_object`
+which will get yak shaved in the next PR)
+---
+ cmake.config/versiondef.h.in              |  4 -
+ scripts/gen_eval_files.lua                |  2 +-
+ src/nvim/CMakeLists.txt                   | 32 +++++---
+ src/nvim/api/private/helpers.c            | 74 ++----------------
+ src/nvim/api/ui.h                         | 14 ++++
+ src/nvim/api/vim.c                        |  2 +-
+ src/nvim/eval/funcs.c                     |  3 +-
+ src/nvim/generators/gen_api_dispatch.lua  | 94 +++++++++++++++++++----
+ src/nvim/generators/gen_api_ui_events.lua |  4 +-
+ src/nvim/generators/nvim_version.lua.in   |  9 +++
+ src/nvim/generators/preload.lua           |  3 +
+ src/nvim/lua/executor.c                   |  1 +
+ src/nvim/main.c                           | 12 +--
+ src/nvim/os/fileio.c                      | 18 -----
+ src/nvim/ui.h                             | 14 ----
+ src/nvim/version.c                        | 18 -----
+ test/unit/os/fileio_spec.lua              | 16 ----
+ 17 files changed, 142 insertions(+), 178 deletions(-)
+ create mode 100644 src/nvim/generators/nvim_version.lua.in
+
+diff --git a/cmake.config/versiondef.h.in b/cmake.config/versiondef.h.in
+index d03e56130..9771e0d14 100644
+--- a/cmake.config/versiondef.h.in
++++ b/cmake.config/versiondef.h.in
+@@ -11,10 +11,6 @@
+ # include "auto/versiondef_git.h"
+ #endif
+ 
+-#define NVIM_API_LEVEL @NVIM_API_LEVEL@
+-#define NVIM_API_LEVEL_COMPAT @NVIM_API_LEVEL_COMPAT@
+-#define NVIM_API_PRERELEASE @NVIM_API_PRERELEASE@
+-
+ #define NVIM_VERSION_CFLAGS "${VERSION_STRING}"
+ #define NVIM_VERSION_BUILD_TYPE "$<CONFIG>"
+ 
+diff --git a/scripts/gen_eval_files.lua b/scripts/gen_eval_files.lua
+index 895033d5a..83e55b3bc 100755
+--- a/scripts/gen_eval_files.lua
++++ b/scripts/gen_eval_files.lua
+@@ -2,7 +2,7 @@
+ 
+ -- Generator for various vimdoc and Lua type files
+ 
+-local DEP_API_METADATA = 'build/api_metadata.mpack'
++local DEP_API_METADATA = 'build/funcs_metadata.mpack'
+ 
+ --- @class vim.api.metadata
+ --- @field name string
+diff --git a/src/nvim/CMakeLists.txt b/src/nvim/CMakeLists.txt
+index 5ec0e4d9e..047b22edc 100644
+--- a/src/nvim/CMakeLists.txt
++++ b/src/nvim/CMakeLists.txt
+@@ -285,7 +285,8 @@ endif()
+ # Variables
+ #-------------------------------------------------------------------------------
+ 
+-set(API_METADATA ${PROJECT_BINARY_DIR}/api_metadata.mpack)
++set(FUNCS_METADATA ${PROJECT_BINARY_DIR}/funcs_metadata.mpack)
++set(UI_METADATA ${PROJECT_BINARY_DIR}/ui_metadata.mpack)
+ set(BINARY_LIB_DIR ${PROJECT_BINARY_DIR}/lib/nvim)
+ set(GENERATED_DIR ${PROJECT_BINARY_DIR}/src/nvim/auto)
+ set(GENERATED_INCLUDES_DIR ${PROJECT_BINARY_DIR}/include)
+@@ -317,14 +318,13 @@ set(GENERATED_EVENTS_NAMES_MAP ${GENERATED_DIR}/auevents_name_map.generated.h)
+ set(GENERATED_EX_CMDS_DEFS ${GENERATED_DIR}/ex_cmds_defs.generated.h)
+ set(GENERATED_EX_CMDS_ENUM ${GENERATED_INCLUDES_DIR}/ex_cmds_enum.generated.h)
+ set(GENERATED_FUNCS ${GENERATED_DIR}/funcs.generated.h)
+-set(GENERATED_FUNCS_METADATA ${GENERATED_DIR}/api/private/funcs_metadata.generated.h)
++set(GENERATED_API_METADATA ${GENERATED_DIR}/api/private/api_metadata.generated.h)
+ set(GENERATED_KEYSETS_DEFS ${GENERATED_DIR}/keysets_defs.generated.h)
+ set(GENERATED_OPTIONS ${GENERATED_DIR}/options.generated.h)
+ set(GENERATED_OPTIONS_ENUM ${GENERATED_DIR}/options_enum.generated.h)
+ set(GENERATED_OPTIONS_MAP ${GENERATED_DIR}/options_map.generated.h)
+ set(GENERATED_UI_EVENTS_CALL ${GENERATED_DIR}/ui_events_call.generated.h)
+ set(GENERATED_UI_EVENTS_CLIENT ${GENERATED_DIR}/ui_events_client.generated.h)
+-set(GENERATED_UI_EVENTS_METADATA ${GENERATED_DIR}/api/private/ui_events_metadata.generated.h)
+ set(GENERATED_UI_EVENTS_REMOTE ${GENERATED_DIR}/ui_events_remote.generated.h)
+ set(GENERATED_UNICODE_TABLES ${GENERATED_DIR}/unicode_tables.generated.h)
+ set(LUA_API_C_BINDINGS ${GENERATED_DIR}/lua_api_c_bindings.generated.c)
+@@ -493,7 +493,7 @@ add_custom_command(
+     "${NVIM_VERSION_DEF_H}"
+   DEPENDS "${PROJECT_BINARY_DIR}/cmake.config/auto/versiondef-$<CONFIG>.h")
+ 
+-set(LUA_GEN ${LUA_GEN_PRG} ${GENERATOR_PRELOAD} ${PROJECT_SOURCE_DIR} $<TARGET_FILE:nlua0>)
++set(LUA_GEN ${LUA_GEN_PRG} ${GENERATOR_PRELOAD} ${PROJECT_SOURCE_DIR} $<TARGET_FILE:nlua0> ${PROJECT_BINARY_DIR})
+ set(LUA_GEN_DEPS ${GENERATOR_PRELOAD} $<TARGET_FILE:nlua0>)
+ 
+ # NVIM_GENERATED_FOR_HEADERS: generated headers to be included in headers
+@@ -553,14 +553,19 @@ add_custom_command(OUTPUT ${GENERATED_UNICODE_TABLES}
+     ${UNICODE_FILES}
+ )
+ 
++set(NVIM_VERSION_LUA ${PROJECT_BINARY_DIR}/nvim_version.lua)
++configure_file(${GENERATOR_DIR}/nvim_version.lua.in ${NVIM_VERSION_LUA})
++
+ add_custom_command(
+-  OUTPUT ${GENERATED_API_DISPATCH} ${GENERATED_FUNCS_METADATA}
+-         ${API_METADATA} ${LUA_API_C_BINDINGS} ${GENERATED_KEYSETS_DEFS}
++  OUTPUT ${GENERATED_API_DISPATCH} ${GENERATED_API_METADATA}
++  ${FUNCS_METADATA} ${LUA_API_C_BINDINGS} ${GENERATED_KEYSETS_DEFS}
+          COMMAND ${LUA_GEN} ${API_DISPATCH_GENERATOR}
+                          ${GENERATED_API_DISPATCH}
+-                         ${GENERATED_FUNCS_METADATA} ${API_METADATA}
++                         ${GENERATED_API_METADATA} ${FUNCS_METADATA}
+                          ${LUA_API_C_BINDINGS}
+                          ${GENERATED_KEYSETS_DEFS}
++                         ${UI_METADATA}
++                         ${NVIM_VERSION_GIT_H}
+                          ${API_HEADERS}
+   DEPENDS
+     ${LUA_GEN_DEPS}
+@@ -568,6 +573,9 @@ add_custom_command(
+     ${MSGPACK_RPC_HEADERS}
+     ${API_DISPATCH_GENERATOR}
+     ${GENERATOR_C_GRAMMAR}
++    ${UI_METADATA}
++    ${NVIM_VERSION_LUA}
++    ${NVIM_VERSION_GIT_H}
+     ${CMAKE_CURRENT_LIST_DIR}/api/dispatch_deprecated.lua
+ )
+ 
+@@ -612,13 +620,13 @@ list(APPEND NVIM_GENERATED_SOURCES
+ add_custom_command(
+   OUTPUT ${GENERATED_UI_EVENTS_CALL}
+          ${GENERATED_UI_EVENTS_REMOTE}
+-         ${GENERATED_UI_EVENTS_METADATA}
++         ${UI_METADATA}
+          ${GENERATED_UI_EVENTS_CLIENT}
+   COMMAND ${LUA_GEN} ${API_UI_EVENTS_GENERATOR}
+                      ${CMAKE_CURRENT_LIST_DIR}/api/ui_events.in.h
+                      ${GENERATED_UI_EVENTS_CALL}
+                      ${GENERATED_UI_EVENTS_REMOTE}
+-                     ${GENERATED_UI_EVENTS_METADATA}
++                     ${UI_METADATA}
+                      ${GENERATED_UI_EVENTS_CLIENT}
+   DEPENDS
+     ${LUA_GEN_DEPS}
+@@ -654,8 +662,8 @@ add_custom_command(OUTPUT ${GENERATED_EX_CMDS_ENUM} ${GENERATED_EX_CMDS_DEFS}
+ )
+ 
+ add_custom_command(OUTPUT ${GENERATED_FUNCS} ${FUNCS_DATA}
+-  COMMAND ${LUA_GEN} ${FUNCS_GENERATOR} ${GENERATED_DIR} ${API_METADATA} ${FUNCS_DATA}
+-  DEPENDS ${LUA_GEN_DEPS} ${FUNCS_GENERATOR} ${CMAKE_CURRENT_LIST_DIR}/eval.lua ${API_METADATA}
++  COMMAND ${LUA_GEN} ${FUNCS_GENERATOR} ${GENERATED_DIR} ${FUNCS_METADATA} ${FUNCS_DATA}
++  DEPENDS ${LUA_GEN_DEPS} ${FUNCS_GENERATOR} ${CMAKE_CURRENT_LIST_DIR}/eval.lua ${FUNCS_METADATA}
+ )
+ list(APPEND NVIM_GENERATED_FOR_SOURCES
+   "${GENERATED_FUNCS}")
+@@ -931,7 +939,7 @@ add_custom_command(
+     $<TARGET_FILE:nvim_bin> -l ${PROJECT_SOURCE_DIR}/scripts/gen_eval_files.lua
+   DEPENDS
+     nvim
+-    ${API_METADATA}
++    ${FUNCS_METADATA}
+     ${PROJECT_SOURCE_DIR}/scripts/gen_eval_files.lua
+     ${PROJECT_SOURCE_DIR}/src/nvim/eval.lua
+     ${PROJECT_SOURCE_DIR}/src/nvim/options.lua
+diff --git a/src/nvim/api/private/helpers.c b/src/nvim/api/private/helpers.c
+index 14f4046a5..97ba15e87 100644
+--- a/src/nvim/api/private/helpers.c
++++ b/src/nvim/api/private/helpers.c
+@@ -38,9 +38,8 @@
+ #include "nvim/version.h"
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+-# include "api/private/funcs_metadata.generated.h"
++# include "api/private/api_metadata.generated.h"
+ # include "api/private/helpers.c.generated.h"
+-# include "api/private/ui_events_metadata.generated.h"
+ #endif
+ 
+ /// Start block that may cause Vimscript exceptions while evaluating another code
+@@ -653,83 +652,26 @@ void api_clear_error(Error *value)
+ static ArenaMem mem_for_metadata = NULL;
+ 
+ /// @returns a shared value. caller must not modify it!
+-Dictionary api_metadata(void)
++Object api_metadata(void)
+ {
+-  static Dictionary metadata = ARRAY_DICT_INIT;
++  static Object metadata = OBJECT_INIT;
+ 
+-  if (!metadata.size) {
++  if (metadata.type == kObjectTypeNil) {
+     Arena arena = ARENA_EMPTY;
+     Error err = ERROR_INIT;
+-    metadata = arena_dict(&arena, 6);
+-    PUT_C(metadata, "version", DICTIONARY_OBJ(version_dict(&arena)));
+-    PUT_C(metadata, "functions",
+-          unpack((char *)funcs_metadata, sizeof(funcs_metadata), &arena, &err));
+-    if (ERROR_SET(&err)) {
++    metadata = unpack((char *)packed_api_metadata, sizeof(packed_api_metadata), &arena, &err);
++    if (ERROR_SET(&err) || metadata.type != kObjectTypeDictionary) {
+       abort();
+     }
+-    PUT_C(metadata, "ui_events",
+-          unpack((char *)ui_events_metadata, sizeof(ui_events_metadata), &arena, &err));
+-    if (ERROR_SET(&err)) {
+-      abort();
+-    }
+-    PUT_C(metadata, "ui_options", ARRAY_OBJ(ui_options_metadata(&arena)));
+-    PUT_C(metadata, "error_types", DICTIONARY_OBJ(error_type_metadata(&arena)));
+-    PUT_C(metadata, "types", DICTIONARY_OBJ(type_metadata(&arena)));
+     mem_for_metadata = arena_finish(&arena);
+   }
+ 
+   return metadata;
+ }
+ 
+-static Array ui_options_metadata(Arena *arena)
+-{
+-  Array ui_options = arena_array(arena, kUIExtCount + 1);
+-  ADD_C(ui_options, CSTR_AS_OBJ("rgb"));
+-  for (UIExtension i = 0; i < kUIExtCount; i++) {
+-    if (ui_ext_names[i][0] != '_') {
+-      ADD_C(ui_options, CSTR_AS_OBJ(ui_ext_names[i]));
+-    }
+-  }
+-  return ui_options;
+-}
+-
+-static Dictionary error_type_metadata(Arena *arena)
++String api_metadata_raw(void)
+ {
+-  Dictionary types = arena_dict(arena, 2);
+-
+-  Dictionary exception_metadata = arena_dict(arena, 1);
+-  PUT_C(exception_metadata, "id", INTEGER_OBJ(kErrorTypeException));
+-
+-  Dictionary validation_metadata = arena_dict(arena, 1);
+-  PUT_C(validation_metadata, "id", INTEGER_OBJ(kErrorTypeValidation));
+-
+-  PUT_C(types, "Exception", DICTIONARY_OBJ(exception_metadata));
+-  PUT_C(types, "Validation", DICTIONARY_OBJ(validation_metadata));
+-
+-  return types;
+-}
+-
+-static Dictionary type_metadata(Arena *arena)
+-{
+-  Dictionary types = arena_dict(arena, 3);
+-
+-  Dictionary buffer_metadata = arena_dict(arena, 2);
+-  PUT_C(buffer_metadata, "id", INTEGER_OBJ(kObjectTypeBuffer - EXT_OBJECT_TYPE_SHIFT));
+-  PUT_C(buffer_metadata, "prefix", CSTR_AS_OBJ("nvim_buf_"));
+-
+-  Dictionary window_metadata = arena_dict(arena, 2);
+-  PUT_C(window_metadata, "id", INTEGER_OBJ(kObjectTypeWindow - EXT_OBJECT_TYPE_SHIFT));
+-  PUT_C(window_metadata, "prefix", CSTR_AS_OBJ("nvim_win_"));
+-
+-  Dictionary tabpage_metadata = arena_dict(arena, 2);
+-  PUT_C(tabpage_metadata, "id", INTEGER_OBJ(kObjectTypeTabpage - EXT_OBJECT_TYPE_SHIFT));
+-  PUT_C(tabpage_metadata, "prefix", CSTR_AS_OBJ("nvim_tabpage_"));
+-
+-  PUT_C(types, "Buffer", DICTIONARY_OBJ(buffer_metadata));
+-  PUT_C(types, "Window", DICTIONARY_OBJ(window_metadata));
+-  PUT_C(types, "Tabpage", DICTIONARY_OBJ(tabpage_metadata));
+-
+-  return types;
++  return cbuf_as_string((char *)packed_api_metadata, sizeof(packed_api_metadata));
+ }
+ 
+ // all the copy_[object] functions allow arena=NULL,
+diff --git a/src/nvim/api/ui.h b/src/nvim/api/ui.h
+index 9147f1d87..cdccc27ba 100644
+--- a/src/nvim/api/ui.h
++++ b/src/nvim/api/ui.h
+@@ -7,6 +7,20 @@
+ #include "nvim/types_defs.h"  // IWYU pragma: keep
+ #include "nvim/ui_defs.h"  // IWYU pragma: keep
+ 
++/// Keep in sync with UIExtension in ui_defs.h
++EXTERN const char *ui_ext_names[] INIT( = {
++  "ext_cmdline",
++  "ext_popupmenu",
++  "ext_tabline",
++  "ext_wildmenu",
++  "ext_messages",
++  "ext_linegrid",
++  "ext_multigrid",
++  "ext_hlstate",
++  "ext_termcolors",
++  "_debug_float",
++});
++
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+ # include "api/ui.h.generated.h"
+ # include "ui_events_remote.h.generated.h"
+diff --git a/src/nvim/api/vim.c b/src/nvim/api/vim.c
+index 54bf290e6..6a3c6bab6 100644
+--- a/src/nvim/api/vim.c
++++ b/src/nvim/api/vim.c
+@@ -1529,7 +1529,7 @@ Array nvim_get_api_info(uint64_t channel_id, Arena *arena)
+ 
+   assert(channel_id <= INT64_MAX);
+   ADD_C(rv, INTEGER_OBJ((int64_t)channel_id));
+-  ADD_C(rv, DICTIONARY_OBJ(api_metadata()));
++  ADD_C(rv, api_metadata());
+ 
+   return rv;
+ }
+diff --git a/src/nvim/eval/funcs.c b/src/nvim/eval/funcs.c
+index 2e2640604..c16fc1d70 100644
+--- a/src/nvim/eval/funcs.c
++++ b/src/nvim/eval/funcs.c
+@@ -442,8 +442,7 @@ static void f_and(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
+ /// "api_info()" function
+ static void f_api_info(typval_T *argvars, typval_T *rettv, EvalFuncData fptr)
+ {
+-  Dictionary metadata = api_metadata();
+-  object_to_vim(DICTIONARY_OBJ(metadata), rettv, NULL);
++  object_to_vim(api_metadata(), rettv, NULL);
+ }
+ 
+ /// "atan2()" function
+diff --git a/src/nvim/generators/gen_api_dispatch.lua b/src/nvim/generators/gen_api_dispatch.lua
+index 56331e416..78a83445a 100644
+--- a/src/nvim/generators/gen_api_dispatch.lua
++++ b/src/nvim/generators/gen_api_dispatch.lua
+@@ -2,15 +2,18 @@ local mpack = vim.mpack
+ 
+ local hashy = require 'generators.hashy'
+ 
+-assert(#arg >= 5)
++local pre_args = 7
++assert(#arg >= pre_args)
+ -- output h file with generated dispatch functions (dispatch_wrappers.generated.h)
+ local dispatch_outputf = arg[1]
+--- output h file with packed metadata (funcs_metadata.generated.h)
+-local funcs_metadata_outputf = arg[2]
++-- output h file with packed metadata (api_metadata.generated.h)
++local api_metadata_outputf = arg[2]
+ -- output metadata mpack file, for use by other build scripts (api_metadata.mpack)
+ local mpack_outputf = arg[3]
+ local lua_c_bindings_outputf = arg[4] -- lua_api_c_bindings.generated.c
+ local keysets_outputf = arg[5] -- keysets_defs.generated.h
++local ui_metadata_inputf = arg[6] -- ui events metadata
++local git_version_inputf = arg[7] -- git version header
+ 
+ local functions = {}
+ 
+@@ -96,8 +99,10 @@ local function add_keyset(val)
+   })
+ end
+ 
++local ui_options_text = nil
++
+ -- read each input file, parse and append to the api metadata
+-for i = 6, #arg do
++for i = pre_args + 1, #arg do
+   local full_path = arg[i]
+   local parts = {}
+   for part in string.gmatch(full_path, '[^/]+') do
+@@ -107,17 +112,18 @@ for i = 6, #arg do
+ 
+   local input = assert(io.open(full_path, 'rb'))
+ 
+-  local tmp = c_grammar.grammar:match(input:read('*all'))
++  local text = input:read('*all')
++  local tmp = c_grammar.grammar:match(text)
+   for j = 1, #tmp do
+     local val = tmp[j]
+-    if val[1] ~= 'empty' then
+-      if val.keyset_name then
+-        add_keyset(val)
+-      else
+-        add_function(val)
+-      end
++    if val.keyset_name then
++      add_keyset(val)
++    elseif val.name then
++      add_function(val)
+     end
+   end
++
++  ui_options_text = ui_options_text or string.match(text, 'ui_ext_names%[][^{]+{([^}]+)}')
+   input:close()
+ end
+ 
+@@ -218,13 +224,71 @@ for _, f in ipairs(functions) do
+   end
+ end
+ 
++local ui_options = { 'rgb' }
++for x in string.gmatch(ui_options_text, '"([a-z][a-z_]+)"') do
++  table.insert(ui_options, x)
++end
++
++local version = require 'nvim_version'
++local git_version = io.open(git_version_inputf):read '*a'
++local version_build = string.match(git_version, '#define NVIM_VERSION_BUILD "([^"]+)"') or vim.NIL
++
+ -- serialize the API metadata using msgpack and embed into the resulting
+ -- binary for easy querying by clients
+-local funcs_metadata_output = assert(io.open(funcs_metadata_outputf, 'wb'))
+-local packed = mpack.encode(exported_functions)
++local api_metadata_output = assert(io.open(api_metadata_outputf, 'wb'))
++local pieces = {}
++
++-- Naively using mpack.encode({foo=x, bar=y}) will make the build
++-- "non-reproducible". Emit maps directly as FIXDICT(2) "foo" x "bar" y instead
++local function fixdict(num)
++  if num > 15 then
++    error 'implement more dict codes'
++  end
++  table.insert(pieces, string.char(128 + num))
++end
++local function put(item, item2)
++  table.insert(pieces, mpack.encode(item))
++  if item2 ~= nil then
++    table.insert(pieces, mpack.encode(item2))
++  end
++end
++
++fixdict(6)
++
++put('version')
++fixdict(1 + #version)
++for _, item in ipairs(version) do
++  -- NB: all items are mandatory. But any error will be less confusing
++  -- with placholder vim.NIL (than invalid mpack data)
++  put(item[1], item[2] or vim.NIL)
++end
++put('build', version_build)
++
++put('functions', exported_functions)
++put('ui_events')
++table.insert(pieces, io.open(ui_metadata_inputf, 'rb'):read('*all'))
++put('ui_options', ui_options)
++
++put('error_types')
++fixdict(2)
++put('Exception', { id = 0 })
++put('Validation', { id = 1 })
++
++put('types')
++local types =
++  { { 'Buffer', 'nvim_buf_' }, { 'Window', 'nvim_win_' }, { 'Tabpage', 'nvim_tabpage_' } }
++fixdict(#types)
++for i, item in ipairs(types) do
++  put(item[1])
++  fixdict(2)
++  put('id', i - 1)
++  put('prefix', item[2])
++end
++
++local packed = table.concat(pieces)
+ local dump_bin_array = require('generators.dump_bin_array')
+-dump_bin_array(funcs_metadata_output, 'funcs_metadata', packed)
+-funcs_metadata_output:close()
++dump_bin_array(api_metadata_output, 'packed_api_metadata', packed)
++api_metadata_output:close()
+ 
+ -- start building the dispatch wrapper output
+ local output = assert(io.open(dispatch_outputf, 'wb'))
+diff --git a/src/nvim/generators/gen_api_ui_events.lua b/src/nvim/generators/gen_api_ui_events.lua
+index 697626b79..a4f59c720 100644
+--- a/src/nvim/generators/gen_api_ui_events.lua
++++ b/src/nvim/generators/gen_api_ui_events.lua
+@@ -204,7 +204,5 @@ for _, ev in ipairs(events) do
+   end
+ end
+ 
+-local packed = mpack.encode(exported_events)
+-local dump_bin_array = require('generators.dump_bin_array')
+-dump_bin_array(metadata_output, 'ui_events_metadata', packed)
++metadata_output:write(mpack.encode(exported_events))
+ metadata_output:close()
+diff --git a/src/nvim/generators/nvim_version.lua.in b/src/nvim/generators/nvim_version.lua.in
+new file mode 100644
+index 000000000..d0dbf7792
+--- /dev/null
++++ b/src/nvim/generators/nvim_version.lua.in
+@@ -0,0 +1,9 @@
++return {
++  {"major", ${NVIM_VERSION_MAJOR}},
++  {"minor", ${NVIM_VERSION_MINOR}},
++  {"patch", ${NVIM_VERSION_PATCH}},
++  {"prerelease", "$NVIM_VERSION_PRERELEASE" ~= ""},
++  {"api_level", ${NVIM_API_LEVEL}},
++  {"api_compatible", ${NVIM_API_LEVEL_COMPAT}},
++  {"api_prerelease", ${NVIM_API_PRERELEASE}},
++}
+diff --git a/src/nvim/generators/preload.lua b/src/nvim/generators/preload.lua
+index 721d2880b..e14671074 100644
+--- a/src/nvim/generators/preload.lua
++++ b/src/nvim/generators/preload.lua
+@@ -1,10 +1,13 @@
+ local srcdir = table.remove(arg, 1)
+ local nlualib = table.remove(arg, 1)
++local gendir = table.remove(arg, 1)
+ package.path = srcdir .. '/src/nvim/?.lua;' .. srcdir .. '/runtime/lua/?.lua;' .. package.path
++package.path = gendir .. '/?.lua;' .. package.path
+ _G.vim = require 'vim.shared'
+ _G.vim.inspect = require 'vim.inspect'
+ package.cpath = package.cpath .. ';' .. nlualib
+ require 'nlua0'
++vim.NIL = vim.mpack.NIL -- WOW BOB WOW
+ 
+ arg[0] = table.remove(arg, 1)
+ return loadfile(arg[0])()
+diff --git a/src/nvim/lua/executor.c b/src/nvim/lua/executor.c
+index 3859dd922..1a9bd026b 100644
+--- a/src/nvim/lua/executor.c
++++ b/src/nvim/lua/executor.c
+@@ -15,6 +15,7 @@
+ #include "nvim/api/extmark.h"
+ #include "nvim/api/private/defs.h"
+ #include "nvim/api/private/helpers.h"
++#include "nvim/api/ui.h"
+ #include "nvim/ascii_defs.h"
+ #include "nvim/buffer_defs.h"
+ #include "nvim/change.h"
+diff --git a/src/nvim/main.c b/src/nvim/main.c
+index c2445437e..6b862f2ed 100644
+--- a/src/nvim/main.c
++++ b/src/nvim/main.c
+@@ -1103,20 +1103,16 @@ static void command_line_scan(mparm_T *parmp)
+           FileDescriptor fp;
+           const int fof_ret = file_open_fd(&fp, STDOUT_FILENO,
+                                            kFileWriteOnly);
+-          msgpack_packer *p = msgpack_packer_new(&fp, msgpack_file_write);
+-
+           if (fof_ret != 0) {
+             semsg(_("E5421: Failed to open stdin: %s"), os_strerror(fof_ret));
+           }
+ 
+-          if (p == NULL) {
+-            emsg(_(e_outofmem));
++          String data = api_metadata_raw();
++          const ptrdiff_t written_bytes = file_write(&fp, data.data, data.size);
++          if (written_bytes < 0) {
++            msgpack_file_write_error((int)written_bytes);
+           }
+ 
+-          Object md = DICTIONARY_OBJ(api_metadata());
+-          msgpack_rpc_from_object(&md, p);
+-
+-          msgpack_packer_free(p);
+           const int ff_ret = file_flush(&fp);
+           if (ff_ret < 0) {
+             msgpack_file_write_error(ff_ret);
+diff --git a/src/nvim/os/fileio.c b/src/nvim/os/fileio.c
+index e14de9e5d..da6fb1376 100644
+--- a/src/nvim/os/fileio.c
++++ b/src/nvim/os/fileio.c
+@@ -366,24 +366,6 @@ ptrdiff_t file_skip(FileDescriptor *const fp, const size_t size)
+   return (ptrdiff_t)read_bytes;
+ }
+ 
+-/// Msgpack callback for writing to a file
+-///
+-/// @param  data  File to write to.
+-/// @param[in]  buf  Data to write.
+-/// @param[in]  len  Length of the data to write.
+-///
+-/// @return 0 in case of success, -1 in case of error.
+-int msgpack_file_write(void *data, const char *buf, size_t len)
+-  FUNC_ATTR_NONNULL_ALL FUNC_ATTR_WARN_UNUSED_RESULT
+-{
+-  assert(len < PTRDIFF_MAX);
+-  const ptrdiff_t written_bytes = file_write((FileDescriptor *)data, buf, len);
+-  if (written_bytes < 0) {
+-    return msgpack_file_write_error((int)written_bytes);
+-  }
+-  return 0;
+-}
+-
+ /// Print error which occurs when failing to write msgpack data
+ ///
+ /// @param[in]  error  Error code of the error to print.
+diff --git a/src/nvim/ui.h b/src/nvim/ui.h
+index ef75bf62d..52b1334b1 100644
+--- a/src/nvim/ui.h
++++ b/src/nvim/ui.h
+@@ -10,20 +10,6 @@
+ #include "nvim/types_defs.h"  // IWYU pragma: keep
+ #include "nvim/ui_defs.h"  // IWYU pragma: keep
+ 
+-/// Keep in sync with UIExtension in ui_defs.h
+-EXTERN const char *ui_ext_names[] INIT( = {
+-  "ext_cmdline",
+-  "ext_popupmenu",
+-  "ext_tabline",
+-  "ext_wildmenu",
+-  "ext_messages",
+-  "ext_linegrid",
+-  "ext_multigrid",
+-  "ext_hlstate",
+-  "ext_termcolors",
+-  "_debug_float",
+-});
+-
+ // uncrustify:off
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+ # include "ui.h.generated.h"
+diff --git a/src/nvim/version.c b/src/nvim/version.c
+index a3f825c32..038c9701b 100644
+--- a/src/nvim/version.c
++++ b/src/nvim/version.c
+@@ -2550,24 +2550,6 @@ bool has_vim_patch(int n)
+   return false;
+ }
+ 
+-Dictionary version_dict(Arena *arena)
+-{
+-  Dictionary d = arena_dict(arena, 8);
+-  PUT_C(d, "major", INTEGER_OBJ(NVIM_VERSION_MAJOR));
+-  PUT_C(d, "minor", INTEGER_OBJ(NVIM_VERSION_MINOR));
+-  PUT_C(d, "patch", INTEGER_OBJ(NVIM_VERSION_PATCH));
+-#ifndef NVIM_VERSION_BUILD
+-  PUT_C(d, "build", NIL);
+-#else
+-  PUT_C(d, "build", STATIC_CSTR_AS_OBJ(NVIM_VERSION_BUILD));
+-#endif
+-  PUT_C(d, "prerelease", BOOLEAN_OBJ(NVIM_VERSION_PRERELEASE[0] != '\0'));
+-  PUT_C(d, "api_level", INTEGER_OBJ(NVIM_API_LEVEL));
+-  PUT_C(d, "api_compatible", INTEGER_OBJ(NVIM_API_LEVEL_COMPAT));
+-  PUT_C(d, "api_prerelease", BOOLEAN_OBJ(NVIM_API_PRERELEASE));
+-  return d;
+-}
+-
+ void ex_version(exarg_T *eap)
+ {
+   // Ignore a ":version 9.99" command.
+diff --git a/test/unit/os/fileio_spec.lua b/test/unit/os/fileio_spec.lua
+index cc5a0d84c..617141fd3 100644
+--- a/test/unit/os/fileio_spec.lua
++++ b/test/unit/os/fileio_spec.lua
+@@ -65,10 +65,6 @@ local function file_write(fp, buf)
+   return m.file_write(fp, buf, #buf)
+ end
+ 
+-local function msgpack_file_write(fp, buf)
+-  return m.msgpack_file_write(fp, buf, #buf)
+-end
+-
+ local function file_read(fp, size)
+   local buf = nil
+   if size == nil then
+@@ -391,18 +387,6 @@ describe('file_write', function()
+   end)
+ end)
+ 
+-describe('msgpack_file_write', function()
+-  itp('can write the whole file at once', function()
+-    local err, fp = file_open(filec, m.kFileCreateOnly, 384)
+-    eq(0, err)
+-    eq(true, fp.wr)
+-    local wr = msgpack_file_write(fp, fcontents)
+-    eq(0, wr)
+-    eq(0, m.file_close(fp, false))
+-    eq(fcontents, io.open(filec):read('*a'))
+-  end)
+-end)
+-
+ describe('file_skip', function()
+   itp('can skip 3 bytes', function()
+     local err, fp = file_open(file1, 0, 384)

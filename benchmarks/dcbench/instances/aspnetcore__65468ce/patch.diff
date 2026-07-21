@@ -1,0 +1,2817 @@
+From 65468ce8cf5a4686a4f3dc344b2d02ec493d198a Mon Sep 17 00:00:00 2001
+From: Daria Tiurina <dariatiurina@microsoft.com>
+Date: Tue, 3 Feb 2026 12:53:50 +0100
+Subject: [PATCH] TempData support for Blazor (#64749)
+
+---
+ .../DependencyInjection/ITempDataProvider.cs  |  22 +
+ ...orComponentsServiceCollectionExtensions.cs |   1 +
+ .../RazorComponentsServiceOptions.cs          |  19 +
+ .../DependencyInjection/TempDataService.cs    |  35 ++
+ ...oft.AspNetCore.Components.Endpoints.csproj |   2 +
+ .../Endpoints/src/PublicAPI.Unshipped.txt     |  12 +
+ .../src/TempData/CookieTempDataProvider.cs    | 169 +++++++
+ .../Endpoints/src/TempData/ITempData.cs       |  32 ++
+ .../src/TempData/ITempDataSerializer.cs       |  15 +
+ .../src/TempData/JsonTempDataSerializer.cs    | 195 ++++++++
+ .../SessionStorageTempDataProvider.cs         |  92 ++++
+ .../Endpoints/src/TempData/TempData.cs        | 213 +++++++++
+ ...DataProviderServiceCollectionExtensions.cs |  64 +++
+ .../src/TempData/TempDataProviderType.cs      |  20 +
+ .../TempData/CookieTempDataProviderTest.cs    | 190 ++++++++
+ .../TempData/JsonTempDataSerializerTest.cs    | 435 ++++++++++++++++++
+ .../SessionStorageTempDataProviderTest.cs     | 159 +++++++
+ .../TempDataProviderServiceExtensionsTest.cs  | 106 +++++
+ .../Endpoints/test/TempData/TempDataTest.cs   | 253 ++++++++++
+ .../test/E2ETest/Tests/TempDataCookieTest.cs  | 150 ++++++
+ .../Tests/TempDataSessionStorageTest.cs       | 162 +++++++
+ .../Components.TestServer.csproj              |   1 +
+ .../Components.TestServer/Program.cs          |   1 +
+ ...omponentEndpointsNoInteractivityStartup.cs |  22 +-
+ .../Pages/TempData/TempDataComponent.razor    | 125 +++++
+ .../TempData/TempDataReadComponent.razor      |  33 ++
+ ...TempDataRedirectWithoutReadComponent.razor |  12 +
+ 27 files changed, 2539 insertions(+), 1 deletion(-)
+ create mode 100644 src/Components/Endpoints/src/DependencyInjection/ITempDataProvider.cs
+ create mode 100644 src/Components/Endpoints/src/DependencyInjection/TempDataService.cs
+ create mode 100644 src/Components/Endpoints/src/TempData/CookieTempDataProvider.cs
+ create mode 100644 src/Components/Endpoints/src/TempData/ITempData.cs
+ create mode 100644 src/Components/Endpoints/src/TempData/ITempDataSerializer.cs
+ create mode 100644 src/Components/Endpoints/src/TempData/JsonTempDataSerializer.cs
+ create mode 100644 src/Components/Endpoints/src/TempData/SessionStorageTempDataProvider.cs
+ create mode 100644 src/Components/Endpoints/src/TempData/TempData.cs
+ create mode 100644 src/Components/Endpoints/src/TempData/TempDataProviderServiceCollectionExtensions.cs
+ create mode 100644 src/Components/Endpoints/src/TempData/TempDataProviderType.cs
+ create mode 100644 src/Components/Endpoints/test/TempData/CookieTempDataProviderTest.cs
+ create mode 100644 src/Components/Endpoints/test/TempData/JsonTempDataSerializerTest.cs
+ create mode 100644 src/Components/Endpoints/test/TempData/SessionStorageTempDataProviderTest.cs
+ create mode 100644 src/Components/Endpoints/test/TempData/TempDataProviderServiceExtensionsTest.cs
+ create mode 100644 src/Components/Endpoints/test/TempData/TempDataTest.cs
+ create mode 100644 src/Components/test/E2ETest/Tests/TempDataCookieTest.cs
+ create mode 100644 src/Components/test/E2ETest/Tests/TempDataSessionStorageTest.cs
+ create mode 100644 src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/TempData/TempDataComponent.razor
+ create mode 100644 src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/TempData/TempDataReadComponent.razor
+ create mode 100644 src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/TempData/TempDataRedirectWithoutReadComponent.razor
+
+diff --git a/src/Components/Endpoints/src/DependencyInjection/ITempDataProvider.cs b/src/Components/Endpoints/src/DependencyInjection/ITempDataProvider.cs
+new file mode 100644
+index 0000000000..f87ec34d60
+--- /dev/null
++++ b/src/Components/Endpoints/src/DependencyInjection/ITempDataProvider.cs
+@@ -0,0 +1,22 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.AspNetCore.Http;
++
++namespace Microsoft.AspNetCore.Components.Endpoints;
++
++/// <summary>
++/// Provides an abstraction for a provider that stores and retrieves temporary data.
++/// </summary>
++internal interface ITempDataProvider
++{
++    /// <summary>
++    /// Loads temporary data from the given <see cref="HttpContext"/>.
++    /// </summary>
++    IDictionary<string, object?> LoadTempData(HttpContext context);
++
++    /// <summary>
++    /// Saves temporary data to the given <see cref="HttpContext"/>.
++    /// </summary>
++    void SaveTempData(HttpContext context, IDictionary<string, object?> values);
++}
+diff --git a/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs b/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs
+index dc365194fc..df998d59c7 100644
+--- a/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs
++++ b/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs
+@@ -74,6 +74,7 @@ public static class RazorComponentsServiceCollectionExtensions
+         services.TryAddCascadingValue(sp => sp.GetRequiredService<EndpointHtmlRenderer>().HttpContext);
+         services.TryAddScoped<WebAssemblySettingsEmitter>();
+         services.TryAddScoped<ResourcePreloadService>();
++        services.AddTempData();
+ 
+         services.TryAddScoped<ResourceCollectionProvider>();
+         RegisterPersistentComponentStateServiceCollectionExtensions.AddPersistentServiceRegistration<ResourceCollectionProvider>(services, RenderMode.InteractiveWebAssembly);
+diff --git a/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceOptions.cs b/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceOptions.cs
+index de13d40cc4..85e883dde0 100644
+--- a/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceOptions.cs
++++ b/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceOptions.cs
+@@ -2,6 +2,7 @@
+ // The .NET Foundation licenses this file to you under the MIT license.
+ 
+ using Microsoft.AspNetCore.Components.Endpoints.FormMapping;
++using Microsoft.AspNetCore.Http;
+ 
+ namespace Microsoft.AspNetCore.Components.Endpoints;
+ 
+@@ -83,5 +84,23 @@ public sealed class RazorComponentsServiceOptions
+         }
+     }
+ 
++    /// <summary>
++    /// Determines the settings used to create the TempData cookie.
++    /// </summary>
++    public CookieBuilder TempDataCookie { get; set; } = new()
++    {
++        Name = CookieTempDataProvider.CookieName,
++        HttpOnly = true,
++        SameSite = SameSiteMode.Lax,
++        IsEssential = false,
++        SecurePolicy = CookieSecurePolicy.SameAsRequest,
++    };
++
+     internal string? JavaScriptInitializers { get; set; }
++
++    /// <summary>
++    /// Gets or sets the storage provider type for TempData.
++    /// Defaults to <see cref="TempDataProviderType.Cookie"/>.
++    /// </summary>
++    public TempDataProviderType TempDataProviderType { get; set; } = TempDataProviderType.Cookie;
+ }
+diff --git a/src/Components/Endpoints/src/DependencyInjection/TempDataService.cs b/src/Components/Endpoints/src/DependencyInjection/TempDataService.cs
+new file mode 100644
+index 0000000000..5cbf722c6b
+--- /dev/null
++++ b/src/Components/Endpoints/src/DependencyInjection/TempDataService.cs
+@@ -0,0 +1,35 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.AspNetCore.Http;
++
++namespace Microsoft.AspNetCore.Components.Endpoints;
++
++internal sealed partial class TempDataService
++{
++    private readonly ITempDataProvider _tempDataProvider;
++
++    public TempDataService(ITempDataProvider tempDataProvider)
++    {
++        _tempDataProvider = tempDataProvider;
++    }
++
++    public TempData CreateEmpty(HttpContext httpContext)
++    {
++        return new TempData(() => Load(httpContext));
++    }
++
++    public IDictionary<string, object?> Load(HttpContext httpContext)
++    {
++        return _tempDataProvider.LoadTempData(httpContext);
++    }
++
++    public void Save(HttpContext httpContext, TempData tempData)
++    {
++        if (!tempData.WasLoaded)
++        {
++            return;
++        }
++        _tempDataProvider.SaveTempData(httpContext, tempData.Save());
++    }
++}
+diff --git a/src/Components/Endpoints/src/Microsoft.AspNetCore.Components.Endpoints.csproj b/src/Components/Endpoints/src/Microsoft.AspNetCore.Components.Endpoints.csproj
+index ab17f88d49..eb03be9786 100644
+--- a/src/Components/Endpoints/src/Microsoft.AspNetCore.Components.Endpoints.csproj
++++ b/src/Components/Endpoints/src/Microsoft.AspNetCore.Components.Endpoints.csproj
+@@ -32,7 +32,9 @@
+     <Compile Include="$(ComponentsSharedSourceRoot)src\CacheHeaderSettings.cs" Link="Shared\CacheHeaderSettings.cs" />
+     <Compile Include="$(ComponentsSharedSourceRoot)src\ResourceCollectionProvider.cs" Link="Shared\ResourceCollectionProvider.cs" />
+     <Compile Include="$(ComponentsSharedSourceRoot)src\DefaultAntiforgeryStateProvider.cs" LinkBase="Forms" />
++    <Compile Include="$(SharedSourceRoot)Buffers\RefPooledArrayBufferWriter.cs" Link="Shared\Buffers\%(Filename)%(Extension)" />
+     <Compile Include="$(SharedSourceRoot)LinkerFlags.cs" LinkBase="Shared" />
++    <Compile Include="$(SharedSourceRoot)ChunkingCookieManager\**\*.cs" LinkBase="Internal" />
+     <Compile Include="$(SharedSourceRoot)Components\ComponentsActivityLinkStore.cs" LinkBase="Shared" />
+     <Compile Include="$(ComponentsSharedSourceRoot)src\HotReloadManager.cs" LinkBase="HotReload" />
+ 
+diff --git a/src/Components/Endpoints/src/PublicAPI.Unshipped.txt b/src/Components/Endpoints/src/PublicAPI.Unshipped.txt
+index ac1780ba88..2ebef8b695 100644
+--- a/src/Components/Endpoints/src/PublicAPI.Unshipped.txt
++++ b/src/Components/Endpoints/src/PublicAPI.Unshipped.txt
+@@ -1,3 +1,15 @@
+ #nullable enable
+ Microsoft.AspNetCore.Components.Endpoints.BasePath
+ Microsoft.AspNetCore.Components.Endpoints.BasePath.BasePath() -> void
++Microsoft.AspNetCore.Components.Endpoints.RazorComponentsServiceOptions.TempDataCookie.get -> Microsoft.AspNetCore.Http.CookieBuilder!
++Microsoft.AspNetCore.Components.Endpoints.RazorComponentsServiceOptions.TempDataCookie.set -> void
++Microsoft.AspNetCore.Components.Endpoints.RazorComponentsServiceOptions.TempDataProviderType.get -> Microsoft.AspNetCore.Components.Endpoints.TempDataProviderType
++Microsoft.AspNetCore.Components.Endpoints.RazorComponentsServiceOptions.TempDataProviderType.set -> void
++Microsoft.AspNetCore.Components.Endpoints.TempDataProviderType
++Microsoft.AspNetCore.Components.Endpoints.TempDataProviderType.Cookie = 0 -> Microsoft.AspNetCore.Components.Endpoints.TempDataProviderType
++Microsoft.AspNetCore.Components.Endpoints.TempDataProviderType.SessionStorage = 1 -> Microsoft.AspNetCore.Components.Endpoints.TempDataProviderType
++Microsoft.AspNetCore.Components.ITempData
++Microsoft.AspNetCore.Components.ITempData.Get(string! key) -> object?
++Microsoft.AspNetCore.Components.ITempData.Keep() -> void
++Microsoft.AspNetCore.Components.ITempData.Keep(string! key) -> void
++Microsoft.AspNetCore.Components.ITempData.Peek(string! key) -> object?
+diff --git a/src/Components/Endpoints/src/TempData/CookieTempDataProvider.cs b/src/Components/Endpoints/src/TempData/CookieTempDataProvider.cs
+new file mode 100644
+index 0000000000..05c95a6b4f
+--- /dev/null
++++ b/src/Components/Endpoints/src/TempData/CookieTempDataProvider.cs
+@@ -0,0 +1,169 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using System.Buffers;
++using System.Buffers.Text;
++using System.Collections.ObjectModel;
++using System.Text.Json;
++using Microsoft.AspNetCore.DataProtection;
++using Microsoft.AspNetCore.Http;
++using Microsoft.AspNetCore.Internal;
++using Microsoft.Extensions.Logging;
++using Microsoft.Extensions.Options;
++
++namespace Microsoft.AspNetCore.Components.Endpoints;
++
++internal sealed partial class CookieTempDataProvider : ITempDataProvider
++{
++    public const string CookieName = ".AspNetCore.Components.TempData";
++    private const string Purpose = "Microsoft.AspNetCore.Components.CookieTempDataProviderToken";
++    private readonly IDataProtector _dataProtector;
++    private readonly ISpanDataProtector? _spanDataProtector;
++    private readonly ITempDataSerializer _tempDataSerializer;
++    private readonly RazorComponentsServiceOptions _options;
++    private readonly ChunkingCookieManager _chunkingCookieManager;
++    private readonly ILogger<CookieTempDataProvider> _logger;
++
++    public CookieTempDataProvider(
++        IDataProtectionProvider dataProtectionProvider,
++        IOptions<RazorComponentsServiceOptions> options,
++        ITempDataSerializer tempDataSerializer,
++        ILogger<CookieTempDataProvider> logger)
++    {
++        _dataProtector = dataProtectionProvider.CreateProtector(Purpose);
++        _spanDataProtector = _dataProtector as ISpanDataProtector;
++        _tempDataSerializer = tempDataSerializer;
++        _options = options.Value;
++        _chunkingCookieManager = new ChunkingCookieManager();
++        _logger = logger;
++    }
++
++    public IDictionary<string, object?> LoadTempData(HttpContext context)
++    {
++        ArgumentNullException.ThrowIfNull(context);
++        var cookieName = _options.TempDataCookie.Name ?? CookieName;
++
++        try
++        {
++            if (!context.Request.Cookies.ContainsKey(cookieName))
++            {
++                Log.TempDataCookieNotFound(_logger, cookieName);
++                return ReadOnlyDictionary<string, object?>.Empty;
++            }
++            var serializedDataFromCookie = _chunkingCookieManager.GetRequestCookie(context, cookieName);
++            if (serializedDataFromCookie is null)
++            {
++                return ReadOnlyDictionary<string, object?>.Empty;
++            }
++
++            byte[]? rentedDecodeBuffer = null;
++            var maxDecodedSize = Base64Url.GetMaxDecodedLength(serializedDataFromCookie.Length);
++            var decodeBuffer = maxDecodedSize <= 256
++                ? stackalloc byte[256]
++                : (rentedDecodeBuffer = ArrayPool<byte>.Shared.Rent(maxDecodedSize));
++
++            try
++            {
++                var decodeStatus = Base64Url.DecodeFromChars(serializedDataFromCookie, decodeBuffer, out _, out var bytesWritten);
++                var protectedBytes = decodeBuffer[..bytesWritten];
++                Dictionary<string, JsonElement>? dataFromCookie;
++
++                if (_spanDataProtector is not null)
++                {
++                    var unprotectBuffer = new RefPooledArrayBufferWriter<byte>(stackalloc byte[256]);
++                    _spanDataProtector.Unprotect(protectedBytes, ref unprotectBuffer);
++                    dataFromCookie = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(unprotectBuffer.WrittenSpan);
++                }
++                else
++                {
++                    var unprotectedBytes = _dataProtector.Unprotect(protectedBytes.ToArray());
++                    dataFromCookie = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(unprotectedBytes);
++                }
++
++                if (dataFromCookie is null)
++                {
++                    return ReadOnlyDictionary<string, object?>.Empty;
++                }
++                var convertedData = _tempDataSerializer.DeserializeData(dataFromCookie);
++                Log.TempDataCookieLoadSuccess(_logger, cookieName);
++                return convertedData;
++            }
++            finally
++            {
++                if (rentedDecodeBuffer is not null)
++                {
++                    ArrayPool<byte>.Shared.Return(rentedDecodeBuffer);
++                }
++            }
++        }
++        catch (Exception ex)
++        {
++            Log.TempDataCookieLoadFailure(_logger, cookieName, ex);
++
++            var cookieOptions = _options.TempDataCookie.Build(context);
++            SetCookiePath(context, cookieOptions);
++            context.Response.Cookies.Delete(cookieName, cookieOptions);
++            return ReadOnlyDictionary<string, object?>.Empty;
++        }
++    }
++
++    public void SaveTempData(HttpContext context, IDictionary<string, object?> values)
++    {
++        ArgumentNullException.ThrowIfNull(context);
++
++        foreach (var kvp in values)
++        {
++            if (kvp.Value is not null && !_tempDataSerializer.CanSerialize(kvp.Value.GetType()))
++            {
++                throw new InvalidOperationException($"TempData cannot store values of type '{kvp.Value.GetType()}'.");
++            }
++        }
++
++        var cookieName = _options.TempDataCookie.Name ?? CookieName;
++        var cookieOptions = _options.TempDataCookie.Build(context);
++        SetCookiePath(context, cookieOptions);
++
++        if (values.Count == 0)
++        {
++            _chunkingCookieManager.DeleteCookie(context, cookieName, cookieOptions);
++            return;
++        }
++
++        var bytes = _tempDataSerializer.SerializeData(values);
++        var protectedBytes = _dataProtector.Protect(bytes);
++        var encodedValue = Base64Url.EncodeToString(protectedBytes);
++        _chunkingCookieManager.AppendResponseCookie(context, cookieName, encodedValue, cookieOptions);
++        Log.TempDataCookieSaveSuccess(_logger, cookieName);
++    }
++
++    private void SetCookiePath(HttpContext httpContext, CookieOptions cookieOptions)
++    {
++        if (!string.IsNullOrEmpty(_options.TempDataCookie.Path))
++        {
++            cookieOptions.Path = _options.TempDataCookie.Path;
++        }
++        else
++        {
++            var pathBase = httpContext.Request.PathBase.ToString();
++            if (!string.IsNullOrEmpty(pathBase))
++            {
++                cookieOptions.Path = pathBase;
++            }
++        }
++    }
++
++    private static partial class Log
++    {
++        [LoggerMessage(1, LogLevel.Debug, "The temp data cookie {CookieName} was not found.", EventName = "TempDataCookieNotFound")]
++        public static partial void TempDataCookieNotFound(ILogger logger, string cookieName);
++
++        [LoggerMessage(2, LogLevel.Warning, "The temp data cookie {CookieName} could not be loaded.", EventName = "TempDataCookieLoadFailure")]
++        public static partial void TempDataCookieLoadFailure(ILogger logger, string cookieName, Exception exception);
++
++        [LoggerMessage(3, LogLevel.Debug, "The temp data cookie {CookieName} was successfully saved.", EventName = "TempDataCookieSaveSuccess")]
++        public static partial void TempDataCookieSaveSuccess(ILogger logger, string cookieName);
++
++        [LoggerMessage(4, LogLevel.Debug, "The temp data cookie {CookieName} was successfully loaded.", EventName = "TempDataCookieLoadSuccess")]
++        public static partial void TempDataCookieLoadSuccess(ILogger logger, string cookieName);
++    }
++}
+diff --git a/src/Components/Endpoints/src/TempData/ITempData.cs b/src/Components/Endpoints/src/TempData/ITempData.cs
+new file mode 100644
+index 0000000000..70f637e7af
+--- /dev/null
++++ b/src/Components/Endpoints/src/TempData/ITempData.cs
+@@ -0,0 +1,32 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++namespace Microsoft.AspNetCore.Components;
++
++/// <summary>
++/// Provides a dictionary for storing data that is needed for subsequent requests.
++/// Data stored in TempData is automatically removed after it is read unless
++/// <see cref="Keep()"/> or <see cref="Keep(string)"/> is called, or it is accessed via <see cref="Peek(string)"/>.
++/// </summary>
++public interface ITempData : IDictionary<string, object?>
++{
++    /// <summary>
++    /// Gets the value associated with the specified key and then schedules it for deletion.
++    /// </summary>
++    object? Get(string key);
++
++    /// <summary>
++    /// Gets the value associated with the specified key without scheduling it for deletion.
++    /// </summary>
++    object? Peek(string key);
++
++    /// <summary>
++    /// Makes all of the keys currently in TempData persist for another request.
++    /// </summary>
++    void Keep();
++
++    /// <summary>
++    /// Makes the element with the <paramref name="key"/> persist for another request.
++    /// </summary>
++    void Keep(string key);
++}
+diff --git a/src/Components/Endpoints/src/TempData/ITempDataSerializer.cs b/src/Components/Endpoints/src/TempData/ITempDataSerializer.cs
+new file mode 100644
+index 0000000000..cab8c4af1c
+--- /dev/null
++++ b/src/Components/Endpoints/src/TempData/ITempDataSerializer.cs
+@@ -0,0 +1,15 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using System.Text.Json;
++
++namespace Microsoft.AspNetCore.Components.Endpoints;
++
++internal interface ITempDataSerializer
++{
++    public IDictionary<string, object?> DeserializeData(IDictionary<string, JsonElement> data);
++
++    public byte[] SerializeData(IDictionary<string, object?> data);
++
++    public bool CanSerialize(Type type);
++}
+diff --git a/src/Components/Endpoints/src/TempData/JsonTempDataSerializer.cs b/src/Components/Endpoints/src/TempData/JsonTempDataSerializer.cs
+new file mode 100644
+index 0000000000..4e3c770dae
+--- /dev/null
++++ b/src/Components/Endpoints/src/TempData/JsonTempDataSerializer.cs
+@@ -0,0 +1,195 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using System.Globalization;
++using System.Text.Json;
++using System.Text.Json.Serialization;
++
++namespace Microsoft.AspNetCore.Components.Endpoints;
++
++internal class JsonTempDataSerializer : ITempDataSerializer
++{
++    public IDictionary<string, object?> DeserializeData(IDictionary<string, JsonElement> data)
++    {
++        var dataDict = new Dictionary<string, object?>(data.Count);
++        foreach (var kvp in data)
++        {
++            dataDict[kvp.Key] = DeserializeElement(kvp.Value);
++        }
++        return dataDict;
++    }
++
++    private static object? DeserializeElement(JsonElement element)
++    {
++        return element.ValueKind switch
++        {
++            JsonValueKind.Null => null,
++            JsonValueKind.True => true,
++            JsonValueKind.False => false,
++            JsonValueKind.Number => element.GetInt32(),
++            JsonValueKind.String => DeserializeString(element),
++            JsonValueKind.Array => DeserializeArray(element),
++            JsonValueKind.Object => DeserializeObject(element),
++            _ => throw new NotSupportedException($"Unsupported JSON value kind: {element.ValueKind}")
++        };
++    }
++
++    private static object? DeserializeString(JsonElement element)
++    {
++        var type = GetStringType(element);
++        return type switch
++        {
++            Type t when t == typeof(Guid) => element.GetGuid(),
++            Type t when t == typeof(DateTime) => element.GetDateTime(),
++            _ => element.GetString(),
++        };
++    }
++
++    private static object? DeserializeArray(JsonElement element)
++    {
++        var length = element.GetArrayLength();
++        if (length == 0)
++        {
++            return Array.Empty<object?>();
++        }
++
++        var array = Array.CreateInstance(GetArrayTypeInfo(element[0]), length);
++        var index = 0;
++        foreach (var item in element.EnumerateArray())
++        {
++            array.SetValue(DeserializeElement(item), index++);
++        }
++        return array;
++    }
++
++    private static Dictionary<string, object?> DeserializeObject(JsonElement element)
++    {
++        var dictionary = new Dictionary<string, object?>(StringComparer.OrdinalIgnoreCase);
++        foreach (var property in element.EnumerateObject())
++        {
++            dictionary[property.Name] = DeserializeElement(property.Value);
++        }
++        return dictionary;
++    }
++
++    private static Type GetArrayTypeInfo(JsonElement element)
++    {
++        return element.ValueKind switch
++        {
++            JsonValueKind.True => typeof(bool),
++            JsonValueKind.False => typeof(bool),
++            JsonValueKind.Number => typeof(int),
++            JsonValueKind.String => GetStringType(element),
++            _ => typeof(object)
++        };
++    }
++
++    private static Type GetStringType(JsonElement element)
++    {
++        if (element.TryGetGuid(out _))
++        {
++            return typeof(Guid);
++        }
++        if (element.TryGetDateTime(out _))
++        {
++            return typeof(DateTime);
++        }
++        return typeof(string);
++    }
++
++    public bool CanSerialize(Type type)
++    {
++        if (type == typeof(object) || type == typeof(object[]))
++        {
++            return false;
++        }
++
++        if (type.IsEnum)
++        {
++            return true;
++        }
++
++        if (JsonTempDataSerializerContext.Default.GetTypeInfo(type) is not null)
++        {
++            return true;
++        }
++
++        var dictionaryInterface = type.GetInterface(typeof(IDictionary<,>).Name);
++        if (dictionaryInterface is not null)
++        {
++            var args = dictionaryInterface.GetGenericArguments();
++            if (args[0] == typeof(string) && CanSerialize(args[1]))
++            {
++                return true;
++            }
++            return false;
++        }
++
++        var collectionInterface = type.GetInterface(typeof(ICollection<>).Name);
++        if (collectionInterface is not null)
++        {
++            var elementType = collectionInterface.GetGenericArguments()[0];
++            if (CanSerialize(elementType))
++            {
++                return true;
++            }
++            return false;
++        }
++
++        return false;
++    }
++
++    public byte[] SerializeData(IDictionary<string, object?> data)
++    {
++        var normalizedData = new Dictionary<string, object?>(data.Count);
++        foreach (var kvp in data)
++        {
++            normalizedData[kvp.Key] = kvp.Value is Enum enumValue
++                ? Convert.ToInt32(enumValue, CultureInfo.InvariantCulture)
++                : kvp.Value;
++        }
++        return JsonSerializer.SerializeToUtf8Bytes<IDictionary<string, object?>>(normalizedData, JsonTempDataSerializerContext.Default.Options);
++    }
++}
++
++// Simple types (non-nullable)
++[JsonSerializable(typeof(int))]
++[JsonSerializable(typeof(bool))]
++[JsonSerializable(typeof(string))]
++[JsonSerializable(typeof(Guid))]
++[JsonSerializable(typeof(DateTime))]
++// Simple types (nullable)
++[JsonSerializable(typeof(int?))]
++[JsonSerializable(typeof(bool?))]
++[JsonSerializable(typeof(Guid?))]
++[JsonSerializable(typeof(DateTime?))]
++// Collections of simple types (non-nullable)
++[JsonSerializable(typeof(ICollection<int>))]
++[JsonSerializable(typeof(ICollection<bool>))]
++[JsonSerializable(typeof(ICollection<string>))]
++[JsonSerializable(typeof(ICollection<Guid>))]
++[JsonSerializable(typeof(ICollection<DateTime>))]
++// Collections of simple types (nullable)
++[JsonSerializable(typeof(ICollection<int?>))]
++[JsonSerializable(typeof(ICollection<bool?>))]
++[JsonSerializable(typeof(ICollection<Guid?>))]
++[JsonSerializable(typeof(ICollection<DateTime?>))]
++// Dictionaries of simple types (non-nullable)
++[JsonSerializable(typeof(IDictionary<string, int>))]
++[JsonSerializable(typeof(IDictionary<string, bool>))]
++[JsonSerializable(typeof(IDictionary<string, string>))]
++[JsonSerializable(typeof(IDictionary<string, Guid>))]
++[JsonSerializable(typeof(IDictionary<string, DateTime>))]
++// Dictionaries of simple types (nullable)
++[JsonSerializable(typeof(IDictionary<string, int?>))]
++[JsonSerializable(typeof(IDictionary<string, bool?>))]
++[JsonSerializable(typeof(IDictionary<string, Guid?>))]
++[JsonSerializable(typeof(IDictionary<string, DateTime?>))]
++// Object arrays for nested/empty arrays
++[JsonSerializable(typeof(object[]))]
++[JsonSerializable(typeof(ICollection<object>))]
++// Serialization of the TempData dictionary
++[JsonSerializable(typeof(IDictionary<string, object?>))]
++internal sealed partial class JsonTempDataSerializerContext : JsonSerializerContext
++{
++}
+diff --git a/src/Components/Endpoints/src/TempData/SessionStorageTempDataProvider.cs b/src/Components/Endpoints/src/TempData/SessionStorageTempDataProvider.cs
+new file mode 100644
+index 0000000000..a0f81222d8
+--- /dev/null
++++ b/src/Components/Endpoints/src/TempData/SessionStorageTempDataProvider.cs
+@@ -0,0 +1,92 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using System.Text.Json;
++using Microsoft.AspNetCore.Http;
++using Microsoft.Extensions.Logging;
++
++namespace Microsoft.AspNetCore.Components.Endpoints;
++
++internal sealed partial class SessionStorageTempDataProvider : ITempDataProvider
++{
++    internal const string TempDataSessionStateKey = "__BlazorTempData";
++    private readonly ITempDataSerializer _tempDataSerializer;
++    private readonly ILogger<SessionStorageTempDataProvider> _logger;
++
++    public SessionStorageTempDataProvider(
++        ITempDataSerializer tempDataSerializer,
++        ILogger<SessionStorageTempDataProvider> logger)
++    {
++        _tempDataSerializer = tempDataSerializer;
++        _logger = logger;
++    }
++
++    public IDictionary<string, object?> LoadTempData(HttpContext context)
++    {
++        ArgumentNullException.ThrowIfNull(context);
++
++        try
++        {
++            var session = context.Session;
++
++            if (session.TryGetValue(TempDataSessionStateKey, out var value))
++            {
++                var dataFromSession = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(value);
++                if (dataFromSession is null)
++                {
++                    return new Dictionary<string, object?>();
++                }
++
++                var convertedData = _tempDataSerializer.DeserializeData(dataFromSession);
++                Log.TempDataSessionLoadSuccess(_logger);
++                return convertedData;
++            }
++
++            Log.TempDataSessionNotFound(_logger);
++            return new Dictionary<string, object?>();
++        }
++        catch (Exception ex)
++        {
++            Log.TempDataSessionLoadFailure(_logger, ex);
++            return new Dictionary<string, object?>();
++        }
++    }
++
++    public void SaveTempData(HttpContext context, IDictionary<string, object?> values)
++    {
++        ArgumentNullException.ThrowIfNull(context);
++        foreach (var kvp in values)
++        {
++            if (kvp.Value is not null && !_tempDataSerializer.CanSerialize(kvp.Value.GetType()))
++            {
++                throw new InvalidOperationException($"TempData cannot store values of type '{kvp.Value.GetType()}'.");
++            }
++        }
++
++        var session = context.Session;
++        if (values.Count == 0)
++        {
++            session.Remove(TempDataSessionStateKey);
++            return;
++        }
++
++        var bytes = _tempDataSerializer.SerializeData(values);
++        session.Set(TempDataSessionStateKey, bytes);
++        Log.TempDataSessionSaveSuccess(_logger);
++    }
++
++    private static partial class Log
++    {
++        [LoggerMessage(1, LogLevel.Debug, "TempData was not found in session.", EventName = "TempDataSessionNotFound")]
++        public static partial void TempDataSessionNotFound(ILogger logger);
++
++        [LoggerMessage(2, LogLevel.Warning, "TempData could not be loaded from session.", EventName = "TempDataSessionLoadFailure")]
++        public static partial void TempDataSessionLoadFailure(ILogger logger, Exception exception);
++
++        [LoggerMessage(3, LogLevel.Debug, "TempData was successfully saved to session.", EventName = "TempDataSessionSaveSuccess")]
++        public static partial void TempDataSessionSaveSuccess(ILogger logger);
++
++        [LoggerMessage(4, LogLevel.Debug, "TempData was successfully loaded from session.", EventName = "TempDataSessionLoadSuccess")]
++        public static partial void TempDataSessionLoadSuccess(ILogger logger);
++    }
++}
+diff --git a/src/Components/Endpoints/src/TempData/TempData.cs b/src/Components/Endpoints/src/TempData/TempData.cs
+new file mode 100644
+index 0000000000..f1f312726d
+--- /dev/null
++++ b/src/Components/Endpoints/src/TempData/TempData.cs
+@@ -0,0 +1,213 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using System.Collections;
++
++namespace Microsoft.AspNetCore.Components;
++
++/// <inheritdoc/>
++internal sealed class TempData : ITempData
++{
++    public bool WasLoaded => _loaded && _loadFunc is null;
++    private readonly Dictionary<string, object?> _data = new(StringComparer.OrdinalIgnoreCase);
++    private readonly HashSet<string> _retainedKeys = new(StringComparer.OrdinalIgnoreCase);
++    private Func<IDictionary<string, object?>>? _loadFunc;
++    private bool _loaded;
++
++    internal TempData(Func<IDictionary<string, object?>> loadFunc)
++    {
++        _loadFunc = loadFunc;
++    }
++
++    private Dictionary<string, object?> Data
++    {
++        get
++        {
++            if (!_loaded && _loadFunc is not null)
++            {
++                var dataToLoad = _loadFunc();
++                Load(dataToLoad);
++                _loadFunc = null;
++                _loaded = true;
++            }
++            return _data;
++        }
++    }
++
++    public object? this[string key]
++    {
++        get
++        {
++            return Get(key);
++        }
++        set
++        {
++            Data[key] = value;
++            _retainedKeys.Add(key);
++        }
++    }
++
++    public object? Get(string key)
++    {
++        _retainedKeys.Remove(key);
++        return Data.GetValueOrDefault(key);
++    }
++
++    public object? Peek(string key)
++    {
++        return Data.GetValueOrDefault(key);
++    }
++
++    public void Keep()
++    {
++        _retainedKeys.UnionWith(_data.Keys);
++    }
++
++    public void Keep(string key)
++    {
++        if (Data.ContainsKey(key))
++        {
++            _retainedKeys.Add(key);
++        }
++    }
++
++    public bool ContainsKey(string key)
++    {
++        return Data.ContainsKey(key);
++    }
++
++    public bool Remove(string key)
++    {
++        _retainedKeys.Remove(key);
++        return Data.Remove(key);
++    }
++
++    public IDictionary<string, object?> Save()
++    {
++        var dataToSave = new Dictionary<string, object?>();
++        foreach (var key in _retainedKeys)
++        {
++            dataToSave[key] = _data[key];
++        }
++        return dataToSave;
++    }
++
++    public void Load(IDictionary<string, object?> data)
++    {
++        _data.Clear();
++        _retainedKeys.Clear();
++        foreach (var kvp in data)
++        {
++            _data[kvp.Key] = kvp.Value;
++            _retainedKeys.Add(kvp.Key);
++        }
++        _loaded = true;
++    }
++
++    public void Clear()
++    {
++        Data.Clear();
++        _retainedKeys.Clear();
++    }
++
++    ICollection<string> IDictionary<string, object?>.Keys => Data.Keys;
++
++    ICollection<object?> IDictionary<string, object?>.Values => Data.Values;
++
++    int ICollection<KeyValuePair<string, object?>>.Count => Data.Count;
++    bool ICollection<KeyValuePair<string, object?>>.IsReadOnly => ((ICollection<KeyValuePair<string, object?>>)Data).IsReadOnly;
++
++    void IDictionary<string, object?>.Add(string key, object? value)
++    {
++        this[key] = value;
++    }
++
++    bool IDictionary<string, object?>.TryGetValue(string key, out object? value)
++    {
++        if (Data.TryGetValue(key, out value))
++        {
++            _retainedKeys.Remove(key);
++            return true;
++        }
++        return false;
++    }
++
++    void ICollection<KeyValuePair<string, object?>>.Add(KeyValuePair<string, object?> item)
++    {
++        ((IDictionary<string, object?>)this).Add(item.Key, item.Value);
++    }
++
++    bool ICollection<KeyValuePair<string, object?>>.Contains(KeyValuePair<string, object?> item)
++    {
++        return ContainsKey(item.Key) && Equals(Peek(item.Key), item.Value);
++    }
++
++    void ICollection<KeyValuePair<string, object?>>.CopyTo(KeyValuePair<string, object?>[] array, int arrayIndex)
++    {
++        ((ICollection<KeyValuePair<string, object?>>)Data).CopyTo(array, arrayIndex);
++    }
++
++    bool ICollection<KeyValuePair<string, object?>>.Remove(KeyValuePair<string, object?> item)
++    {
++        if (ContainsKey(item.Key) && Equals(Peek(item.Key), item.Value))
++        {
++            return Remove(item.Key);
++        }
++        return false;
++    }
++
++    IEnumerator<KeyValuePair<string, object?>> IEnumerable<KeyValuePair<string, object?>>.GetEnumerator()
++    {
++        return new TempDataEnumerator(this);
++    }
++
++    IEnumerator IEnumerable.GetEnumerator()
++    {
++        return new TempDataEnumerator(this);
++    }
++
++    sealed class TempDataEnumerator : IEnumerator<KeyValuePair<string, object?>>
++    {
++        private readonly TempData _tempData;
++        private readonly IEnumerator<KeyValuePair<string, object?>> _innerEnumerator;
++        private readonly List<string> _keysToRemove = new();
++
++        public TempDataEnumerator(TempData tempData)
++        {
++            _tempData = tempData;
++            _innerEnumerator = tempData._data.GetEnumerator();
++        }
++
++        public KeyValuePair<string, object?> Current
++        {
++            get
++            {
++                var kvp = _innerEnumerator.Current;
++                _keysToRemove.Add(kvp.Key);
++                return kvp;
++            }
++        }
++
++        object IEnumerator.Current => _innerEnumerator.Current;
++
++        public void Dispose()
++        {
++            _innerEnumerator.Dispose();
++            foreach (var key in _keysToRemove)
++            {
++                _tempData._retainedKeys.Remove(key);
++            }
++        }
++
++        public bool MoveNext()
++        {
++            return _innerEnumerator.MoveNext();
++        }
++
++        public void Reset()
++        {
++            _innerEnumerator.Reset();
++            _keysToRemove.Clear();
++        }
++    }
++}
+diff --git a/src/Components/Endpoints/src/TempData/TempDataProviderServiceCollectionExtensions.cs b/src/Components/Endpoints/src/TempData/TempDataProviderServiceCollectionExtensions.cs
+new file mode 100644
+index 0000000000..88f63e2e3b
+--- /dev/null
++++ b/src/Components/Endpoints/src/TempData/TempDataProviderServiceCollectionExtensions.cs
+@@ -0,0 +1,64 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.Extensions.Options;
++using Microsoft.AspNetCore.Http;
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.DependencyInjection.Extensions;
++using Microsoft.Extensions.Logging;
++using Microsoft.AspNetCore.DataProtection;
++
++namespace Microsoft.AspNetCore.Components.Endpoints;
++
++internal static class TempDataProviderServiceCollectionExtensions
++{
++    internal static IServiceCollection AddTempData(this IServiceCollection services)
++    {
++        services.TryAddSingleton<ITempDataSerializer, JsonTempDataSerializer>();
++        services.TryAddSingleton<ITempDataProvider>(serviceProvider =>
++        {
++            var options = serviceProvider.GetRequiredService<IOptions<RazorComponentsServiceOptions>>();
++            var serializer = serviceProvider.GetRequiredService<ITempDataSerializer>();
++            var dataProtectionProvider = serviceProvider.GetRequiredService<IDataProtectionProvider>();
++            var logger = serviceProvider.GetRequiredService<ILogger<CookieTempDataProvider>>();
++            return options.Value.TempDataProviderType switch
++            {
++                TempDataProviderType.Cookie => new CookieTempDataProvider(dataProtectionProvider, options, serializer, logger),
++                TempDataProviderType.SessionStorage => new SessionStorageTempDataProvider(serializer, serviceProvider.GetRequiredService<ILogger<SessionStorageTempDataProvider>>()),
++                _ => throw new InvalidOperationException($"Unsupported TempDataProviderType: {options.Value.TempDataProviderType}"),
++            };
++        });
++        services.TryAddSingleton<TempDataService>();
++        services = AddTempDataCascadingValue(services);
++        return services;
++    }
++
++    private static IServiceCollection AddTempDataCascadingValue(IServiceCollection services)
++    {
++        services.TryAddCascadingValue(sp =>
++        {
++            var httpContext = sp.GetRequiredService<EndpointHtmlRenderer>().HttpContext;
++            return httpContext is null
++                ? null
++                : GetOrCreateTempData(httpContext);
++        });
++        return services;
++    }
++
++    private static ITempData GetOrCreateTempData(HttpContext httpContext)
++    {
++        var key = typeof(ITempData);
++        if (!httpContext.Items.ContainsKey(key))
++        {
++            var tempDataService = httpContext.RequestServices.GetRequiredService<TempDataService>();
++            var tempDataInstance = tempDataService.CreateEmpty(httpContext);
++            httpContext.Items[key] = tempDataInstance;
++            httpContext.Response.OnStarting(() =>
++            {
++                tempDataService.Save(httpContext, tempDataInstance);
++                return Task.CompletedTask;
++            });
++        }
++        return (ITempData)httpContext.Items[key]!;
++    }
++}
+diff --git a/src/Components/Endpoints/src/TempData/TempDataProviderType.cs b/src/Components/Endpoints/src/TempData/TempDataProviderType.cs
+new file mode 100644
+index 0000000000..a784288705
+--- /dev/null
++++ b/src/Components/Endpoints/src/TempData/TempDataProviderType.cs
+@@ -0,0 +1,20 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++namespace Microsoft.AspNetCore.Components.Endpoints;
++
++/// <summary>
++/// Specifies the storage provider for TempData.
++/// </summary>
++public enum TempDataProviderType
++{
++    /// <summary>
++    /// Store TempData in cookies (default).
++    /// </summary>
++    Cookie = 0,
++
++    /// <summary>
++    /// Store TempData in browser session storage.
++    /// </summary>
++    SessionStorage = 1,
++}
+diff --git a/src/Components/Endpoints/test/TempData/CookieTempDataProviderTest.cs b/src/Components/Endpoints/test/TempData/CookieTempDataProviderTest.cs
+new file mode 100644
+index 0000000000..6fdd4ad986
+--- /dev/null
++++ b/src/Components/Endpoints/test/TempData/CookieTempDataProviderTest.cs
+@@ -0,0 +1,190 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.AspNetCore.DataProtection;
++using Microsoft.AspNetCore.Http;
++using Microsoft.AspNetCore.Http.Features;
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Logging.Abstractions;
++using Microsoft.Extensions.Options;
++
++namespace Microsoft.AspNetCore.Components.Endpoints;
++
++public class CookieTempDataProviderTest
++{
++    private readonly CookieTempDataProvider _cookieTempDataProvider;
++
++    internal TempData CreateTempData()
++    {
++        return new TempData(() => new Dictionary<string, object>());
++    }
++
++    public CookieTempDataProviderTest()
++    {
++        _cookieTempDataProvider = new CookieTempDataProvider(
++            new EphemeralDataProtectionProvider(),
++            Options.Create<RazorComponentsServiceOptions>(new()),
++            new JsonTempDataSerializer(),
++            NullLogger<CookieTempDataProvider>.Instance);
++    }
++
++    [Fact]
++    public void Load_ReturnsEmptyTempData_WhenNoCookieExists()
++    {
++        var httpContext = CreateHttpContext();
++        var tempData = _cookieTempDataProvider.LoadTempData(httpContext);
++
++        Assert.NotNull(tempData);
++        Assert.Empty(tempData);
++    }
++
++    [Fact]
++    public void Load_ReturnsEmptyTempData_AndClearsCookie_WhenDataIsInvalid()
++    {
++        var httpContext = CreateHttpContext();
++        httpContext.Request.Headers["Cookie"] = ".AspNetCore.Components.TempData=not-valid-base64!!!";
++
++        var tempData = _cookieTempDataProvider.LoadTempData(httpContext);
++
++        Assert.NotNull(tempData);
++        Assert.Empty(tempData);
++        // Cookie should be deleted when invalid
++        var cookieFeature = httpContext.Features.Get<TestResponseCookiesFeature>();
++        Assert.NotNull(cookieFeature);
++        Assert.Contains(".AspNetCore.Components.TempData", cookieFeature.DeletedCookies);
++    }
++
++    [Fact]
++    public void Save_DeletesCookie_WhenNoDataToSave()
++    {
++        var httpContext = CreateHttpContext();
++        var tempData = CreateTempData();
++
++        _cookieTempDataProvider.SaveTempData(httpContext, tempData.Save());
++
++        var cookieFeature = httpContext.Features.Get<TestResponseCookiesFeature>();
++        Assert.NotNull(cookieFeature);
++        Assert.Contains(".AspNetCore.Components.TempData", cookieFeature.DeletedCookies);
++    }
++
++    [Fact]
++    public void Save_SetsCookie_WhenDataExists()
++    {
++        var httpContext = CreateHttpContext();
++        var tempData = CreateTempData();
++        tempData["Key1"] = "Value1";
++
++        _cookieTempDataProvider.SaveTempData(httpContext, tempData.Save());
++
++        var cookieFeature = httpContext.Features.Get<TestResponseCookiesFeature>();
++        Assert.NotNull(cookieFeature);
++        Assert.Contains(".AspNetCore.Components.TempData", cookieFeature.SetCookies.Keys);
++    }
++
++    [Fact]
++    public void Save_ThrowsForUnsupportedType()
++    {
++        var httpContext = CreateHttpContext();
++        var tempData = CreateTempData();
++        tempData["Key"] = new object();
++
++        Assert.Throws<InvalidOperationException>(() => _cookieTempDataProvider.SaveTempData(httpContext, tempData.Save()));
++    }
++
++    [Fact]
++    public void RoundTrip_SaveAndLoad_WorksCorrectly()
++    {
++        var httpContext = CreateHttpContext();
++        var tempData = CreateTempData();
++        tempData["StringKey"] = "StringValue";
++        tempData["IntKey"] = 42;
++
++        _cookieTempDataProvider.SaveTempData(httpContext, tempData.Save());
++        SimulateCookieRoundTrip(httpContext);
++        var loadedTempData = _cookieTempDataProvider.LoadTempData(httpContext);
++
++        Assert.Equal("StringValue", loadedTempData["StringKey"]);
++        Assert.Equal(42, Assert.IsType<int>(loadedTempData["IntKey"]));
++    }
++
++    private static DefaultHttpContext CreateHttpContext()
++    {
++        var services = new ServiceCollection()
++            .AddSingleton<IDataProtectionProvider, PassThroughDataProtectionProvider>()
++            .BuildServiceProvider();
++
++        var httpContext = new DefaultHttpContext
++        {
++            RequestServices = services
++        };
++        httpContext.Request.Scheme = "https";
++        httpContext.Request.Host = new HostString("localhost");
++
++        var cookieFeature = new TestResponseCookiesFeature();
++        httpContext.Features.Set(cookieFeature);
++        httpContext.Features.Set<IResponseCookiesFeature>(cookieFeature);
++
++        return httpContext;
++    }
++
++    private static void SimulateCookieRoundTrip(HttpContext httpContext)
++    {
++        var cookieFeature = httpContext.Features.Get<TestResponseCookiesFeature>();
++        if (cookieFeature != null && cookieFeature.SetCookies.TryGetValue(".AspNetCore.Components.TempData", out var cookieValue))
++        {
++            httpContext.Request.Headers["Cookie"] = $".AspNetCore.Components.TempData={cookieValue}";
++        }
++    }
++
++    private class PassThroughDataProtectionProvider : IDataProtectionProvider
++    {
++        public IDataProtector CreateProtector(string purpose) => new PassThroughDataProtector();
++
++        private class PassThroughDataProtector : IDataProtector
++        {
++            public IDataProtector CreateProtector(string purpose) => this;
++            public byte[] Protect(byte[] plaintext) => plaintext;
++            public byte[] Unprotect(byte[] protectedData) => protectedData;
++        }
++    }
++
++    private class TestResponseCookiesFeature : IResponseCookiesFeature
++    {
++        public Dictionary<string, string> SetCookies { get; } = new();
++        public HashSet<string> DeletedCookies { get; } = new();
++
++        public IResponseCookies Cookies => new TestResponseCookies(this);
++
++        private class TestResponseCookies : IResponseCookies
++        {
++            private readonly TestResponseCookiesFeature _feature;
++
++            public TestResponseCookies(TestResponseCookiesFeature feature)
++            {
++                _feature = feature;
++            }
++
++            public void Append(string key, string value) => Append(key, value, new CookieOptions());
++
++            public void Append(string key, string value, CookieOptions options)
++            {
++                // ChunkingCookieManager deletes by appending with expired date (UnixEpoch)
++                if (options.Expires.HasValue && options.Expires.Value <= DateTimeOffset.UnixEpoch)
++                {
++                    _feature.DeletedCookies.Add(key);
++                }
++                else
++                {
++                    _feature.SetCookies[key] = value;
++                }
++            }
++
++            public void Delete(string key) => Delete(key, new CookieOptions());
++
++            public void Delete(string key, CookieOptions options)
++            {
++                _feature.DeletedCookies.Add(key);
++            }
++        }
++    }
++}
+diff --git a/src/Components/Endpoints/test/TempData/JsonTempDataSerializerTest.cs b/src/Components/Endpoints/test/TempData/JsonTempDataSerializerTest.cs
+new file mode 100644
+index 0000000000..dfd371dc85
+--- /dev/null
++++ b/src/Components/Endpoints/test/TempData/JsonTempDataSerializerTest.cs
+@@ -0,0 +1,435 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using System;
++using System.Text.Json;
++
++namespace Microsoft.AspNetCore.Components.Endpoints;
++
++public class JsonTempDataSerializerTest
++{
++    private static JsonTempDataSerializer CreateSerializer() => new JsonTempDataSerializer();
++
++    public static TheoryData<Type> InvalidTypes
++    {
++        get
++        {
++            return new TheoryData<Type>
++                {
++                    { typeof(long) },
++                    { typeof(long[]) },
++                    { typeof(double) },
++                    { typeof(double[]) },
++                    { typeof(object) },
++                    { typeof(object[]) },
++                    { typeof(TestItem) },
++                    { typeof(List<TestItem>) },
++                    { typeof(Dictionary<string, TestItem>) },
++                };
++        }
++    }
++
++    public static TheoryData<Type> InvalidDictionaryKeyTypes
++    {
++        get
++        {
++            return new TheoryData<Type>
++                {
++                    { typeof(Dictionary<int, string>) },
++                    { typeof(Dictionary<Uri, Guid>) },
++                    { typeof(Dictionary<object, string>) },
++                    { typeof(Dictionary<TestItem, TestItem>) }
++                };
++        }
++    }
++
++    public static TheoryData<Type> ValidTypes
++    {
++        get
++        {
++            return new TheoryData<Type>
++                {
++                    { typeof(int) },
++                    { typeof(int[]) },
++                    { typeof(string) },
++                    { typeof(Guid) },
++                    { typeof(List<string>) },
++                    { typeof(Dictionary<string, int>) },
++                    { typeof(DateTime) },
++                    { typeof(bool) },
++                    { typeof(Guid[]) }
++                };
++        }
++    }
++
++    [Theory]
++    [MemberData(nameof(InvalidTypes))]
++    public void CanSerialize_ReturnsFalse_OnInvalidType(Type type)
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++
++        // Act
++        var result = serializer.CanSerialize(type);
++
++        // Assert
++        Assert.False(result);
++    }
++
++    [Theory]
++    [MemberData(nameof(InvalidDictionaryKeyTypes))]
++    public void CanSerialize_ReturnsFalse_OnInvalidDictionaryKeyType(Type type)
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++
++        // Act
++        var result = serializer.CanSerialize(type);
++
++        // Assert
++        Assert.False(result);
++    }
++
++    [Theory]
++    [MemberData(nameof(ValidTypes))]
++    public void CanSerialize_ReturnsTrue_OnValidType(Type type)
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++
++        // Act
++        var result = serializer.CanSerialize(type);
++
++        // Assert
++        Assert.True(result);
++    }
++
++    [Fact]
++    public void Deserialize_Int()
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++        var serialized = serializer.SerializeData(new Dictionary<string, object>
++        {
++            { "key", 42 }
++        });
++
++        // Act
++        var jsonDocument = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(serialized);
++        var result = serializer.DeserializeData(jsonDocument);
++
++        // Assert
++        Assert.Equal(42, result["key"]);
++    }
++
++    [Fact]
++    public void Deserialize_Bool()
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++        var serialized = serializer.SerializeData(new Dictionary<string, object>
++        {
++            { "key", true }
++        });
++
++        // Act
++        var jsonDocument = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(serialized);
++        var result = serializer.DeserializeData(jsonDocument);
++
++        // Assert
++        Assert.Equal(true, result["key"]);
++    }
++
++    [Fact]
++    public void Deserialize_String()
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++        var serialized = serializer.SerializeData(new Dictionary<string, object>
++        {
++            { "key", "hello" }
++        });
++
++        // Act
++        var jsonDocument = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(serialized);
++        var result = serializer.DeserializeData(jsonDocument);
++
++        // Assert
++        Assert.Equal("hello", result["key"]);
++    }
++
++    [Fact]
++    public void Deserialize_Guid()
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++        var guid = Guid.NewGuid();
++        var serialized = serializer.SerializeData(new Dictionary<string, object>
++        {
++            { "key", guid }
++        });
++
++        // Act
++        var jsonDocument = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(serialized);
++        var result = serializer.DeserializeData(jsonDocument);
++
++        // Assert
++        Assert.Equal(guid, result["key"]);
++    }
++
++    [Fact]
++    public void Deserialize_DateTime()
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++        var dateTime = new DateTime(2007, 1, 1, 0, 0, 0, DateTimeKind.Utc);
++        var serialized = serializer.SerializeData(new Dictionary<string, object>
++        {
++            { "key", dateTime }
++        });
++
++        // Act
++        var jsonDocument = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(serialized);
++        var result = serializer.DeserializeData(jsonDocument);
++
++        // Assert
++        Assert.IsType<DateTime>(result["key"]);
++        Assert.Equal(dateTime, result["key"]);
++    }
++
++    [Fact]
++    public void Deserialize_Null()
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++        var serialized = serializer.SerializeData(new Dictionary<string, object>
++        {
++            { "key", null }
++        });
++
++        // Act
++        var jsonDocument = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(serialized);
++        var result = serializer.DeserializeData(jsonDocument);
++
++        // Assert
++        Assert.Null(result["key"]);
++    }
++
++    [Fact]
++    public void Deserialize_Array()
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++        var serialized = serializer.SerializeData(new Dictionary<string, object>
++        {
++            { "key", new int[] { 1, 2, 3 } }
++        });
++
++        // Act
++        var jsonDocument = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(serialized);
++        var result = serializer.DeserializeData(jsonDocument);
++
++        // Assert
++        var array = Assert.IsType<int[]>(result["key"]);
++        Assert.Equal(3, array.Length);
++        Assert.Equal(1, array[0]);
++        Assert.Equal(2, array[1]);
++        Assert.Equal(3, array[2]);
++    }
++
++    [Fact]
++    public void Deserialize_EmptyArray()
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++        var serialized = serializer.SerializeData(new Dictionary<string, object>
++        {
++            { "key", Array.Empty<int>() }
++        });
++
++        // Act
++        var jsonDocument = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(serialized);
++        var result = serializer.DeserializeData(jsonDocument);
++
++        // Assert
++        var array = Assert.IsType<object[]>(result["key"]);
++        Assert.Empty(array);
++    }
++
++    [Fact]
++    public void Deserialize_Dictionary()
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++        var serialized = serializer.SerializeData(new Dictionary<string, object>
++        {
++            { "key", new Dictionary<string, int> { { "key1", 1 }, { "key2", 2 } } }
++        });
++
++        // Act
++        var jsonDocument = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(serialized);
++        var result = serializer.DeserializeData(jsonDocument);
++
++        // Assert
++        var dictionary = Assert.IsType<Dictionary<string, object>>(result["key"]);
++        Assert.Equal(2, dictionary.Count);
++        Assert.Equal(1, dictionary["key1"]);
++        Assert.Equal(2, dictionary["key2"]);
++    }
++
++    [Fact]
++    public void Deserialize_StringArray()
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++        var serialized = serializer.SerializeData(new Dictionary<string, object>
++        {
++            { "key", new string[] { "foo", "bar" } }
++        });
++
++        // Act
++        var jsonDocument = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(serialized);
++        var result = serializer.DeserializeData(jsonDocument);
++
++        // Assert
++        var array = Assert.IsType<string[]>(result["key"]);
++        Assert.Equal(2, array.Length);
++        Assert.Equal("foo", array[0]);
++        Assert.Equal("bar", array[1]);
++    }
++
++    [Fact]
++    public void Deserialize_DictionaryWithStringValues()
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++        var serialized = serializer.SerializeData(new Dictionary<string, object>
++        {
++            { "key", new Dictionary<string, string> { { "key1", "value1" }, { "key2", "value2" } } }
++        });
++
++        // Act
++        var jsonDocument = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(serialized);
++        var result = serializer.DeserializeData(jsonDocument);
++
++        // Assert
++        var dictionary = Assert.IsType<Dictionary<string, object>>(result["key"]);
++        Assert.Equal(2, dictionary.Count);
++        Assert.Equal("value1", dictionary["key1"]);
++        Assert.Equal("value2", dictionary["key2"]);
++    }
++
++    [Fact]
++    public void Deserialize_NestedArrays()
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++        var serialized = serializer.SerializeData(new Dictionary<string, object>
++        {
++            { "key", new object[] { new int[] { 1 }, new int[] { 2, 3, 4 } } }
++        });
++
++        // Act
++        var jsonDocument = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(serialized);
++        var result = serializer.DeserializeData(jsonDocument);
++
++        // Assert
++        var array = Assert.IsType<object[]>(result["key"]);
++        Assert.Equal(new int[] { 1 }, array[0]);
++        Assert.Equal(new int[] { 2, 3, 4 }, array[1]);
++    }
++
++    [Fact]
++    public void Deserialize_BoolArray()
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++        var serialized = serializer.SerializeData(new Dictionary<string, object>
++        {
++            { "key", new bool[] { true, false } }
++        });
++
++        // Act
++        var jsonDocument = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(serialized);
++        var result = serializer.DeserializeData(jsonDocument);
++
++        // Assert
++        var array = Assert.IsType<bool[]>(result["key"]);
++        Assert.True(array[0]);
++        Assert.False(array[1]);
++    }
++
++    [Fact]
++    public void Deserialize_DateTimeArray()
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++        var dateTime1 = new DateTime(2007, 1, 1, 0, 0, 0, DateTimeKind.Utc);
++        var dateTime2 = new DateTime(2008, 1, 1, 0, 0, 0, DateTimeKind.Utc);
++        var serialized = serializer.SerializeData(new Dictionary<string, object>
++        {
++            { "key", new DateTime[] { dateTime1, dateTime2 } }
++        });
++
++        // Act
++        var jsonDocument = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(serialized);
++        var result = serializer.DeserializeData(jsonDocument);
++
++        // Assert
++        var array = Assert.IsType<DateTime[]>(result["key"]);
++        Assert.Equal(dateTime1, array[0]);
++        Assert.Equal(dateTime2, array[1]);
++    }
++
++    [Fact]
++    public void Deserialize_GuidArray()
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++        var guid1 = Guid.NewGuid();
++        var guid2 = Guid.NewGuid();
++        var serialized = serializer.SerializeData(new Dictionary<string, object>
++        {
++            { "key", new Guid[] { guid1, guid2 } }
++        });
++
++        // Act
++        var jsonDocument = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(serialized);
++        var result = serializer.DeserializeData(jsonDocument);
++
++        // Assert
++        var array = Assert.IsType<Guid[]>(result["key"]);
++        Assert.Equal(guid1, array[0]);
++        Assert.Equal(guid2, array[1]);
++    }
++
++    [Fact]
++    public void Deserialize_Enum()
++    {
++        // Arrange
++        var serializer = CreateSerializer();
++
++        var serialized = serializer.SerializeData(new Dictionary<string, object>
++        {
++            { "key", TestEnum.Value2 }
++        });
++
++        // Act
++        var jsonDocument = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(serialized);
++        var result = serializer.DeserializeData(jsonDocument);
++
++        // Assert
++        Assert.Equal(1, result["key"]);
++    }
++
++    private class TestItem
++    {
++        public int DummyInt { get; set; }
++    }
++
++    private enum TestEnum
++    {
++        Value1,
++        Value2
++    }
++}
+diff --git a/src/Components/Endpoints/test/TempData/SessionStorageTempDataProviderTest.cs b/src/Components/Endpoints/test/TempData/SessionStorageTempDataProviderTest.cs
+new file mode 100644
+index 0000000000..1065fd2a2d
+--- /dev/null
++++ b/src/Components/Endpoints/test/TempData/SessionStorageTempDataProviderTest.cs
+@@ -0,0 +1,159 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.AspNetCore.Http;
++using Microsoft.AspNetCore.Http.Features;
++using Microsoft.Extensions.Logging.Abstractions;
++
++namespace Microsoft.AspNetCore.Components.Endpoints;
++
++public class SessionStorageTempDataProviderTest
++{
++    private readonly SessionStorageTempDataProvider _sessionStateTempDataProvider;
++
++    internal TempData CreateTempData()
++    {
++        return new TempData(() => new Dictionary<string, object>());
++    }
++
++    public SessionStorageTempDataProviderTest()
++    {
++        _sessionStateTempDataProvider = new SessionStorageTempDataProvider(
++            new JsonTempDataSerializer(),
++            NullLogger<SessionStorageTempDataProvider>.Instance);
++    }
++
++    [Fact]
++    public void Load_ReturnsEmptyTempData_WhenNoSessionDataExists()
++    {
++        var httpContext = CreateHttpContext();
++        var tempData = _sessionStateTempDataProvider.LoadTempData(httpContext);
++
++        Assert.NotNull(tempData);
++        Assert.Empty(tempData);
++    }
++
++    [Fact]
++    public void Save_RemovesSessionKey_WhenNoDataToSave()
++    {
++        var httpContext = CreateHttpContext();
++        var session = (TestSession)httpContext.Session;
++        session.Set(SessionStorageTempDataProvider.TempDataSessionStateKey, new byte[] { 1, 2, 3 });
++
++        var tempData = CreateTempData();
++        _sessionStateTempDataProvider.SaveTempData(httpContext, tempData.Save());
++
++        Assert.DoesNotContain(SessionStorageTempDataProvider.TempDataSessionStateKey, session.Keys);
++    }
++
++    [Fact]
++    public void Save_SetsSessionData_WhenDataExists()
++    {
++        var httpContext = CreateHttpContext();
++        var tempData = CreateTempData();
++        tempData["Key1"] = "Value1";
++
++        _sessionStateTempDataProvider.SaveTempData(httpContext, tempData.Save());
++
++        var session = (TestSession)httpContext.Session;
++        Assert.Contains(SessionStorageTempDataProvider.TempDataSessionStateKey, session.Keys);
++    }
++
++    [Fact]
++    public void Save_ThrowsForUnsupportedType()
++    {
++        var httpContext = CreateHttpContext();
++        var tempData = CreateTempData();
++        tempData["Key"] = new object();
++
++        Assert.Throws<InvalidOperationException>(() => _sessionStateTempDataProvider.SaveTempData(httpContext, tempData.Save()));
++    }
++
++    [Fact]
++    public void Load_ReturnsEmptyTempData_WhenSessionThrows()
++    {
++        var httpContext = CreateHttpContext(throwOnSessionAccess: true);
++        var tempData = _sessionStateTempDataProvider.LoadTempData(httpContext);
++
++        Assert.NotNull(tempData);
++        Assert.Empty(tempData);
++    }
++
++    [Fact]
++    public void Load_ReturnsEmptyTempData_WhenSessionContainsInvalidJson()
++    {
++        var httpContext = CreateHttpContext();
++        var session = (TestSession)httpContext.Session;
++        session.Set(SessionStorageTempDataProvider.TempDataSessionStateKey, "not valid json"u8.ToArray());
++
++        var tempData = _sessionStateTempDataProvider.LoadTempData(httpContext);
++
++        Assert.NotNull(tempData);
++        Assert.Empty(tempData);
++    }
++
++    [Fact]
++    public void RoundTrip_SaveAndLoad_WorksCorrectly()
++    {
++        var httpContext = CreateHttpContext();
++        var tempData = CreateTempData();
++        tempData["StringKey"] = "StringValue";
++        tempData["IntKey"] = 42;
++
++        _sessionStateTempDataProvider.SaveTempData(httpContext, tempData.Save());
++        var loadedTempData = _sessionStateTempDataProvider.LoadTempData(httpContext);
++
++        Assert.Equal("StringValue", loadedTempData["StringKey"]);
++        Assert.Equal(42, loadedTempData["IntKey"]);
++    }
++
++    private static DefaultHttpContext CreateHttpContext(bool throwOnSessionAccess = false)
++    {
++        var httpContext = new DefaultHttpContext();
++        httpContext.Request.Scheme = "https";
++        httpContext.Request.Host = new HostString("localhost");
++
++        var sessionFeature = new TestSessionFeature(throwOnSessionAccess);
++        httpContext.Features.Set<ISessionFeature>(sessionFeature);
++
++        return httpContext;
++    }
++
++    private class TestSessionFeature : ISessionFeature
++    {
++        private readonly bool _throwOnAccess;
++
++        public TestSessionFeature(bool throwOnAccess = false)
++        {
++            _throwOnAccess = throwOnAccess;
++            Session = new TestSession();
++        }
++
++        public ISession Session
++        {
++            get => _throwOnAccess ? throw new InvalidOperationException("Session not configured") : field;
++            set;
++        }
++    }
++
++    private class TestSession : ISession
++    {
++        private readonly Dictionary<string, byte[]> _store = new();
++
++        public string Id => "test-session-id";
++        public bool IsAvailable => true;
++        public IEnumerable<string> Keys => _store.Keys;
++
++        public void Clear() => _store.Clear();
++
++        public Task CommitAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
++
++        public Task LoadAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
++
++        public void Remove(string key) => _store.Remove(key);
++
++        public void Set(string key, byte[] value) => _store[key] = value;
++
++        public bool TryGetValue(string key, out byte[] value) => _store.TryGetValue(key, out value!);
++    }
++}
+diff --git a/src/Components/Endpoints/test/TempData/TempDataProviderServiceExtensionsTest.cs b/src/Components/Endpoints/test/TempData/TempDataProviderServiceExtensionsTest.cs
+new file mode 100644
+index 0000000000..dd0847f447
+--- /dev/null
++++ b/src/Components/Endpoints/test/TempData/TempDataProviderServiceExtensionsTest.cs
+@@ -0,0 +1,106 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.AspNetCore.Components.Endpoints;
++using Microsoft.AspNetCore.Hosting;
++using Microsoft.AspNetCore.Http;
++using Microsoft.Extensions.Configuration;
++using Microsoft.Extensions.FileProviders;
++using Microsoft.Extensions.Options;
++
++namespace Microsoft.Extensions.DependencyInjection;
++
++public class TempDataProviderServiceCollectionExtensionsTest
++{
++    [Fact]
++    public void AddRazorComponents_RegistersTempDataServices_WithDefaultCookieProvider()
++    {
++        // Arrange
++        var services = new ServiceCollection();
++        services.AddRazorComponents();
++        services.AddDataProtection();
++        services.AddLogging();
++        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
++        services.AddSingleton<IWebHostEnvironment>(new TestWebHostEnvironment());
++
++        // Act
++        var serviceProvider = services.BuildServiceProvider();
++
++        // Assert
++        var tempDataProvider = serviceProvider.GetService<ITempDataProvider>();
++        var tempDataSerializer = serviceProvider.GetService<ITempDataSerializer>();
++        var tempDataService = serviceProvider.GetService<TempDataService>();
++
++        Assert.NotNull(tempDataProvider);
++        Assert.IsType<CookieTempDataProvider>(tempDataProvider);
++        Assert.NotNull(tempDataSerializer);
++        Assert.NotNull(tempDataService);
++    }
++
++    [Fact]
++    public void AddRazorComponents_WithSessionStorageProvider_RegistersSessionStorageProvider()
++    {
++        // Arrange
++        var services = new ServiceCollection();
++        services.AddRazorComponents();
++        services.AddLogging();
++        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
++        services.AddSingleton<IWebHostEnvironment>(new TestWebHostEnvironment());
++
++        // Act
++        services.Configure<RazorComponentsServiceOptions>(options =>
++        {
++            options.TempDataProviderType = TempDataProviderType.SessionStorage;
++        });
++        var serviceProvider = services.BuildServiceProvider();
++
++        // Assert
++        var tempDataProvider = serviceProvider.GetService<ITempDataProvider>();
++        var tempDataSerializer = serviceProvider.GetService<ITempDataSerializer>();
++        var tempDataService = serviceProvider.GetService<TempDataService>();
++
++        Assert.NotNull(tempDataProvider);
++        Assert.IsType<SessionStorageTempDataProvider>(tempDataProvider);
++        Assert.NotNull(tempDataSerializer);
++        Assert.NotNull(tempDataService);
++    }
++
++    [Fact]
++    public void AddRazorComponents_WithCookieOptions_ConfiguresCookieSettings()
++    {
++        // Arrange
++        var services = new ServiceCollection();
++        services.AddRazorComponents();
++        services.AddDataProtection();
++        services.AddLogging();
++        services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
++        services.AddSingleton<IWebHostEnvironment>(new TestWebHostEnvironment());
++        var expectedCookieName = ".MyApp.CustomTempData";
++
++        // Act
++        services.Configure<RazorComponentsServiceOptions>(options =>
++        {
++            options.TempDataCookie.Name = expectedCookieName;
++            options.TempDataCookie.HttpOnly = false;
++            options.TempDataCookie.SameSite = SameSiteMode.Strict;
++        });
++
++        var serviceProvider = services.BuildServiceProvider();
++        var options = serviceProvider.GetRequiredService<IOptions<RazorComponentsServiceOptions>>();
++
++        // Assert
++        Assert.Equal(expectedCookieName, options.Value.TempDataCookie.Name);
++        Assert.False(options.Value.TempDataCookie.HttpOnly);
++        Assert.Equal(SameSiteMode.Strict, options.Value.TempDataCookie.SameSite);
++    }
++
++    private class TestWebHostEnvironment : IWebHostEnvironment
++    {
++        public string WebRootPath { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
++        public IFileProvider WebRootFileProvider { get; set; } = new NullFileProvider();
++        public string EnvironmentName { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
++        public string ApplicationName { get; set; } = "App";
++        public string ContentRootPath { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
++        public IFileProvider ContentRootFileProvider { get; set; } = new NullFileProvider();
++    }
++}
+diff --git a/src/Components/Endpoints/test/TempData/TempDataTest.cs b/src/Components/Endpoints/test/TempData/TempDataTest.cs
+new file mode 100644
+index 0000000000..c7725e55e8
+--- /dev/null
++++ b/src/Components/Endpoints/test/TempData/TempDataTest.cs
+@@ -0,0 +1,253 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++namespace Microsoft.AspNetCore.Components.Endpoints;
++
++public class TempDataTest
++{
++    internal TempData CreateTempData()
++    {
++        return new TempData(() => new Dictionary<string, object>());
++    }
++
++    [Fact]
++    public void Indexer_CanSetAndGetValues()
++    {
++        var tempData = CreateTempData();
++        tempData["Key1"] = "Value1";
++        var value = tempData["Key1"];
++        Assert.Equal("Value1", value);
++    }
++
++    [Fact]
++    public void Get_ReturnsValueAndRemovesFromRetainedKeys()
++    {
++        var tempData = CreateTempData();
++        tempData["Key1"] = "Value1";
++
++        var value = tempData.Get("Key1");
++
++        Assert.Equal("Value1", value);
++        var saved = tempData.Save();
++        Assert.Empty(saved);
++    }
++
++    [Fact]
++    public void Get_ReturnsNullForNonExistentKey()
++    {
++        var tempData = CreateTempData();
++        var value = tempData.Get("NonExistent");
++        Assert.Null(value);
++    }
++
++    [Fact]
++    public void Peek_ReturnsValueWithoutRemovingFromRetainedKeys()
++    {
++        var tempData = CreateTempData();
++        tempData["Key1"] = "Value1";
++        var value = tempData.Peek("Key1");
++        Assert.Equal("Value1", value);
++        value = tempData.Get("Key1");
++        Assert.Equal("Value1", value);
++    }
++
++    [Fact]
++    public void Peek_ReturnsNullForNonExistentKey()
++    {
++        var tempData = CreateTempData();
++        var value = tempData.Peek("NonExistent");
++        Assert.Null(value);
++    }
++
++    [Fact]
++    public void Keep_RetainsAllKeys()
++    {
++        var tempData = CreateTempData();
++        tempData["Key1"] = "Value1";
++        tempData["Key2"] = "Value2";
++        _ = tempData.Get("Key1");
++        _ = tempData.Get("Key2");
++
++        tempData.Keep();
++
++        var value1 = tempData.Get("Key1");
++        var value2 = tempData.Get("Key2");
++        Assert.Equal("Value1", value1);
++        Assert.Equal("Value2", value2);
++    }
++
++    [Fact]
++    public void KeepWithKey_RetainsSpecificKey()
++    {
++        var tempData = CreateTempData();
++        tempData["Key1"] = "Value1";
++        tempData["Key2"] = "Value2";
++        _ = tempData.Get("Key1");
++        _ = tempData.Get("Key2");
++
++        tempData.Keep("Key1");
++
++        var saved = tempData.Save();
++        Assert.Single(saved);
++        Assert.Equal("Value1", saved["Key1"]);
++    }
++
++    [Fact]
++    public void KeepWithKey_DoesNothingForNonExistentKey()
++    {
++        var tempData = CreateTempData();
++        tempData["Key1"] = "Value1";
++        _ = tempData.Get("Key1");
++
++        tempData.Keep("NonExistent");
++
++        var value = tempData.Get("NonExistent");
++        Assert.Null(value);
++    }
++
++    [Fact]
++    public void ContainsKey_ReturnsTrueForExistingKey()
++    {
++        var tempData = CreateTempData();
++        tempData["Key1"] = "Value1";
++        var result = tempData.ContainsKey("Key1");
++        Assert.True(result);
++    }
++
++    [Fact]
++    public void ContainsKey_ReturnsFalseForNonExistentKey()
++    {
++        var tempData = CreateTempData();
++        var result = tempData.ContainsKey("NonExistent");
++        Assert.False(result);
++    }
++
++    [Fact]
++    public void Remove_RemovesKeyAndReturnsTrue()
++    {
++        var tempData = CreateTempData();
++        tempData["Key1"] = "Value1";
++
++        var result = tempData.Remove("Key1");
++
++        Assert.True(result);
++        var value = tempData.Get("Key1");
++        Assert.Null(value);
++    }
++
++    [Fact]
++    public void Remove_ReturnsFalseForNonExistentKey()
++    {
++        var tempData = CreateTempData();
++        var result = tempData.Remove("NonExistent");
++        Assert.False(result);
++    }
++
++    [Fact]
++    public void Save_ReturnsOnlyRetainedKeys()
++    {
++        var tempData = CreateTempData();
++        tempData["Key1"] = "Value1";
++        tempData["Key2"] = "Value2";
++        tempData["Key3"] = "Value3";
++        _ = tempData.Get("Key1");
++        _ = tempData.Get("Key2");
++
++        var saved = tempData.Save();
++
++        Assert.Single(saved);
++        Assert.Equal("Value3", saved["Key3"]);
++    }
++
++    [Fact]
++    public void Load_PopulatesDataFromDictionary()
++    {
++        var tempData = CreateTempData();
++        var dataToLoad = new Dictionary<string, object>
++        {
++            ["Key1"] = "Value1",
++            ["Key2"] = "Value2"
++        };
++
++        tempData.Load(dataToLoad);
++
++        Assert.Equal("Value1", tempData.Get("Key1"));
++        Assert.Equal("Value2", tempData.Get("Key2"));
++    }
++
++    [Fact]
++    public void Load_ClearsExistingDataBeforeLoading()
++    {
++        var tempData = CreateTempData();
++        tempData["ExistingKey"] = "ExistingValue";
++        var dataToLoad = new Dictionary<string, object>
++        {
++            ["NewKey"] = "NewValue"
++        };
++
++        tempData.Load(dataToLoad);
++
++        Assert.False(tempData.ContainsKey("ExistingKey"));
++        Assert.True(tempData.ContainsKey("NewKey"));
++    }
++
++    [Fact]
++    public void Clear_RemovesAllData()
++    {
++        var tempData = CreateTempData();
++        tempData["Key1"] = "Value1";
++        tempData["Key2"] = "Value2";
++
++        tempData.Clear();
++
++        Assert.Null(tempData.Get("Key1"));
++        Assert.Null(tempData.Get("Key2"));
++    }
++
++    [Fact]
++    public void Indexer_IsCaseInsensitive()
++    {
++        var tempData = CreateTempData();
++        tempData["Key1"] = "Value1";
++        var value = tempData["KEY1"];
++        Assert.Equal("Value1", value);
++    }
++
++    [Fact]
++    public void Save_DoesNotLoadTempData()
++    {
++        var loadCalled = false;
++        var tempData = new TempData(() =>
++        {
++            loadCalled = true;
++            return new Dictionary<string, object> { ["Key"] = "Value" };
++        });
++        var saved = tempData.Save();
++
++        Assert.False(loadCalled);
++        Assert.False(tempData.WasLoaded);
++        Assert.Empty(saved);
++    }
++
++    [Fact]
++    public void TempData_Loads_WhenLoaded()
++    {
++        var loadCalled = false;
++        var numberOfLoads = 0;
++        var tempData = new TempData(() =>
++        {
++            loadCalled = true;
++            numberOfLoads++;
++            return new Dictionary<string, object> { ["Key"] = "Value" };
++        });
++
++        var value = tempData["Key"];
++        _ = tempData.Peek("Key");
++        _ = tempData.ContainsKey("Key");
++
++        Assert.True(loadCalled);
++        Assert.Equal(1, numberOfLoads);
++        Assert.True(tempData.WasLoaded);
++        Assert.Equal("Value", value);
++    }
++}
+diff --git a/src/Components/test/E2ETest/Tests/TempDataCookieTest.cs b/src/Components/test/E2ETest/Tests/TempDataCookieTest.cs
+new file mode 100644
+index 0000000000..55df1ef3aa
+--- /dev/null
++++ b/src/Components/test/E2ETest/Tests/TempDataCookieTest.cs
+@@ -0,0 +1,150 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure.ServerFixtures;
++using Components.TestServer.RazorComponents;
++using Microsoft.AspNetCore.E2ETesting;
++using Xunit.Abstractions;
++using OpenQA.Selenium;
++using TestServer;
++
++namespace Microsoft.AspNetCore.Components.E2ETest.Tests;
++
++public class TempDataCookieTest : ServerTestBase<BasicTestAppServerSiteFixture<RazorComponentEndpointsNoInteractivityStartup<App>>>
++{
++    private const string TempDataCookieName = ".AspNetCore.Components.TempData";
++
++    public TempDataCookieTest(
++        BrowserFixture browserFixture,
++        BasicTestAppServerSiteFixture<RazorComponentEndpointsNoInteractivityStartup<App>> serverFixture,
++        ITestOutputHelper output)
++        : base(browserFixture, serverFixture, output)
++    {
++    }
++
++    public override Task InitializeAsync() => InitializeAsync(BrowserFixture.StreamingContext);
++
++    protected override void InitializeAsyncCore()
++    {
++        base.InitializeAsyncCore();
++        Browser.Manage().Cookies.DeleteCookieNamed(TempDataCookieName);
++    }
++
++    [Fact]
++    public void TempDataCanPersistThroughNavigation()
++    {
++        Navigate($"{ServerPathBase}/tempdata");
++
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("set-values-button")).Click();
++        Browser.Equal("Message", () => Browser.FindElement(By.Id("message")).Text);
++    }
++
++    [Fact]
++    public void TempDataCanPersistThroughDifferentPages()
++    {
++        Navigate($"{ServerPathBase}/tempdata");
++
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("set-values-button-diff-page")).Click();
++        Browser.Equal("Message", () => Browser.FindElement(By.Id("message")).Text);
++    }
++
++    [Fact]
++    public void TempDataPeekDoesntDelete()
++    {
++        Navigate($"{ServerPathBase}/tempdata");
++
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("set-values-button")).Click();
++        Browser.Equal("Message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("redirect-button")).Click();
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.Equal("Peeked value", () => Browser.FindElement(By.Id("peeked-value")).Text);
++    }
++
++    [Fact]
++    public void TempDataKeepAllElements()
++    {
++        Navigate($"{ServerPathBase}/tempdata?ValueToKeep=all");
++
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("set-values-button")).Click();
++        Browser.Equal("Kept value", () => Browser.FindElement(By.Id("kept-value")).Text);
++        Browser.Equal("Message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("redirect-button")).Click();
++        Browser.Equal("Kept value", () => Browser.FindElement(By.Id("kept-value")).Text);
++        Browser.Equal("Message", () => Browser.FindElement(By.Id("message")).Text);
++    }
++
++    [Fact]
++    public void TempDataKeepOneElement()
++    {
++        Navigate($"{ServerPathBase}/tempdata?ValueToKeep=KeptValue");
++
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("set-values-button")).Click();
++        Browser.Equal("Kept value", () => Browser.FindElement(By.Id("kept-value")).Text);
++        Browser.Equal("Message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("redirect-button")).Click();
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.Equal("Kept value", () => Browser.FindElement(By.Id("kept-value")).Text);
++    }
++
++    [Fact]
++    public void CanRemoveTheElementWithRemove()
++    {
++        Navigate($"{ServerPathBase}/tempdata");
++
++        Browser.Equal("No peeked value", () => Browser.FindElement(By.Id("peeked-value")).Text);
++        Browser.FindElement(By.Id("set-values-button")).Click();
++        Browser.Equal("Peeked value", () => Browser.FindElement(By.Id("peeked-value")).Text);
++        Browser.Equal("Message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("redirect-button")).Click();
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.Equal("Peeked value", () => Browser.FindElement(By.Id("peeked-value")).Text);
++        Browser.FindElement(By.Id("delete-button")).Click();
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.Equal("No peeked value", () => Browser.FindElement(By.Id("peeked-value")).Text);
++    }
++
++    [Fact]
++    public void CanCheckIfTempDataContainsKey()
++    {
++        Navigate($"{ServerPathBase}/tempdata");
++
++        Browser.Equal("False", () => Browser.FindElement(By.Id("contains-peeked-value")).Text);
++        Browser.Equal("False", () => Browser.FindElement(By.Id("contains-message")).Text);
++        Browser.FindElement(By.Id("set-values-button")).Click();
++        Browser.Equal("True", () => Browser.FindElement(By.Id("contains-peeked-value")).Text);
++        Browser.Equal("True", () => Browser.FindElement(By.Id("contains-message")).Text);
++        Browser.FindElement(By.Id("redirect-button")).Click();
++        Browser.Equal("True", () => Browser.FindElement(By.Id("contains-peeked-value")).Text);
++        Browser.Equal("False", () => Browser.FindElement(By.Id("contains-message")).Text);
++    }
++
++    [Fact]
++    public void TempDataPersistWithoutAccessing()
++    {
++        Navigate($"{ServerPathBase}/tempdata");
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("set-values-not-read")).Click();
++        Browser.FindElement(By.Id("redirect-button")).Click();
++        Browser.Equal("Message", () => Browser.FindElement(By.Id("message")).Text);
++    }
++
++    [Fact]
++    public void TempDataPreservesTypedArrays()
++    {
++        Navigate($"{ServerPathBase}/tempdata");
++
++        Browser.Equal("Wrong type: null", () => Browser.FindElement(By.Id("string-array")).Text);
++        Browser.Equal("Wrong type: null", () => Browser.FindElement(By.Id("int-array")).Text);
++
++        Browser.FindElement(By.Id("set-values-button")).Click();
++
++        Browser.Equal("a,b,c", () => Browser.FindElement(By.Id("string-array")).Text);
++        Browser.Equal("1,2,3", () => Browser.FindElement(By.Id("int-array")).Text);
++    }
++}
+diff --git a/src/Components/test/E2ETest/Tests/TempDataSessionStorageTest.cs b/src/Components/test/E2ETest/Tests/TempDataSessionStorageTest.cs
+new file mode 100644
+index 0000000000..f1836c8db8
+--- /dev/null
++++ b/src/Components/test/E2ETest/Tests/TempDataSessionStorageTest.cs
+@@ -0,0 +1,162 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure.ServerFixtures;
++using Components.TestServer.RazorComponents;
++using Microsoft.AspNetCore.E2ETesting;
++using Xunit.Abstractions;
++using OpenQA.Selenium;
++using TestServer;
++
++namespace Microsoft.AspNetCore.Components.E2ETest.Tests;
++
++public class TempDataSessionStorageTest : ServerTestBase<BasicTestAppServerSiteFixture<RazorComponentEndpointsNoInteractivityStartup<App>>>
++{
++    private const string SessionCookieName = ".AspNetCore.Session";
++    private const string TempDataCookieName = ".AspNetCore.Components.TempData";
++
++    public TempDataSessionStorageTest(
++        BrowserFixture browserFixture,
++        BasicTestAppServerSiteFixture<RazorComponentEndpointsNoInteractivityStartup<App>> serverFixture,
++        ITestOutputHelper output)
++        : base(browserFixture, serverFixture, output)
++    {
++    }
++
++    protected override void InitializeAsyncCore()
++    {
++        _serverFixture.AdditionalArguments.Add("--UseSessionStorageTempDataProvider=true");
++        Browser.Manage().Cookies.DeleteCookieNamed(SessionCookieName);
++        base.InitializeAsyncCore();
++    }
++
++    public override Task InitializeAsync() => InitializeAsync(BrowserFixture.StreamingContext);
++
++    public override async Task DisposeAsync()
++    {
++        var tempDataCookie = Browser.Manage().Cookies.GetCookieNamed(TempDataCookieName);
++        var sessionCookie = Browser.Manage().Cookies.GetCookieNamed(".AspNetCore.Session");
++        Assert.Null(tempDataCookie);
++        Assert.NotNull(sessionCookie);
++
++        await base.DisposeAsync();
++    }
++
++    [Fact]
++    public void TempDataCanPersistThroughNavigation()
++    {
++        Navigate($"{ServerPathBase}/tempdata");
++
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("set-values-button")).Click();
++        Browser.Equal("Message", () => Browser.FindElement(By.Id("message")).Text);
++    }
++
++    [Fact]
++    public void TempDataCanPersistThroughDifferentPages()
++    {
++        Navigate($"{ServerPathBase}/tempdata");
++
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("set-values-button-diff-page")).Click();
++        Browser.Equal("Message", () => Browser.FindElement(By.Id("message")).Text);
++    }
++
++    [Fact]
++    public void TempDataPeekDoesntDelete()
++    {
++        Navigate($"{ServerPathBase}/tempdata");
++
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("set-values-button")).Click();
++        Browser.Equal("Message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("redirect-button")).Click();
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.Equal("Peeked value", () => Browser.FindElement(By.Id("peeked-value")).Text);
++    }
++
++    [Fact]
++    public void TempDataKeepAllElements()
++    {
++        Navigate($"{ServerPathBase}/tempdata?ValueToKeep=all");
++
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("set-values-button")).Click();
++        Browser.Equal("Kept value", () => Browser.FindElement(By.Id("kept-value")).Text);
++        Browser.Equal("Message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("redirect-button")).Click();
++        Browser.Equal("Kept value", () => Browser.FindElement(By.Id("kept-value")).Text);
++        Browser.Equal("Message", () => Browser.FindElement(By.Id("message")).Text);
++    }
++
++    [Fact]
++    public void TempDataKeepOneElement()
++    {
++        Navigate($"{ServerPathBase}/tempdata?ValueToKeep=KeptValue");
++
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("set-values-button")).Click();
++        Browser.Equal("Kept value", () => Browser.FindElement(By.Id("kept-value")).Text);
++        Browser.Equal("Message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("redirect-button")).Click();
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.Equal("Kept value", () => Browser.FindElement(By.Id("kept-value")).Text);
++    }
++
++    [Fact]
++    public void CanRemoveTheElementWithRemove()
++    {
++        Navigate($"{ServerPathBase}/tempdata");
++
++        Browser.Equal("No peeked value", () => Browser.FindElement(By.Id("peeked-value")).Text);
++        Browser.FindElement(By.Id("set-values-button")).Click();
++        Browser.Equal("Peeked value", () => Browser.FindElement(By.Id("peeked-value")).Text);
++        Browser.Equal("Message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("redirect-button")).Click();
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.Equal("Peeked value", () => Browser.FindElement(By.Id("peeked-value")).Text);
++        Browser.FindElement(By.Id("delete-button")).Click();
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.Equal("No peeked value", () => Browser.FindElement(By.Id("peeked-value")).Text);
++    }
++
++    [Fact]
++    public void CanCheckIfTempDataContainsKey()
++    {
++        Navigate($"{ServerPathBase}/tempdata");
++
++        Browser.Equal("False", () => Browser.FindElement(By.Id("contains-peeked-value")).Text);
++        Browser.Equal("False", () => Browser.FindElement(By.Id("contains-message")).Text);
++        Browser.FindElement(By.Id("set-values-button")).Click();
++        Browser.Equal("True", () => Browser.FindElement(By.Id("contains-peeked-value")).Text);
++        Browser.Equal("True", () => Browser.FindElement(By.Id("contains-message")).Text);
++        Browser.FindElement(By.Id("redirect-button")).Click();
++        Browser.Equal("True", () => Browser.FindElement(By.Id("contains-peeked-value")).Text);
++        Browser.Equal("False", () => Browser.FindElement(By.Id("contains-message")).Text);
++    }
++
++    [Fact]
++    public void TempDataPersistWithoutAccessing()
++    {
++        Navigate($"{ServerPathBase}/tempdata");
++        Browser.Equal("No message", () => Browser.FindElement(By.Id("message")).Text);
++        Browser.FindElement(By.Id("set-values-not-read")).Click();
++        Browser.FindElement(By.Id("redirect-button")).Click();
++        Browser.Equal("Message", () => Browser.FindElement(By.Id("message")).Text);
++    }
++
++    [Fact]
++    public void TempDataPreservesTypedArrays()
++    {
++        Navigate($"{ServerPathBase}/tempdata");
++
++        Browser.Equal("Wrong type: null", () => Browser.FindElement(By.Id("string-array")).Text);
++        Browser.Equal("Wrong type: null", () => Browser.FindElement(By.Id("int-array")).Text);
++
++        Browser.FindElement(By.Id("set-values-button")).Click();
++
++        Browser.Equal("a,b,c", () => Browser.FindElement(By.Id("string-array")).Text);
++        Browser.Equal("1,2,3", () => Browser.FindElement(By.Id("int-array")).Text);
++    }
++}
+diff --git a/src/Components/test/testassets/Components.TestServer/Components.TestServer.csproj b/src/Components/test/testassets/Components.TestServer/Components.TestServer.csproj
+index 44f1fcb9fc..bbd94ca13d 100644
+--- a/src/Components/test/testassets/Components.TestServer/Components.TestServer.csproj
++++ b/src/Components/test/testassets/Components.TestServer/Components.TestServer.csproj
+@@ -84,6 +84,7 @@
+     <Reference Include="Microsoft.Extensions.Hosting" />
+     <Reference Include="Microsoft.Extensions.Caching.Hybrid" />
+     <Reference Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" />
++    <Reference Include="Microsoft.AspNetCore.Session" />
+   </ItemGroup>
+ 
+   <ItemGroup>
+diff --git a/src/Components/test/testassets/Components.TestServer/Program.cs b/src/Components/test/testassets/Components.TestServer/Program.cs
+index 2f06b00b72..f42fbdc26f 100644
+--- a/src/Components/test/testassets/Components.TestServer/Program.cs
++++ b/src/Components/test/testassets/Components.TestServer/Program.cs
+@@ -38,6 +38,7 @@ public class Program
+             ["Hot Reload"] = (BuildWebHost<HotReloadStartup>(CreateAdditionalArgs(args)), "/subdir"),
+             ["Dev server client-side blazor"] = CreateDevServerHost(CreateAdditionalArgs(args)),
+             ["Global Interactivity"] = (BuildWebHost<RazorComponentEndpointsStartup<GlobalInteractivityApp>>(CreateAdditionalArgs(args)), "/subdir"),
++            ["SSR (No Interactivity)"] = (BuildWebHost<RazorComponentEndpointsNoInteractivityStartup<App>>(CreateAdditionalArgs(args)), "/subdir"),
+         };
+ 
+         var mainHost = BuildWebHost(args);
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponentEndpointsNoInteractivityStartup.cs b/src/Components/test/testassets/Components.TestServer/RazorComponentEndpointsNoInteractivityStartup.cs
+index bed15d4a46..12945736f9 100644
+--- a/src/Components/test/testassets/Components.TestServer/RazorComponentEndpointsNoInteractivityStartup.cs
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponentEndpointsNoInteractivityStartup.cs
+@@ -8,6 +8,7 @@ using System.Web;
+ using Components.TestServer.RazorComponents;
+ using Components.TestServer.RazorComponents.Pages.Forms;
+ using Components.TestServer.Services;
++using Microsoft.AspNetCore.Components.Endpoints;
+ using Microsoft.AspNetCore.Diagnostics;
+ using Microsoft.AspNetCore.Mvc;
+ 
+@@ -25,7 +26,7 @@ public class RazorComponentEndpointsNoInteractivityStartup<TRootComponent>
+     // This method gets called by the runtime. Use this method to add services to the container.
+     public void ConfigureServices(IServiceCollection services)
+     {
+-        services.AddRazorComponents(options =>
++        var builder = services.AddRazorComponents(options =>
+         {
+             options.MaxFormMappingErrorCount = 10;
+             options.MaxFormMappingRecursionDepth = 5;
+@@ -33,6 +34,20 @@ public class RazorComponentEndpointsNoInteractivityStartup<TRootComponent>
+         });
+         services.AddHttpContextAccessor();
+         services.AddCascadingAuthenticationState();
++
++        if (Configuration.GetValue<bool>("UseSessionStorageTempDataProvider"))
++        {
++            services.AddDistributedMemoryCache();
++            services.AddSession(options =>
++            {
++                options.Cookie.HttpOnly = true;
++                options.Cookie.IsEssential = true;
++            });
++            services.Configure<RazorComponentsServiceOptions>(options =>
++            {
++                options.TempDataProviderType = TempDataProviderType.SessionStorage;
++            });
++        }
+     }
+ 
+     // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
+@@ -60,6 +75,11 @@ public class RazorComponentEndpointsNoInteractivityStartup<TRootComponent>
+                     });
+                 });
+ 
++                if (Configuration.GetValue<bool>("UseSessionStorageTempDataProvider"))
++                {
++                    app.UseSession();
++                }
++
+                 if (!env.IsDevelopment())
+                 {
+                     app.UseExceptionHandler("/Error", createScopeForErrors: true);
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/TempData/TempDataComponent.razor b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/TempData/TempDataComponent.razor
+new file mode 100644
+index 0000000000..a9352c953a
+--- /dev/null
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/TempData/TempDataComponent.razor
+@@ -0,0 +1,125 @@
++﻿@page "/tempdata"
++@using Microsoft.AspNetCore.Components.Forms
++@inject NavigationManager NavigationManager
++
++<h1>TempData Basic Test</h1>
++
++<form method="post" @formname="SetTempData" @onsubmit="() => SetValues()">
++    <AntiforgeryToken />
++    <button type="submit" id="set-values-button">Set TempData Values</button>
++</form>
++
++<form method="post" @formname="SetTempDataDiffPage" @onsubmit="() => SetValues(differentPage: true)">
++    <AntiforgeryToken />
++    <button type="submit" id="set-values-button-diff-page">Set TempData Values and Redirect to Different Page</button>
++</form>
++
++<form method="post" @formname="JustRedirect" @onsubmit="() => NavigateToSamePage()">
++    <AntiforgeryToken />
++    <button type="submit" id="redirect-button">Navigate to the Same Page</button>
++</form>
++
++<form method="post" @formname="DeletePeekedValue" @onsubmit="() => DeletePeekedValue()">
++    <AntiforgeryToken />
++    <button type="submit" id="delete-button">Delete peeked value</button>
++</form>
++
++<form method="post" @formname="RedirectToNotReadPage" @onsubmit="() => SetValues(notReadPage: true)">
++    <AntiforgeryToken />
++    <button type="submit" id="set-values-not-read">Navigate to the Page That Does Not Access TempData</button>
++</form>
++
++<hr />
++
++<p id="message">@_message</p>
++<p id="peeked-value">@_peekedValue</p>
++<p id="kept-value">@_keptValue</p>
++
++<p id="string-array">@_stringArrayResult</p>
++<p id="int-array">@_intArrayResult</p>
++
++<p id="contains-message">@_containsMessageKey</p>
++<p id="contains-peeked-value">@_containsPeekedValueKey</p>
++
++@code {
++    [SupplyParameterFromForm(Name = "_handler")]
++    public string? Handler { get; set; }
++
++    [CascadingParameter]
++    public ITempData? TempData { get; set; }
++
++    [SupplyParameterFromQuery]
++    public string ValueToKeep { get; set; } = string.Empty;
++
++    [SupplyParameterFromQuery]
++    public string ContainsKey { get; set; } = string.Empty;
++
++    private string? _message;
++    private string? _peekedValue;
++    private string? _keptValue;
++    private string? _stringArrayResult;
++    private string? _intArrayResult;
++
++    private bool _containsMessageKey;
++    private bool _containsPeekedValueKey;
++
++    protected override void OnInitialized()
++    {
++        _containsMessageKey = TempData?.ContainsKey("Message") ?? false;
++        _containsPeekedValueKey = TempData?.ContainsKey("PeekedValue") ?? false;
++
++        if (Handler is not null)
++        {
++            return;
++        }
++        _message = TempData!.Get("Message") as string ?? "No message";
++        _peekedValue = TempData!.Peek("PeekedValue") as string ?? "No peeked value";
++        _keptValue = TempData!.Get("KeptValue") as string ?? "No kept value";
++
++        // Test typed array deserialization - these should be string[] and int[], not object[]
++        var stringArray = TempData!.Get("StringArray");
++        var intArray = TempData!.Get("IntArray");
++        _stringArrayResult = stringArray is string[] arr ? string.Join(",", arr) : $"Wrong type: {stringArray?.GetType().Name ?? "null"}";
++        _intArrayResult = intArray is int[] nums ? string.Join(",", nums) : $"Wrong type: {intArray?.GetType().Name ?? "null"}";
++
++        if (ValueToKeep == "all")
++        {
++            TempData!.Keep();
++        }
++        else if (!string.IsNullOrEmpty(ValueToKeep))
++        {
++            TempData!.Keep(ValueToKeep);
++        }
++    }
++
++    private void SetValues(bool differentPage = false, bool notReadPage = false)
++    {
++        TempData!["Message"] = "Message";
++        TempData!["PeekedValue"] = "Peeked value";
++        TempData!["KeptValue"] = "Kept value";
++        TempData!["StringArray"] = new string[] { "a", "b", "c" };
++        TempData!["IntArray"] = new int[] { 1, 2, 3 };
++        if (differentPage)
++        {
++            NavigateToDifferentPage();
++            return;
++        }
++        if (notReadPage)
++        {
++            NavigateToWithoutReadPage();
++            return;
++        }
++        NavigateToSamePageKeep(ValueToKeep);
++    }
++
++    private void DeletePeekedValue()
++    {
++        TempData!.Remove("PeekedValue");
++        NavigateToSamePage();
++    }
++
++    private void NavigateToSamePage() => NavigationManager.NavigateTo("/subdir/tempdata", forceLoad: true);
++    private void NavigateToSamePageKeep(string valueToKeep) => NavigationManager.NavigateTo($"/subdir/tempdata?ValueToKeep={valueToKeep}", forceLoad: true);
++    private void NavigateToDifferentPage() => NavigationManager.NavigateTo("/subdir/tempdata/read", forceLoad: true);
++    private void NavigateToWithoutReadPage() => NavigationManager.NavigateTo("/subdir/tempdata/redirect_without_read", forceLoad: true);
++}
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/TempData/TempDataReadComponent.razor b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/TempData/TempDataReadComponent.razor
+new file mode 100644
+index 0000000000..950e58e1c2
+--- /dev/null
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/TempData/TempDataReadComponent.razor
+@@ -0,0 +1,33 @@
++@page "/tempdata/read"
++@using Microsoft.AspNetCore.Components.Forms
++@inject NavigationManager NavigationManager
++
++<h1>TempData Read Test</h1>
++
++<p id="message">@_message</p>
++<p id="peeked-value">@_peekedValue</p>
++<p id="kept-value">@_keptValue</p>
++
++
++@code {
++    [CascadingParameter]
++    public ITempData? TempData { get; set; }
++
++    private string? _message;
++    private string? _peekedValue;
++    private string? _keptValue;
++
++    protected override void OnInitialized()
++    {
++        if (TempData is null)
++        {
++            return;
++        }
++        _message = TempData.Get("Message") as string;
++        _message ??= "No message";
++        _peekedValue = TempData.Get("PeekedValue") as string;
++        _peekedValue ??= "No peeked value";
++        _keptValue = TempData.Get("KeptValue") as string;
++        _keptValue ??= "No kept value";
++    }
++}
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/TempData/TempDataRedirectWithoutReadComponent.razor b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/TempData/TempDataRedirectWithoutReadComponent.razor
+new file mode 100644
+index 0000000000..95af0d2371
+--- /dev/null
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/TempData/TempDataRedirectWithoutReadComponent.razor
+@@ -0,0 +1,12 @@
++﻿@page "/tempdata/redirect_without_read"
++@using Microsoft.AspNetCore.Components.Forms
++@inject NavigationManager NavigationManager
++
++<form method="post" @formname="JustRedirect" @onsubmit="() => NavigateToPage()">
++    <AntiforgeryToken />
++    <button type="submit" id="redirect-button">Navigate to the Same Page</button>
++</form>
++
++@code {
++    private void NavigateToPage() => NavigationManager.NavigateTo("/subdir/tempdata", forceLoad: true);
++}

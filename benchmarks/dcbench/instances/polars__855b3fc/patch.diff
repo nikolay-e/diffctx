@@ -1,0 +1,1714 @@
+From 855b3fcb3af924f3e3e8c78b300e92aa17eab521 Mon Sep 17 00:00:00 2001
+From: Stijn de Gooijer <stijndegooijer@gmail.com>
+Date: Fri, 28 Jun 2024 10:12:52 +0200
+Subject: [PATCH] feat(python)!: Implement binary serialization of
+ LazyFrame/DataFrame/Expr and set it as the default format (#17223)
+
+---
+ crates/polars-core/src/datatypes/_serde.rs   |   2 +-
+ py-polars/polars/_utils/serde.py             |  63 ++++++++++
+ py-polars/polars/dataframe/frame.py          | 117 +++++++++++++------
+ py-polars/polars/expr/expr.py                |  37 ++++--
+ py-polars/polars/expr/meta.py                |  81 +++++++------
+ py-polars/polars/lazyframe/frame.py          | 101 ++++++++++------
+ py-polars/polars/type_aliases.py             |   1 +
+ py-polars/src/dataframe/general.rs           |  33 +-----
+ py-polars/src/dataframe/io.rs                |  32 +----
+ py-polars/src/dataframe/mod.rs               |   1 +
+ py-polars/src/dataframe/serde.rs             |  94 +++++++++++++++
+ py-polars/src/expr/general.rs                |  26 -----
+ py-polars/src/expr/meta.rs                   |  38 ------
+ py-polars/src/expr/mod.rs                    |   1 +
+ py-polars/src/expr/serde.rs                  |  90 ++++++++++++++
+ py-polars/src/lazyframe/mod.rs               |  60 +---------
+ py-polars/src/lazyframe/serde.rs             |  88 ++++++++++++++
+ py-polars/tests/unit/dataframe/test_serde.py |  91 +++++++++------
+ py-polars/tests/unit/expr/test_serde.py      |  31 +++--
+ py-polars/tests/unit/lazyframe/test_serde.py |  69 +++++++++--
+ 20 files changed, 698 insertions(+), 358 deletions(-)
+ create mode 100644 py-polars/polars/_utils/serde.py
+ create mode 100644 py-polars/src/dataframe/serde.rs
+ create mode 100644 py-polars/src/expr/serde.rs
+ create mode 100644 py-polars/src/lazyframe/serde.rs
+
+diff --git a/crates/polars-core/src/datatypes/_serde.rs b/crates/polars-core/src/datatypes/_serde.rs
+index e1bd2ad6a..ee5839663 100644
+--- a/crates/polars-core/src/datatypes/_serde.rs
++++ b/crates/polars-core/src/datatypes/_serde.rs
+@@ -62,7 +62,7 @@ impl<'de> serde::Deserialize<'de> for Wrap<Utf8ViewArray> {
+             {
+                 let mut utf8array = MutablePlString::with_capacity(seq.size_hint().unwrap_or(10));
+                 while let Some(key) = seq.next_element()? {
+-                    let key: Option<&str> = key;
++                    let key: Option<String> = key;
+                     utf8array.push(key)
+                 }
+                 Ok(Wrap(utf8array.into()))
+diff --git a/py-polars/polars/_utils/serde.py b/py-polars/polars/_utils/serde.py
+new file mode 100644
+index 000000000..9a6e19824
+--- /dev/null
++++ b/py-polars/polars/_utils/serde.py
+@@ -0,0 +1,63 @@
++"""Utility for serializing Polars objects."""
++
++from __future__ import annotations
++
++from io import BytesIO, StringIO
++from pathlib import Path
++from typing import TYPE_CHECKING, Callable, Literal, overload
++
++from polars._utils.various import normalize_filepath
++
++if TYPE_CHECKING:
++    from io import IOBase
++
++    from polars.type_aliases import SerializationFormat
++
++
++@overload
++def serialize_polars_object(
++    serializer: Callable[[IOBase | str], None], file: None, format: Literal["binary"]
++) -> bytes: ...
++@overload
++def serialize_polars_object(
++    serializer: Callable[[IOBase | str], None], file: None, format: Literal["json"]
++) -> str: ...
++@overload
++def serialize_polars_object(
++    serializer: Callable[[IOBase | str], None],
++    file: IOBase | str | Path,
++    format: SerializationFormat,
++) -> None: ...
++
++
++def serialize_polars_object(
++    serializer: Callable[[IOBase | str], None],
++    file: IOBase | str | Path | None,
++    format: SerializationFormat,
++) -> bytes | str | None:
++    """Serialize a Polars object (DataFrame/LazyFrame/Expr)."""
++
++    def serialize_to_bytes() -> bytes:
++        with BytesIO() as buf:
++            serializer(buf)
++            serialized = buf.getvalue()
++        return serialized
++
++    if file is None:
++        serialized = serialize_to_bytes()
++        return serialized.decode() if format == "json" else serialized
++    elif isinstance(file, StringIO):
++        serialized_str = serialize_to_bytes().decode()
++        file.write(serialized_str)
++        return None
++    elif isinstance(file, BytesIO):
++        serialized = serialize_to_bytes()
++        file.write(serialized)
++        return None
++    elif isinstance(file, (str, Path)):
++        file = normalize_filepath(file)
++        serializer(file)
++        return None
++    else:
++        serializer(file)
++        return None
+diff --git a/py-polars/polars/dataframe/frame.py b/py-polars/polars/dataframe/frame.py
+index 9448c73f9..9ecb5b92c 100644
+--- a/py-polars/polars/dataframe/frame.py
++++ b/py-polars/polars/dataframe/frame.py
+@@ -49,6 +49,7 @@ from polars._utils.deprecation import (
+ )
+ from polars._utils.getitem import get_df_item_by_key
+ from polars._utils.parse import parse_into_expression
++from polars._utils.serde import serialize_polars_object
+ from polars._utils.unstable import issue_unstable_warning, unstable
+ from polars._utils.various import (
+     is_bool_sequence,
+@@ -100,7 +101,11 @@ from polars.exceptions import (
+ from polars.functions import col, lit
+ from polars.schema import Schema
+ from polars.selectors import _expand_selector_dicts, _expand_selectors
+-from polars.type_aliases import DbWriteMode, JaxExportType, TorchExportType
++from polars.type_aliases import (
++    DbWriteMode,
++    JaxExportType,
++    TorchExportType,
++)
+ 
+ with contextlib.suppress(ImportError):  # Module not available when building docs
+     from polars.polars import PyDataFrame
+@@ -159,6 +164,7 @@ if TYPE_CHECKING:
+         SchemaDefinition,
+         SchemaDict,
+         SelectorType,
++        SerializationFormat,
+         SingleColSelector,
+         SingleIndexSelector,
+         SizeUnit,
+@@ -416,29 +422,39 @@ class DataFrame:
+             raise TypeError(msg)
+ 
+     @classmethod
+-    def deserialize(cls, source: str | Path | IOBase) -> DataFrame:
++    def deserialize(
++        cls, source: str | Path | IOBase, *, format: SerializationFormat = "binary"
++    ) -> DataFrame:
+         """
+         Read a serialized DataFrame from a file.
+ 
+-        .. versionadded:: 0.20.31
+-
+         Parameters
+         ----------
+         source
+             Path to a file or a file-like object (by file-like object, we refer to
+             objects that have a `read()` method, such as a file handler (e.g.
+             via builtin `open` function) or `BytesIO`).
++        format
++            The format with which the DataFrame was serialized. Options:
++
++            - `"binary"`: Deserialize from binary format (bytes). This is the default.
++            - `"json"`: Deserialize from JSON format (string).
+ 
+         See Also
+         --------
+         DataFrame.serialize
+ 
++        Notes
++        -----
++        Serialization is not stable across Polars versions: a LazyFrame serialized
++        in one Polars version may not be deserializable in another Polars version.
++
+         Examples
+         --------
+         >>> import io
+         >>> df = pl.DataFrame({"a": [1, 2, 3], "b": [4.0, 5.0, 6.0]})
+-        >>> json = df.serialize()
+-        >>> pl.DataFrame.deserialize(io.StringIO(json))
++        >>> bytes = df.serialize()
++        >>> pl.DataFrame.deserialize(io.BytesIO(bytes))
+         shape: (3, 2)
+         ┌─────┬─────┐
+         │ a   ┆ b   │
+@@ -455,7 +471,15 @@ class DataFrame:
+         elif isinstance(source, (str, Path)):
+             source = normalize_filepath(source)
+ 
+-        return cls._from_pydf(PyDataFrame.deserialize(source))
++        if format == "binary":
++            deserializer = PyDataFrame.deserialize_binary
++        elif format == "json":
++            deserializer = PyDataFrame.deserialize_json
++        else:
++            msg = f"`format` must be one of {{'binary', 'json'}}, got {format!r}"
++            raise ValueError(msg)
++
++        return cls._from_pydf(deserializer(source))
+ 
+     @classmethod
+     def _from_pydf(cls, py_df: PyDataFrame) -> DataFrame:
+@@ -2351,54 +2375,79 @@ class DataFrame:
+         return output.getvalue()
+ 
+     @overload
+-    def serialize(self, file: None = ...) -> str: ...
+-
++    def serialize(
++        self, file: None = ..., *, format: Literal["binary"] = ...
++    ) -> bytes: ...
++    @overload
++    def serialize(self, file: None = ..., *, format: Literal["json"]) -> str: ...
+     @overload
+-    def serialize(self, file: IOBase | str | Path) -> None: ...
++    def serialize(
++        self, file: IOBase | str | Path, *, format: SerializationFormat = ...
++    ) -> None: ...
+ 
+-    def serialize(self, file: IOBase | str | Path | None = None) -> str | None:
+-        """
++    def serialize(
++        self,
++        file: IOBase | str | Path | None = None,
++        *,
++        format: SerializationFormat = "binary",
++    ) -> bytes | str | None:
++        r"""
+         Serialize this DataFrame to a file or string in JSON format.
+ 
+-        .. versionadded:: 0.20.31
+-
+         Parameters
+         ----------
+         file
+             File path or writable file-like object to which the result will be written.
+             If set to `None` (default), the output is returned as a string instead.
++        format
++            The format in which to serialize. Options:
++
++            - `"binary"`: Serialize to binary format (bytes). This is the default.
++            - `"json"`: Serialize to JSON format (string).
++
++        Notes
++        -----
++        Serialization is not stable across Polars versions: a LazyFrame serialized
++        in one Polars version may not be deserializable in another Polars version.
+ 
+         Examples
+         --------
++        Serialize the DataFrame into a binary representation.
++
+         >>> df = pl.DataFrame(
+         ...     {
+         ...         "foo": [1, 2, 3],
+         ...         "bar": [6, 7, 8],
+         ...     }
+         ... )
+-        >>> df.serialize()
+-        '{"columns":[{"name":"foo","datatype":"Int64","bit_settings":"","values":[1,2,3]},{"name":"bar","datatype":"Int64","bit_settings":"","values":[6,7,8]}]}'
+-        """
++        >>> bytes = df.serialize()
++        >>> bytes  # doctest: +ELLIPSIS
++        b'\xa1gcolumns\x82\xa4dnamecfoohdatatypeeInt64lbit_settings\x00fvalues\x83...'
+ 
+-        def serialize_to_string() -> str:
+-            with BytesIO() as buf:
+-                self._df.serialize(buf)
+-                json_bytes = buf.getvalue()
+-            return json_bytes.decode("utf8")
++        The bytes can later be deserialized back into a DataFrame.
+ 
+-        if file is None:
+-            return serialize_to_string()
+-        elif isinstance(file, StringIO):
+-            json_str = serialize_to_string()
+-            file.write(json_str)
+-            return None
+-        elif isinstance(file, (str, Path)):
+-            file = normalize_filepath(file)
+-            self._df.serialize(file)
+-            return None
++        >>> import io
++        >>> pl.DataFrame.deserialize(io.BytesIO(bytes))
++        shape: (3, 2)
++        ┌─────┬─────┐
++        │ foo ┆ bar │
++        │ --- ┆ --- │
++        │ i64 ┆ i64 │
++        ╞═════╪═════╡
++        │ 1   ┆ 6   │
++        │ 2   ┆ 7   │
++        │ 3   ┆ 8   │
++        └─────┴─────┘
++        """
++        if format == "binary":
++            serializer = self._df.serialize_binary
++        elif format == "json":
++            serializer = self._df.serialize_json
+         else:
+-            self._df.serialize(file)
+-            return None
++            msg = f"`format` must be one of {{'binary', 'json'}}, got {format!r}"
++            raise ValueError(msg)
++
++        return serialize_polars_object(serializer, file, format)
+ 
+     @overload
+     def write_json(self, file: None = ...) -> str: ...
+diff --git a/py-polars/polars/expr/expr.py b/py-polars/polars/expr/expr.py
+index e9b0adef3..78989ca5c 100644
+--- a/py-polars/polars/expr/expr.py
++++ b/py-polars/polars/expr/expr.py
+@@ -88,6 +88,7 @@ if TYPE_CHECKING:
+         RankMethod,
+         RollingInterpolationMethod,
+         SearchSortedSide,
++        SerializationFormat,
+         TemporalLiteral,
+         WindowMappingStrategy,
+     )
+@@ -328,7 +329,9 @@ class Expr:
+         return root_expr.map_batches(function, is_elementwise=True).meta.undo_aliases()
+ 
+     @classmethod
+-    def deserialize(cls, source: str | Path | IOBase) -> Expr:
++    def deserialize(
++        cls, source: str | Path | IOBase, *, format: SerializationFormat = "binary"
++    ) -> Expr:
+         """
+         Read a serialized expression from a file.
+ 
+@@ -338,10 +341,15 @@ class Expr:
+             Path to a file or a file-like object (by file-like object, we refer to
+             objects that have a `read()` method, such as a file handler (e.g.
+             via builtin `open` function) or `BytesIO`).
++        format
++            The format with which the Expr was serialized. Options:
++
++            - `"binary"`: Deserialize from binary format (bytes). This is the default.
++            - `"json"`: Deserialize from JSON format (string).
+ 
+         Warnings
+         --------
+-        This function uses :mod:`pickle` when the logical plan contains Python UDFs,
++        This function uses :mod:`pickle` if the logical plan contains Python UDFs,
+         and as such inherits the security implications. Deserializing can execute
+         arbitrary code, so it should only be attempted on trusted data.
+ 
+@@ -349,12 +357,17 @@ class Expr:
+         --------
+         Expr.meta.serialize
+ 
++        Notes
++        -----
++        Serialization is not stable across Polars versions: a LazyFrame serialized
++        in one Polars version may not be deserializable in another Polars version.
++
+         Examples
+         --------
+-        >>> from io import StringIO
++        >>> import io
+         >>> expr = pl.col("foo").sum().over("bar")
+-        >>> json = expr.meta.serialize()
+-        >>> pl.Expr.deserialize(StringIO(json))  # doctest: +ELLIPSIS
++        >>> bytes = expr.meta.serialize()
++        >>> pl.Expr.deserialize(io.BytesIO(bytes))  # doctest: +ELLIPSIS
+         <Expr ['col("foo").sum().over([col("ba…'] at ...>
+         """
+         if isinstance(source, StringIO):
+@@ -362,9 +375,15 @@ class Expr:
+         elif isinstance(source, (str, Path)):
+             source = normalize_filepath(source)
+ 
+-        expr = cls.__new__(cls)
+-        expr._pyexpr = PyExpr.deserialize(source)
+-        return expr
++        if format == "binary":
++            deserializer = PyExpr.deserialize_binary
++        elif format == "json":
++            deserializer = PyExpr.deserialize_json
++        else:
++            msg = f"`format` must be one of {{'binary', 'json'}}, got {format!r}"
++            raise ValueError(msg)
++
++        return cls._from_pyexpr(deserializer(source))
+ 
+     def to_physical(self) -> Expr:
+         """
+@@ -10479,7 +10498,7 @@ class Expr:
+             " Enclose your input in `io.StringIO` to keep the same behavior.",
+             version="0.20.11",
+         )
+-        return cls.deserialize(StringIO(value))
++        return cls.deserialize(StringIO(value), format="json")
+ 
+     @property
+     def bin(self) -> ExprBinaryNameSpace:
+diff --git a/py-polars/polars/expr/meta.py b/py-polars/polars/expr/meta.py
+index f5958ba80..d409050b7 100644
+--- a/py-polars/polars/expr/meta.py
++++ b/py-polars/polars/expr/meta.py
+@@ -1,18 +1,18 @@
+ from __future__ import annotations
+ 
+-from io import BytesIO, StringIO
+-from pathlib import Path
+ from typing import TYPE_CHECKING, Literal, overload
+ 
+ from polars._utils.deprecation import deprecate_renamed_function
+-from polars._utils.various import normalize_filepath
++from polars._utils.serde import serialize_polars_object
+ from polars._utils.wrap import wrap_expr
+ from polars.exceptions import ComputeError
+ 
+ if TYPE_CHECKING:
+     from io import IOBase
++    from pathlib import Path
+ 
+     from polars import Expr
++    from polars.type_aliases import SerializationFormat
+ 
+ 
+ class ExprMetaNameSpace:
+@@ -258,13 +258,23 @@ class ExprMetaNameSpace:
+         return wrap_expr(self._pyexpr._meta_selector_xor(other._pyexpr))
+ 
+     @overload
+-    def serialize(self, file: None = ...) -> str: ...
+-
++    def serialize(
++        self, file: None = ..., *, format: Literal["binary"] = ...
++    ) -> bytes: ...
+     @overload
+-    def serialize(self, file: IOBase | str | Path) -> None: ...
+-
+-    def serialize(self, file: IOBase | str | Path | None = None) -> str | None:
+-        """
++    def serialize(self, file: None = ..., *, format: Literal["json"]) -> str: ...
++    @overload
++    def serialize(
++        self, file: IOBase | str | Path, *, format: SerializationFormat = ...
++    ) -> None: ...
++
++    def serialize(
++        self,
++        file: IOBase | str | Path | None = None,
++        *,
++        format: SerializationFormat = "binary",
++    ) -> bytes | str | None:
++        r"""
+         Serialize this expression to a file or string in JSON format.
+ 
+         Parameters
+@@ -272,46 +282,45 @@ class ExprMetaNameSpace:
+         file
+             File path to which the result should be written. If set to `None`
+             (default), the output is returned as a string instead.
++        format
++            The format in which to serialize. Options:
++
++            - `"binary"`: Serialize to binary format (bytes). This is the default.
++            - `"json"`: Serialize to JSON format (string).
+ 
+         See Also
+         --------
+         Expr.deserialize
+ 
++        Notes
++        -----
++        Serialization is not stable across Polars versions: a LazyFrame serialized
++        in one Polars version may not be deserializable in another Polars version.
++
+         Examples
+         --------
+-        Serialize the expression into a JSON string.
++        Serialize the expression into a binary representation.
+ 
+         >>> expr = pl.col("foo").sum().over("bar")
+-        >>> json = expr.meta.serialize()
+-        >>> json
+-        '{"Window":{"function":{"Agg":{"Sum":{"Column":"foo"}}},"partition_by":[{"Column":"bar"}],"order_by":null,"options":{"Over":"GroupsToRows"}}}'
++        >>> bytes = expr.meta.serialize()
++        >>> bytes  # doctest: +ELLIPSIS
++        b'\xa1fWindow\xa4hfunction\xa1cAgg\xa1cSum\xa1fColumncfoolpartition_by\x81...'
+ 
+-        The expression can later be deserialized back into an `Expr` object.
++        The bytes can later be deserialized back into an `Expr` object.
+ 
+-        >>> from io import StringIO
+-        >>> pl.Expr.deserialize(StringIO(json))  # doctest: +ELLIPSIS
++        >>> import io
++        >>> pl.Expr.deserialize(io.BytesIO(bytes))  # doctest: +ELLIPSIS
+         <Expr ['col("foo").sum().over([col("ba…'] at ...>
+         """
+-
+-        def serialize_to_string() -> str:
+-            with BytesIO() as buf:
+-                self._pyexpr.serialize(buf)
+-                json_bytes = buf.getvalue()
+-            return json_bytes.decode("utf8")
+-
+-        if file is None:
+-            return serialize_to_string()
+-        elif isinstance(file, StringIO):
+-            json_str = serialize_to_string()
+-            file.write(json_str)
+-            return None
+-        elif isinstance(file, (str, Path)):
+-            file = normalize_filepath(file)
+-            self._pyexpr.serialize(file)
+-            return None
++        if format == "binary":
++            serializer = self._pyexpr.serialize_binary
++        elif format == "json":
++            serializer = self._pyexpr.serialize_json
+         else:
+-            self._pyexpr.serialize(file)
+-            return None
++            msg = f"`format` must be one of {{'binary', 'json'}}, got {format!r}"
++            raise ValueError(msg)
++
++        return serialize_polars_object(serializer, file, format)
+ 
+     @overload
+     def write_json(self, file: None = ...) -> str: ...
+@@ -327,7 +336,7 @@ class ExprMetaNameSpace:
+         .. deprecated:: 0.20.11
+             This method has been renamed to :meth:`serialize`.
+         """
+-        return self.serialize(file)
++        return self.serialize(file, format="json")
+ 
+     @overload
+     def tree_format(self, *, return_as_string: Literal[False]) -> None: ...
+diff --git a/py-polars/polars/lazyframe/frame.py b/py-polars/polars/lazyframe/frame.py
+index ba13a7dcb..b3a76510f 100644
+--- a/py-polars/polars/lazyframe/frame.py
++++ b/py-polars/polars/lazyframe/frame.py
+@@ -34,6 +34,7 @@ from polars._utils.parse import (
+     parse_into_expression,
+     parse_into_list_of_expressions,
+ )
++from polars._utils.serde import serialize_polars_object
+ from polars._utils.slice import LazyPolarsSlice
+ from polars._utils.unstable import issue_unstable_warning, unstable
+ from polars._utils.various import (
+@@ -112,6 +113,7 @@ if TYPE_CHECKING:
+         RollingInterpolationMethod,
+         SchemaDefinition,
+         SchemaDict,
++        SerializationFormat,
+         StartBy,
+         UniqueKeepStrategy,
+     )
+@@ -346,7 +348,9 @@ class LazyFrame:
+         return self
+ 
+     @classmethod
+-    def deserialize(cls, source: str | Path | IOBase) -> LazyFrame:
++    def deserialize(
++        cls, source: str | Path | IOBase, *, format: SerializationFormat = "binary"
++    ) -> LazyFrame:
+         """
+         Read a logical plan from a file to construct a LazyFrame.
+ 
+@@ -356,10 +360,15 @@ class LazyFrame:
+             Path to a file or a file-like object (by file-like object, we refer to
+             objects that have a `read()` method, such as a file handler (e.g.
+             via builtin `open` function) or `BytesIO`).
++        format
++            The format with which the LazyFrame was serialized. Options:
++
++            - `"binary"`: Deserialize from binary format (bytes). This is the default.
++            - `"json"`: Deserialize from JSON format (string).
+ 
+         Warnings
+         --------
+-        This function uses :mod:`pickle` when the logical plan contains Python UDFs,
++        This function uses :mod:`pickle` if the logical plan contains Python UDFs,
+         and as such inherits the security implications. Deserializing can execute
+         arbitrary code, so it should only be attempted on trusted data.
+ 
+@@ -367,12 +376,17 @@ class LazyFrame:
+         --------
+         LazyFrame.serialize
+ 
++        Notes
++        -----
++        Serialization is not stable across Polars versions: a LazyFrame serialized
++        in one Polars version may not be deserializable in another Polars version.
++
+         Examples
+         --------
+         >>> import io
+         >>> lf = pl.LazyFrame({"a": [1, 2, 3]}).sum()
+-        >>> json = lf.serialize()
+-        >>> pl.LazyFrame.deserialize(io.StringIO(json)).collect()
++        >>> bytes = lf.serialize()
++        >>> pl.LazyFrame.deserialize(io.BytesIO(bytes)).collect()
+         shape: (1, 1)
+         ┌─────┐
+         │ a   │
+@@ -387,7 +401,15 @@ class LazyFrame:
+         elif isinstance(source, (str, Path)):
+             source = normalize_filepath(source)
+ 
+-        return cls._from_pyldf(PyLazyFrame.deserialize(source))
++        if format == "binary":
++            deserializer = PyLazyFrame.deserialize_binary
++        elif format == "json":
++            deserializer = PyLazyFrame.deserialize_json
++        else:
++            msg = f"`format` must be one of {{'binary', 'json'}}, got {format!r}"
++            raise ValueError(msg)
++
++        return cls._from_pyldf(deserializer(source))
+ 
+     @property
+     def columns(self) -> list[str]:
+@@ -626,13 +648,23 @@ naive plan: (run LazyFrame.explain(optimized=True) to see the optimized plan)
+ """
+ 
+     @overload
+-    def serialize(self, file: None = ...) -> str: ...
+-
++    def serialize(
++        self, file: None = ..., *, format: Literal["binary"] = ...
++    ) -> bytes: ...
+     @overload
+-    def serialize(self, file: IOBase | str | Path) -> None: ...
++    def serialize(self, file: None = ..., *, format: Literal["json"]) -> str: ...
++    @overload
++    def serialize(
++        self, file: IOBase | str | Path, *, format: SerializationFormat = ...
++    ) -> None: ...
+ 
+-    def serialize(self, file: IOBase | str | Path | None = None) -> str | None:
+-        """
++    def serialize(
++        self,
++        file: IOBase | str | Path | None = None,
++        *,
++        format: SerializationFormat = "binary",
++    ) -> bytes | str | None:
++        r"""
+         Serialize the logical plan of this LazyFrame to a file or string in JSON format.
+ 
+         Parameters
+@@ -640,24 +672,34 @@ naive plan: (run LazyFrame.explain(optimized=True) to see the optimized plan)
+         file
+             File path to which the result should be written. If set to `None`
+             (default), the output is returned as a string instead.
++        format
++            The format in which to serialize. Options:
++
++            - `"binary"`: Serialize to binary format (bytes). This is the default.
++            - `"json"`: Serialize to JSON format (string).
+ 
+         See Also
+         --------
+         LazyFrame.deserialize
+ 
++        Notes
++        -----
++        Serialization is not stable across Polars versions: a LazyFrame serialized
++        in one Polars version may not be deserializable in another Polars version.
++
+         Examples
+         --------
+-        Serialize the logical plan into a JSON string.
++        Serialize the logical plan into a binary representation.
+ 
+         >>> lf = pl.LazyFrame({"a": [1, 2, 3]}).sum()
+-        >>> json = lf.serialize()
+-        >>> json
+-        '{"MapFunction":{"input":{"DataFrameScan":{"df":{"columns":[{"name":"a","datatype":"Int64","bit_settings":"","values":[1,2,3]}]},"schema":{"inner":{"a":"Int64"}},"output_schema":null,"filter":null}},"function":{"Stats":"Sum"}}}'
++        >>> bytes = lf.serialize()
++        >>> bytes  # doctest: +ELLIPSIS
++        b'\xa1kMapFunction\xa2einput\xa1mDataFrameScan\xa4bdf\xa1gcolumns\x81\xa4d...'
+ 
+-        The logical plan can later be deserialized back into a LazyFrame.
++        The bytes can later be deserialized back into a LazyFrame.
+ 
+         >>> import io
+-        >>> pl.LazyFrame.deserialize(io.StringIO(json)).collect()
++        >>> pl.LazyFrame.deserialize(io.BytesIO(bytes)).collect()
+         shape: (1, 1)
+         ┌─────┐
+         │ a   │
+@@ -667,26 +709,15 @@ naive plan: (run LazyFrame.explain(optimized=True) to see the optimized plan)
+         │ 6   │
+         └─────┘
+         """
+-
+-        def serialize_to_string() -> str:
+-            with BytesIO() as buf:
+-                self._ldf.serialize(buf)
+-                json_bytes = buf.getvalue()
+-            return json_bytes.decode("utf8")
+-
+-        if file is None:
+-            return serialize_to_string()
+-        elif isinstance(file, StringIO):
+-            json_str = serialize_to_string()
+-            file.write(json_str)
+-            return None
+-        elif isinstance(file, (str, Path)):
+-            file = normalize_filepath(file)
+-            self._ldf.serialize(file)
+-            return None
++        if format == "binary":
++            serializer = self._ldf.serialize_binary
++        elif format == "json":
++            serializer = self._ldf.serialize_json
+         else:
+-            self._ldf.serialize(file)
+-            return None
++            msg = f"`format` must be one of {{'binary', 'json'}}, got {format!r}"
++            raise ValueError(msg)
++
++        return serialize_polars_object(serializer, file, format)
+ 
+     def pipe(
+         self,
+diff --git a/py-polars/polars/type_aliases.py b/py-polars/polars/type_aliases.py
+index 36df097ee..279ca6f85 100644
+--- a/py-polars/polars/type_aliases.py
++++ b/py-polars/polars/type_aliases.py
+@@ -106,6 +106,7 @@ PivotAgg: TypeAlias = Literal[
+ ]
+ RankMethod: TypeAlias = Literal["average", "min", "max", "dense", "ordinal", "random"]
+ Roll: TypeAlias = Literal["raise", "forward", "backward"]
++SerializationFormat: TypeAlias = Literal["binary", "json"]
+ SizeUnit: TypeAlias = Literal[
+     "b",
+     "kb",
+diff --git a/py-polars/src/dataframe/general.rs b/py-polars/src/dataframe/general.rs
+index 22199ebb3..7699c8f0b 100644
+--- a/py-polars/src/dataframe/general.rs
++++ b/py-polars/src/dataframe/general.rs
+@@ -1,5 +1,3 @@
+-use std::io::Cursor;
+-
+ use either::Either;
+ use polars::prelude::*;
+ use polars_core::frame::*;
+@@ -8,7 +6,7 @@ use polars_lazy::frame::pivot::{pivot, pivot_stable};
+ use pyo3::exceptions::PyIndexError;
+ use pyo3::prelude::*;
+ use pyo3::pybacked::PyBackedStr;
+-use pyo3::types::{PyBytes, PyList};
++use pyo3::types::PyList;
+ 
+ use super::*;
+ use crate::conversion::Wrap;
+@@ -29,35 +27,6 @@ impl PyDataFrame {
+         Ok(PyDataFrame::new(df))
+     }
+ 
+-    #[cfg(feature = "ipc_streaming")]
+-    fn __getstate__(&self, py: Python) -> PyResult<PyObject> {
+-        // Used in pickle/pickling
+-        let mut buf: Vec<u8> = vec![];
+-        IpcStreamWriter::new(&mut buf)
+-            .with_pl_flavor(true)
+-            .finish(&mut self.df.clone())
+-            .expect("ipc writer");
+-        Ok(PyBytes::new_bound(py, &buf).to_object(py))
+-    }
+-    #[cfg(feature = "ipc_streaming")]
+-    fn __setstate__(&mut self, py: Python, state: PyObject) -> PyResult<()> {
+-        // Used in pickle/pickling
+-        match state.extract::<&PyBytes>(py) {
+-            Ok(s) => {
+-                let c = Cursor::new(s.as_bytes());
+-                let reader = IpcStreamReader::new(c);
+-
+-                reader
+-                    .finish()
+-                    .map(|df| {
+-                        self.df = df;
+-                    })
+-                    .map_err(|e| PyPolarsErr::from(e).into())
+-            },
+-            Err(e) => Err(e),
+-        }
+-    }
+-
+     pub fn estimated_size(&self) -> usize {
+         self.df.estimated_size()
+     }
+diff --git a/py-polars/src/dataframe/io.rs b/py-polars/src/dataframe/io.rs
+index 7542c5905..4617afb7b 100644
+--- a/py-polars/src/dataframe/io.rs
++++ b/py-polars/src/dataframe/io.rs
+@@ -1,10 +1,9 @@
+ use std::io::BufWriter;
+ use std::num::NonZeroUsize;
+-use std::ops::Deref;
+ 
+ #[cfg(feature = "avro")]
+ use polars::io::avro::AvroCompression;
+-use polars::io::mmap::{try_create_file, ReaderBytes};
++use polars::io::mmap::try_create_file;
+ use polars::io::RowIndex;
+ #[cfg(feature = "parquet")]
+ use polars_parquet::arrow::write::StatisticsOptions;
+@@ -185,27 +184,6 @@ impl PyDataFrame {
+         Ok(PyDataFrame::new(df))
+     }
+ 
+-    #[staticmethod]
+-    #[cfg(feature = "json")]
+-    pub fn deserialize(py: Python, mut py_f: Bound<PyAny>) -> PyResult<Self> {
+-        use crate::file::read_if_bytesio;
+-        py_f = read_if_bytesio(py_f);
+-        let mut mmap_bytes_r = get_mmap_bytes_reader(&py_f)?;
+-
+-        py.allow_threads(move || {
+-            let mmap_read: ReaderBytes = (&mut mmap_bytes_r).into();
+-            let bytes = mmap_read.deref();
+-            match serde_json::from_slice::<DataFrame>(bytes) {
+-                Ok(df) => Ok(df.into()),
+-                Err(e) => {
+-                    let msg = format!("{e}");
+-                    let e = PyPolarsErr::from(PolarsError::ComputeError(msg.into()));
+-                    Err(PyErr::from(e))
+-                },
+-            }
+-        })
+-    }
+-
+     #[staticmethod]
+     #[cfg(feature = "json")]
+     pub fn read_json(
+@@ -460,14 +438,6 @@ impl PyDataFrame {
+         Ok(())
+     }
+ 
+-    #[cfg(feature = "json")]
+-    pub fn serialize(&mut self, py_f: PyObject) -> PyResult<()> {
+-        let file = BufWriter::new(get_file_like(py_f, true)?);
+-        serde_json::to_writer(file, &self.df)
+-            .map_err(|e| polars_err!(ComputeError: "{e}"))
+-            .map_err(|e| PyPolarsErr::Other(format!("{e}")).into())
+-    }
+-
+     #[cfg(feature = "json")]
+     pub fn write_json(&mut self, py_f: PyObject) -> PyResult<()> {
+         let file = BufWriter::new(get_file_like(py_f, true)?);
+diff --git a/py-polars/src/dataframe/mod.rs b/py-polars/src/dataframe/mod.rs
+index 311fc8d18..a9f719935 100644
+--- a/py-polars/src/dataframe/mod.rs
++++ b/py-polars/src/dataframe/mod.rs
+@@ -2,6 +2,7 @@ mod construction;
+ mod export;
+ mod general;
+ mod io;
++mod serde;
+ 
+ use polars::prelude::*;
+ use pyo3::prelude::*;
+diff --git a/py-polars/src/dataframe/serde.rs b/py-polars/src/dataframe/serde.rs
+new file mode 100644
+index 000000000..131262acf
+--- /dev/null
++++ b/py-polars/src/dataframe/serde.rs
+@@ -0,0 +1,94 @@
++use std::io::{BufReader, BufWriter, Cursor};
++use std::ops::Deref;
++
++use polars_io::mmap::ReaderBytes;
++use pyo3::exceptions::PyValueError;
++use pyo3::prelude::*;
++use pyo3::types::PyBytes;
++
++use super::PyDataFrame;
++use crate::error::PyPolarsErr;
++use crate::file::{get_file_like, get_mmap_bytes_reader};
++use crate::prelude::*;
++
++#[pymethods]
++impl PyDataFrame {
++    #[cfg(feature = "ipc_streaming")]
++    fn __getstate__(&self, py: Python) -> PyResult<PyObject> {
++        // Used in pickle/pickling
++        let mut buf: Vec<u8> = vec![];
++        IpcStreamWriter::new(&mut buf)
++            .with_pl_flavor(true)
++            .finish(&mut self.df.clone())
++            .expect("ipc writer");
++        Ok(PyBytes::new_bound(py, &buf).to_object(py))
++    }
++
++    #[cfg(feature = "ipc_streaming")]
++    fn __setstate__(&mut self, py: Python, state: PyObject) -> PyResult<()> {
++        // Used in pickle/pickling
++        match state.extract::<&PyBytes>(py) {
++            Ok(s) => {
++                let c = Cursor::new(s.as_bytes());
++                let reader = IpcStreamReader::new(c);
++
++                reader
++                    .finish()
++                    .map(|df| {
++                        self.df = df;
++                    })
++                    .map_err(|e| PyPolarsErr::from(e).into())
++            },
++            Err(e) => Err(e),
++        }
++    }
++
++    /// Serialize into binary data.
++    fn serialize_binary(&self, py_f: PyObject) -> PyResult<()> {
++        let file = get_file_like(py_f, true)?;
++        let writer = BufWriter::new(file);
++        ciborium::into_writer(&self.df, writer)
++            .map_err(|err| PyValueError::new_err(format!("{err:?}")))
++    }
++
++    /// Serialize into a JSON string.
++    #[cfg(feature = "json")]
++    pub fn serialize_json(&mut self, py_f: PyObject) -> PyResult<()> {
++        let file = get_file_like(py_f, true)?;
++        let writer = BufWriter::new(file);
++        serde_json::to_writer(writer, &self.df)
++            .map_err(|err| PyValueError::new_err(format!("{err:?}")))
++    }
++
++    /// Deserialize a file-like object containing binary data into a DataFrame.
++    #[staticmethod]
++    fn deserialize_binary(py_f: PyObject) -> PyResult<Self> {
++        let file = get_file_like(py_f, false)?;
++        let reader = BufReader::new(file);
++        let df = ciborium::from_reader::<DataFrame, _>(reader)
++            .map_err(|err| PyValueError::new_err(format!("{err:?}")))?;
++        Ok(df.into())
++    }
++
++    /// Deserialize a file-like object containing JSON string data into a DataFrame.
++    #[staticmethod]
++    #[cfg(feature = "json")]
++    pub fn deserialize_json(py: Python, mut py_f: Bound<PyAny>) -> PyResult<Self> {
++        use crate::file::read_if_bytesio;
++        py_f = read_if_bytesio(py_f);
++        let mut mmap_bytes_r = get_mmap_bytes_reader(&py_f)?;
++
++        py.allow_threads(move || {
++            let mmap_read: ReaderBytes = (&mut mmap_bytes_r).into();
++            let bytes = mmap_read.deref();
++            match serde_json::from_slice::<DataFrame>(bytes) {
++                Ok(df) => Ok(df.into()),
++                Err(e) => {
++                    let msg = format!("{e}");
++                    let e = PyPolarsErr::from(PolarsError::ComputeError(msg.into()));
++                    Err(PyErr::from(e))
++                },
++            }
++        })
++    }
++}
+diff --git a/py-polars/src/expr/general.rs b/py-polars/src/expr/general.rs
+index 7028d434a..cfcfb438f 100644
+--- a/py-polars/src/expr/general.rs
++++ b/py-polars/src/expr/general.rs
+@@ -1,4 +1,3 @@
+-use std::io::Cursor;
+ use std::ops::Neg;
+ 
+ use polars::lazy::dsl;
+@@ -8,11 +7,8 @@ use polars_core::chunked_array::cast::CastOptions;
+ use polars_core::series::IsSorted;
+ use pyo3::class::basic::CompareOp;
+ use pyo3::prelude::*;
+-use pyo3::pybacked::PyBackedBytes;
+-use pyo3::types::PyBytes;
+ 
+ use crate::conversion::{parse_fill_null_strategy, vec_extract_wrapped, Wrap};
+-use crate::error::PyPolarsErr;
+ use crate::map::lazy::map_single;
+ use crate::PyExpr;
+ 
+@@ -80,28 +76,6 @@ impl PyExpr {
+         self.inner.clone().lt(other.inner).into()
+     }
+ 
+-    fn __getstate__(&self, py: Python) -> PyResult<PyObject> {
+-        // Used in pickle/pickling
+-        let mut writer: Vec<u8> = vec![];
+-        ciborium::ser::into_writer(&self.inner, &mut writer)
+-            .map_err(|e| PyPolarsErr::Other(format!("{}", e)))?;
+-
+-        Ok(PyBytes::new_bound(py, &writer).to_object(py))
+-    }
+-
+-    fn __setstate__(&mut self, py: Python, state: PyObject) -> PyResult<()> {
+-        // Used in pickle/pickling
+-        match state.extract::<PyBackedBytes>(py) {
+-            Ok(s) => {
+-                let cursor = Cursor::new(&*s);
+-                self.inner = ciborium::de::from_reader(cursor)
+-                    .map_err(|e| PyPolarsErr::Other(format!("{}", e)))?;
+-                Ok(())
+-            },
+-            Err(e) => Err(e),
+-        }
+-    }
+-
+     fn alias(&self, name: &str) -> Self {
+         self.inner.clone().alias(name).into()
+     }
+diff --git a/py-polars/src/expr/meta.rs b/py-polars/src/expr/meta.rs
+index c0b9d9fa3..686227154 100644
+--- a/py-polars/src/expr/meta.rs
++++ b/py-polars/src/expr/meta.rs
+@@ -1,12 +1,7 @@
+-use std::io::BufWriter;
+-
+-use pyo3::exceptions::PyValueError;
+ use pyo3::prelude::*;
+ 
+ use crate::error::PyPolarsErr;
+ use crate::expr::ToPyExprs;
+-use crate::file::get_file_like;
+-use crate::prelude::polars_err;
+ use crate::PyExpr;
+ 
+ #[pymethods]
+@@ -106,39 +101,6 @@ impl PyExpr {
+         self.inner.clone().meta()._into_selector().into()
+     }
+ 
+-    #[cfg(all(feature = "json", feature = "serde_json"))]
+-    fn serialize(&self, py_f: PyObject) -> PyResult<()> {
+-        let file = BufWriter::new(get_file_like(py_f, true)?);
+-        serde_json::to_writer(file, &self.inner)
+-            .map_err(|err| PyValueError::new_err(format!("{err:?}")))?;
+-        Ok(())
+-    }
+-
+-    #[staticmethod]
+-    #[cfg(feature = "json")]
+-    fn deserialize(py_f: PyObject) -> PyResult<PyExpr> {
+-        // it is faster to first read to memory and then parse: https://github.com/serde-rs/json/issues/160
+-        // so don't bother with files.
+-        let mut json = String::new();
+-        let _ = get_file_like(py_f, false)?
+-            .read_to_string(&mut json)
+-            .unwrap();
+-
+-        // SAFETY:
+-        // We skipped the serializing/deserializing of the static in lifetime in `DataType`
+-        // so we actually don't have a lifetime at all when serializing.
+-
+-        // &str still has a lifetime. But it's ok, because we drop it immediately
+-        // in this scope.
+-        let json = unsafe { std::mem::transmute::<&'_ str, &'static str>(json.as_str()) };
+-
+-        let inner: polars_lazy::prelude::Expr = serde_json::from_str(json).map_err(|_| {
+-            let msg = "could not deserialize input into an expression";
+-            PyPolarsErr::from(polars_err!(ComputeError: msg))
+-        })?;
+-        Ok(PyExpr { inner })
+-    }
+-
+     fn meta_tree_format(&self) -> PyResult<String> {
+         let e = self
+             .inner
+diff --git a/py-polars/src/expr/mod.rs b/py-polars/src/expr/mod.rs
+index a91601224..2089c6325 100644
+--- a/py-polars/src/expr/mod.rs
++++ b/py-polars/src/expr/mod.rs
+@@ -8,6 +8,7 @@ mod list;
+ mod meta;
+ mod name;
+ mod rolling;
++mod serde;
+ mod string;
+ mod r#struct;
+ 
+diff --git a/py-polars/src/expr/serde.rs b/py-polars/src/expr/serde.rs
+new file mode 100644
+index 000000000..a2107ee67
+--- /dev/null
++++ b/py-polars/src/expr/serde.rs
+@@ -0,0 +1,90 @@
++use std::io::{BufReader, BufWriter, Cursor};
++
++use polars::lazy::prelude::Expr;
++use pyo3::exceptions::PyValueError;
++use pyo3::prelude::*;
++use pyo3::pybacked::PyBackedBytes;
++use pyo3::types::PyBytes;
++
++use crate::error::PyPolarsErr;
++use crate::file::get_file_like;
++use crate::prelude::polars_err;
++use crate::PyExpr;
++
++#[pymethods]
++impl PyExpr {
++    fn __getstate__(&self, py: Python) -> PyResult<PyObject> {
++        // Used in pickle/pickling
++        let mut writer: Vec<u8> = vec![];
++        ciborium::ser::into_writer(&self.inner, &mut writer)
++            .map_err(|e| PyPolarsErr::Other(format!("{}", e)))?;
++
++        Ok(PyBytes::new_bound(py, &writer).to_object(py))
++    }
++
++    fn __setstate__(&mut self, py: Python, state: PyObject) -> PyResult<()> {
++        // Used in pickle/pickling
++        match state.extract::<PyBackedBytes>(py) {
++            Ok(s) => {
++                let cursor = Cursor::new(&*s);
++                self.inner = ciborium::de::from_reader(cursor)
++                    .map_err(|e| PyPolarsErr::Other(format!("{}", e)))?;
++                Ok(())
++            },
++            Err(e) => Err(e),
++        }
++    }
++
++    /// Serialize into binary data.
++    fn serialize_binary(&self, py_f: PyObject) -> PyResult<()> {
++        let file = get_file_like(py_f, true)?;
++        let writer = BufWriter::new(file);
++        ciborium::into_writer(&self.inner, writer)
++            .map_err(|err| PyValueError::new_err(format!("{err:?}")))
++    }
++
++    /// Serialize into a JSON string.
++    #[cfg(feature = "json")]
++    fn serialize_json(&self, py_f: PyObject) -> PyResult<()> {
++        let file = get_file_like(py_f, true)?;
++        let writer = BufWriter::new(file);
++        serde_json::to_writer(writer, &self.inner)
++            .map_err(|err| PyValueError::new_err(format!("{err:?}")))
++    }
++
++    /// Deserialize a file-like object containing binary data into an Expr.
++    #[staticmethod]
++    fn deserialize_binary(py_f: PyObject) -> PyResult<PyExpr> {
++        let file = get_file_like(py_f, false)?;
++        let reader = BufReader::new(file);
++        let expr = ciborium::from_reader::<Expr, _>(reader)
++            .map_err(|err| PyValueError::new_err(format!("{err:?}")))?;
++        Ok(expr.into())
++    }
++
++    /// Deserialize a file-like object containing JSON string data into an Expr.
++    #[staticmethod]
++    #[cfg(feature = "json")]
++    fn deserialize_json(py_f: PyObject) -> PyResult<PyExpr> {
++        // it is faster to first read to memory and then parse: https://github.com/serde-rs/json/issues/160
++        // so don't bother with files.
++        let mut json = String::new();
++        let _ = get_file_like(py_f, false)?
++            .read_to_string(&mut json)
++            .unwrap();
++
++        // SAFETY:
++        // We skipped the serializing/deserializing of the static in lifetime in `DataType`
++        // so we actually don't have a lifetime at all when serializing.
++
++        // &str still has a lifetime. But it's ok, because we drop it immediately
++        // in this scope.
++        let json = unsafe { std::mem::transmute::<&'_ str, &'static str>(json.as_str()) };
++
++        let inner: Expr = serde_json::from_str(json).map_err(|_| {
++            let msg = "could not deserialize input into an expression";
++            PyPolarsErr::from(polars_err!(ComputeError: msg))
++        })?;
++        Ok(inner.into())
++    }
++}
+diff --git a/py-polars/src/lazyframe/mod.rs b/py-polars/src/lazyframe/mod.rs
+index e4b979486..c827f455a 100644
+--- a/py-polars/src/lazyframe/mod.rs
++++ b/py-polars/src/lazyframe/mod.rs
+@@ -2,9 +2,9 @@ mod exitable;
+ mod visit;
+ pub(crate) mod visitor;
+ use std::collections::HashMap;
+-use std::io::BufWriter;
+ use std::num::NonZeroUsize;
+ use std::path::PathBuf;
++mod serde;
+ 
+ pub use exitable::PyInProcessQuery;
+ use polars::io::cloud::CloudOptions;
+@@ -15,13 +15,12 @@ use polars_core::prelude::*;
+ use polars_parquet::arrow::write::StatisticsOptions;
+ use pyo3::exceptions::PyValueError;
+ use pyo3::prelude::*;
+-use pyo3::pybacked::{PyBackedBytes, PyBackedStr};
+-use pyo3::types::{PyBytes, PyDict, PyList};
++use pyo3::pybacked::PyBackedStr;
++use pyo3::types::{PyDict, PyList};
+ pub(crate) use visit::PyExprIR;
+ 
+ use crate::error::PyPolarsErr;
+ use crate::expr::ToExprs;
+-use crate::file::get_file_like;
+ use crate::interop::arrow::to_rust::pyarrow_schema_to_rust;
+ use crate::lazyframe::visit::NodeTraverser;
+ use crate::prelude::*;
+@@ -43,59 +42,6 @@ impl From<LazyFrame> for PyLazyFrame {
+ #[pymethods]
+ #[allow(clippy::should_implement_trait)]
+ impl PyLazyFrame {
+-    fn __getstate__(&self, py: Python) -> PyResult<PyObject> {
+-        // Used in pickle/pickling
+-        let mut writer: Vec<u8> = vec![];
+-        ciborium::ser::into_writer(&self.ldf.logical_plan, &mut writer)
+-            .map_err(|e| PyPolarsErr::Other(format!("{}", e)))?;
+-
+-        Ok(PyBytes::new_bound(py, &writer).to_object(py))
+-    }
+-
+-    fn __setstate__(&mut self, py: Python, state: PyObject) -> PyResult<()> {
+-        // Used in pickle/pickling
+-        match state.extract::<PyBackedBytes>(py) {
+-            Ok(s) => {
+-                let lp: DslPlan = ciborium::de::from_reader(&*s)
+-                    .map_err(|e| PyPolarsErr::Other(format!("{}", e)))?;
+-                self.ldf = LazyFrame::from(lp);
+-                Ok(())
+-            },
+-            Err(e) => Err(e),
+-        }
+-    }
+-
+-    #[cfg(all(feature = "json", feature = "serde_json"))]
+-    fn serialize(&self, py_f: PyObject) -> PyResult<()> {
+-        let file = BufWriter::new(get_file_like(py_f, true)?);
+-        serde_json::to_writer(file, &self.ldf.logical_plan)
+-            .map_err(|err| PyValueError::new_err(format!("{err:?}")))?;
+-        Ok(())
+-    }
+-
+-    #[staticmethod]
+-    #[cfg(feature = "json")]
+-    fn deserialize(py_f: PyObject) -> PyResult<Self> {
+-        // it is faster to first read to memory and then parse: https://github.com/serde-rs/json/issues/160
+-        // so don't bother with files.
+-        let mut json = String::new();
+-        let _ = get_file_like(py_f, false)?
+-            .read_to_string(&mut json)
+-            .unwrap();
+-
+-        // SAFETY:
+-        // We skipped the serializing/deserializing of the static in lifetime in `DataType`
+-        // so we actually don't have a lifetime at all when serializing.
+-
+-        // &str still has a lifetime. But it's ok, because we drop it immediately
+-        // in this scope.
+-        let json = unsafe { std::mem::transmute::<&'_ str, &'static str>(json.as_str()) };
+-
+-        let lp = serde_json::from_str::<DslPlan>(json)
+-            .map_err(|err| PyValueError::new_err(format!("{err:?}")))?;
+-        Ok(LazyFrame::from(lp).into())
+-    }
+-
+     #[staticmethod]
+     #[cfg(feature = "json")]
+     #[allow(clippy::too_many_arguments)]
+diff --git a/py-polars/src/lazyframe/serde.rs b/py-polars/src/lazyframe/serde.rs
+new file mode 100644
+index 000000000..af49c0f2e
+--- /dev/null
++++ b/py-polars/src/lazyframe/serde.rs
+@@ -0,0 +1,88 @@
++use std::io::{BufReader, BufWriter};
++
++use pyo3::exceptions::PyValueError;
++use pyo3::prelude::*;
++use pyo3::pybacked::PyBackedBytes;
++use pyo3::types::PyBytes;
++
++use super::PyLazyFrame;
++use crate::error::PyPolarsErr;
++use crate::file::get_file_like;
++use crate::prelude::*;
++
++#[pymethods]
++#[allow(clippy::should_implement_trait)]
++impl PyLazyFrame {
++    fn __getstate__(&self, py: Python) -> PyResult<PyObject> {
++        // Used in pickle/pickling
++        let mut writer: Vec<u8> = vec![];
++        ciborium::ser::into_writer(&self.ldf.logical_plan, &mut writer)
++            .map_err(|e| PyPolarsErr::Other(format!("{}", e)))?;
++
++        Ok(PyBytes::new_bound(py, &writer).to_object(py))
++    }
++
++    fn __setstate__(&mut self, py: Python, state: PyObject) -> PyResult<()> {
++        // Used in pickle/pickling
++        match state.extract::<PyBackedBytes>(py) {
++            Ok(s) => {
++                let lp: DslPlan = ciborium::de::from_reader(&*s)
++                    .map_err(|e| PyPolarsErr::Other(format!("{}", e)))?;
++                self.ldf = LazyFrame::from(lp);
++                Ok(())
++            },
++            Err(e) => Err(e),
++        }
++    }
++
++    /// Serialize into binary data.
++    fn serialize_binary(&self, py_f: PyObject) -> PyResult<()> {
++        let file = get_file_like(py_f, true)?;
++        let writer = BufWriter::new(file);
++        ciborium::into_writer(&self.ldf.logical_plan, writer)
++            .map_err(|err| PyValueError::new_err(format!("{err:?}")))
++    }
++
++    /// Serialize into a JSON string.
++    #[cfg(feature = "json")]
++    fn serialize_json(&self, py_f: PyObject) -> PyResult<()> {
++        let file = get_file_like(py_f, true)?;
++        let writer = BufWriter::new(file);
++        serde_json::to_writer(writer, &self.ldf.logical_plan)
++            .map_err(|err| PyValueError::new_err(format!("{err:?}")))
++    }
++
++    /// Deserialize a file-like object containing binary data into a LazyFrame.
++    #[staticmethod]
++    fn deserialize_binary(py_f: PyObject) -> PyResult<Self> {
++        let file = get_file_like(py_f, false)?;
++        let reader = BufReader::new(file);
++        let lp = ciborium::from_reader::<DslPlan, _>(reader)
++            .map_err(|err| PyValueError::new_err(format!("{err:?}")))?;
++        Ok(LazyFrame::from(lp).into())
++    }
++
++    /// Deserialize a file-like object containing JSON string data into a LazyFrame.
++    #[staticmethod]
++    #[cfg(feature = "json")]
++    fn deserialize_json(py_f: PyObject) -> PyResult<Self> {
++        // it is faster to first read to memory and then parse: https://github.com/serde-rs/json/issues/160
++        // so don't bother with files.
++        let mut json = String::new();
++        let _ = get_file_like(py_f, false)?
++            .read_to_string(&mut json)
++            .unwrap();
++
++        // SAFETY:
++        // We skipped the serializing/deserializing of the static in lifetime in `DataType`
++        // so we actually don't have a lifetime at all when serializing.
++
++        // &str still has a lifetime. But it's ok, because we drop it immediately
++        // in this scope.
++        let json = unsafe { std::mem::transmute::<&'_ str, &'static str>(json.as_str()) };
++
++        let lp = serde_json::from_str::<DslPlan>(json)
++            .map_err(|err| PyValueError::new_err(format!("{err:?}")))?;
++        Ok(LazyFrame::from(lp).into())
++    }
++}
+diff --git a/py-polars/tests/unit/dataframe/test_serde.py b/py-polars/tests/unit/dataframe/test_serde.py
+index 35c45b3b9..19eafae6b 100644
+--- a/py-polars/tests/unit/dataframe/test_serde.py
++++ b/py-polars/tests/unit/dataframe/test_serde.py
+@@ -6,7 +6,7 @@ from decimal import Decimal as D
+ from typing import TYPE_CHECKING, Any
+ 
+ import pytest
+-from hypothesis import given
++from hypothesis import example, given
+ 
+ import polars as pl
+ from polars.exceptions import ComputeError
+@@ -16,6 +16,15 @@ from polars.testing.parametric import dataframes
+ if TYPE_CHECKING:
+     from pathlib import Path
+ 
++    from polars.type_aliases import SerializationFormat
++
++
++@given(df=dataframes())
++def test_df_serde_roundtrip_binary(df: pl.DataFrame) -> None:
++    serialized = df.serialize()
++    result = pl.DataFrame.deserialize(io.BytesIO(serialized), format="binary")
++    assert_frame_equal(result, df, categorical_as_str=True)
++
+ 
+ @given(
+     df=dataframes(
+@@ -25,24 +34,49 @@ if TYPE_CHECKING:
+         ],
+     )
+ )
+-def test_df_serde_roundtrip(df: pl.DataFrame) -> None:
+-    serialized = df.serialize()
+-    result = pl.DataFrame.deserialize(io.StringIO(serialized))
++@example(df=pl.DataFrame({"a": [None, None]}, schema={"a": pl.Null}))
++@example(df=pl.DataFrame(schema={"a": pl.List(pl.String)}))
++def test_df_serde_roundtrip_json(df: pl.DataFrame) -> None:
++    serialized = df.serialize(format="json")
++    result = pl.DataFrame.deserialize(io.StringIO(serialized), format="json")
+     assert_frame_equal(result, df, categorical_as_str=True)
+ 
+ 
+-def test_df_serialize() -> None:
++def test_df_serde(df: pl.DataFrame) -> None:
++    serialized = df.serialize()
++    assert isinstance(serialized, bytes)
++    result = pl.DataFrame.deserialize(io.BytesIO(serialized))
++    assert_frame_equal(result, df)
++
++
++def test_df_serde_json_stringio(df: pl.DataFrame) -> None:
++    serialized = df.serialize(format="json")
++    assert isinstance(serialized, str)
++    result = pl.DataFrame.deserialize(io.StringIO(serialized), format="json")
++    assert_frame_equal(result, df)
++
++
++def test_df_serialize_json() -> None:
+     df = pl.DataFrame({"a": [1, 2, 3], "b": [4, 5, 6]}).sort("a")
+-    result = df.serialize()
++    result = df.serialize(format="json")
+     expected = '{"columns":[{"name":"a","datatype":"Int64","bit_settings":"SORTED_ASC","values":[1,2,3]},{"name":"b","datatype":"Int64","bit_settings":"","values":[4,5,6]}]}'
+     assert result == expected
+ 
+ 
+-@pytest.mark.parametrize("buf", [io.BytesIO(), io.StringIO()])
+-def test_df_serde_to_from_buffer(df: pl.DataFrame, buf: io.IOBase) -> None:
+-    df.serialize(buf)
++@pytest.mark.parametrize(
++    ("format", "buf"),
++    [
++        ("binary", io.BytesIO()),
++        ("json", io.StringIO()),
++        ("json", io.BytesIO()),
++    ],
++)
++def test_df_serde_to_from_buffer(
++    df: pl.DataFrame, format: SerializationFormat, buf: io.IOBase
++) -> None:
++    df.serialize(buf, format=format)
+     buf.seek(0)
+-    read_df = pl.DataFrame.deserialize(buf)
++    read_df = pl.DataFrame.deserialize(buf, format=format)
+     assert_frame_equal(df, read_df, categorical_as_str=True)
+ 
+ 
+@@ -50,19 +84,19 @@ def test_df_serde_to_from_buffer(df: pl.DataFrame, buf: io.IOBase) -> None:
+ def test_df_serde_to_from_file(df: pl.DataFrame, tmp_path: Path) -> None:
+     tmp_path.mkdir(exist_ok=True)
+ 
+-    file_path = tmp_path / "small.json"
++    file_path = tmp_path / "small.bin"
+     df.serialize(file_path)
+     out = pl.DataFrame.deserialize(file_path)
+ 
+     assert_frame_equal(df, out, categorical_as_str=True)
+ 
+ 
+-def test_write_json(df: pl.DataFrame) -> None:
++def test_df_serde2(df: pl.DataFrame) -> None:
+     # Text-based conversion loses time info
+     df = df.select(pl.all().exclude(["cat", "time"]))
+     s = df.serialize()
+     f = io.BytesIO()
+-    f.write(s.encode())
++    f.write(s)
+     f.seek(0)
+     out = pl.DataFrame.deserialize(f)
+     assert_frame_equal(out, df)
+@@ -77,7 +111,7 @@ def test_write_json(df: pl.DataFrame) -> None:
+ def test_df_serde_enum() -> None:
+     dtype = pl.Enum(["foo", "bar", "ham"])
+     df = pl.DataFrame([pl.Series("e", ["foo", "bar", "ham"], dtype=dtype)])
+-    buf = io.StringIO()
++    buf = io.BytesIO()
+     df.serialize(buf)
+     buf.seek(0)
+     df_in = pl.DataFrame.deserialize(buf)
+@@ -111,7 +145,7 @@ def test_df_serde_enum() -> None:
+ )
+ def test_df_serde_array(data: Any, dtype: pl.DataType) -> None:
+     df = pl.DataFrame({"foo": data}, schema={"foo": dtype})
+-    buf = io.StringIO()
++    buf = io.BytesIO()
+     df.serialize(buf)
+     buf.seek(0)
+     deserialized_df = pl.DataFrame.deserialize(buf)
+@@ -146,33 +180,18 @@ def test_df_serde_array(data: Any, dtype: pl.DataType) -> None:
+ )
+ def test_df_serde_array_logical_inner_type(data: Any, dtype: pl.DataType) -> None:
+     df = pl.DataFrame({"foo": data}, schema={"foo": dtype})
+-    buf = io.StringIO()
++    buf = io.BytesIO()
+     df.serialize(buf)
+     buf.seek(0)
+-    deserialized_df = pl.DataFrame.deserialize(buf)
+-    assert deserialized_df.dtypes == df.dtypes
+-    assert deserialized_df.to_dict(as_series=False) == df.to_dict(as_series=False)
+-
+-
+-def test_df_serde_empty_list_10458() -> None:
+-    schema = {"LIST_OF_STRINGS": pl.List(pl.String)}
+-    serialized_schema = pl.DataFrame(schema=schema).serialize()
+-    df = pl.DataFrame.deserialize(io.StringIO(serialized_schema))
+-    assert df.schema == schema
++    result = pl.DataFrame.deserialize(buf)
++    assert_frame_equal(result, df)
+ 
+ 
+ @pytest.mark.xfail(reason="Bug: https://github.com/pola-rs/polars/issues/17211")
+ def test_df_serde_float_inf_nan() -> None:
+     df = pl.DataFrame({"a": [1.0, float("inf"), float("-inf"), float("nan")]})
+-    ser = df.serialize()
+-    result = pl.DataFrame.deserialize(io.StringIO(ser))
+-    assert_frame_equal(result, df)
+-
+-
+-def test_df_serde_null() -> None:
+-    df = pl.DataFrame({"a": [None, None]}, schema={"a": pl.Null})
+-    ser = df.serialize()
+-    result = pl.DataFrame.deserialize(io.StringIO(ser))
++    ser = df.serialize(format="json")
++    result = pl.DataFrame.deserialize(io.StringIO(ser), format="json")
+     assert_frame_equal(result, df)
+ 
+ 
+@@ -201,4 +220,4 @@ def test_df_deserialize_validation() -> None:
+     """
+     )
+     with pytest.raises(ComputeError, match=r"lengths don't match"):
+-        pl.DataFrame.deserialize(f)
++        pl.DataFrame.deserialize(f, format="json")
+diff --git a/py-polars/tests/unit/expr/test_serde.py b/py-polars/tests/unit/expr/test_serde.py
+index a5100ca9d..d0185b8ff 100644
+--- a/py-polars/tests/unit/expr/test_serde.py
++++ b/py-polars/tests/unit/expr/test_serde.py
+@@ -6,10 +6,17 @@ import polars as pl
+ from polars.exceptions import ComputeError
+ 
+ 
+-def test_expr_serialization_roundtrip() -> None:
++def test_expr_serde_roundtrip_binary() -> None:
+     expr = pl.col("foo").sum().over("bar")
+-    json = expr.meta.serialize()
+-    round_tripped = pl.Expr.deserialize(io.StringIO(json))
++    json = expr.meta.serialize(format="binary")
++    round_tripped = pl.Expr.deserialize(io.BytesIO(json), format="binary")
++    assert round_tripped.meta == expr
++
++
++def test_expr_serde_roundtrip_json() -> None:
++    expr = pl.col("foo").sum().over("bar")
++    json = expr.meta.serialize(format="json")
++    round_tripped = pl.Expr.deserialize(io.StringIO(json), format="json")
+     assert round_tripped.meta == expr
+ 
+ 
+@@ -22,7 +29,15 @@ def test_expr_deserialize_invalid_json() -> None:
+     with pytest.raises(
+         ComputeError, match="could not deserialize input into an expression"
+     ):
+-        pl.Expr.deserialize(io.StringIO("abcdef"))
++        pl.Expr.deserialize(io.StringIO("abcdef"), format="json")
++
++
++def test_expression_json_13991() -> None:
++    expr = pl.col("foo").cast(pl.Decimal)
++    json = expr.meta.serialize(format="json")
++
++    round_tripped = pl.Expr.deserialize(io.StringIO(json), format="json")
++    assert round_tripped.meta == expr
+ 
+ 
+ def test_expr_write_json_from_json_deprecated() -> None:
+@@ -35,11 +50,3 @@ def test_expr_write_json_from_json_deprecated() -> None:
+         round_tripped = pl.Expr.from_json(json)
+ 
+     assert round_tripped.meta == expr
+-
+-
+-def test_expression_json_13991() -> None:
+-    expr = pl.col("foo").cast(pl.Decimal)
+-    json = expr.meta.serialize()
+-
+-    round_tripped = pl.Expr.deserialize(io.StringIO(json))
+-    assert round_tripped.meta == expr
+diff --git a/py-polars/tests/unit/lazyframe/test_serde.py b/py-polars/tests/unit/lazyframe/test_serde.py
+index 35a4b2851..03dd86369 100644
+--- a/py-polars/tests/unit/lazyframe/test_serde.py
++++ b/py-polars/tests/unit/lazyframe/test_serde.py
+@@ -4,15 +4,26 @@ import io
+ from typing import TYPE_CHECKING
+ 
+ import pytest
+-from hypothesis import given
++from hypothesis import example, given
+ 
+ import polars as pl
++from polars.exceptions import ComputeError
+ from polars.testing import assert_frame_equal
+ from polars.testing.parametric import dataframes
+ 
+ if TYPE_CHECKING:
+     from pathlib import Path
+ 
++    from polars.type_aliases import SerializationFormat
++
++
++@given(lf=dataframes(lazy=True))
++@example(lf=pl.LazyFrame({"foo": ["a", "b", "a"]}, schema={"foo": pl.Enum(["b", "a"])}))
++def test_lf_serde_roundtrip_binary(lf: pl.LazyFrame) -> None:
++    serialized = lf.serialize(format="binary")
++    result = pl.LazyFrame.deserialize(io.BytesIO(serialized), format="binary")
++    assert_frame_equal(result, lf, categorical_as_str=True)
++
+ 
+ @given(
+     lf=dataframes(
+@@ -23,9 +34,9 @@ if TYPE_CHECKING:
+         ],
+     )
+ )
+-def test_lf_serde_roundtrip(lf: pl.LazyFrame) -> None:
+-    serialized = lf.serialize()
+-    result = pl.LazyFrame.deserialize(io.StringIO(serialized))
++def test_lf_serde_roundtrip_json(lf: pl.LazyFrame) -> None:
++    serialized = lf.serialize(format="json")
++    result = pl.LazyFrame.deserialize(io.StringIO(serialized), format="json")
+     assert_frame_equal(result, lf, categorical_as_str=True)
+ 
+ 
+@@ -37,17 +48,32 @@ def lf() -> pl.LazyFrame:
+ 
+ def test_lf_serde(lf: pl.LazyFrame) -> None:
+     serialized = lf.serialize()
+-    assert isinstance(serialized, str)
+-    result = pl.LazyFrame.deserialize(io.StringIO(serialized))
++    assert isinstance(serialized, bytes)
++    result = pl.LazyFrame.deserialize(io.BytesIO(serialized))
++    assert_frame_equal(result, lf)
++
+ 
++def test_lf_serde_json_stringio(lf: pl.LazyFrame) -> None:
++    serialized = lf.serialize(format="json")
++    assert isinstance(serialized, str)
++    result = pl.LazyFrame.deserialize(io.StringIO(serialized), format="json")
+     assert_frame_equal(result, lf)
+ 
+ 
+-@pytest.mark.parametrize("buf", [io.BytesIO(), io.StringIO()])
+-def test_lf_serde_to_from_buffer(lf: pl.LazyFrame, buf: io.IOBase) -> None:
+-    lf.serialize(buf)
++@pytest.mark.parametrize(
++    ("format", "buf"),
++    [
++        ("binary", io.BytesIO()),
++        ("json", io.StringIO()),
++        ("json", io.BytesIO()),
++    ],
++)
++def test_lf_serde_to_from_buffer(
++    lf: pl.LazyFrame, format: SerializationFormat, buf: io.IOBase
++) -> None:
++    lf.serialize(buf, format=format)
+     buf.seek(0)
+-    result = pl.LazyFrame.deserialize(buf)
++    result = pl.LazyFrame.deserialize(buf, format=format)
+     assert_frame_equal(lf, result)
+ 
+ 
+@@ -55,8 +81,29 @@ def test_lf_serde_to_from_buffer(lf: pl.LazyFrame, buf: io.IOBase) -> None:
+ def test_lf_serde_to_from_file(lf: pl.LazyFrame, tmp_path: Path) -> None:
+     tmp_path.mkdir(exist_ok=True)
+ 
+-    file_path = tmp_path / "small.json"
++    file_path = tmp_path / "small.bin"
+     lf.serialize(file_path)
+     result = pl.LazyFrame.deserialize(file_path)
+ 
+     assert_frame_equal(lf, result)
++
++
++def test_lf_deserialize_validation() -> None:
++    f = io.BytesIO(b"hello world!")
++    with pytest.raises(ComputeError, match="expected value at line 1 column 1"):
++        pl.DataFrame.deserialize(f, format="json")
++
++
++@pytest.mark.write_disk()
++def test_lf_serde_scan(tmp_path: Path) -> None:
++    tmp_path.mkdir(exist_ok=True)
++    path = tmp_path / "dataset.parquet"
++
++    df = pl.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"]})
++    df.write_parquet(path)
++    lf = pl.scan_parquet(path)
++
++    ser = lf.serialize()
++    result = pl.LazyFrame.deserialize(io.BytesIO(ser))
++    assert_frame_equal(result, lf)
++    assert_frame_equal(result.collect(), df)

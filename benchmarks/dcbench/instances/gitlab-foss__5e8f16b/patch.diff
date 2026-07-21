@@ -1,0 +1,548 @@
+From 5e8f16bd00e7ed67f92ee3ea86381758ecc23585 Mon Sep 17 00:00:00 2001
+From: Ezekiel Kigbo <ekigbo@gitlab.com>
+Date: Mon, 19 Aug 2019 06:51:06 +0000
+Subject: [PATCH] Move cycle analytics stages templates to vue
+
+The existing stage list items are rendered
+in haml, migrating them to vuejs for future
+work.
+
+Fix alignment of median value
+
+Test for stage_nav_item.vue
+---
+ .../components/stage_card_list_item.vue       |  41 ++++
+ .../components/stage_nav_item.vue             |  88 +++++++++
+ .../cycle_analytics/cycle_analytics_bundle.js |   2 +
+ .../stylesheets/pages/cycle_analytics.scss    |  50 +----
+ .../projects/cycle_analytics/show.html.haml   |  29 +--
+ locale/gitlab.pot                             |   9 +
+ .../cycle_analytics/stage_nav_item_spec.js    | 177 ++++++++++++++++++
+ 7 files changed, 336 insertions(+), 60 deletions(-)
+ create mode 100644 app/assets/javascripts/cycle_analytics/components/stage_card_list_item.vue
+ create mode 100644 app/assets/javascripts/cycle_analytics/components/stage_nav_item.vue
+ create mode 100644 spec/frontend/cycle_analytics/stage_nav_item_spec.js
+
+diff --git a/app/assets/javascripts/cycle_analytics/components/stage_card_list_item.vue b/app/assets/javascripts/cycle_analytics/components/stage_card_list_item.vue
+new file mode 100644
+index 0000000000..d946594a06
+--- /dev/null
++++ b/app/assets/javascripts/cycle_analytics/components/stage_card_list_item.vue
+@@ -0,0 +1,41 @@
++<script>
++import Icon from '~/vue_shared/components/icon.vue';
++import { GlButton } from '@gitlab/ui';
++
++export default {
++  name: 'StageCardListItem',
++  components: {
++    Icon,
++    GlButton,
++  },
++  props: {
++    isActive: {
++      type: Boolean,
++      required: true,
++    },
++    canEdit: {
++      type: Boolean,
++      default: false,
++      required: false,
++    },
++  },
++};
++</script>
++
++<template>
++  <div :class="{ active: isActive }" class="stage-nav-item d-flex pl-4 pr-4 m-0 mb-1 ml-2 rounded">
++    <slot></slot>
++    <div v-if="canEdit" class="dropdown">
++      <gl-button
++        :title="__('More actions')"
++        class="more-actions-toggle btn btn-transparent p-0"
++        data-toggle="dropdown"
++      >
++        <icon css-classes="icon" name="ellipsis_v" />
++      </gl-button>
++      <ul class="more-actions-dropdown dropdown-menu dropdown-open-left">
++        <slot name="dropdown-options"></slot>
++      </ul>
++    </div>
++  </div>
++</template>
+diff --git a/app/assets/javascripts/cycle_analytics/components/stage_nav_item.vue b/app/assets/javascripts/cycle_analytics/components/stage_nav_item.vue
+new file mode 100644
+index 0000000000..004d335f57
+--- /dev/null
++++ b/app/assets/javascripts/cycle_analytics/components/stage_nav_item.vue
+@@ -0,0 +1,88 @@
++<script>
++import StageCardListItem from './stage_card_list_item.vue';
++
++export default {
++  name: 'StageNavItem',
++  components: {
++    StageCardListItem,
++  },
++  props: {
++    isDefaultStage: {
++      type: Boolean,
++      default: false,
++      required: false,
++    },
++    isActive: {
++      type: Boolean,
++      default: false,
++      required: false,
++    },
++    isUserAllowed: {
++      type: Boolean,
++      required: true,
++    },
++    title: {
++      type: String,
++      required: true,
++    },
++    value: {
++      type: String,
++      default: '',
++      required: false,
++    },
++    canEdit: {
++      type: Boolean,
++      default: false,
++      required: false,
++    },
++  },
++  computed: {
++    hasValue() {
++      return this.value && this.value.length > 0;
++    },
++    editable() {
++      return this.isUserAllowed && this.canEdit;
++    },
++  },
++};
++</script>
++
++<template>
++  <li @click="$emit('select')">
++    <stage-card-list-item :is-active="isActive" :can-edit="editable">
++      <div class="stage-nav-item-cell stage-name p-0" :class="{ 'font-weight-bold': isActive }">
++        {{ title }}
++      </div>
++      <div class="stage-nav-item-cell stage-median mr-4">
++        <template v-if="isUserAllowed">
++          <span v-if="hasValue">{{ value }}</span>
++          <span v-else class="stage-empty">{{ __('Not enough data') }}</span>
++        </template>
++        <template v-else>
++          <span class="not-available">{{ __('Not available') }}</span>
++        </template>
++      </div>
++      <template v-slot:dropdown-options>
++        <template v-if="isDefaultStage">
++          <li>
++            <button type="button" class="btn-default btn-transparent">
++              {{ __('Hide stage') }}
++            </button>
++          </li>
++        </template>
++        <template v-else>
++          <li>
++            <button type="button" class="btn-default btn-transparent">
++              {{ __('Edit stage') }}
++            </button>
++          </li>
++          <li>
++            <button type="button" class="btn-danger danger">
++              {{ __('Remove stage') }}
++            </button>
++          </li>
++        </template>
++      </template>
++    </stage-card-list-item>
++  </li>
++</template>
+diff --git a/app/assets/javascripts/cycle_analytics/cycle_analytics_bundle.js b/app/assets/javascripts/cycle_analytics/cycle_analytics_bundle.js
+index 671405602c..b3ae47af75 100644
+--- a/app/assets/javascripts/cycle_analytics/cycle_analytics_bundle.js
++++ b/app/assets/javascripts/cycle_analytics/cycle_analytics_bundle.js
+@@ -12,6 +12,7 @@ import stageComponent from './components/stage_component.vue';
+ import stageReviewComponent from './components/stage_review_component.vue';
+ import stageStagingComponent from './components/stage_staging_component.vue';
+ import stageTestComponent from './components/stage_test_component.vue';
++import stageNavItem from './components/stage_nav_item.vue';
+ import CycleAnalyticsService from './cycle_analytics_service';
+ import CycleAnalyticsStore from './cycle_analytics_store';
+ 
+@@ -41,6 +42,7 @@ export default () => {
+         import('ee_component/analytics/shared/components/projects_dropdown_filter.vue'),
+       DateRangeDropdown: () =>
+         import('ee_component/analytics/shared/components/date_range_dropdown.vue'),
++      'stage-nav-item': stageNavItem,
+     },
+     mixins: [filterMixins],
+     data() {
+diff --git a/app/assets/stylesheets/pages/cycle_analytics.scss b/app/assets/stylesheets/pages/cycle_analytics.scss
+index 2b932d164a..d80155a416 100644
+--- a/app/assets/stylesheets/pages/cycle_analytics.scss
++++ b/app/assets/stylesheets/pages/cycle_analytics.scss
+@@ -51,27 +51,19 @@
+     }
+ 
+     .stage-header {
+-      width: 26%;
+-      padding-left: $gl-padding;
++      width: 18.5%;
+     }
+ 
+     .median-header {
+-      width: 14%;
++      width: 21.5%;
+     }
+ 
+     .event-header {
+       width: 45%;
+-      padding-left: $gl-padding;
+     }
+ 
+     .total-time-header {
+       width: 15%;
+-      text-align: right;
+-      padding-right: $gl-padding;
+-    }
+-
+-    .stage-name {
+-      font-weight: $gl-font-weight-bold;
+     }
+   }
+ 
+@@ -153,23 +145,13 @@
+     }
+ 
+     .stage-nav-item {
+-      display: flex;
+       line-height: 65px;
+-      border-top: 1px solid transparent;
+-      border-bottom: 1px solid transparent;
+-      border-right: 1px solid $border-color;
+-      background-color: $gray-light;
++      border: 1px solid $border-color;
+ 
+       &.active {
+-        background-color: transparent;
+-        border-right-color: transparent;
+-        border-top-color: $border-color;
+-        border-bottom-color: $border-color;
+-        box-shadow: inset 2px 0 0 0 $blue-500;
+-
+-        .stage-name {
+-          font-weight: $gl-font-weight-bold;
+-        }
++        background: $blue-50;
++        border-color: $blue-300;
++        box-shadow: inset 4px 0 0 0 $blue-500;
+       }
+ 
+       &:hover:not(.active) {
+@@ -178,24 +160,12 @@
+         cursor: pointer;
+       }
+ 
+-      &:first-child {
+-        border-top: 0;
+-      }
+-
+-      &:last-child {
+-        border-bottom: 0;
+-      }
+-
+-      .stage-nav-item-cell {
+-        &.stage-median {
+-          margin-left: auto;
+-          margin-right: $gl-padding;
+-          min-width: calc(35% - #{$gl-padding});
+-        }
++      .stage-nav-item-cell.stage-name {
++        width: 44.5%;
+       }
+ 
+-      .stage-name {
+-        padding-left: 16px;
++      .stage-nav-item-cell.stage-median {
++        min-width: 43%;
+       }
+ 
+       .stage-empty,
+diff --git a/app/views/projects/cycle_analytics/show.html.haml b/app/views/projects/cycle_analytics/show.html.haml
+index 59f0afd59e..2b594c125f 100644
+--- a/app/views/projects/cycle_analytics/show.html.haml
++++ b/app/views/projects/cycle_analytics/show.html.haml
+@@ -34,40 +34,29 @@
+                       {{ n__('Last %d day', 'Last %d days', 90) }}
+     .stage-panel-container
+       .card.stage-panel
+-        .card-header
++        .card-header.border-bottom-0
+           %nav.col-headers
+             %ul
+-              %li.stage-header
+-                %span.stage-name
++              %li.stage-header.pl-5
++                %span.stage-name.font-weight-bold
+                   {{ s__('ProjectLifecycle|Stage') }}
+                 %i.has-tooltip.fa.fa-question-circle{ "data-placement" => "top", title: _("The phase of the development lifecycle."), "aria-hidden" => "true" }
+               %li.median-header
+-                %span.stage-name
++                %span.stage-name.font-weight-bold
+                   {{ __('Median') }}
+                 %i.has-tooltip.fa.fa-question-circle{ "data-placement" => "top", title: _("The value lying at the midpoint of a series of observed values. E.g., between 3, 5, 9, the median is 5. Between 3, 5, 7, 8, the median is (5+7)/2 = 6."), "aria-hidden" => "true" }
+-              %li.event-header
+-                %span.stage-name
++              %li.event-header.pl-3
++                %span.stage-name.font-weight-bold
+                   {{ currentStage ? __(currentStage.legend) : __('Related Issues') }}
+                 %i.has-tooltip.fa.fa-question-circle{ "data-placement" => "top", title: _("The collection of events added to the data gathered for that stage."), "aria-hidden" => "true" }
+-              %li.total-time-header
+-                %span.stage-name
++              %li.total-time-header.pr-5.text-right
++                %span.stage-name.font-weight-bold
+                   {{ __('Total Time') }}
+                 %i.has-tooltip.fa.fa-question-circle{ "data-placement" => "top", title: _("The time taken by each data entry gathered by that stage."), "aria-hidden" => "true" }
+         .stage-panel-body
+           %nav.stage-nav
+             %ul
+-              %li.stage-nav-item{ ':class' => '{ active: stage.active }', '@click' => 'selectStage(stage)', "v-for" => "stage in state.stages" }
+-                .stage-nav-item-cell.stage-name
+-                  {{ stage.title }}
+-                .stage-nav-item-cell.stage-median
+-                  %template{ "v-if" => "stage.isUserAllowed" }
+-                    %span{ "v-if" => "stage.value" }
+-                      {{ stage.value }}
+-                    %span.stage-empty{ "v-else" => true }
+-                      {{ __('Not enough data') }}
+-                  %template{ "v-else" => true }
+-                    %span.not-available
+-                      {{ __('Not available') }}
++              %stage-nav-item{ "v-for" => "stage in state.stages", ":key" => '`ca-stage-title-${stage.title}`', '@select' => 'selectStage(stage)', ":title" => "stage.title", ":is-user-allowed" => "stage.isUserAllowed", ":value" => "stage.value", ":is-active" => "stage.active" }
+           .section.stage-events
+             %template{ "v-if" => "isLoadingStage" }
+               = icon("spinner spin")
+diff --git a/locale/gitlab.pot b/locale/gitlab.pot
+index e8d2736039..14cd8769e7 100644
+--- a/locale/gitlab.pot
++++ b/locale/gitlab.pot
+@@ -4144,6 +4144,9 @@ msgstr ""
+ msgid "Edit public deploy key"
+ msgstr ""
+ 
++msgid "Edit stage"
++msgstr ""
++
+ msgid "Edit wiki page"
+ msgstr ""
+ 
+@@ -5658,6 +5661,9 @@ msgstr ""
+ msgid "Hide shared projects"
+ msgstr ""
+ 
++msgid "Hide stage"
++msgstr ""
++
+ msgid "Hide value"
+ msgid_plural "Hide values"
+ msgstr[0] ""
+@@ -9357,6 +9363,9 @@ msgstr ""
+ msgid "Remove spent time"
+ msgstr ""
+ 
++msgid "Remove stage"
++msgstr ""
++
+ msgid "Remove time estimate"
+ msgstr ""
+ 
+diff --git a/spec/frontend/cycle_analytics/stage_nav_item_spec.js b/spec/frontend/cycle_analytics/stage_nav_item_spec.js
+new file mode 100644
+index 0000000000..ff079082ca
+--- /dev/null
++++ b/spec/frontend/cycle_analytics/stage_nav_item_spec.js
+@@ -0,0 +1,177 @@
++import { mount, shallowMount } from '@vue/test-utils';
++import StageNavItem from '~/cycle_analytics/components/stage_nav_item.vue';
++
++describe('StageNavItem', () => {
++  let wrapper = null;
++  const title = 'Cool stage';
++  const value = '1 day';
++
++  function createComponent(props, shallow = true) {
++    const func = shallow ? shallowMount : mount;
++    return func(StageNavItem, {
++      propsData: {
++        canEdit: false,
++        isActive: false,
++        isUserAllowed: false,
++        isDefaultStage: true,
++        title,
++        value,
++        ...props,
++      },
++    });
++  }
++
++  function hasStageName() {
++    const stageName = wrapper.find('.stage-name');
++    expect(stageName.exists()).toBe(true);
++    expect(stageName.text()).toEqual(title);
++  }
++
++  it('renders stage name', () => {
++    wrapper = createComponent({ isUserAllowed: true });
++    hasStageName();
++    wrapper.destroy();
++  });
++
++  describe('User has access', () => {
++    describe('with a value', () => {
++      beforeEach(() => {
++        wrapper = createComponent({ isUserAllowed: true });
++      });
++
++      afterEach(() => {
++        wrapper.destroy();
++      });
++      it('renders the value for median value', () => {
++        expect(wrapper.find('.stage-empty').exists()).toBe(false);
++        expect(wrapper.find('.not-available').exists()).toBe(false);
++        expect(wrapper.find('.stage-median').text()).toEqual(value);
++      });
++    });
++
++    describe('without a value', () => {
++      beforeEach(() => {
++        wrapper = createComponent({ isUserAllowed: true, value: null });
++      });
++
++      afterEach(() => {
++        wrapper.destroy();
++      });
++
++      it('has the stage-empty class', () => {
++        expect(wrapper.find('.stage-empty').exists()).toBe(true);
++      });
++
++      it('renders Not enough data for the median value', () => {
++        expect(wrapper.find('.stage-median').text()).toEqual('Not enough data');
++      });
++    });
++  });
++
++  describe('is active', () => {
++    beforeEach(() => {
++      wrapper = createComponent({ isActive: true }, false);
++    });
++
++    afterEach(() => {
++      wrapper.destroy();
++    });
++    it('has the active class', () => {
++      expect(wrapper.find('.stage-nav-item').classes('active')).toBe(true);
++    });
++  });
++
++  describe('is not active', () => {
++    beforeEach(() => {
++      wrapper = createComponent();
++    });
++
++    afterEach(() => {
++      wrapper.destroy();
++    });
++    it('emits the `select` event when clicked', () => {
++      expect(wrapper.emitted().select).toBeUndefined();
++      wrapper.trigger('click');
++      expect(wrapper.emitted().select.length).toBe(1);
++    });
++  });
++
++  describe('User does not have access', () => {
++    beforeEach(() => {
++      wrapper = createComponent({ isUserAllowed: false }, false);
++    });
++
++    afterEach(() => {
++      wrapper.destroy();
++    });
++    it('renders stage name', () => {
++      hasStageName();
++    });
++
++    it('has class not-available', () => {
++      expect(wrapper.find('.stage-empty').exists()).toBe(false);
++      expect(wrapper.find('.not-available').exists()).toBe(true);
++    });
++
++    it('renders Not available for the median value', () => {
++      expect(wrapper.find('.stage-median').text()).toBe('Not available');
++    });
++    it('does not render options menu', () => {
++      expect(wrapper.find('.more-actions-toggle').exists()).toBe(false);
++    });
++  });
++
++  describe('User can edit stages', () => {
++    beforeEach(() => {
++      wrapper = createComponent({ canEdit: true, isUserAllowed: true }, false);
++    });
++
++    afterEach(() => {
++      wrapper.destroy();
++    });
++    it('renders stage name', () => {
++      hasStageName();
++    });
++
++    it('renders options menu', () => {
++      expect(wrapper.find('.more-actions-toggle').exists()).toBe(true);
++    });
++
++    describe('Default stages', () => {
++      beforeEach(() => {
++        wrapper = createComponent(
++          { canEdit: true, isUserAllowed: true, isDefaultStage: true },
++          false,
++        );
++      });
++      it('can hide the stage', () => {
++        expect(wrapper.text()).toContain('Hide stage');
++      });
++      it('can not edit the stage', () => {
++        expect(wrapper.text()).not.toContain('Edit stage');
++      });
++      it('can not remove the stage', () => {
++        expect(wrapper.text()).not.toContain('Remove stage');
++      });
++    });
++
++    describe('Custom stages', () => {
++      beforeEach(() => {
++        wrapper = createComponent(
++          { canEdit: true, isUserAllowed: true, isDefaultStage: false },
++          false,
++        );
++      });
++      it('can edit the stage', () => {
++        expect(wrapper.text()).toContain('Edit stage');
++      });
++      it('can remove the stage', () => {
++        expect(wrapper.text()).toContain('Remove stage');
++      });
++
++      it('can not hide the stage', () => {
++        expect(wrapper.text()).not.toContain('Hide stage');
++      });
++    });
++  });
++});

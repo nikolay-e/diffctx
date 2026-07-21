@@ -1,0 +1,287 @@
+From d082ad0abfe0bc26760626ae0ecb415a8d508a1f Mon Sep 17 00:00:00 2001
+From: zero323 <mszymkiewicz@gmail.com>
+Date: Fri, 27 Nov 2020 11:00:09 +0900
+Subject: [PATCH] [SPARK-33563][PYTHON][R][SQL] Expose inverse hyperbolic trig
+ functions in PySpark and SparkR
+
+### What changes were proposed in this pull request?
+
+This PR adds the following functions (introduced in Scala API with SPARK-33061):
+
+- `acosh`
+- `asinh`
+- `atanh`
+
+to Python and R.
+
+### Why are the changes needed?
+
+Feature parity.
+
+### Does this PR introduce _any_ user-facing change?
+
+New functions.
+
+### How was this patch tested?
+
+New unit tests.
+
+Closes #30501 from zero323/SPARK-33563.
+
+Authored-by: zero323 <mszymkiewicz@gmail.com>
+Signed-off-by: HyukjinKwon <gurwls223@apache.org>
+---
+ R/pkg/NAMESPACE                              |  3 ++
+ R/pkg/R/functions.R                          | 39 ++++++++++++++++++++
+ R/pkg/tests/fulltests/test_sparkSQL.R        |  1 +
+ python/docs/source/reference/pyspark.sql.rst |  4 +-
+ python/pyspark/sql/functions.py              | 39 ++++++++++++++++++++
+ python/pyspark/sql/functions.pyi             |  3 ++
+ python/pyspark/sql/tests/test_functions.py   | 16 ++++++++
+ 7 files changed, 104 insertions(+), 1 deletion(-)
+
+diff --git a/R/pkg/NAMESPACE b/R/pkg/NAMESPACE
+index b927a6b96b..91f6e6dc8a 100644
+--- a/R/pkg/NAMESPACE
++++ b/R/pkg/NAMESPACE
+@@ -202,6 +202,7 @@ exportMethods("%<=>%",
+               "%in%",
+               "abs",
+               "acos",
++              "acosh",
+               "add_months",
+               "alias",
+               "approx_count_distinct",
+@@ -232,8 +233,10 @@ exportMethods("%<=>%",
+               "asc_nulls_last",
+               "ascii",
+               "asin",
++              "asinh",
+               "assert_true",
+               "atan",
++              "atanh",
+               "atan2",
+               "avg",
+               "base64",
+diff --git a/R/pkg/R/functions.R b/R/pkg/R/functions.R
+index 039d28a3a3..b12f7b472e 100644
+--- a/R/pkg/R/functions.R
++++ b/R/pkg/R/functions.R
+@@ -455,6 +455,19 @@ setMethod("acos",
+             column(jc)
+           })
+ 
++#' @details
++#' \code{acosh}: Computes inverse hyperbolic cosine of the input column.
++#'
++#' @rdname column_math_functions
++#' @aliases acosh acosh,Column-method
++#' @note acosh since 3.1.0
++setMethod("acosh",
++          signature(x = "Column"),
++          function(x) {
++            jc <- callJStatic("org.apache.spark.sql.functions", "acosh", x@jc)
++            column(jc)
++          })
++
+ #' @details
+ #' \code{approx_count_distinct}: Returns the approximate number of distinct items in a group.
+ #'
+@@ -522,6 +535,19 @@ setMethod("asin",
+             column(jc)
+           })
+ 
++#' @details
++#' \code{asinh}: Computes inverse hyperbolic sine of the input column.
++#'
++#' @rdname column_math_functions
++#' @aliases asinh asinh,Column-method
++#' @note asinh since 3.1.0
++setMethod("asinh",
++          signature(x = "Column"),
++          function(x) {
++            jc <- callJStatic("org.apache.spark.sql.functions", "asinh", x@jc)
++            column(jc)
++          })
++
+ #' @details
+ #' \code{atan}: Returns the inverse tangent of the given value,
+ #' as if computed by \code{java.lang.Math.atan()}
+@@ -536,6 +562,19 @@ setMethod("atan",
+             column(jc)
+           })
+ 
++#' @details
++#' \code{atanh}: Computes inverse hyperbolic tangent of the input column.
++#'
++#' @rdname column_math_functions
++#' @aliases atanh atanh,Column-method
++#' @note atanh since 3.1.0
++setMethod("atanh",
++          signature(x = "Column"),
++          function(x) {
++            jc <- callJStatic("org.apache.spark.sql.functions", "atanh", x@jc)
++            column(jc)
++          })
++
+ #' avg
+ #'
+ #' Aggregate function: returns the average of the values in a group.
+diff --git a/R/pkg/tests/fulltests/test_sparkSQL.R b/R/pkg/tests/fulltests/test_sparkSQL.R
+index 45de1ef1bd..81d4e14df7 100644
+--- a/R/pkg/tests/fulltests/test_sparkSQL.R
++++ b/R/pkg/tests/fulltests/test_sparkSQL.R
+@@ -1430,6 +1430,7 @@ test_that("column functions", {
+     nth_value(column("v"), 3) + nth_value(column("z"), 4L, FALSE)
+   c28 <- asc_nulls_first(c1) + asc_nulls_last(c1) +
+     desc_nulls_first(c1) + desc_nulls_last(c1)
++  c29 <- acosh(c1) + asinh(c1) + atanh(c1)
+ 
+   # Test if base::is.nan() is exposed
+   expect_equal(is.nan(c("a", "b")), c(FALSE, FALSE))
+diff --git a/python/docs/source/reference/pyspark.sql.rst b/python/docs/source/reference/pyspark.sql.rst
+index 3f903fe8c7..0dc2f6e55b 100644
+--- a/python/docs/source/reference/pyspark.sql.rst
++++ b/python/docs/source/reference/pyspark.sql.rst
+@@ -307,6 +307,7 @@ Functions
+ 
+     abs
+     acos
++    acosh
+     add_months
+     aggregate
+     approxCountDistinct
+@@ -331,8 +332,10 @@ Functions
+     asc_nulls_last
+     ascii
+     asin
++    asinh
+     assert_true
+     atan
++    atanh
+     atan2
+     avg
+     base64
+@@ -583,4 +586,3 @@ Grouping
+     GroupedData.pivot
+     GroupedData.sum
+     PandasCogroupedOps.applyInPandas
+-
+diff --git a/python/pyspark/sql/functions.py b/python/pyspark/sql/functions.py
+index 4af5d1f484..ea91e8593e 100644
+--- a/python/pyspark/sql/functions.py
++++ b/python/pyspark/sql/functions.py
+@@ -220,6 +220,19 @@ def acos(col):
+     return _invoke_function_over_column("acos", col)
+ 
+ 
++def acosh(col):
++    """
++    Computes inverse hyperbolic cosine of the input column.
++
++    .. versionadded:: 3.1.0
++
++    Returns
++    -------
++    :class:`Column`
++    """
++    return _invoke_function_over_column("acosh", col)
++
++
+ def asin(col):
+     """
+     .. versionadded:: 1.3.0
+@@ -233,6 +246,19 @@ def asin(col):
+     return _invoke_function_over_column("asin", col)
+ 
+ 
++def asinh(col):
++    """
++    Computes inverse hyperbolic sine of the input column.
++
++    .. versionadded:: 3.1.0
++
++    Returns
++    -------
++    :class:`Column`
++    """
++    return _invoke_function_over_column("asinh", col)
++
++
+ def atan(col):
+     """
+     .. versionadded:: 1.4.0
+@@ -245,6 +271,19 @@ def atan(col):
+     return _invoke_function_over_column("atan", col)
+ 
+ 
++def atanh(col):
++    """
++    Computes inverse hyperbolic tangent of the input column.
++
++    .. versionadded:: 3.1.0
++
++    Returns
++    -------
++    :class:`Column`
++    """
++    return _invoke_function_over_column("atanh", col)
++
++
+ @since(1.4)
+ def cbrt(col):
+     """
+diff --git a/python/pyspark/sql/functions.pyi b/python/pyspark/sql/functions.pyi
+index 252f883b5f..50e178df99 100644
+--- a/python/pyspark/sql/functions.pyi
++++ b/python/pyspark/sql/functions.pyi
+@@ -260,12 +260,15 @@ def map_zip_with(
+ ) -> Column: ...
+ def abs(col: ColumnOrName) -> Column: ...
+ def acos(col: ColumnOrName) -> Column: ...
++def acosh(col: ColumnOrName) -> Column: ...
+ def asc(col: ColumnOrName) -> Column: ...
+ def asc_nulls_first(col: ColumnOrName) -> Column: ...
+ def asc_nulls_last(col: ColumnOrName) -> Column: ...
+ def ascii(col: ColumnOrName) -> Column: ...
+ def asin(col: ColumnOrName) -> Column: ...
++def asinh(col: ColumnOrName) -> Column: ...
+ def atan(col: ColumnOrName) -> Column: ...
++def atanh(col: ColumnOrName) -> Column: ...
+ @overload
+ def atan2(col1: ColumnOrName, col2: ColumnOrName) -> Column: ...
+ @overload
+diff --git a/python/pyspark/sql/tests/test_functions.py b/python/pyspark/sql/tests/test_functions.py
+index 32549343d9..2858bdeca0 100644
+--- a/python/pyspark/sql/tests/test_functions.py
++++ b/python/pyspark/sql/tests/test_functions.py
+@@ -116,6 +116,7 @@ class FunctionsTests(ReusedSQLTestCase):
+             c = get_values(b)
+             diff = [abs(v - c[k]) < 1e-6 for k, v in enumerate(a)]
+             return sum(diff) == len(a)
++
+         assert_close([math.cos(i) for i in range(10)],
+                      df.select(functions.cos(df.a)).collect())
+         assert_close([math.cos(i) for i in range(10)],
+@@ -139,6 +140,21 @@ class FunctionsTests(ReusedSQLTestCase):
+         assert_close([math.hypot(i, 2) for i in range(10)],
+                      df.select(functions.hypot(df.a, 2)).collect())
+ 
++    def test_inverse_trig_functions(self):
++        from pyspark.sql import functions
++
++        funs = [
++            (functions.acosh, "ACOSH"),
++            (functions.asinh, "ASINH"),
++            (functions.atanh, "ATANH"),
++        ]
++
++        cols = ["a", functions.col("a")]
++
++        for f, alias in funs:
++            for c in cols:
++                self.assertIn(f"{alias}(a)", repr(f(c)))
++
+     def test_rand_functions(self):
+         df = self.df
+         from pyspark.sql import functions

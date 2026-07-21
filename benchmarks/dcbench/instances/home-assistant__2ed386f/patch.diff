@@ -1,0 +1,997 @@
+From 2ed386f9e64f059f356bdfe8900f48f785fc1b97 Mon Sep 17 00:00:00 2001
+From: Franck Nijhof <git@frenck.dev>
+Date: Mon, 3 May 2021 18:34:28 +0200
+Subject: [PATCH] Migrate to async_get_current_platform everywhere (#50034)
+
+---
+ homeassistant/components/advantage_air/climate.py            | 2 +-
+ homeassistant/components/advantage_air/sensor.py             | 2 +-
+ homeassistant/components/agent_dvr/camera.py                 | 2 +-
+ homeassistant/components/alarmdecoder/alarm_control_panel.py | 3 +--
+ homeassistant/components/androidtv/media_player.py           | 2 +-
+ homeassistant/components/blink/camera.py                     | 2 +-
+ homeassistant/components/channels/media_player.py            | 2 +-
+ homeassistant/components/deconz/alarm_control_panel.py       | 2 +-
+ homeassistant/components/denonavr/media_player.py            | 2 +-
+ homeassistant/components/dyson/fan.py                        | 2 +-
+ homeassistant/components/ecobee/climate.py                   | 2 +-
+ homeassistant/components/elkm1/alarm_control_panel.py        | 2 +-
+ homeassistant/components/elkm1/sensor.py                     | 2 +-
+ homeassistant/components/epson/media_player.py               | 2 +-
+ homeassistant/components/flo/switch.py                       | 2 +-
+ homeassistant/components/foscam/camera.py                    | 2 +-
+ homeassistant/components/geniushub/switch.py                 | 2 +-
+ homeassistant/components/guardian/switch.py                  | 2 +-
+ homeassistant/components/harmony/remote.py                   | 2 +-
+ homeassistant/components/hive/climate.py                     | 2 +-
+ homeassistant/components/hive/water_heater.py                | 2 +-
+ homeassistant/components/homeassistant/scene.py              | 2 +-
+ homeassistant/components/isy994/services.py                  | 2 +-
+ homeassistant/components/izone/climate.py                    | 2 +-
+ homeassistant/components/kef/media_player.py                 | 2 +-
+ homeassistant/components/kodi/media_player.py                | 2 +-
+ homeassistant/components/lifx/light.py                       | 2 +-
+ homeassistant/components/litterrobot/vacuum.py               | 2 +-
+ homeassistant/components/lyric/climate.py                    | 2 +-
+ homeassistant/components/melcloud/climate.py                 | 2 +-
+ homeassistant/components/monoprice/media_player.py           | 2 +-
+ homeassistant/components/motion_blinds/cover.py              | 2 +-
+ homeassistant/components/neato/vacuum.py                     | 2 +-
+ homeassistant/components/netatmo/camera.py                   | 2 +-
+ homeassistant/components/netatmo/climate.py                  | 2 +-
+ homeassistant/components/nexia/climate.py                    | 2 +-
+ homeassistant/components/nuki/lock.py                        | 4 +---
+ homeassistant/components/nx584/alarm_control_panel.py        | 2 +-
+ homeassistant/components/omnilogic/switch.py                 | 2 +-
+ homeassistant/components/onvif/camera.py                     | 2 +-
+ homeassistant/components/openhome/media_player.py            | 2 +-
+ homeassistant/components/ozw/lock.py                         | 2 +-
+ homeassistant/components/pi_hole/switch.py                   | 2 +-
+ homeassistant/components/rachio/switch.py                    | 2 +-
+ homeassistant/components/rainmachine/switch.py               | 2 +-
+ homeassistant/components/risco/binary_sensor.py              | 2 +-
+ homeassistant/components/roku/media_player.py                | 2 +-
+ homeassistant/components/roon/media_player.py                | 2 +-
+ homeassistant/components/snapcast/media_player.py            | 2 +-
+ homeassistant/components/songpal/media_player.py             | 2 +-
+ homeassistant/components/sonos/media_player.py               | 2 +-
+ homeassistant/components/squeezebox/media_player.py          | 2 +-
+ homeassistant/components/switcher_kis/switch.py              | 2 +-
+ homeassistant/components/tado/climate.py                     | 2 +-
+ homeassistant/components/tado/water_heater.py                | 2 +-
+ homeassistant/components/upb/light.py                        | 2 +-
+ homeassistant/components/upb/scene.py                        | 2 +-
+ homeassistant/components/utility_meter/sensor.py             | 2 +-
+ homeassistant/components/verisure/camera.py                  | 4 ++--
+ homeassistant/components/verisure/lock.py                    | 4 ++--
+ homeassistant/components/vicare/climate.py                   | 2 +-
+ homeassistant/components/vizio/media_player.py               | 2 +-
+ homeassistant/components/wemo/fan.py                         | 2 +-
+ homeassistant/components/xiaomi_miio/remote.py               | 2 +-
+ homeassistant/components/xiaomi_miio/vacuum.py               | 2 +-
+ homeassistant/components/yamaha/media_player.py              | 2 +-
+ homeassistant/components/yeelight/light.py                   | 2 +-
+ homeassistant/components/zha/lock.py                         | 3 +--
+ homeassistant/components/zwave_js/lock.py                    | 3 +--
+ 69 files changed, 71 insertions(+), 76 deletions(-)
+
+diff --git a/homeassistant/components/advantage_air/climate.py b/homeassistant/components/advantage_air/climate.py
+index ca25edbda4..60caf15be2 100644
+--- a/homeassistant/components/advantage_air/climate.py
++++ b/homeassistant/components/advantage_air/climate.py
+@@ -70,7 +70,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+                 entities.append(AdvantageAirZone(instance, ac_key, zone_key))
+     async_add_entities(entities)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         ADVANTAGE_AIR_SERVICE_SET_MYZONE,
+         {},
+diff --git a/homeassistant/components/advantage_air/sensor.py b/homeassistant/components/advantage_air/sensor.py
+index 19ac584ac2..8f027b1bda 100644
+--- a/homeassistant/components/advantage_air/sensor.py
++++ b/homeassistant/components/advantage_air/sensor.py
+@@ -33,7 +33,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+                 entities.append(AdvantageAirZoneSignal(instance, ac_key, zone_key))
+     async_add_entities(entities)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         ADVANTAGE_AIR_SERVICE_SET_TIME_TO,
+         {vol.Required("minutes"): cv.positive_int},
+diff --git a/homeassistant/components/agent_dvr/camera.py b/homeassistant/components/agent_dvr/camera.py
+index 24cd5dbb92..6b2363f50d 100644
+--- a/homeassistant/components/agent_dvr/camera.py
++++ b/homeassistant/components/agent_dvr/camera.py
+@@ -59,7 +59,7 @@ async def async_setup_entry(
+ 
+     async_add_entities(cameras)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     for service, method in CAMERA_SERVICES.items():
+         platform.async_register_entity_service(service, {}, method)
+ 
+diff --git a/homeassistant/components/alarmdecoder/alarm_control_panel.py b/homeassistant/components/alarmdecoder/alarm_control_panel.py
+index d081c9e56a..47da48de66 100644
+--- a/homeassistant/components/alarmdecoder/alarm_control_panel.py
++++ b/homeassistant/components/alarmdecoder/alarm_control_panel.py
+@@ -56,8 +56,7 @@ async def async_setup_entry(
+     )
+     async_add_entities([entity])
+ 
+-    platform = entity_platform.current_platform.get()
+-
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         SERVICE_ALARM_TOGGLE_CHIME,
+         {
+diff --git a/homeassistant/components/androidtv/media_player.py b/homeassistant/components/androidtv/media_player.py
+index b2a8ceffc9..5db73d1491 100644
+--- a/homeassistant/components/androidtv/media_player.py
++++ b/homeassistant/components/androidtv/media_player.py
+@@ -261,7 +261,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
+     if hass.services.has_service(ANDROIDTV_DOMAIN, SERVICE_ADB_COMMAND):
+         return
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     async def service_adb_command(service):
+         """Dispatch service calls to target entities."""
+diff --git a/homeassistant/components/blink/camera.py b/homeassistant/components/blink/camera.py
+index f98e243d2f..5085686494 100644
+--- a/homeassistant/components/blink/camera.py
++++ b/homeassistant/components/blink/camera.py
+@@ -21,7 +21,7 @@ async def async_setup_entry(hass, config, async_add_entities):
+ 
+     async_add_entities(entities)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(SERVICE_TRIGGER, {}, "trigger_camera")
+ 
+ 
+diff --git a/homeassistant/components/channels/media_player.py b/homeassistant/components/channels/media_player.py
+index 5376dc3fe9..2b62039989 100644
+--- a/homeassistant/components/channels/media_player.py
++++ b/homeassistant/components/channels/media_player.py
+@@ -59,7 +59,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
+     device = ChannelsPlayer(config[CONF_NAME], config[CONF_HOST], config[CONF_PORT])
+     async_add_entities([device], True)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_SEEK_FORWARD,
+diff --git a/homeassistant/components/deconz/alarm_control_panel.py b/homeassistant/components/deconz/alarm_control_panel.py
+index 59749c0680..6bb4b72e89 100644
+--- a/homeassistant/components/deconz/alarm_control_panel.py
++++ b/homeassistant/components/deconz/alarm_control_panel.py
+@@ -63,7 +63,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities) -> None:
+     gateway = get_gateway_from_config_entry(hass, config_entry)
+     gateway.entities[DOMAIN] = set()
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     @callback
+     def async_add_alarm_control_panel(sensors=gateway.api.sensors.values()) -> None:
+diff --git a/homeassistant/components/denonavr/media_player.py b/homeassistant/components/denonavr/media_player.py
+index 14520f0dda..ae001bfc31 100644
+--- a/homeassistant/components/denonavr/media_player.py
++++ b/homeassistant/components/denonavr/media_player.py
+@@ -113,7 +113,7 @@ async def async_setup_entry(
+     )
+ 
+     # Register additional services
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         SERVICE_GET_COMMAND,
+         {vol.Required(ATTR_COMMAND): cv.string},
+diff --git a/homeassistant/components/dyson/fan.py b/homeassistant/components/dyson/fan.py
+index e646babb94..5b24b4a9df 100644
+--- a/homeassistant/components/dyson/fan.py
++++ b/homeassistant/components/dyson/fan.py
+@@ -122,7 +122,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
+     async_add_entities(hass.data[DYSON_FAN_DEVICES])
+ 
+     # Register custom services
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         SERVICE_SET_NIGHT_MODE, SET_NIGHT_MODE_SCHEMA, "set_night_mode"
+     )
+diff --git a/homeassistant/components/ecobee/climate.py b/homeassistant/components/ecobee/climate.py
+index 6de23f09c6..9e9e2eff1c 100644
+--- a/homeassistant/components/ecobee/climate.py
++++ b/homeassistant/components/ecobee/climate.py
+@@ -181,7 +181,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+ 
+     async_add_entities(devices, True)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     def create_vacation_service(service):
+         """Create a vacation on the target thermostat."""
+diff --git a/homeassistant/components/elkm1/alarm_control_panel.py b/homeassistant/components/elkm1/alarm_control_panel.py
+index 756166c86a..b925026bfa 100644
+--- a/homeassistant/components/elkm1/alarm_control_panel.py
++++ b/homeassistant/components/elkm1/alarm_control_panel.py
+@@ -65,7 +65,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+     create_elk_entities(elk_data, elk.areas, "area", ElkArea, entities)
+     async_add_entities(entities, True)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_ALARM_ARM_VACATION,
+diff --git a/homeassistant/components/elkm1/sensor.py b/homeassistant/components/elkm1/sensor.py
+index e33196a08c..4a75ccb242 100644
+--- a/homeassistant/components/elkm1/sensor.py
++++ b/homeassistant/components/elkm1/sensor.py
+@@ -39,7 +39,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+     create_elk_entities(elk_data, elk.zones, "zone", ElkZone, entities)
+     async_add_entities(entities, True)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_SENSOR_COUNTER_REFRESH,
+diff --git a/homeassistant/components/epson/media_player.py b/homeassistant/components/epson/media_player.py
+index 6115cdd6ef..0b6828b774 100644
+--- a/homeassistant/components/epson/media_player.py
++++ b/homeassistant/components/epson/media_player.py
+@@ -72,7 +72,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+         projector, config_entry.title, unique_id
+     )
+     async_add_entities([projector_entity], True)
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         SERVICE_SELECT_CMODE,
+         {vol.Required(ATTR_CMODE): vol.All(cv.string, vol.Any(*CMODE_LIST_SET))},
+diff --git a/homeassistant/components/flo/switch.py b/homeassistant/components/flo/switch.py
+index e5f00a6125..ce9b48d142 100644
+--- a/homeassistant/components/flo/switch.py
++++ b/homeassistant/components/flo/switch.py
+@@ -31,7 +31,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+             entities.append(FloSwitch(device))
+     async_add_entities(entities)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_SET_AWAY_MODE, {}, "async_set_mode_away"
+diff --git a/homeassistant/components/foscam/camera.py b/homeassistant/components/foscam/camera.py
+index ea20f0a07f..31ac8c2cad 100644
+--- a/homeassistant/components/foscam/camera.py
++++ b/homeassistant/components/foscam/camera.py
+@@ -90,7 +90,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
+ 
+ async def async_setup_entry(hass, config_entry, async_add_entities):
+     """Add a Foscam IP camera from a config entry."""
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         SERVICE_PTZ,
+         {
+diff --git a/homeassistant/components/geniushub/switch.py b/homeassistant/components/geniushub/switch.py
+index faff6b8e2f..6760ce57e0 100644
+--- a/homeassistant/components/geniushub/switch.py
++++ b/homeassistant/components/geniushub/switch.py
+@@ -44,7 +44,7 @@ async def async_setup_platform(
+     )
+ 
+     # Register custom services
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SVC_SET_SWITCH_OVERRIDE,
+diff --git a/homeassistant/components/guardian/switch.py b/homeassistant/components/guardian/switch.py
+index ea6888bafb..c8ec4c6c64 100644
+--- a/homeassistant/components/guardian/switch.py
++++ b/homeassistant/components/guardian/switch.py
+@@ -42,7 +42,7 @@ async def async_setup_entry(
+     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+ ) -> None:
+     """Set up Guardian switches based on a config entry."""
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     for service_name, schema, method in [
+         (SERVICE_DISABLE_AP, {}, "async_disable_ap"),
+diff --git a/homeassistant/components/harmony/remote.py b/homeassistant/components/harmony/remote.py
+index 54d6b0fa7d..f98f5bb33e 100644
+--- a/homeassistant/components/harmony/remote.py
++++ b/homeassistant/components/harmony/remote.py
+@@ -70,7 +70,7 @@ async def async_setup_entry(
+     device = HarmonyRemote(data, default_activity, delay_secs, harmony_conf_file)
+     async_add_entities([device])
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_SYNC,
+diff --git a/homeassistant/components/hive/climate.py b/homeassistant/components/hive/climate.py
+index d5b60fa4b9..7639a07c82 100644
+--- a/homeassistant/components/hive/climate.py
++++ b/homeassistant/components/hive/climate.py
+@@ -67,7 +67,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
+             entities.append(HiveClimateEntity(hive, dev))
+     async_add_entities(entities, True)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         "boost_heating",
+diff --git a/homeassistant/components/hive/water_heater.py b/homeassistant/components/hive/water_heater.py
+index 0df10a9ed2..cca919b81d 100644
+--- a/homeassistant/components/hive/water_heater.py
++++ b/homeassistant/components/hive/water_heater.py
+@@ -53,7 +53,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
+             entities.append(HiveWaterHeater(hive, dev))
+     async_add_entities(entities, True)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_BOOST_HOT_WATER,
+diff --git a/homeassistant/components/homeassistant/scene.py b/homeassistant/components/homeassistant/scene.py
+index 3173d2d8c3..13a4ef6638 100644
+--- a/homeassistant/components/homeassistant/scene.py
++++ b/homeassistant/components/homeassistant/scene.py
+@@ -159,7 +159,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
+         return
+ 
+     # Store platform for later.
+-    platform = hass.data[DATA_PLATFORM] = entity_platform.current_platform.get()
++    platform = hass.data[DATA_PLATFORM] = entity_platform.async_get_current_platform()
+ 
+     async def reload_config(call):
+         """Reload the scene config."""
+diff --git a/homeassistant/components/isy994/services.py b/homeassistant/components/isy994/services.py
+index 023f102266..6d93b53b91 100644
+--- a/homeassistant/components/isy994/services.py
++++ b/homeassistant/components/isy994/services.py
+@@ -405,7 +405,7 @@ def async_unload_services(hass: HomeAssistant):
+ @callback
+ def async_setup_light_services(hass: HomeAssistant):
+     """Create device-specific services for the ISY Integration."""
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_SET_ON_LEVEL, SERVICE_SET_VALUE_SCHEMA, SERVICE_SET_ON_LEVEL
+diff --git a/homeassistant/components/izone/climate.py b/homeassistant/components/izone/climate.py
+index 6d4630d4c4..253bdc6cb2 100644
+--- a/homeassistant/components/izone/climate.py
++++ b/homeassistant/components/izone/climate.py
+@@ -97,7 +97,7 @@ async def async_setup_entry(
+     # connect to register any further components
+     async_dispatcher_connect(hass, DISPATCH_CONTROLLER_DISCOVERED, init_controller)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         IZONE_SERVICE_AIRFLOW_MIN,
+         IZONE_SERVICE_AIRFLOW_SCHEMA,
+diff --git a/homeassistant/components/kef/media_player.py b/homeassistant/components/kef/media_player.py
+index 5316568ab5..9452e24a4f 100644
+--- a/homeassistant/components/kef/media_player.py
++++ b/homeassistant/components/kef/media_player.py
+@@ -146,7 +146,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
+         hass.data[DOMAIN][host] = media_player
+         async_add_entities([media_player], update_before_add=True)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_MODE,
+diff --git a/homeassistant/components/kodi/media_player.py b/homeassistant/components/kodi/media_player.py
+index 72197f6b8e..42943cffb1 100644
+--- a/homeassistant/components/kodi/media_player.py
++++ b/homeassistant/components/kodi/media_player.py
+@@ -226,7 +226,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
+ 
+ async def async_setup_entry(hass, config_entry, async_add_entities):
+     """Set up the Kodi media player platform."""
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         SERVICE_ADD_MEDIA, KODI_ADD_MEDIA_SCHEMA, "async_add_media_to_playlist"
+     )
+diff --git a/homeassistant/components/lifx/light.py b/homeassistant/components/lifx/light.py
+index e366b810a9..167a1ceee0 100644
+--- a/homeassistant/components/lifx/light.py
++++ b/homeassistant/components/lifx/light.py
+@@ -175,7 +175,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+             # Priority 3: default interface
+             interfaces = [{}]
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     lifx_manager = LIFXManager(hass, platform, async_add_entities)
+     hass.data[DATA_LIFX_MANAGER] = lifx_manager
+ 
+diff --git a/homeassistant/components/litterrobot/vacuum.py b/homeassistant/components/litterrobot/vacuum.py
+index 32fc92cd55..fc398e4ad1 100644
+--- a/homeassistant/components/litterrobot/vacuum.py
++++ b/homeassistant/components/litterrobot/vacuum.py
+@@ -55,7 +55,7 @@ async def async_setup_entry(
+ 
+     async_add_entities(entities, True)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         SERVICE_RESET_WASTE_DRAWER,
+         {},
+diff --git a/homeassistant/components/lyric/climate.py b/homeassistant/components/lyric/climate.py
+index d61d638b99..a13f038149 100644
+--- a/homeassistant/components/lyric/climate.py
++++ b/homeassistant/components/lyric/climate.py
+@@ -105,7 +105,7 @@ async def async_setup_entry(
+ 
+     async_add_entities(entities, True)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_HOLD_TIME,
+diff --git a/homeassistant/components/melcloud/climate.py b/homeassistant/components/melcloud/climate.py
+index d8bc89a45f..49cb0fe462 100644
+--- a/homeassistant/components/melcloud/climate.py
++++ b/homeassistant/components/melcloud/climate.py
+@@ -84,7 +84,7 @@ async def async_setup_entry(
+         True,
+     )
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         SERVICE_SET_VANE_HORIZONTAL,
+         {vol.Required(CONF_POSITION): cv.string},
+diff --git a/homeassistant/components/monoprice/media_player.py b/homeassistant/components/monoprice/media_player.py
+index 4d6d337667..8b3de8903a 100644
+--- a/homeassistant/components/monoprice/media_player.py
++++ b/homeassistant/components/monoprice/media_player.py
+@@ -82,7 +82,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+     first_run = hass.data[DOMAIN][config_entry.entry_id][FIRST_RUN]
+     async_add_entities(entities, first_run)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     def _call_service(entities, service_call):
+         for entity in entities:
+diff --git a/homeassistant/components/motion_blinds/cover.py b/homeassistant/components/motion_blinds/cover.py
+index 2c4fee5f8a..a802ecfb66 100644
+--- a/homeassistant/components/motion_blinds/cover.py
++++ b/homeassistant/components/motion_blinds/cover.py
+@@ -116,7 +116,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+ 
+     async_add_entities(entities)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         SERVICE_SET_ABSOLUTE_POSITION,
+         SET_ABSOLUTE_POSITION_SCHEMA,
+diff --git a/homeassistant/components/neato/vacuum.py b/homeassistant/components/neato/vacuum.py
+index 2415b86fc6..b6cf43a6a3 100644
+--- a/homeassistant/components/neato/vacuum.py
++++ b/homeassistant/components/neato/vacuum.py
+@@ -87,7 +87,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
+     _LOGGER.debug("Adding vacuums %s", dev)
+     async_add_entities(dev, True)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     assert platform is not None
+ 
+     platform.async_register_entity_service(
+diff --git a/homeassistant/components/netatmo/camera.py b/homeassistant/components/netatmo/camera.py
+index 5445231282..11e674e043 100644
+--- a/homeassistant/components/netatmo/camera.py
++++ b/homeassistant/components/netatmo/camera.py
+@@ -99,7 +99,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
+ 
+     await data_handler.unregister_data_class(CAMERA_DATA_CLASS_NAME, None)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_SET_PERSONS_HOME,
+diff --git a/homeassistant/components/netatmo/climate.py b/homeassistant/components/netatmo/climate.py
+index 9993b4efac..e53b060d7c 100644
+--- a/homeassistant/components/netatmo/climate.py
++++ b/homeassistant/components/netatmo/climate.py
+@@ -158,7 +158,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
+ 
+     await data_handler.unregister_data_class(HOMEDATA_DATA_CLASS_NAME, None)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     if home_data is not None:
+         platform.async_register_entity_service(
+diff --git a/homeassistant/components/nexia/climate.py b/homeassistant/components/nexia/climate.py
+index aff3711cda..c510b905dd 100644
+--- a/homeassistant/components/nexia/climate.py
++++ b/homeassistant/components/nexia/climate.py
+@@ -108,7 +108,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+     nexia_home = nexia_data[NEXIA_DEVICE]
+     coordinator = nexia_data[UPDATE_COORDINATOR]
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_SET_HUMIDIFY_SETPOINT,
+diff --git a/homeassistant/components/nuki/lock.py b/homeassistant/components/nuki/lock.py
+index bd5d58ed42..ca6e72bde8 100644
+--- a/homeassistant/components/nuki/lock.py
++++ b/homeassistant/components/nuki/lock.py
+@@ -50,9 +50,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
+     )
+     async_add_entities(entities)
+ 
+-    platform = entity_platform.current_platform.get()
+-    assert platform is not None
+-
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         "lock_n_go",
+         {
+diff --git a/homeassistant/components/nx584/alarm_control_panel.py b/homeassistant/components/nx584/alarm_control_panel.py
+index 6366831b59..d5cdce5d64 100644
+--- a/homeassistant/components/nx584/alarm_control_panel.py
++++ b/homeassistant/components/nx584/alarm_control_panel.py
+@@ -65,7 +65,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
+     entity = NX584Alarm(name, alarm_client, url)
+     async_add_entities([entity])
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_BYPASS_ZONE,
+diff --git a/homeassistant/components/omnilogic/switch.py b/homeassistant/components/omnilogic/switch.py
+index fce4fb019d..ef4d2b32cc 100644
+--- a/homeassistant/components/omnilogic/switch.py
++++ b/homeassistant/components/omnilogic/switch.py
+@@ -47,7 +47,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
+     async_add_entities(entities)
+ 
+     # register service
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_SET_SPEED,
+diff --git a/homeassistant/components/onvif/camera.py b/homeassistant/components/onvif/camera.py
+index 91f4c76aba..0e95d24ef7 100644
+--- a/homeassistant/components/onvif/camera.py
++++ b/homeassistant/components/onvif/camera.py
+@@ -44,7 +44,7 @@ from .const import (
+ 
+ async def async_setup_entry(hass, config_entry, async_add_entities):
+     """Set up the ONVIF camera video stream."""
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     # Create PTZ service
+     platform.async_register_entity_service(
+diff --git a/homeassistant/components/openhome/media_player.py b/homeassistant/components/openhome/media_player.py
+index 270eb22ebd..7e333f7432 100644
+--- a/homeassistant/components/openhome/media_player.py
++++ b/homeassistant/components/openhome/media_player.py
+@@ -53,7 +53,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
+     async_add_entities([entity])
+     openhome_data.add(device.Uuid())
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_INVOKE_PIN,
+diff --git a/homeassistant/components/ozw/lock.py b/homeassistant/components/ozw/lock.py
+index 68acb3f969..9cadb2862f 100644
+--- a/homeassistant/components/ozw/lock.py
++++ b/homeassistant/components/ozw/lock.py
+@@ -37,7 +37,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+         async_dispatcher_connect(hass, f"{DOMAIN}_new_{LOCK_DOMAIN}", async_add_lock)
+     )
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_SET_USERCODE,
+diff --git a/homeassistant/components/pi_hole/switch.py b/homeassistant/components/pi_hole/switch.py
+index 015bab8fe6..955585243c 100644
+--- a/homeassistant/components/pi_hole/switch.py
++++ b/homeassistant/components/pi_hole/switch.py
+@@ -35,7 +35,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
+     async_add_entities(switches, True)
+ 
+     # register service
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         SERVICE_DISABLE,
+         {
+diff --git a/homeassistant/components/rachio/switch.py b/homeassistant/components/rachio/switch.py
+index 41b253d97e..65249d0b8e 100644
+--- a/homeassistant/components/rachio/switch.py
++++ b/homeassistant/components/rachio/switch.py
+@@ -140,7 +140,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+     )
+ 
+     if has_flex_sched:
+-        platform = entity_platform.current_platform.get()
++        platform = entity_platform.async_get_current_platform()
+         platform.async_register_entity_service(
+             SERVICE_SET_ZONE_MOISTURE,
+             {vol.Required(ATTR_PERCENT): cv.positive_int},
+diff --git a/homeassistant/components/rainmachine/switch.py b/homeassistant/components/rainmachine/switch.py
+index 9ad6ce113b..a90091c6c3 100644
+--- a/homeassistant/components/rainmachine/switch.py
++++ b/homeassistant/components/rainmachine/switch.py
+@@ -113,7 +113,7 @@ async def async_setup_entry(
+     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
+ ) -> None:
+     """Set up RainMachine switches based on a config entry."""
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     alter_program_schema = {vol.Required(CONF_PROGRAM_ID): cv.positive_int}
+     alter_zone_schema = {vol.Required(CONF_ZONE_ID): cv.positive_int}
+diff --git a/homeassistant/components/risco/binary_sensor.py b/homeassistant/components/risco/binary_sensor.py
+index ba32429c15..0e1d4d235c 100644
+--- a/homeassistant/components/risco/binary_sensor.py
++++ b/homeassistant/components/risco/binary_sensor.py
+@@ -14,7 +14,7 @@ SERVICE_UNBYPASS_ZONE = "unbypass_zone"
+ 
+ async def async_setup_entry(hass, config_entry, async_add_entities):
+     """Set up the Risco alarm control panel."""
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(SERVICE_BYPASS_ZONE, {}, "async_bypass_zone")
+     platform.async_register_entity_service(
+         SERVICE_UNBYPASS_ZONE, {}, "async_unbypass_zone"
+diff --git a/homeassistant/components/roku/media_player.py b/homeassistant/components/roku/media_player.py
+index 6fee53595a..ce5a77f06f 100644
+--- a/homeassistant/components/roku/media_player.py
++++ b/homeassistant/components/roku/media_player.py
+@@ -66,7 +66,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
+     unique_id = coordinator.data.info.serial_number
+     async_add_entities([RokuMediaPlayer(unique_id, coordinator)], True)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_SEARCH,
+diff --git a/homeassistant/components/roon/media_player.py b/homeassistant/components/roon/media_player.py
+index ff55c0fb1f..dd8d9e83c2 100644
+--- a/homeassistant/components/roon/media_player.py
++++ b/homeassistant/components/roon/media_player.py
+@@ -72,7 +72,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+     media_players = set()
+ 
+     # Register entity services
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         SERVICE_TRANSFER,
+         {vol.Required(ATTR_TRANSFER): cv.entity_id},
+diff --git a/homeassistant/components/snapcast/media_player.py b/homeassistant/components/snapcast/media_player.py
+index e1c5b7d875..dcb4b62b35 100644
+--- a/homeassistant/components/snapcast/media_player.py
++++ b/homeassistant/components/snapcast/media_player.py
+@@ -58,7 +58,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
+     host = config.get(CONF_HOST)
+     port = config.get(CONF_PORT, CONTROL_PORT)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(SERVICE_SNAPSHOT, {}, "snapshot")
+     platform.async_register_entity_service(SERVICE_RESTORE, {}, "async_restore")
+     platform.async_register_entity_service(
+diff --git a/homeassistant/components/songpal/media_player.py b/homeassistant/components/songpal/media_player.py
+index 5cc1f9b542..1746d5ece0 100644
+--- a/homeassistant/components/songpal/media_player.py
++++ b/homeassistant/components/songpal/media_player.py
+@@ -82,7 +82,7 @@ async def async_setup_entry(
+     songpal_entity = SongpalEntity(name, device)
+     async_add_entities([songpal_entity], True)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         SET_SOUND_SETTING,
+         {vol.Required(PARAM_NAME): cv.string, vol.Required(PARAM_VALUE): cv.string},
+diff --git a/homeassistant/components/sonos/media_player.py b/homeassistant/components/sonos/media_player.py
+index 2145063ff5..c9e6612fc0 100644
+--- a/homeassistant/components/sonos/media_player.py
++++ b/homeassistant/components/sonos/media_player.py
+@@ -151,7 +151,7 @@ async def async_setup_entry(
+     async_add_entities: AddEntitiesCallback,
+ ) -> None:
+     """Set up Sonos from a config entry."""
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     @callback
+     def async_create_entities(speaker: SonosSpeaker) -> None:
+diff --git a/homeassistant/components/squeezebox/media_player.py b/homeassistant/components/squeezebox/media_player.py
+index c57f95266f..baf8a011c6 100644
+--- a/homeassistant/components/squeezebox/media_player.py
++++ b/homeassistant/components/squeezebox/media_player.py
+@@ -210,7 +210,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+     asyncio.create_task(_discovery())
+ 
+     # Register entity services
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         SERVICE_CALL_METHOD,
+         {
+diff --git a/homeassistant/components/switcher_kis/switch.py b/homeassistant/components/switcher_kis/switch.py
+index 7a646d3de4..de47f11748 100644
+--- a/homeassistant/components/switcher_kis/switch.py
++++ b/homeassistant/components/switcher_kis/switch.py
+@@ -91,7 +91,7 @@ async def async_setup_platform(
+     device_data = hass.data[DOMAIN][DATA_DEVICE]
+     async_add_entities([SwitcherControl(hass.data[DOMAIN][DATA_DEVICE])])
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_SET_AUTO_OFF_NAME,
+diff --git a/homeassistant/components/tado/climate.py b/homeassistant/components/tado/climate.py
+index b86eb08b1b..aa9852f643 100644
+--- a/homeassistant/components/tado/climate.py
++++ b/homeassistant/components/tado/climate.py
+@@ -81,7 +81,7 @@ async def async_setup_entry(
+     tado = hass.data[DOMAIN][entry.entry_id][DATA]
+     entities = await hass.async_add_executor_job(_generate_entities, tado)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_CLIMATE_TIMER,
+diff --git a/homeassistant/components/tado/water_heater.py b/homeassistant/components/tado/water_heater.py
+index 3fcdb6426f..56bd29bbd9 100644
+--- a/homeassistant/components/tado/water_heater.py
++++ b/homeassistant/components/tado/water_heater.py
+@@ -68,7 +68,7 @@ async def async_setup_entry(
+     tado = hass.data[DOMAIN][entry.entry_id][DATA]
+     entities = await hass.async_add_executor_job(_generate_entities, tado)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_WATER_HEATER_TIMER,
+diff --git a/homeassistant/components/upb/light.py b/homeassistant/components/upb/light.py
+index 78a983254b..404e45e0c6 100644
+--- a/homeassistant/components/upb/light.py
++++ b/homeassistant/components/upb/light.py
+@@ -27,7 +27,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+         UpbLight(upb.devices[dev], unique_id, upb) for dev in upb.devices
+     )
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_LIGHT_FADE_START, UPB_BRIGHTNESS_RATE_SCHEMA, "async_light_fade_start"
+diff --git a/homeassistant/components/upb/scene.py b/homeassistant/components/upb/scene.py
+index 81a2f23c3c..c0c3fb0ffb 100644
+--- a/homeassistant/components/upb/scene.py
++++ b/homeassistant/components/upb/scene.py
+@@ -20,7 +20,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+     unique_id = config_entry.entry_id
+     async_add_entities(UpbLink(upb.links[link], unique_id, upb) for link in upb.links)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_LINK_DEACTIVATE, {}, "async_link_deactivate"
+diff --git a/homeassistant/components/utility_meter/sensor.py b/homeassistant/components/utility_meter/sensor.py
+index d28819a38c..b8e7cef111 100644
+--- a/homeassistant/components/utility_meter/sensor.py
++++ b/homeassistant/components/utility_meter/sensor.py
+@@ -94,7 +94,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
+ 
+     async_add_entities(meters)
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_CALIBRATE_METER,
+diff --git a/homeassistant/components/verisure/camera.py b/homeassistant/components/verisure/camera.py
+index b23551ddd6..bf244188a5 100644
+--- a/homeassistant/components/verisure/camera.py
++++ b/homeassistant/components/verisure/camera.py
+@@ -13,7 +13,7 @@ from homeassistant.config_entries import ConfigEntry
+ from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+ from homeassistant.core import HomeAssistant
+ from homeassistant.helpers.entity import DeviceInfo, Entity
+-from homeassistant.helpers.entity_platform import current_platform
++from homeassistant.helpers.entity_platform import async_get_current_platform
+ from homeassistant.helpers.update_coordinator import CoordinatorEntity
+ 
+ from .const import CONF_GIID, DOMAIN, LOGGER, SERVICE_CAPTURE_SMARTCAM
+@@ -28,7 +28,7 @@ async def async_setup_entry(
+     """Set up Verisure sensors based on a config entry."""
+     coordinator: VerisureDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+ 
+-    platform = current_platform.get()
++    platform = async_get_current_platform()
+     platform.async_register_entity_service(
+         SERVICE_CAPTURE_SMARTCAM,
+         {},
+diff --git a/homeassistant/components/verisure/lock.py b/homeassistant/components/verisure/lock.py
+index ee12fcca2c..9c41053a34 100644
+--- a/homeassistant/components/verisure/lock.py
++++ b/homeassistant/components/verisure/lock.py
+@@ -12,7 +12,7 @@ from homeassistant.config_entries import ConfigEntry
+ from homeassistant.const import ATTR_CODE, STATE_LOCKED, STATE_UNLOCKED
+ from homeassistant.core import HomeAssistant
+ from homeassistant.helpers.entity import DeviceInfo, Entity
+-from homeassistant.helpers.entity_platform import current_platform
++from homeassistant.helpers.entity_platform import async_get_current_platform
+ from homeassistant.helpers.update_coordinator import CoordinatorEntity
+ 
+ from .const import (
+@@ -36,7 +36,7 @@ async def async_setup_entry(
+     """Set up Verisure alarm control panel from a config entry."""
+     coordinator: VerisureDataUpdateCoordinator = hass.data[DOMAIN][entry.entry_id]
+ 
+-    platform = current_platform.get()
++    platform = async_get_current_platform()
+     platform.async_register_entity_service(
+         SERVICE_DISABLE_AUTOLOCK,
+         {},
+diff --git a/homeassistant/components/vicare/climate.py b/homeassistant/components/vicare/climate.py
+index c819c6593a..cfbfa1ddec 100644
+--- a/homeassistant/components/vicare/climate.py
++++ b/homeassistant/components/vicare/climate.py
+@@ -104,7 +104,7 @@ async def async_setup_platform(
+         ]
+     )
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_SET_VICARE_MODE,
+diff --git a/homeassistant/components/vizio/media_player.py b/homeassistant/components/vizio/media_player.py
+index 042347a975..3e8f004475 100644
+--- a/homeassistant/components/vizio/media_player.py
++++ b/homeassistant/components/vizio/media_player.py
+@@ -120,7 +120,7 @@ async def async_setup_entry(
+     entity = VizioDevice(config_entry, device, name, device_class, apps_coordinator)
+ 
+     async_add_entities([entity], update_before_add=True)
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         SERVICE_UPDATE_SETTING, UPDATE_SETTING_SCHEMA, "async_update_setting"
+     )
+diff --git a/homeassistant/components/wemo/fan.py b/homeassistant/components/wemo/fan.py
+index a3da5edae7..6910a4c853 100644
+--- a/homeassistant/components/wemo/fan.py
++++ b/homeassistant/components/wemo/fan.py
+@@ -81,7 +81,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+         ]
+     )
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     # This will call WemoHumidifier.set_humidity(target_humidity=VALUE)
+     platform.async_register_entity_service(
+diff --git a/homeassistant/components/xiaomi_miio/remote.py b/homeassistant/components/xiaomi_miio/remote.py
+index 7d75e943d4..5428d8a7bd 100644
+--- a/homeassistant/components/xiaomi_miio/remote.py
++++ b/homeassistant/components/xiaomi_miio/remote.py
+@@ -143,7 +143,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
+             "Timeout. No infrared command captured", title="Xiaomi Miio Remote"
+         )
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_LEARN,
+diff --git a/homeassistant/components/xiaomi_miio/vacuum.py b/homeassistant/components/xiaomi_miio/vacuum.py
+index 8551a80ff8..d0bfc14859 100644
+--- a/homeassistant/components/xiaomi_miio/vacuum.py
++++ b/homeassistant/components/xiaomi_miio/vacuum.py
+@@ -150,7 +150,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+         mirobo = MiroboVacuum(name, vacuum, config_entry, unique_id)
+         entities.append(mirobo)
+ 
+-        platform = entity_platform.current_platform.get()
++        platform = entity_platform.async_get_current_platform()
+ 
+         platform.async_register_entity_service(
+             SERVICE_START_REMOTE_CONTROL,
+diff --git a/homeassistant/components/yamaha/media_player.py b/homeassistant/components/yamaha/media_player.py
+index 5147e57dfc..3f7df11501 100644
+--- a/homeassistant/components/yamaha/media_player.py
++++ b/homeassistant/components/yamaha/media_player.py
+@@ -152,7 +152,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
+     async_add_entities(entities)
+ 
+     # Register Service 'select_scene'
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+     platform.async_register_entity_service(
+         SERVICE_SELECT_SCENE,
+         {vol.Required(ATTR_SCENE): cv.string},
+diff --git a/homeassistant/components/yeelight/light.py b/homeassistant/components/yeelight/light.py
+index 218bcbbdb2..0782ab94c6 100644
+--- a/homeassistant/components/yeelight/light.py
++++ b/homeassistant/components/yeelight/light.py
+@@ -375,7 +375,7 @@ def _async_setup_services(hass: HomeAssistant):
+             )
+         )
+ 
+-    platform = entity_platform.current_platform.get()
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_SET_MODE,
+diff --git a/homeassistant/components/zha/lock.py b/homeassistant/components/zha/lock.py
+index 5684b22db6..99f6230de0 100644
+--- a/homeassistant/components/zha/lock.py
++++ b/homeassistant/components/zha/lock.py
+@@ -50,8 +50,7 @@ async def async_setup_entry(hass, config_entry, async_add_entities):
+     )
+     hass.data[DATA_ZHA][DATA_ZHA_DISPATCHERS].append(unsub)
+ 
+-    platform = entity_platform.current_platform.get()
+-    assert platform
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(  # type: ignore
+         SERVICE_SET_LOCK_USER_CODE,
+diff --git a/homeassistant/components/zwave_js/lock.py b/homeassistant/components/zwave_js/lock.py
+index 37923c4983..42230a9c26 100644
+--- a/homeassistant/components/zwave_js/lock.py
++++ b/homeassistant/components/zwave_js/lock.py
+@@ -68,8 +68,7 @@ async def async_setup_entry(
+         )
+     )
+ 
+-    platform = entity_platform.current_platform.get()
+-    assert platform
++    platform = entity_platform.async_get_current_platform()
+ 
+     platform.async_register_entity_service(
+         SERVICE_SET_LOCK_USERCODE,

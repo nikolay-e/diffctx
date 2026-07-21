@@ -1,0 +1,92 @@
+From fcbf169d6014d873328939be7c4acb08d96c9fb2 Mon Sep 17 00:00:00 2001
+From: Kevin Patyk <74557243+Kevin-Patyk@users.noreply.github.com>
+Date: Fri, 20 Feb 2026 14:13:25 +0100
+Subject: [PATCH] fix(rust): Replace panic with error when sorting object dtype
+ columns (#26601)
+
+---
+ crates/polars-core/src/chunked_array/ops/sort/mod.rs   |  8 ++++++++
+ crates/polars-core/src/frame/mod.rs                    |  8 ++++++++
+ py-polars/tests/unit/dataframe/test_df.py              | 10 ++++++++++
+ .../tests/unit/testing/test_assert_frame_equal.py      |  5 ++---
+ 4 files changed, 28 insertions(+), 3 deletions(-)
+
+diff --git a/crates/polars-core/src/chunked_array/ops/sort/mod.rs b/crates/polars-core/src/chunked_array/ops/sort/mod.rs
+index 910eac12a..5dd023267 100644
+--- a/crates/polars-core/src/chunked_array/ops/sort/mod.rs
++++ b/crates/polars-core/src/chunked_array/ops/sort/mod.rs
+@@ -823,6 +823,14 @@ pub fn _broadcast_bools(n_cols: usize, values: &mut Vec<bool>) {
+ pub fn arg_sort(columns: &[Column], mut sort_options: SortMultipleOptions) -> PolarsResult<IdxCa> {
+     assert!(!columns.is_empty());
+ 
++    for column in columns {
++        if column.dtype().is_object() {
++            polars_bail!(
++                InvalidOperation: "column '{}' has a dtype of '{}', which does not support sorting", column.name(), column.dtype()
++            )
++        }
++    }
++
+     if let [c] = columns {
+         Ok(c.arg_sort(SortOptions {
+             descending: sort_options.descending[0],
+diff --git a/crates/polars-core/src/frame/mod.rs b/crates/polars-core/src/frame/mod.rs
+index 0d8bfba6a..6d1add898 100644
+--- a/crates/polars-core/src/frame/mod.rs
++++ b/crates/polars-core/src/frame/mod.rs
+@@ -1415,6 +1415,14 @@ impl DataFrame {
+             };
+         }
+ 
++        for column in &by_column {
++            if column.dtype().is_object() {
++                polars_bail!(
++                    InvalidOperation: "column '{}' has a dtype of '{}', which does not support sorting", column.name(), column.dtype()
++                )
++            }
++        }
++
+         // note that the by_column argument also contains evaluated expression from
+         // polars-lazy that may not even be present in this dataframe. therefore
+         // when we try to set the first columns as sorted, we ignore the error as
+diff --git a/py-polars/tests/unit/dataframe/test_df.py b/py-polars/tests/unit/dataframe/test_df.py
+index 4d9f57834..a20acf54a 100644
+--- a/py-polars/tests/unit/dataframe/test_df.py
++++ b/py-polars/tests/unit/dataframe/test_df.py
+@@ -3333,3 +3333,13 @@ def test_with_columns_generator_alias() -> None:
+     df = pl.select(a=1).with_columns(expr.alias(name) for name, expr in data.items())
+     expected = pl.DataFrame({"a": [2]})
+     assert df.equals(expected)
++
++
++def test_sort_errors_with_object_dtype_24677() -> None:
++    df = pl.DataFrame({"a": [object(), object()], "b": [1, 2]})
++
++    with pytest.raises(
++        pl.exceptions.InvalidOperationError,
++        match=r"column '.*' has a dtype of '.*', which does not support sorting",
++    ):
++        df.sort("a")
+diff --git a/py-polars/tests/unit/testing/test_assert_frame_equal.py b/py-polars/tests/unit/testing/test_assert_frame_equal.py
+index da679c902..56941aabd 100644
+--- a/py-polars/tests/unit/testing/test_assert_frame_equal.py
++++ b/py-polars/tests/unit/testing/test_assert_frame_equal.py
+@@ -7,7 +7,6 @@ import pytest
+ from hypothesis import given
+ 
+ import polars as pl
+-from polars.exceptions import InvalidOperationError
+ from polars.testing import (
+     assert_frame_equal,
+     assert_frame_not_equal,
+@@ -369,8 +368,8 @@ def test_assert_frame_equal_check_row_order_unsortable(assert_function: Any) ->
+     df1 = pl.DataFrame({"a": [object(), object()], "b": [3, 4]})
+     df2 = pl.DataFrame({"a": [object(), object()], "b": [4, 3]})
+     with pytest.raises(
+-        InvalidOperationError,
+-        match="`arg_sort_multiple` operation not supported for dtype `object`",
++        pl.exceptions.InvalidOperationError,
++        match=r"column '.*' has a dtype of '.*', which does not support sorting",
+     ):
+         assert_function(df1, df2, check_row_order=False)
+ 

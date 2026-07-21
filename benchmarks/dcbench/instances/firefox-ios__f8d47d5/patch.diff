@@ -1,0 +1,3185 @@
+From f8d47d5593b7692a4308da919d2aff6a40acdc80 Mon Sep 17 00:00:00 2001
+From: farhanpatel <farhanpatel.17@gmail.com>
+Date: Mon, 26 Mar 2018 10:24:05 -0700
+Subject: [PATCH] Disable Objc inference. And add @objc to all selectors that
+ need to be exposed to the Objc runtime.
+
+---
+ Client.xcodeproj/project.pbxproj              | 949 ++++++++++++++++--
+ Client/Extensions/UIViewExtensions.swift      |   2 +-
+ ...AuthenticationSettingsViewController.swift |   2 +-
+ .../BasePasscodeViewController.swift          |   2 +-
+ .../AuthenticationManager/PasscodeViews.swift |   4 +-
+ .../SensitiveViewController.swift             |   6 +-
+ .../BackForwardListViewController.swift       |   2 +-
+ .../Browser/BrowserViewController.swift       |  16 +-
+ Client/Frontend/Browser/ButtonToast.swift     |   2 +-
+ .../Frontend/Browser/ContextMenuHelper.swift  |   2 +-
+ Client/Frontend/Browser/OpenInHelper.swift    |   2 +-
+ .../OpenWithSettingsViewController.swift      |   2 +-
+ .../Browser/QRCodeViewController.swift        |   6 +-
+ .../Frontend/Browser/ReaderModeBarView.swift  |   8 +-
+ .../Browser/SearchViewController.swift        |   6 +-
+ Client/Frontend/Browser/TabLocationView.swift |  18 +-
+ Client/Frontend/Browser/TabManager.swift      |   2 +-
+ Client/Frontend/Browser/TabToolbar.swift      |   2 +-
+ .../TabTrayController+KeyCommands.swift       |  10 +-
+ .../Frontend/Browser/TabTrayController.swift  |  18 +-
+ .../Browser/TopTabsViewController.swift       |   6 +-
+ Client/Frontend/Browser/TopTabsViews.swift    |   2 +-
+ Client/Frontend/Browser/URLBarView.swift      |  16 +-
+ .../ContentBlockerSettingViewController.swift |   2 +-
+ .../Frontend/Home/ActivityStreamPanel.swift   |   2 +-
+ .../Home/ActivityStreamTopSitesCell.swift     |   2 +-
+ Client/Frontend/Home/BookmarksPanel.swift     |   2 +-
+ Client/Frontend/Home/HistoryPanel.swift       |   2 +-
+ .../Home/HomePanelViewController.swift        |   4 +-
+ Client/Frontend/Home/ReaderPanel.swift        |   2 +-
+ Client/Frontend/Home/RemoteTabsPanel.swift    |   2 +-
+ .../Frontend/Intro/IntroViewController.swift  |   8 +-
+ .../ReaderModeStyleViewController.swift       |   8 +-
+ .../Settings/AppSettingsOptions.swift         |   6 +-
+ .../Settings/CustomSearchViewController.swift |   2 +-
+ .../Settings/LoginDetailViewController.swift  |   4 +-
+ .../Settings/SearchEnginePicker.swift         |   2 +-
+ .../SearchSettingsTableViewController.swift   |  10 +-
+ .../SettingsContentViewController.swift       |   2 +-
+ .../SettingsNavigationController.swift        |   2 +-
+ .../Widgets/AutocompleteTextField.swift       |   4 +-
+ .../Frontend/Widgets/PhotonActionSheet.swift  |   2 +-
+ Client/Frontend/Widgets/SearchInputView.swift |   6 +-
+ Client/Frontend/Widgets/SnackBar.swift        |   2 +-
+ Client/Frontend/Widgets/TabsButton.swift      |   4 +-
+ Client/Helpers/DynamicFontHelper.swift        |   2 +-
+ .../SendTo/ClientPickerViewController.swift   |   7 +-
+ .../SendTo/InstructionsViewController.swift   |   2 +-
+ Extensions/ShareTo/ShareViewController.swift  |   4 +-
+ Providers/Profile.swift                       |   2 +-
+ 50 files changed, 961 insertions(+), 221 deletions(-)
+
+diff --git a/Client.xcodeproj/project.pbxproj b/Client.xcodeproj/project.pbxproj
+index 8f5279bd5..0a2f3589f 100644
+--- a/Client.xcodeproj/project.pbxproj
++++ b/Client.xcodeproj/project.pbxproj
+@@ -43,6 +43,8 @@
+ 		0BF42D4F1A7CD09600889E28 /* TestFavicons.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BF42D4E1A7CD09600889E28 /* TestFavicons.swift */; };
+ 		0BF8F8DA1AEFF1C900E90BC2 /* noTitle.html in Resources */ = {isa = PBXBuildFile; fileRef = 0BF8F8D91AEFF1C900E90BC2 /* noTitle.html */; };
+ 		19DE1F671EC13B6400428B8C /* LeanplumIntegration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 19DE1F661EC13B6400428B8C /* LeanplumIntegration.swift */; };
++		2805F5A61B8BCA7A00268FD1 /* ReadingList.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E4D567181ADECE2700F1EFE7 /* ReadingList.framework */; };
++		28078A471B1507EF0053B46A /* ReadingList.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E4D567181ADECE2700F1EFE7 /* ReadingList.framework */; };
+ 		280CB1371C20E0A3005AF147 /* BookmarksSynchronizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = 280CB1361C20E0A3005AF147 /* BookmarksSynchronizer.swift */; };
+ 		28126F481C2F948E006466CC /* SQLiteBookmarksHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28126F471C2F948E006466CC /* SQLiteBookmarksHelpers.swift */; };
+ 		28126F6E1C2F94F9006466CC /* SQLiteBookmarksModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28126F6D1C2F94F9006466CC /* SQLiteBookmarksModel.swift */; };
+@@ -60,6 +62,7 @@
+ 		2827319C1ABC9C2F00AA1954 /* Record.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28CE83BE1A1D1D3200576538 /* Record.swift */; };
+ 		2827319D1ABC9C2F00AA1954 /* SyncMeta.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28CE83BF1A1D1D3200576538 /* SyncMeta.swift */; };
+ 		2827319E1ABC9C5900AA1954 /* RecordTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 28C0779D1A3B066000834FE5 /* RecordTests.swift */; };
++		28293BB51B333EA2004A65EC /* ReadingList.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E4D567181ADECE2700F1EFE7 /* ReadingList.framework */; };
+ 		2829D37A1C2F0A7F00DCF931 /* BookmarksModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2829D3791C2F0A7F00DCF931 /* BookmarksModel.swift */; };
+ 		2829D3A01C2F0AD400DCF931 /* Sharing.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2829D39F1C2F0AD400DCF931 /* Sharing.swift */; };
+ 		282DA4731A68C1E700A406E2 /* OpenSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FA77831A43B2CE0010CD32 /* OpenSearch.swift */; };
+@@ -327,6 +330,7 @@
+ 		7B604F891C4949B1006EEEC3 /* Alamofire.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B604F851C494983006EEEC3 /* Alamofire.framework */; };
+ 		7B604F8A1C4949C1006EEEC3 /* Alamofire.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B604F851C494983006EEEC3 /* Alamofire.framework */; };
+ 		7B604F901C494B0F006EEEC3 /* Alamofire.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B604F851C494983006EEEC3 /* Alamofire.framework */; };
++		7B604F911C494B3C006EEEC3 /* Alamofire.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B604F851C494983006EEEC3 /* Alamofire.framework */; };
+ 		7B604F991C494F74006EEEC3 /* KIF.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B604F981C494F74006EEEC3 /* KIF.framework */; };
+ 		7B604F9B1C4950F2006EEEC3 /* SDWebImage.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B604F9A1C4950F2006EEEC3 /* SDWebImage.framework */; };
+ 		7B604F9C1C495135006EEEC3 /* SDWebImage.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B604F9A1C4950F2006EEEC3 /* SDWebImage.framework */; };
+@@ -397,9 +401,6 @@
+ 		D02818611EF056C800240CAA /* SentryIntegration.swift in Sources */ = {isa = PBXBuildFile; fileRef = D02818601EF056C800240CAA /* SentryIntegration.swift */; };
+ 		D03F8EB22004014E003C2224 /* FaviconHandler.swift in Sources */ = {isa = PBXBuildFile; fileRef = D03F8EB12004014E003C2224 /* FaviconHandler.swift */; };
+ 		D03F8F23200EAC1F003C2224 /* AllFramesAtDocumentStart.js in Resources */ = {isa = PBXBuildFile; fileRef = D03F8F22200EAC1E003C2224 /* AllFramesAtDocumentStart.js */; };
+-		D07696F820697F9C00FACFD8 /* ReadingListSchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = D07696F720697F9C00FACFD8 /* ReadingListSchema.swift */; };
+-		D076971F206AC60900FACFD8 /* ReadingList.swift in Sources */ = {isa = PBXBuildFile; fileRef = D076971E206AC60900FACFD8 /* ReadingList.swift */; };
+-		D0769743206C19E900FACFD8 /* SQLiteReadingList.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0769742206C19E800FACFD8 /* SQLiteReadingList.swift */; };
+ 		D09A0CD81FAA23F6009A0273 /* Shared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 288A2D861AB8B3260023ABC3 /* Shared.framework */; };
+ 		D09A0CD91FAA2413009A0273 /* Shared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 288A2D861AB8B3260023ABC3 /* Shared.framework */; };
+ 		D09A0CDA1FAA24C2009A0273 /* Storage.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2FCAE21A1ABB51F800877008 /* Storage.framework */; };
+@@ -408,7 +409,6 @@
+ 		D09A0CDD1FAA24D0009A0273 /* FxA.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 28CE83D01A1D1D5100576538 /* FxA.framework */; };
+ 		D09A0D301FAB8AF3009A0273 /* Sentry.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E46175F21EBB73A10021AE8A /* Sentry.framework */; settings = {ATTRIBUTES = (Weak, ); }; };
+ 		D0B29EE01F460BDF00C7CEFC /* LoginsSchema.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0B29EDF1F460BDF00C7CEFC /* LoginsSchema.swift */; };
+-		D0B693D5206C5BB9008A8B11 /* TestSQLiteReadingList.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0B693D4206C5BB9008A8B11 /* TestSQLiteReadingList.swift */; };
+ 		D0C95E0E200FD3B200E4E51C /* PrintHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C95E0D200FD3B200E4E51C /* PrintHelper.swift */; };
+ 		D0C95E36200FDC5500E4E51C /* MetadataParserHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C95E35200FDC5400E4E51C /* MetadataParserHelper.swift */; };
+ 		D0C95EF6201A55A800E4E51C /* BrowserViewController+UIDropInteractionDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0C95EF5201A55A800E4E51C /* BrowserViewController+UIDropInteractionDelegate.swift */; };
+@@ -500,6 +500,8 @@
+ 		E40FAB0C1A7ABB77009CB80D /* WebServer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E40FAB0B1A7ABB77009CB80D /* WebServer.swift */; };
+ 		E418D0D91A251B3200CAE47A /* Profile.swift in Sources */ = {isa = PBXBuildFile; fileRef = D34DC84D1A16C40C00D49B7B /* Profile.swift */; };
+ 		E41A7D4B1A1BE04500245963 /* InitialViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E41A7D4A1A1BE04500245963 /* InitialViewController.swift */; };
++		E41F0D981ADFFB5400FC7387 /* ReadingListService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E41F0D971ADFFB5400FC7387 /* ReadingListService.swift */; };
++		E41F0D9B1ADFFC5600FC7387 /* ReadingListError.swift in Sources */ = {isa = PBXBuildFile; fileRef = E41F0D9A1ADFFC5600FC7387 /* ReadingListError.swift */; };
+ 		E42736071EA858CF009C428E /* TabsPayloadTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E42736061EA858CF009C428E /* TabsPayloadTests.swift */; };
+ 		E42CCDE81A23A73D00B794D3 /* Profile.swift in Sources */ = {isa = PBXBuildFile; fileRef = D34DC84D1A16C40C00D49B7B /* Profile.swift */; };
+ 		E4424B3C1AC71FB400F44C38 /* FiraSans-Book.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E4424B3B1AC71FB400F44C38 /* FiraSans-Book.ttf */; };
+@@ -510,6 +512,7 @@
+ 		E444F7E31B4B1C8000FEB19B /* OpenSearch.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3FA77831A43B2CE0010CD32 /* OpenSearch.swift */; };
+ 		E444F7E51B4B1CB600FEB19B /* ImageIO.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B8E0FF31A932BD500161DC3 /* ImageIO.framework */; };
+ 		E444F8271B4C1E8800FEB19B /* Sync.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 2827315E1ABC9BE600AA1954 /* Sync.framework */; };
++		E4483B5A1ADED63300B485A7 /* Shared.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 288A2D861AB8B3260023ABC3 /* Shared.framework */; };
+ 		E47616C71AB74CA600E7DD25 /* ReaderModeBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E47616C61AB74CA600E7DD25 /* ReaderModeBarView.swift */; };
+ 		E4791B9C1CC035FD00C6D77B /* testcert1.pem in Resources */ = {isa = PBXBuildFile; fileRef = D37DE2C81CA356F900A5EC69 /* testcert1.pem */; };
+ 		E4791BAA1CC0360200C6D77B /* testcert2.pem in Resources */ = {isa = PBXBuildFile; fileRef = D37DE2C91CA356F900A5EC69 /* testcert2.pem */; };
+@@ -551,6 +554,30 @@
+ 		E4CD9F541A71506400318571 /* Reader.html in Resources */ = {isa = PBXBuildFile; fileRef = E4CD9F531A71506400318571 /* Reader.html */; };
+ 		E4CD9F5B1A71506C00318571 /* Reader.css in Resources */ = {isa = PBXBuildFile; fileRef = E4CD9F5A1A71506C00318571 /* Reader.css */; };
+ 		E4CD9F6D1A77DD2800318571 /* ReaderModeStyleViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4CD9F6C1A77DD2800318571 /* ReaderModeStyleViewController.swift */; };
++		E4D567231ADECE2700F1EFE7 /* ReadingList.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E4D567181ADECE2700F1EFE7 /* ReadingList.framework */; };
++		E4D5672F1ADECE2800F1EFE7 /* ReadingList.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E4D567181ADECE2700F1EFE7 /* ReadingList.framework */; };
++		E4D5676A1ADECE8100F1EFE7 /* ReadingListAuthenticator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D567551ADECE8100F1EFE7 /* ReadingListAuthenticator.swift */; };
++		E4D5676C1ADECE8100F1EFE7 /* ReadingListBasicAuthAuthenticator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D567561ADECE8100F1EFE7 /* ReadingListBasicAuthAuthenticator.swift */; };
++		E4D5676E1ADECE8100F1EFE7 /* ReadingListBatchRecordResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D567571ADECE8100F1EFE7 /* ReadingListBatchRecordResponse.swift */; };
++		E4D567701ADECE8100F1EFE7 /* ReadingListChangeAccumulator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D567581ADECE8100F1EFE7 /* ReadingListChangeAccumulator.swift */; };
++		E4D567721ADECE8100F1EFE7 /* ReadingListClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D567591ADECE8100F1EFE7 /* ReadingListClient.swift */; };
++		E4D567741ADECE8100F1EFE7 /* ReadingListClientMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D5675A1ADECE8100F1EFE7 /* ReadingListClientMetadata.swift */; };
++		E4D567761ADECE8100F1EFE7 /* ReadingListClientRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D5675B1ADECE8100F1EFE7 /* ReadingListClientRecord.swift */; };
++		E4D5677A1ADECE8100F1EFE7 /* ReadingListFetchSpec.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D5675D1ADECE8100F1EFE7 /* ReadingListFetchSpec.swift */; };
++		E4D5677C1ADECE8100F1EFE7 /* ReadingListOAuthAuthenticator.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D5675E1ADECE8100F1EFE7 /* ReadingListOAuthAuthenticator.swift */; };
++		E4D5677E1ADECE8100F1EFE7 /* ReadingListRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D5675F1ADECE8100F1EFE7 /* ReadingListRecord.swift */; };
++		E4D567801ADECE8100F1EFE7 /* ReadingListRecordResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D567601ADECE8100F1EFE7 /* ReadingListRecordResponse.swift */; };
++		E4D567821ADECE8100F1EFE7 /* ReadingListRecordsResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D567611ADECE8100F1EFE7 /* ReadingListRecordsResponse.swift */; };
++		E4D567841ADECE8100F1EFE7 /* ReadingListResponse.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D567621ADECE8100F1EFE7 /* ReadingListResponse.swift */; };
++		E4D567861ADECE8100F1EFE7 /* ReadingListServerMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D567631ADECE8100F1EFE7 /* ReadingListServerMetadata.swift */; };
++		E4D567881ADECE8100F1EFE7 /* ReadingListServerRecord.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D567641ADECE8100F1EFE7 /* ReadingListServerRecord.swift */; };
++		E4D5678A1ADECE8100F1EFE7 /* ReadingListSQLStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D567651ADECE8100F1EFE7 /* ReadingListSQLStorage.swift */; };
++		E4D5678C1ADECE8100F1EFE7 /* ReadingListStorage.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D567661ADECE8100F1EFE7 /* ReadingListStorage.swift */; };
++		E4D5678E1ADECE8100F1EFE7 /* ReadingListSynchronizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D567671ADECE8100F1EFE7 /* ReadingListSynchronizer.swift */; };
++		E4D567901ADECE8100F1EFE7 /* ReadingListSyncMetadata.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D567681ADECE8100F1EFE7 /* ReadingListSyncMetadata.swift */; };
++		E4D567921ADECE8100F1EFE7 /* ReadingListUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D567691ADECE8100F1EFE7 /* ReadingListUtils.swift */; };
++		E4D5679F1ADECEB800F1EFE7 /* ReadingListClientRecordTestCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D567951ADECEB800F1EFE7 /* ReadingListClientRecordTestCase.swift */; };
++		E4D567A51ADECEB800F1EFE7 /* ReadingListStorageTestCase.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4D5679B1ADECEB800F1EFE7 /* ReadingListStorageTestCase.swift */; };
+ 		E4D6BEB91A0930EC00F538BD /* LaunchScreen.xib in Resources */ = {isa = PBXBuildFile; fileRef = E4D6BEB81A0930EC00F538BD /* LaunchScreen.xib */; };
+ 		E4E25CCB1CA99E7400D0F088 /* HexExtensionsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4E25CCA1CA99E7400D0F088 /* HexExtensionsTests.swift */; };
+ 		E4E7EB6D1C4AED5E0094275D /* SupportUtilsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4E7EB6C1C4AED5E0094275D /* SupportUtilsTests.swift */; };
+@@ -562,7 +589,10 @@
+ 		E60138661C89EB7D00DF9756 /* Storage.framework in Copy Frameworks */ = {isa = PBXBuildFile; fileRef = 2FCAE21A1ABB51F800877008 /* Storage.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+ 		E60138671C89EB8300DF9756 /* Account.framework in Copy Frameworks */ = {isa = PBXBuildFile; fileRef = 2FA435FB1ABB83B4008031D1 /* Account.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+ 		E60138681C89EB8800DF9756 /* Sync.framework in Copy Frameworks */ = {isa = PBXBuildFile; fileRef = 2827315E1ABC9BE600AA1954 /* Sync.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
++		E60138691C89EB8E00DF9756 /* ReadingList.framework in Copy Frameworks */ = {isa = PBXBuildFile; fileRef = E4D567181ADECE2700F1EFE7 /* ReadingList.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
++		E601386A1C89EB9800DF9756 /* SQLite.framework in Copy Frameworks */ = {isa = PBXBuildFile; fileRef = 7B9A62DB1C4002B1005C83DC /* SQLite.framework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
+ 		E60222DC1C6E55610061C436 /* FxA.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 28CE83D01A1D1D5100576538 /* FxA.framework */; };
++		E60222E31C6E57B20061C436 /* SQLite.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 7B9A62DB1C4002B1005C83DC /* SQLite.framework */; };
+ 		E60D03181D511398002FE3F6 /* SyncStatusResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = E60D03171D511398002FE3F6 /* SyncStatusResolver.swift */; };
+ 		E60D03261D511554002FE3F6 /* SyncStatusResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = E60D03171D511398002FE3F6 /* SyncStatusResolver.swift */; };
+ 		E60D03271D511554002FE3F6 /* SyncStatusResolver.swift in Sources */ = {isa = PBXBuildFile; fileRef = E60D03171D511398002FE3F6 /* SyncStatusResolver.swift */; };
+@@ -702,6 +732,7 @@
+ 		E6F6D6A31E9E6B2A0012072B /* DeferredTestUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6F6D6A11E9E6AF90012072B /* DeferredTestUtils.swift */; };
+ 		E6F6D6A41E9E6B2B0012072B /* DeferredTestUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6F6D6A11E9E6AF90012072B /* DeferredTestUtils.swift */; };
+ 		E6F6D6A51E9E6B2B0012072B /* DeferredTestUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6F6D6A11E9E6AF90012072B /* DeferredTestUtils.swift */; };
++		E6F6D6A61E9E6B2C0012072B /* DeferredTestUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6F6D6A11E9E6AF90012072B /* DeferredTestUtils.swift */; };
+ 		E6F6D6A71E9E6B2D0012072B /* DeferredTestUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6F6D6A11E9E6AF90012072B /* DeferredTestUtils.swift */; };
+ 		E6F6D6AA1E9E6B300012072B /* DeferredTestUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6F6D6A11E9E6AF90012072B /* DeferredTestUtils.swift */; };
+ 		E6F6D6AB1E9E6B330012072B /* DeferredTestUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = E6F6D6A11E9E6AF90012072B /* DeferredTestUtils.swift */; };
+@@ -934,6 +965,69 @@
+ 			remoteGlobalIDString = F84B21BD1A090F8100AAB793;
+ 			remoteInfo = Client;
+ 		};
++		7B10AAE51E3A57F90002DD08 /* PBXContainerItemProxy */ = {
++			isa = PBXContainerItemProxy;
++			containerPortal = 7B9A62B91C4002B1005C83DC /* SQLite.xcodeproj */;
++			proxyType = 2;
++			remoteGlobalIDString = EE247ADD1C3F04ED00AE3E12;
++			remoteInfo = "SQLiteTests iOS";
++		};
++		7B10AAE71E3A57F90002DD08 /* PBXContainerItemProxy */ = {
++			isa = PBXContainerItemProxy;
++			containerPortal = 7B9A62B91C4002B1005C83DC /* SQLite.xcodeproj */;
++			proxyType = 2;
++			remoteGlobalIDString = EE247B451C3F3ED000AE3E12;
++			remoteInfo = "SQLiteTests Mac";
++		};
++		7B10AAE91E3A57F90002DD08 /* PBXContainerItemProxy */ = {
++			isa = PBXContainerItemProxy;
++			containerPortal = 7B9A62B91C4002B1005C83DC /* SQLite.xcodeproj */;
++			proxyType = 2;
++			remoteGlobalIDString = 03A65E5A1C6BB0F50062603F;
++			remoteInfo = "SQLite tvOS";
++		};
++		7B10AAEB1E3A57F90002DD08 /* PBXContainerItemProxy */ = {
++			isa = PBXContainerItemProxy;
++			containerPortal = 7B9A62B91C4002B1005C83DC /* SQLite.xcodeproj */;
++			proxyType = 2;
++			remoteGlobalIDString = 03A65E631C6BB0F60062603F;
++			remoteInfo = "SQLiteTests tvOS";
++		};
++		7B10AAED1E3A57F90002DD08 /* PBXContainerItemProxy */ = {
++			isa = PBXContainerItemProxy;
++			containerPortal = 7B9A62B91C4002B1005C83DC /* SQLite.xcodeproj */;
++			proxyType = 2;
++			remoteGlobalIDString = A121AC451CA35C79005A31D1;
++			remoteInfo = "SQLite watchOS";
++		};
++		7B10AAEF1E3A58C80002DD08 /* PBXContainerItemProxy */ = {
++			isa = PBXContainerItemProxy;
++			containerPortal = F84B21B61A090F8100AAB793 /* Project object */;
++			proxyType = 1;
++			remoteGlobalIDString = 288A2D851AB8B3260023ABC3;
++			remoteInfo = Shared;
++		};
++		7B9A62DA1C4002B1005C83DC /* PBXContainerItemProxy */ = {
++			isa = PBXContainerItemProxy;
++			containerPortal = 7B9A62B91C4002B1005C83DC /* SQLite.xcodeproj */;
++			proxyType = 2;
++			remoteGlobalIDString = DC2B29E21B26F718001C60EA;
++			remoteInfo = "SQLite iOS";
++		};
++		7B9A62DE1C4002B1005C83DC /* PBXContainerItemProxy */ = {
++			isa = PBXContainerItemProxy;
++			containerPortal = 7B9A62B91C4002B1005C83DC /* SQLite.xcodeproj */;
++			proxyType = 2;
++			remoteGlobalIDString = DC7253AC1B52ADEB009B38B1;
++			remoteInfo = "SQLite Mac";
++		};
++		7B9A62F81C400303005C83DC /* PBXContainerItemProxy */ = {
++			isa = PBXContainerItemProxy;
++			containerPortal = 7B9A62B91C4002B1005C83DC /* SQLite.xcodeproj */;
++			proxyType = 1;
++			remoteGlobalIDString = EE247AD21C3F04ED00AE3E12;
++			remoteInfo = "SQLite iOS";
++		};
+ 		7B9BF92E1E435DE400CB24F4 /* PBXContainerItemProxy */ = {
+ 			isa = PBXContainerItemProxy;
+ 			containerPortal = F84B21B61A090F8100AAB793 /* Project object */;
+@@ -955,6 +1049,13 @@
+ 			remoteGlobalIDString = F84B21BD1A090F8100AAB793;
+ 			remoteInfo = Client;
+ 		};
++		D09A0CDE1FAA2577009A0273 /* PBXContainerItemProxy */ = {
++			isa = PBXContainerItemProxy;
++			containerPortal = F84B21B61A090F8100AAB793 /* Project object */;
++			proxyType = 1;
++			remoteGlobalIDString = 288A2D851AB8B3260023ABC3;
++			remoteInfo = Shared;
++		};
+ 		D09A0CE01FAA25C5009A0273 /* PBXContainerItemProxy */ = {
+ 			isa = PBXContainerItemProxy;
+ 			containerPortal = F84B21B61A090F8100AAB793 /* Project object */;
+@@ -983,6 +1084,13 @@
+ 			remoteGlobalIDString = 2827315D1ABC9BE600AA1954;
+ 			remoteInfo = Sync;
+ 		};
++		D09A0CEA1FAA2C38009A0273 /* PBXContainerItemProxy */ = {
++			isa = PBXContainerItemProxy;
++			containerPortal = F84B21B61A090F8100AAB793 /* Project object */;
++			proxyType = 1;
++			remoteGlobalIDString = E4D567171ADECE2700F1EFE7;
++			remoteInfo = ReadingList;
++		};
+ 		D09A0CEC1FAA2C4C009A0273 /* PBXContainerItemProxy */ = {
+ 			isa = PBXContainerItemProxy;
+ 			containerPortal = F84B21B61A090F8100AAB793 /* Project object */;
+@@ -1011,6 +1119,13 @@
+ 			remoteGlobalIDString = 2827315D1ABC9BE600AA1954;
+ 			remoteInfo = Sync;
+ 		};
++		D09A0CF41FAA2C99009A0273 /* PBXContainerItemProxy */ = {
++			isa = PBXContainerItemProxy;
++			containerPortal = F84B21B61A090F8100AAB793 /* Project object */;
++			proxyType = 1;
++			remoteGlobalIDString = E4D567171ADECE2700F1EFE7;
++			remoteInfo = ReadingList;
++		};
+ 		D09A0CF61FAA2CB2009A0273 /* PBXContainerItemProxy */ = {
+ 			isa = PBXContainerItemProxy;
+ 			containerPortal = 28CE83CA1A1D1D5100576538 /* FxA.xcodeproj */;
+@@ -1032,6 +1147,13 @@
+ 			remoteGlobalIDString = 2827315D1ABC9BE600AA1954;
+ 			remoteInfo = Sync;
+ 		};
++		D09A0CFC1FAA2CC5009A0273 /* PBXContainerItemProxy */ = {
++			isa = PBXContainerItemProxy;
++			containerPortal = F84B21B61A090F8100AAB793 /* Project object */;
++			proxyType = 1;
++			remoteGlobalIDString = E4D567171ADECE2700F1EFE7;
++			remoteInfo = ReadingList;
++		};
+ 		D0EA58121FA836CA00D03ED1 /* PBXContainerItemProxy */ = {
+ 			isa = PBXContainerItemProxy;
+ 			containerPortal = F84B21B61A090F8100AAB793 /* Project object */;
+@@ -1102,6 +1224,20 @@
+ 			remoteGlobalIDString = E4BA8A2A1B4B0A1600BC2E95;
+ 			remoteInfo = ViewLater;
+ 		};
++		E4D567241ADECE2700F1EFE7 /* PBXContainerItemProxy */ = {
++			isa = PBXContainerItemProxy;
++			containerPortal = F84B21B61A090F8100AAB793 /* Project object */;
++			proxyType = 1;
++			remoteGlobalIDString = E4D567171ADECE2700F1EFE7;
++			remoteInfo = ReadingList;
++		};
++		E4D5672D1ADECE2800F1EFE7 /* PBXContainerItemProxy */ = {
++			isa = PBXContainerItemProxy;
++			containerPortal = F84B21B61A090F8100AAB793 /* Project object */;
++			proxyType = 1;
++			remoteGlobalIDString = E4D567171ADECE2700F1EFE7;
++			remoteInfo = ReadingList;
++		};
+ 		E4EE05AF1BA3A0A10021B3A7 /* PBXContainerItemProxy */ = {
+ 			isa = PBXContainerItemProxy;
+ 			containerPortal = F84B21B61A090F8100AAB793 /* Project object */;
+@@ -1224,7 +1360,9 @@
+ 			files = (
+ 				E4F2DAC11F62C73900A556CD /* Leanplum.framework in Copy Frameworks */,
+ 				E62CFB3D1C89EFF700C01324 /* FxA.framework in Copy Frameworks */,
++				E601386A1C89EB9800DF9756 /* SQLite.framework in Copy Frameworks */,
+ 				E69DB08B1E97DEAA008A67E6 /* SyncTelemetry.framework in Copy Frameworks */,
++				E60138691C89EB8E00DF9756 /* ReadingList.framework in Copy Frameworks */,
+ 				E60138681C89EB8800DF9756 /* Sync.framework in Copy Frameworks */,
+ 				E60138671C89EB8300DF9756 /* Account.framework in Copy Frameworks */,
+ 				E60138661C89EB7D00DF9756 /* Storage.framework in Copy Frameworks */,
+@@ -1569,6 +1707,7 @@
+ 		7B844E3C1BBDDB9D00E733A2 /* ChevronView.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ChevronView.swift; sourceTree = "<group>"; };
+ 		7B8A47F51D01D3B400C07734 /* PassKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = PassKit.framework; path = System/Library/Frameworks/PassKit.framework; sourceTree = SDKROOT; };
+ 		7B95CD191C3AB2EE00638E31 /* MarketingUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MarketingUITests.swift; sourceTree = "<group>"; };
++		7B9A62B91C4002B1005C83DC /* SQLite.xcodeproj */ = {isa = PBXFileReference; lastKnownFileType = "wrapper.pb-project"; name = SQLite.xcodeproj; path = ThirdParty/SQLite.swift/SQLite.xcodeproj; sourceTree = "<group>"; };
+ 		7B9BF91B1E43472E00CB24F4 /* JSONExtensions.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = JSONExtensions.swift; sourceTree = "<group>"; };
+ 		7BA0601A1C0F4DE200DFADB6 /* TabPeekViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = TabPeekViewController.swift; sourceTree = "<group>"; };
+ 		7BA4A9451C4CED780091D032 /* GCDWebServers.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = GCDWebServers.framework; path = Carthage/Build/iOS/GCDWebServers.framework; sourceTree = "<group>"; };
+@@ -1622,11 +1761,7 @@
+ 		D03F8F20200EABB0003C2224 /* __firefox__.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = __firefox__.js; sourceTree = "<group>"; };
+ 		D03F8F22200EAC1E003C2224 /* AllFramesAtDocumentStart.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = AllFramesAtDocumentStart.js; sourceTree = "<group>"; };
+ 		D03F8F24200EACD8003C2224 /* ContextMenu.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = ContextMenu.js; sourceTree = "<group>"; };
+-		D07696F720697F9C00FACFD8 /* ReadingListSchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingListSchema.swift; sourceTree = "<group>"; };
+-		D076971E206AC60900FACFD8 /* ReadingList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingList.swift; sourceTree = "<group>"; };
+-		D0769742206C19E800FACFD8 /* SQLiteReadingList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SQLiteReadingList.swift; sourceTree = "<group>"; };
+ 		D0B29EDF1F460BDF00C7CEFC /* LoginsSchema.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginsSchema.swift; sourceTree = "<group>"; };
+-		D0B693D4206C5BB9008A8B11 /* TestSQLiteReadingList.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestSQLiteReadingList.swift; sourceTree = "<group>"; };
+ 		D0C95DF1200EAD3000E4E51C /* FindInPage.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = FindInPage.js; sourceTree = "<group>"; };
+ 		D0C95DF5200EADD500E4E51C /* LoginsHelper.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = LoginsHelper.js; sourceTree = "<group>"; };
+ 		D0C95DF7200EAE3000E4E51C /* NightModeHelper.js */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.javascript; path = NightModeHelper.js; sourceTree = "<group>"; };
+@@ -1727,6 +1862,8 @@
+ 		E40AFC6B1DD128DA00DA5651 /* L10nIntroSnapshotTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = L10nIntroSnapshotTests.swift; sourceTree = "<group>"; };
+ 		E40FAB0B1A7ABB77009CB80D /* WebServer.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WebServer.swift; sourceTree = "<group>"; };
+ 		E41A7D4A1A1BE04500245963 /* InitialViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = InitialViewController.swift; sourceTree = "<group>"; };
++		E41F0D971ADFFB5400FC7387 /* ReadingListService.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; lineEnding = 0; path = ReadingListService.swift; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.swift; };
++		E41F0D9A1ADFFC5600FC7387 /* ReadingListError.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListError.swift; sourceTree = "<group>"; };
+ 		E42736061EA858CF009C428E /* TabsPayloadTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; name = TabsPayloadTests.swift; path = SyncTests/TabsPayloadTests.swift; sourceTree = "<group>"; };
+ 		E4424B3B1AC71FB400F44C38 /* FiraSans-Book.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "FiraSans-Book.ttf"; sourceTree = "<group>"; };
+ 		E46175F21EBB73A10021AE8A /* Sentry.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Sentry.framework; path = Carthage/Build/iOS/Sentry.framework; sourceTree = "<group>"; };
+@@ -1766,6 +1903,32 @@
+ 		E4CD9F531A71506400318571 /* Reader.html */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.html; path = Reader.html; sourceTree = "<group>"; };
+ 		E4CD9F5A1A71506C00318571 /* Reader.css */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.css; path = Reader.css; sourceTree = "<group>"; };
+ 		E4CD9F6C1A77DD2800318571 /* ReaderModeStyleViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReaderModeStyleViewController.swift; sourceTree = "<group>"; };
++		E4D567181ADECE2700F1EFE7 /* ReadingList.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = ReadingList.framework; sourceTree = BUILT_PRODUCTS_DIR; };
++		E4D5671B1ADECE2700F1EFE7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
++		E4D567221ADECE2700F1EFE7 /* ReadingListTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ReadingListTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
++		E4D5672A1ADECE2800F1EFE7 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
++		E4D567551ADECE8100F1EFE7 /* ReadingListAuthenticator.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListAuthenticator.swift; sourceTree = "<group>"; };
++		E4D567561ADECE8100F1EFE7 /* ReadingListBasicAuthAuthenticator.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListBasicAuthAuthenticator.swift; sourceTree = "<group>"; };
++		E4D567571ADECE8100F1EFE7 /* ReadingListBatchRecordResponse.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListBatchRecordResponse.swift; sourceTree = "<group>"; };
++		E4D567581ADECE8100F1EFE7 /* ReadingListChangeAccumulator.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListChangeAccumulator.swift; sourceTree = "<group>"; };
++		E4D567591ADECE8100F1EFE7 /* ReadingListClient.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListClient.swift; sourceTree = "<group>"; };
++		E4D5675A1ADECE8100F1EFE7 /* ReadingListClientMetadata.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListClientMetadata.swift; sourceTree = "<group>"; };
++		E4D5675B1ADECE8100F1EFE7 /* ReadingListClientRecord.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListClientRecord.swift; sourceTree = "<group>"; };
++		E4D5675D1ADECE8100F1EFE7 /* ReadingListFetchSpec.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListFetchSpec.swift; sourceTree = "<group>"; };
++		E4D5675E1ADECE8100F1EFE7 /* ReadingListOAuthAuthenticator.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListOAuthAuthenticator.swift; sourceTree = "<group>"; };
++		E4D5675F1ADECE8100F1EFE7 /* ReadingListRecord.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListRecord.swift; sourceTree = "<group>"; };
++		E4D567601ADECE8100F1EFE7 /* ReadingListRecordResponse.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListRecordResponse.swift; sourceTree = "<group>"; };
++		E4D567611ADECE8100F1EFE7 /* ReadingListRecordsResponse.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListRecordsResponse.swift; sourceTree = "<group>"; };
++		E4D567621ADECE8100F1EFE7 /* ReadingListResponse.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListResponse.swift; sourceTree = "<group>"; };
++		E4D567631ADECE8100F1EFE7 /* ReadingListServerMetadata.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListServerMetadata.swift; sourceTree = "<group>"; };
++		E4D567641ADECE8100F1EFE7 /* ReadingListServerRecord.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListServerRecord.swift; sourceTree = "<group>"; };
++		E4D567651ADECE8100F1EFE7 /* ReadingListSQLStorage.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; lineEnding = 0; path = ReadingListSQLStorage.swift; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.swift; };
++		E4D567661ADECE8100F1EFE7 /* ReadingListStorage.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; lineEnding = 0; path = ReadingListStorage.swift; sourceTree = "<group>"; xcLanguageSpecificationIdentifier = xcode.lang.swift; };
++		E4D567671ADECE8100F1EFE7 /* ReadingListSynchronizer.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListSynchronizer.swift; sourceTree = "<group>"; };
++		E4D567681ADECE8100F1EFE7 /* ReadingListSyncMetadata.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListSyncMetadata.swift; sourceTree = "<group>"; };
++		E4D567691ADECE8100F1EFE7 /* ReadingListUtils.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListUtils.swift; sourceTree = "<group>"; };
++		E4D567951ADECEB800F1EFE7 /* ReadingListClientRecordTestCase.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListClientRecordTestCase.swift; sourceTree = "<group>"; };
++		E4D5679B1ADECEB800F1EFE7 /* ReadingListStorageTestCase.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ReadingListStorageTestCase.swift; sourceTree = "<group>"; };
+ 		E4D6BEB81A0930EC00F538BD /* LaunchScreen.xib */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.xib; path = LaunchScreen.xib; sourceTree = "<group>"; };
+ 		E4E0BB151AFBC9E4008D6260 /* Shared-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "Shared-Bridging-Header.h"; path = "../Shared-Bridging-Header.h"; sourceTree = "<group>"; };
+ 		E4E0BB171AFBC9E4008D6260 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+@@ -2004,6 +2167,7 @@
+ 				E6231C011B90A44F005ABB0D /* libz.tbd in Frameworks */,
+ 				E4A888161A95679500CDC337 /* FxA.framework in Frameworks */,
+ 				2FA436121ABB83B4008031D1 /* Account.framework in Frameworks */,
++				E4D5672F1ADECE2800F1EFE7 /* ReadingList.framework in Frameworks */,
+ 				288A2D9D1AB8B3260023ABC3 /* Shared.framework in Frameworks */,
+ 				2FCAE2311ABB51F800877008 /* Storage.framework in Frameworks */,
+ 				282731751ABC9BE700AA1954 /* Sync.framework in Frameworks */,
+@@ -2132,6 +2296,7 @@
+ 			isa = PBXFrameworksBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
++				2805F5A61B8BCA7A00268FD1 /* ReadingList.framework in Frameworks */,
+ 				E444F7DC1B4B1B7E00FEB19B /* Shared.framework in Frameworks */,
+ 				E4BA8A8A1B4B10F400BC2E95 /* Storage.framework in Frameworks */,
+ 				E444F8271B4C1E8800FEB19B /* Sync.framework in Frameworks */,
+@@ -2140,6 +2305,24 @@
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
++		E4D567141ADECE2700F1EFE7 /* Frameworks */ = {
++			isa = PBXFrameworksBuildPhase;
++			buildActionMask = 2147483647;
++			files = (
++				E4483B5A1ADED63300B485A7 /* Shared.framework in Frameworks */,
++				E60222E31C6E57B20061C436 /* SQLite.framework in Frameworks */,
++				7B604F911C494B3C006EEEC3 /* Alamofire.framework in Frameworks */,
++			);
++			runOnlyForDeploymentPostprocessing = 0;
++		};
++		E4D5671F1ADECE2700F1EFE7 /* Frameworks */ = {
++			isa = PBXFrameworksBuildPhase;
++			buildActionMask = 2147483647;
++			files = (
++				E4D567231ADECE2700F1EFE7 /* ReadingList.framework in Frameworks */,
++			);
++			runOnlyForDeploymentPostprocessing = 0;
++		};
+ 		E69DB0711E97DEA9008A67E6 /* Frameworks */ = {
+ 			isa = PBXFrameworksBuildPhase;
+ 			buildActionMask = 2147483647;
+@@ -2178,6 +2361,7 @@
+ 			buildActionMask = 2147483647;
+ 			files = (
+ 				2FC244B31A855E05007CE41D /* FxA.framework in Frameworks */,
++				28078A471B1507EF0053B46A /* ReadingList.framework in Frameworks */,
+ 				28C8D1391AD4CE9100F62011 /* Shared.framework in Frameworks */,
+ 				28C8D11D1AD4CE8900F62011 /* Storage.framework in Frameworks */,
+ 				2868FA061ADF7B69000D9B1D /* Sync.framework in Frameworks */,
+@@ -2193,6 +2377,7 @@
+ 			buildActionMask = 2147483647;
+ 			files = (
+ 				2FC244B81A855E0D007CE41D /* FxA.framework in Frameworks */,
++				28293BB51B333EA2004A65EC /* ReadingList.framework in Frameworks */,
+ 				28C8D13B1AD4CEB100F62011 /* Shared.framework in Frameworks */,
+ 				28C8D13C1AD4CEB400F62011 /* Storage.framework in Frameworks */,
+ 				2868FA231ADF7B70000D9B1D /* Sync.framework in Frameworks */,
+@@ -2409,6 +2594,7 @@
+ 				D30EBB5A1C75503800105AE9 /* KIF.xcodeproj */,
+ 				288A2D7E1AB8B2AD0023ABC3 /* Result */,
+ 				0B742CC61B32491400EE9264 /* sqlcipher.xcodeproj */,
++				7B9A62B91C4002B1005C83DC /* SQLite.xcodeproj */,
+ 				0B1C05D41A798B1F004C78B0 /* UIImageViewAligned */,
+ 				3B6889C41D66950E002AC85E /* UIImageColors.swift */,
+ 				3B0943801D6CC4FC004F24E1 /* FilledPageControl.swift */,
+@@ -2532,7 +2718,6 @@
+ 				0B3E7DB91B27AB4C00E2E84D /* MockLogins.swift */,
+ 				285D3B671B4380B70035FD22 /* Queue.swift */,
+ 				E6FF6AC91D873CFF0070C294 /* PageMetadata.swift */,
+-				D076971E206AC60900FACFD8 /* ReadingList.swift */,
+ 				2FCAE2471ABB531100877008 /* RemoteTabs.swift */,
+ 				2829D39F1C2F0AD400DCF931 /* Sharing.swift */,
+ 				2FCAE2481ABB531100877008 /* Site.swift */,
+@@ -2571,7 +2756,6 @@
+ 				2FCAE27D1ABB533A00877008 /* TestSQLiteHistory.swift */,
+ 				E6BE53CC1D9177B10074909A /* TestSQLiteHistoryRecommendations.swift */,
+ 				E63F71871DB7FBE200A995C9 /* TestSQLiteMetadata.swift */,
+-				D0B693D4206C5BB9008A8B11 /* TestSQLiteReadingList.swift */,
+ 				2FCAE27A1ABB533A00877008 /* TestSQLiteRemoteClientsAndTabs.swift */,
+ 				D32CACEC1AE04DA1000658EB /* TestSwiftData.swift */,
+ 				2FCAE22B1ABB51F800877008 /* Supporting Files */,
+@@ -2594,7 +2778,6 @@
+ 				2FCAE24B1ABB531100877008 /* BrowserDB.swift */,
+ 				282915E51AF1A7920006EEB5 /* BrowserSchema.swift */,
+ 				D0B29EDF1F460BDF00C7CEFC /* LoginsSchema.swift */,
+-				D07696F720697F9C00FACFD8 /* ReadingListSchema.swift */,
+ 				D018F93D1F44A7190098F8CA /* Schema.swift */,
+ 				28126F761C2F9833006466CC /* SQLiteBookmarksBase.swift */,
+ 				28126F471C2F948E006466CC /* SQLiteBookmarksHelpers.swift */,
+@@ -2608,7 +2791,6 @@
+ 				0BDA56B31B26B203008C9B96 /* SQLiteLogins.swift */,
+ 				E677F0441D9423FB00ECF1FB /* SQLiteMetadata.swift */,
+ 				285D3B8F1B4386520035FD22 /* SQLiteQueue.swift */,
+-				D0769742206C19E800FACFD8 /* SQLiteReadingList.swift */,
+ 				2FCAE2581ABB531100877008 /* SQLiteRemoteClientsAndTabs.swift */,
+ 			);
+ 			path = SQL;
+@@ -2821,6 +3003,20 @@
+ 			path = MarketingUITests;
+ 			sourceTree = "<group>";
+ 		};
++		7B9A62BA1C4002B1005C83DC /* Products */ = {
++			isa = PBXGroup;
++			children = (
++				7B9A62DB1C4002B1005C83DC /* SQLite.framework */,
++				7B10AAE61E3A57F90002DD08 /* SQLiteTests iOS.xctest */,
++				7B9A62DF1C4002B1005C83DC /* SQLite.framework */,
++				7B10AAE81E3A57F90002DD08 /* SQLiteTests Mac.xctest */,
++				7B10AAEA1E3A57F90002DD08 /* SQLite.framework */,
++				7B10AAEC1E3A57F90002DD08 /* SQLiteTests tvOS.xctest */,
++				7B10AAEE1E3A57F90002DD08 /* SQLite.framework */,
++			);
++			name = Products;
++			sourceTree = "<group>";
++		};
+ 		7BC7B4571C903A6A0046E9D2 /* Menu */ = {
+ 			isa = PBXGroup;
+ 			children = (
+@@ -3127,6 +3323,62 @@
+ 			path = ViewLater;
+ 			sourceTree = "<group>";
+ 		};
++		E4D567191ADECE2700F1EFE7 /* ReadingList */ = {
++			isa = PBXGroup;
++			children = (
++				E4D567551ADECE8100F1EFE7 /* ReadingListAuthenticator.swift */,
++				E4D567561ADECE8100F1EFE7 /* ReadingListBasicAuthAuthenticator.swift */,
++				E4D567571ADECE8100F1EFE7 /* ReadingListBatchRecordResponse.swift */,
++				E4D567581ADECE8100F1EFE7 /* ReadingListChangeAccumulator.swift */,
++				E4D567591ADECE8100F1EFE7 /* ReadingListClient.swift */,
++				E4D5675A1ADECE8100F1EFE7 /* ReadingListClientMetadata.swift */,
++				E4D5675B1ADECE8100F1EFE7 /* ReadingListClientRecord.swift */,
++				E41F0D9A1ADFFC5600FC7387 /* ReadingListError.swift */,
++				E4D5675D1ADECE8100F1EFE7 /* ReadingListFetchSpec.swift */,
++				E4D5675E1ADECE8100F1EFE7 /* ReadingListOAuthAuthenticator.swift */,
++				E4D5675F1ADECE8100F1EFE7 /* ReadingListRecord.swift */,
++				E4D567601ADECE8100F1EFE7 /* ReadingListRecordResponse.swift */,
++				E4D567611ADECE8100F1EFE7 /* ReadingListRecordsResponse.swift */,
++				E4D567621ADECE8100F1EFE7 /* ReadingListResponse.swift */,
++				E4D567631ADECE8100F1EFE7 /* ReadingListServerMetadata.swift */,
++				E4D567641ADECE8100F1EFE7 /* ReadingListServerRecord.swift */,
++				E41F0D971ADFFB5400FC7387 /* ReadingListService.swift */,
++				E4D567651ADECE8100F1EFE7 /* ReadingListSQLStorage.swift */,
++				E4D567661ADECE8100F1EFE7 /* ReadingListStorage.swift */,
++				E4D567671ADECE8100F1EFE7 /* ReadingListSynchronizer.swift */,
++				E4D567681ADECE8100F1EFE7 /* ReadingListSyncMetadata.swift */,
++				E4D567691ADECE8100F1EFE7 /* ReadingListUtils.swift */,
++				E4D5671A1ADECE2700F1EFE7 /* Supporting Files */,
++			);
++			path = ReadingList;
++			sourceTree = "<group>";
++		};
++		E4D5671A1ADECE2700F1EFE7 /* Supporting Files */ = {
++			isa = PBXGroup;
++			children = (
++				E4D5671B1ADECE2700F1EFE7 /* Info.plist */,
++			);
++			name = "Supporting Files";
++			sourceTree = "<group>";
++		};
++		E4D567281ADECE2800F1EFE7 /* ReadingListTests */ = {
++			isa = PBXGroup;
++			children = (
++				E4D567951ADECEB800F1EFE7 /* ReadingListClientRecordTestCase.swift */,
++				E4D5679B1ADECEB800F1EFE7 /* ReadingListStorageTestCase.swift */,
++				E4D567291ADECE2800F1EFE7 /* Supporting Files */,
++			);
++			path = ReadingListTests;
++			sourceTree = "<group>";
++		};
++		E4D567291ADECE2800F1EFE7 /* Supporting Files */ = {
++			isa = PBXGroup;
++			children = (
++				E4D5672A1ADECE2800F1EFE7 /* Info.plist */,
++			);
++			name = "Supporting Files";
++			sourceTree = "<group>";
++		};
+ 		E4E0BB141AFBC9E4008D6260 /* Shared */ = {
+ 			isa = PBXGroup;
+ 			children = (
+@@ -3434,6 +3686,8 @@
+ 				D34DC84C1A16C40C00D49B7B /* Providers */,
+ 				39F99FC71E3A6DB700F353B4 /* Push */,
+ 				39B0646D1E7ADA4B000BE173 /* PushTests */,
++				E4D567191ADECE2700F1EFE7 /* ReadingList */,
++				E4D567281ADECE2800F1EFE7 /* ReadingListTests */,
+ 				E4E0BB141AFBC9E4008D6260 /* Shared */,
+ 				E6F9650D1B2F1CF20034B023 /* SharedTests */,
+ 				7B3632E71C29879300D12AF9 /* Snapshot */,
+@@ -3466,6 +3720,8 @@
+ 				2FA436051ABB83B4008031D1 /* AccountTests.xctest */,
+ 				2827315E1ABC9BE600AA1954 /* Sync.framework */,
+ 				282731681ABC9BE700AA1954 /* SyncTests.xctest */,
++				E4D567181ADECE2700F1EFE7 /* ReadingList.framework */,
++				E4D567221ADECE2700F1EFE7 /* ReadingListTests.xctest */,
+ 				E6F9650C1B2F1CF20034B023 /* SharedTests.xctest */,
+ 				E4BA8A2B1B4B0A1600BC2E95 /* ViewLater.appex */,
+ 				7BEB644D1C7345600092C02E /* L10nSnapshotTests.xctest */,
+@@ -3746,6 +4002,13 @@
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
++		E4D567151ADECE2700F1EFE7 /* Headers */ = {
++			isa = PBXHeadersBuildPhase;
++			buildActionMask = 2147483647;
++			files = (
++			);
++			runOnlyForDeploymentPostprocessing = 0;
++		};
+ 		E69DB0721E97DEA9008A67E6 /* Headers */ = {
+ 			isa = PBXHeadersBuildPhase;
+ 			buildActionMask = 2147483647;
+@@ -4040,6 +4303,7 @@
+ 			buildRules = (
+ 			);
+ 			dependencies = (
++				D09A0CEB1FAA2C38009A0273 /* PBXTargetDependency */,
+ 				D09A0CE51FAA2C18009A0273 /* PBXTargetDependency */,
+ 				D09A0CE71FAA2C1B009A0273 /* PBXTargetDependency */,
+ 				D09A0CE91FAA2C1E009A0273 /* PBXTargetDependency */,
+@@ -4049,6 +4313,45 @@
+ 			productReference = E4BA8A2B1B4B0A1600BC2E95 /* ViewLater.appex */;
+ 			productType = "com.apple.product-type.app-extension";
+ 		};
++		E4D567171ADECE2700F1EFE7 /* ReadingList */ = {
++			isa = PBXNativeTarget;
++			buildConfigurationList = E4D567531ADECE2900F1EFE7 /* Build configuration list for PBXNativeTarget "ReadingList" */;
++			buildPhases = (
++				E4D567131ADECE2700F1EFE7 /* Sources */,
++				E4D567141ADECE2700F1EFE7 /* Frameworks */,
++				E4D567151ADECE2700F1EFE7 /* Headers */,
++				E4D567161ADECE2700F1EFE7 /* Resources */,
++			);
++			buildRules = (
++			);
++			dependencies = (
++				D09A0CDF1FAA2577009A0273 /* PBXTargetDependency */,
++				7B9A62F91C400303005C83DC /* PBXTargetDependency */,
++			);
++			name = ReadingList;
++			productName = ReadingList;
++			productReference = E4D567181ADECE2700F1EFE7 /* ReadingList.framework */;
++			productType = "com.apple.product-type.framework";
++		};
++		E4D567211ADECE2700F1EFE7 /* ReadingListTests */ = {
++			isa = PBXNativeTarget;
++			buildConfigurationList = E4D567541ADECE2900F1EFE7 /* Build configuration list for PBXNativeTarget "ReadingListTests" */;
++			buildPhases = (
++				E4D5671E1ADECE2700F1EFE7 /* Sources */,
++				E4D5671F1ADECE2700F1EFE7 /* Frameworks */,
++				E4D567201ADECE2700F1EFE7 /* Resources */,
++			);
++			buildRules = (
++			);
++			dependencies = (
++				7B10AAF01E3A58C80002DD08 /* PBXTargetDependency */,
++				E4D567251ADECE2700F1EFE7 /* PBXTargetDependency */,
++			);
++			name = ReadingListTests;
++			productName = ReadingListTests;
++			productReference = E4D567221ADECE2700F1EFE7 /* ReadingListTests.xctest */;
++			productType = "com.apple.product-type.bundle.unit-test";
++		};
+ 		E69DB0741E97DEA9008A67E6 /* SyncTelemetry */ = {
+ 			isa = PBXNativeTarget;
+ 			buildConfigurationList = E69DB08C1E97DEAA008A67E6 /* Build configuration list for PBXNativeTarget "SyncTelemetry" */;
+@@ -4124,6 +4427,7 @@
+ 			dependencies = (
+ 				E4A888191A95679500CDC337 /* PBXTargetDependency */,
+ 				2FA436111ABB83B4008031D1 /* PBXTargetDependency */,
++				E4D5672E1ADECE2800F1EFE7 /* PBXTargetDependency */,
+ 				288A2D9C1AB8B3260023ABC3 /* PBXTargetDependency */,
+ 				2FCAE2301ABB51F800877008 /* PBXTargetDependency */,
+ 				282731741ABC9BE700AA1954 /* PBXTargetDependency */,
+@@ -4171,6 +4475,7 @@
+ 			);
+ 			dependencies = (
+ 				D09A0CEF1FAA2C66009A0273 /* PBXTargetDependency */,
++				D09A0CF51FAA2C99009A0273 /* PBXTargetDependency */,
+ 				D09A0CF11FAA2C7E009A0273 /* PBXTargetDependency */,
+ 				2F9A72321ABB856100F9F05D /* PBXTargetDependency */,
+ 				D09A0CF31FAA2C81009A0273 /* PBXTargetDependency */,
+@@ -4192,6 +4497,7 @@
+ 			);
+ 			dependencies = (
+ 				D09A0CF71FAA2CB2009A0273 /* PBXTargetDependency */,
++				D09A0CFD1FAA2CC5009A0273 /* PBXTargetDependency */,
+ 				D09A0CF91FAA2CBF009A0273 /* PBXTargetDependency */,
+ 				2F9A72341ABB856A00F9F05D /* PBXTargetDependency */,
+ 				D09A0CFB1FAA2CC2009A0273 /* PBXTargetDependency */,
+@@ -4215,50 +4521,51 @@
+ 					2827315D1ABC9BE600AA1954 = {
+ 						CreatedOnToolsVersion = 6.2;
+ 						DevelopmentTeam = 43AQ936H96;
+-						LastSwiftMigration = 0820;
++						LastSwiftMigration = 0920;
+ 					};
+ 					282731671ABC9BE700AA1954 = {
+ 						CreatedOnToolsVersion = 6.2;
+ 						DevelopmentTeam = 43AQ936H96;
+-						LastSwiftMigration = 0820;
++						LastSwiftMigration = 0920;
+ 						TestTargetID = F84B21BD1A090F8100AAB793;
+ 					};
+ 					288A2D851AB8B3260023ABC3 = {
+ 						CreatedOnToolsVersion = 6.2;
+ 						DevelopmentTeam = 43AQ936H96;
+-						LastSwiftMigration = 0820;
++						LastSwiftMigration = 0920;
+ 					};
+ 					2FA435FA1ABB83B4008031D1 = {
+ 						CreatedOnToolsVersion = 6.2;
+ 						DevelopmentTeam = 43AQ936H96;
+-						LastSwiftMigration = 0820;
++						LastSwiftMigration = 0920;
+ 					};
+ 					2FA436041ABB83B4008031D1 = {
+ 						CreatedOnToolsVersion = 6.2;
+ 						DevelopmentTeam = 43AQ936H96;
+-						LastSwiftMigration = 0820;
++						LastSwiftMigration = 0920;
+ 						TestTargetID = F84B21BD1A090F8100AAB793;
+ 					};
+ 					2FCAE2191ABB51F800877008 = {
+ 						CreatedOnToolsVersion = 6.2;
+ 						DevelopmentTeam = 43AQ936H96;
+-						LastSwiftMigration = 0820;
++						LastSwiftMigration = 0920;
+ 					};
+ 					2FCAE2231ABB51F800877008 = {
+ 						CreatedOnToolsVersion = 6.2;
+ 						DevelopmentTeam = 43AQ936H96;
+-						LastSwiftMigration = 0820;
++						LastSwiftMigration = 0920;
+ 						TestTargetID = F84B21BD1A090F8100AAB793;
+ 					};
+ 					390527491C874D35007E0BB7 = {
+ 						CreatedOnToolsVersion = 7.2.1;
+ 						DevelopmentTeam = 43AQ936H96;
+-						LastSwiftMigration = 0820;
++						LastSwiftMigration = 0920;
+ 						ProvisioningStyle = Manual;
+ 					};
+ 					397848DA1ED86605004C0C0B = {
+ 						CreatedOnToolsVersion = 8.3.2;
+ 						DevelopmentTeam = 43AQ936H96;
++						LastSwiftMigration = 0920;
+ 						ProvisioningStyle = Manual;
+ 						SystemCapabilities = {
+ 							com.apple.Push = {
+@@ -4276,7 +4583,7 @@
+ 					3BFE4B061D342FB800DDF53F = {
+ 						CreatedOnToolsVersion = 7.3.1;
+ 						DevelopmentTeam = 43AQ936H96;
+-						LastSwiftMigration = 0820;
++						LastSwiftMigration = 0920;
+ 						TestTargetID = F84B21BD1A090F8100AAB793;
+ 					};
+ 					7BEB64401C7345600092C02E = {
+@@ -4296,7 +4603,7 @@
+ 					E4BA8A2A1B4B0A1600BC2E95 = {
+ 						CreatedOnToolsVersion = 6.4;
+ 						DevelopmentTeam = 43AQ936H96;
+-						LastSwiftMigration = 0820;
++						LastSwiftMigration = 0920;
+ 						ProvisioningStyle = Manual;
+ 						SystemCapabilities = {
+ 							com.apple.ApplicationGroups.iOS = {
+@@ -4304,27 +4611,39 @@
+ 							};
+ 						};
+ 					};
++					E4D567171ADECE2700F1EFE7 = {
++						CreatedOnToolsVersion = 6.3;
++						DevelopmentTeam = 43AQ936H96;
++						LastSwiftMigration = 0920;
++					};
++					E4D567211ADECE2700F1EFE7 = {
++						CreatedOnToolsVersion = 6.3;
++						DevelopmentTeam = 43AQ936H96;
++						LastSwiftMigration = 0820;
++						TestTargetID = F84B21BD1A090F8100AAB793;
++					};
+ 					E69DB0741E97DEA9008A67E6 = {
+ 						CreatedOnToolsVersion = 8.3;
+ 						DevelopmentTeam = 43AQ936H96;
++						LastSwiftMigration = 0920;
+ 						ProvisioningStyle = Manual;
+ 					};
+ 					E69DB07C1E97DEA9008A67E6 = {
+ 						CreatedOnToolsVersion = 8.3;
+ 						DevelopmentTeam = 43AQ936H96;
+-						LastSwiftMigration = 0830;
++						LastSwiftMigration = 0920;
+ 						ProvisioningStyle = Automatic;
+ 						TestTargetID = F84B21BD1A090F8100AAB793;
+ 					};
+ 					E6F9650B1B2F1CF20034B023 = {
+ 						CreatedOnToolsVersion = 6.3.2;
+ 						DevelopmentTeam = 43AQ936H96;
+-						LastSwiftMigration = 0820;
++						LastSwiftMigration = 0920;
+ 					};
+ 					F84B21BD1A090F8100AAB793 = {
+ 						CreatedOnToolsVersion = 6.1;
+ 						DevelopmentTeam = 43AQ936H96;
+-						LastSwiftMigration = 0820;
++						LastSwiftMigration = 0920;
+ 						ProvisioningStyle = Manual;
+ 						SystemCapabilities = {
+ 							com.apple.ApplicationGroups.iOS = {
+@@ -4347,13 +4666,13 @@
+ 					F84B21D21A090F8100AAB793 = {
+ 						CreatedOnToolsVersion = 6.1;
+ 						DevelopmentTeam = 43AQ936H96;
+-						LastSwiftMigration = 0820;
++						LastSwiftMigration = 0920;
+ 						TestTargetID = F84B21BD1A090F8100AAB793;
+ 					};
+ 					F84B22481A0920C600AAB793 = {
+ 						CreatedOnToolsVersion = 6.1;
+ 						DevelopmentTeam = 43AQ936H96;
+-						LastSwiftMigration = 0820;
++						LastSwiftMigration = 0920;
+ 						ProvisioningStyle = Manual;
+ 						SystemCapabilities = {
+ 							com.apple.ApplicationGroups.iOS = {
+@@ -4370,7 +4689,7 @@
+ 					F84B225B1A09210A00AAB793 = {
+ 						CreatedOnToolsVersion = 6.1;
+ 						DevelopmentTeam = 43AQ936H96;
+-						LastSwiftMigration = 0820;
++						LastSwiftMigration = 0920;
+ 						ProvisioningStyle = Manual;
+ 						SystemCapabilities = {
+ 							com.apple.ApplicationGroups.iOS = {
+@@ -4410,6 +4729,10 @@
+ 					ProductGroup = 0B742CC71B32491400EE9264 /* Products */;
+ 					ProjectRef = 0B742CC61B32491400EE9264 /* sqlcipher.xcodeproj */;
+ 				},
++				{
++					ProductGroup = 7B9A62BA1C4002B1005C83DC /* Products */;
++					ProjectRef = 7B9A62B91C4002B1005C83DC /* SQLite.xcodeproj */;
++				},
+ 			);
+ 			projectRoot = "";
+ 			targets = (
+@@ -4423,12 +4746,14 @@
+ 				2FCAE2191ABB51F800877008 /* Storage */,
+ 				2FA435FA1ABB83B4008031D1 /* Account */,
+ 				2827315D1ABC9BE600AA1954 /* Sync */,
++				E4D567171ADECE2700F1EFE7 /* ReadingList */,
+ 				E69DB0741E97DEA9008A67E6 /* SyncTelemetry */,
+ 				F84B21D21A090F8100AAB793 /* ClientTests */,
+ 				D39FA15E1A83E0EC00EE869C /* UITests */,
+ 				2FCAE2231ABB51F800877008 /* StorageTests */,
+ 				2FA436041ABB83B4008031D1 /* AccountTests */,
+ 				282731671ABC9BE700AA1954 /* SyncTests */,
++				E4D567211ADECE2700F1EFE7 /* ReadingListTests */,
+ 				E6F9650B1B2F1CF20034B023 /* SharedTests */,
+ 				7BEB64401C7345600092C02E /* L10nSnapshotTests */,
+ 				7BEB644F1C7345990092C02E /* MarketingUITests */,
+@@ -4461,6 +4786,55 @@
+ 			remoteRef = 28CE83D11A1D1D5100576538 /* PBXContainerItemProxy */;
+ 			sourceTree = BUILT_PRODUCTS_DIR;
+ 		};
++		7B10AAE61E3A57F90002DD08 /* SQLiteTests iOS.xctest */ = {
++			isa = PBXReferenceProxy;
++			fileType = wrapper.cfbundle;
++			path = "SQLiteTests iOS.xctest";
++			remoteRef = 7B10AAE51E3A57F90002DD08 /* PBXContainerItemProxy */;
++			sourceTree = BUILT_PRODUCTS_DIR;
++		};
++		7B10AAE81E3A57F90002DD08 /* SQLiteTests Mac.xctest */ = {
++			isa = PBXReferenceProxy;
++			fileType = wrapper.cfbundle;
++			path = "SQLiteTests Mac.xctest";
++			remoteRef = 7B10AAE71E3A57F90002DD08 /* PBXContainerItemProxy */;
++			sourceTree = BUILT_PRODUCTS_DIR;
++		};
++		7B10AAEA1E3A57F90002DD08 /* SQLite.framework */ = {
++			isa = PBXReferenceProxy;
++			fileType = wrapper.framework;
++			path = SQLite.framework;
++			remoteRef = 7B10AAE91E3A57F90002DD08 /* PBXContainerItemProxy */;
++			sourceTree = BUILT_PRODUCTS_DIR;
++		};
++		7B10AAEC1E3A57F90002DD08 /* SQLiteTests tvOS.xctest */ = {
++			isa = PBXReferenceProxy;
++			fileType = wrapper.cfbundle;
++			path = "SQLiteTests tvOS.xctest";
++			remoteRef = 7B10AAEB1E3A57F90002DD08 /* PBXContainerItemProxy */;
++			sourceTree = BUILT_PRODUCTS_DIR;
++		};
++		7B10AAEE1E3A57F90002DD08 /* SQLite.framework */ = {
++			isa = PBXReferenceProxy;
++			fileType = wrapper.framework;
++			path = SQLite.framework;
++			remoteRef = 7B10AAED1E3A57F90002DD08 /* PBXContainerItemProxy */;
++			sourceTree = BUILT_PRODUCTS_DIR;
++		};
++		7B9A62DB1C4002B1005C83DC /* SQLite.framework */ = {
++			isa = PBXReferenceProxy;
++			fileType = wrapper.framework;
++			path = SQLite.framework;
++			remoteRef = 7B9A62DA1C4002B1005C83DC /* PBXContainerItemProxy */;
++			sourceTree = BUILT_PRODUCTS_DIR;
++		};
++		7B9A62DF1C4002B1005C83DC /* SQLite.framework */ = {
++			isa = PBXReferenceProxy;
++			fileType = wrapper.framework;
++			path = SQLite.framework;
++			remoteRef = 7B9A62DE1C4002B1005C83DC /* PBXContainerItemProxy */;
++			sourceTree = BUILT_PRODUCTS_DIR;
++		};
+ 		D30EBB641C75503800105AE9 /* libKIF.a */ = {
+ 			isa = PBXReferenceProxy;
+ 			fileType = archive.ar;
+@@ -4634,6 +5008,20 @@
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
++		E4D567161ADECE2700F1EFE7 /* Resources */ = {
++			isa = PBXResourcesBuildPhase;
++			buildActionMask = 2147483647;
++			files = (
++			);
++			runOnlyForDeploymentPostprocessing = 0;
++		};
++		E4D567201ADECE2700F1EFE7 /* Resources */ = {
++			isa = PBXResourcesBuildPhase;
++			buildActionMask = 2147483647;
++			files = (
++			);
++			runOnlyForDeploymentPostprocessing = 0;
++		};
+ 		E69DB0731E97DEA9008A67E6 /* Resources */ = {
+ 			isa = PBXResourcesBuildPhase;
+ 			buildActionMask = 2147483647;
+@@ -5024,8 +5412,6 @@
+ 				28126F741C2F96F1006466CC /* SQLiteBookmarksResetting.swift in Sources */,
+ 				28B62ACE1BC745E7004A585A /* Syncable.swift in Sources */,
+ 				74B195441CF503FC007F36EF /* RecentlyClosedTabs.swift in Sources */,
+-				D07696F820697F9C00FACFD8 /* ReadingListSchema.swift in Sources */,
+-				D0769743206C19E900FACFD8 /* SQLiteReadingList.swift in Sources */,
+ 				E65075C21E37F956006961AC /* ExtensionUtils.swift in Sources */,
+ 				7BF5A1EA1B41640500EA9DD8 /* SyncQueue.swift in Sources */,
+ 				2852B8441C51996B00591EAC /* Trees.swift in Sources */,
+@@ -5048,7 +5434,6 @@
+ 				0B54BD191B698B7C004C822C /* SuggestedSites.swift in Sources */,
+ 				318FB6EB1DB5600D0004E40F /* SQLiteHistoryFactories.swift in Sources */,
+ 				285D3B681B4380B70035FD22 /* Queue.swift in Sources */,
+-				D076971F206AC60900FACFD8 /* ReadingList.swift in Sources */,
+ 				28E08C9A1AF44F00009BA2FA /* BrowserSchema.swift in Sources */,
+ 				2FCAE2681ABB531100877008 /* BrowserDB.swift in Sources */,
+ 				283586FD1C73F18E00A55435 /* CachingItemSource.swift in Sources */,
+@@ -5068,7 +5453,6 @@
+ 			files = (
+ 				28D158AD1AFD90E500F9C065 /* TestSQLiteBookmarks.swift in Sources */,
+ 				C8611C8E1F71904C00C3DE7D /* DiskImageStoreTests.swift in Sources */,
+-				D0B693D5206C5BB9008A8B11 /* TestSQLiteReadingList.swift in Sources */,
+ 				E63F71881DB7FBE200A995C9 /* TestSQLiteMetadata.swift in Sources */,
+ 				2FCAE2851ABB533A00877008 /* TestSQLiteRemoteClientsAndTabs.swift in Sources */,
+ 				E6F6D6A31E9E6B2A0012072B /* DeferredTestUtils.swift in Sources */,
+@@ -5222,6 +5606,45 @@
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
++		E4D567131ADECE2700F1EFE7 /* Sources */ = {
++			isa = PBXSourcesBuildPhase;
++			buildActionMask = 2147483647;
++			files = (
++				E4D5677C1ADECE8100F1EFE7 /* ReadingListOAuthAuthenticator.swift in Sources */,
++				E4D567841ADECE8100F1EFE7 /* ReadingListResponse.swift in Sources */,
++				E4D567921ADECE8100F1EFE7 /* ReadingListUtils.swift in Sources */,
++				E41F0D9B1ADFFC5600FC7387 /* ReadingListError.swift in Sources */,
++				E4D567761ADECE8100F1EFE7 /* ReadingListClientRecord.swift in Sources */,
++				E4D5678E1ADECE8100F1EFE7 /* ReadingListSynchronizer.swift in Sources */,
++				E4D567801ADECE8100F1EFE7 /* ReadingListRecordResponse.swift in Sources */,
++				E41F0D981ADFFB5400FC7387 /* ReadingListService.swift in Sources */,
++				E4D5678A1ADECE8100F1EFE7 /* ReadingListSQLStorage.swift in Sources */,
++				E4D567881ADECE8100F1EFE7 /* ReadingListServerRecord.swift in Sources */,
++				E4D567861ADECE8100F1EFE7 /* ReadingListServerMetadata.swift in Sources */,
++				E4D567901ADECE8100F1EFE7 /* ReadingListSyncMetadata.swift in Sources */,
++				E4D5677A1ADECE8100F1EFE7 /* ReadingListFetchSpec.swift in Sources */,
++				E4D567821ADECE8100F1EFE7 /* ReadingListRecordsResponse.swift in Sources */,
++				E4D567721ADECE8100F1EFE7 /* ReadingListClient.swift in Sources */,
++				E4D5678C1ADECE8100F1EFE7 /* ReadingListStorage.swift in Sources */,
++				E4D5676A1ADECE8100F1EFE7 /* ReadingListAuthenticator.swift in Sources */,
++				E4D567741ADECE8100F1EFE7 /* ReadingListClientMetadata.swift in Sources */,
++				E4D567701ADECE8100F1EFE7 /* ReadingListChangeAccumulator.swift in Sources */,
++				E4D5676E1ADECE8100F1EFE7 /* ReadingListBatchRecordResponse.swift in Sources */,
++				E4D5676C1ADECE8100F1EFE7 /* ReadingListBasicAuthAuthenticator.swift in Sources */,
++				E4D5677E1ADECE8100F1EFE7 /* ReadingListRecord.swift in Sources */,
++			);
++			runOnlyForDeploymentPostprocessing = 0;
++		};
++		E4D5671E1ADECE2700F1EFE7 /* Sources */ = {
++			isa = PBXSourcesBuildPhase;
++			buildActionMask = 2147483647;
++			files = (
++				E4D567A51ADECEB800F1EFE7 /* ReadingListStorageTestCase.swift in Sources */,
++				E6F6D6A61E9E6B2C0012072B /* DeferredTestUtils.swift in Sources */,
++				E4D5679F1ADECEB800F1EFE7 /* ReadingListClientRecordTestCase.swift in Sources */,
++			);
++			runOnlyForDeploymentPostprocessing = 0;
++		};
+ 		E69DB0701E97DEA9008A67E6 /* Sources */ = {
+ 			isa = PBXSourcesBuildPhase;
+ 			buildActionMask = 2147483647;
+@@ -5657,6 +6080,16 @@
+ 			target = F84B21BD1A090F8100AAB793 /* Client */;
+ 			targetProxy = 3BFE4B0C1D342FB900DDF53F /* PBXContainerItemProxy */;
+ 		};
++		7B10AAF01E3A58C80002DD08 /* PBXTargetDependency */ = {
++			isa = PBXTargetDependency;
++			target = 288A2D851AB8B3260023ABC3 /* Shared */;
++			targetProxy = 7B10AAEF1E3A58C80002DD08 /* PBXContainerItemProxy */;
++		};
++		7B9A62F91C400303005C83DC /* PBXTargetDependency */ = {
++			isa = PBXTargetDependency;
++			name = "SQLite iOS";
++			targetProxy = 7B9A62F81C400303005C83DC /* PBXContainerItemProxy */;
++		};
+ 		7B9BF92F1E435DE400CB24F4 /* PBXTargetDependency */ = {
+ 			isa = PBXTargetDependency;
+ 			target = 2FCAE2231ABB51F800877008 /* StorageTests */;
+@@ -5672,6 +6105,11 @@
+ 			target = F84B21BD1A090F8100AAB793 /* Client */;
+ 			targetProxy = 7BEB645C1C7346100092C02E /* PBXContainerItemProxy */;
+ 		};
++		D09A0CDF1FAA2577009A0273 /* PBXTargetDependency */ = {
++			isa = PBXTargetDependency;
++			target = 288A2D851AB8B3260023ABC3 /* Shared */;
++			targetProxy = D09A0CDE1FAA2577009A0273 /* PBXContainerItemProxy */;
++		};
+ 		D09A0CE11FAA25C5009A0273 /* PBXTargetDependency */ = {
+ 			isa = PBXTargetDependency;
+ 			target = 288A2D851AB8B3260023ABC3 /* Shared */;
+@@ -5692,6 +6130,11 @@
+ 			target = 2827315D1ABC9BE600AA1954 /* Sync */;
+ 			targetProxy = D09A0CE81FAA2C1E009A0273 /* PBXContainerItemProxy */;
+ 		};
++		D09A0CEB1FAA2C38009A0273 /* PBXTargetDependency */ = {
++			isa = PBXTargetDependency;
++			target = E4D567171ADECE2700F1EFE7 /* ReadingList */;
++			targetProxy = D09A0CEA1FAA2C38009A0273 /* PBXContainerItemProxy */;
++		};
+ 		D09A0CED1FAA2C4C009A0273 /* PBXTargetDependency */ = {
+ 			isa = PBXTargetDependency;
+ 			target = 288A2D851AB8B3260023ABC3 /* Shared */;
+@@ -5712,6 +6155,11 @@
+ 			target = 2827315D1ABC9BE600AA1954 /* Sync */;
+ 			targetProxy = D09A0CF21FAA2C81009A0273 /* PBXContainerItemProxy */;
+ 		};
++		D09A0CF51FAA2C99009A0273 /* PBXTargetDependency */ = {
++			isa = PBXTargetDependency;
++			target = E4D567171ADECE2700F1EFE7 /* ReadingList */;
++			targetProxy = D09A0CF41FAA2C99009A0273 /* PBXContainerItemProxy */;
++		};
+ 		D09A0CF71FAA2CB2009A0273 /* PBXTargetDependency */ = {
+ 			isa = PBXTargetDependency;
+ 			name = FxA;
+@@ -5727,6 +6175,11 @@
+ 			target = 2827315D1ABC9BE600AA1954 /* Sync */;
+ 			targetProxy = D09A0CFA1FAA2CC2009A0273 /* PBXContainerItemProxy */;
+ 		};
++		D09A0CFD1FAA2CC5009A0273 /* PBXTargetDependency */ = {
++			isa = PBXTargetDependency;
++			target = E4D567171ADECE2700F1EFE7 /* ReadingList */;
++			targetProxy = D09A0CFC1FAA2CC5009A0273 /* PBXContainerItemProxy */;
++		};
+ 		D0EA58131FA836CA00D03ED1 /* PBXTargetDependency */ = {
+ 			isa = PBXTargetDependency;
+ 			target = 2827315D1ABC9BE600AA1954 /* Sync */;
+@@ -5757,6 +6210,16 @@
+ 			target = E4BA8A2A1B4B0A1600BC2E95 /* ViewLater */;
+ 			targetProxy = E4BA8A331B4B0A1700BC2E95 /* PBXContainerItemProxy */;
+ 		};
++		E4D567251ADECE2700F1EFE7 /* PBXTargetDependency */ = {
++			isa = PBXTargetDependency;
++			target = E4D567171ADECE2700F1EFE7 /* ReadingList */;
++			targetProxy = E4D567241ADECE2700F1EFE7 /* PBXContainerItemProxy */;
++		};
++		E4D5672E1ADECE2800F1EFE7 /* PBXTargetDependency */ = {
++			isa = PBXTargetDependency;
++			target = E4D567171ADECE2700F1EFE7 /* ReadingList */;
++			targetProxy = E4D5672D1ADECE2800F1EFE7 /* PBXContainerItemProxy */;
++		};
+ 		E4EE05B01BA3A0A10021B3A7 /* PBXTargetDependency */ = {
+ 			isa = PBXTargetDependency;
+ 			target = 2FCAE2191ABB51F800877008 /* Storage */;
+@@ -5866,7 +6329,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Sync/Sync-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec;
+ 		};
+@@ -5883,7 +6347,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/SyncTests/SyncTests-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = Fennec;
+@@ -5904,7 +6369,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Shared/Shared-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec;
+ 		};
+@@ -5935,7 +6401,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Account/Account-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec;
+ 		};
+@@ -5952,7 +6419,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Account/Account-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = Fennec;
+@@ -5974,7 +6442,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Storage/Storage-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec;
+ 		};
+@@ -5986,7 +6455,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Storage/Storage-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = Fennec;
+@@ -6007,7 +6477,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "$(MOZ_BUNDLE_ID).$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = Today;
+ 				PROVISIONING_PROFILE_SPECIFIER = "Fennec Today Development";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec;
+ 		};
+@@ -6027,7 +6498,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "$(MOZ_BUNDLE_ID).$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = Today;
+ 				PROVISIONING_PROFILE_SPECIFIER = "Firefox Today Development";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Firefox;
+ 		};
+@@ -6047,7 +6519,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "$(MOZ_BUNDLE_ID).$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = Today;
+ 				PROVISIONING_PROFILE_SPECIFIER = "Firefox Beta Today Development";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = FirefoxBeta;
+ 		};
+@@ -6067,7 +6540,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = org.mozilla.ios.FennecEnterprise.NotificationService;
+ 				PRODUCT_NAME = NotificationService;
+ 				PROVISIONING_PROFILE_SPECIFIER = "";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec_Enterprise;
+ 		};
+@@ -6128,7 +6602,8 @@
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec;
+ 		};
+@@ -6184,7 +6659,8 @@
+ 				SDKROOT = iphoneos;
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 				VALIDATE_PRODUCT = YES;
+ 			};
+ 			name = Firefox;
+@@ -6241,7 +6717,8 @@
+ 				SDKROOT = iphoneos;
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 				VALIDATE_PRODUCT = YES;
+ 			};
+ 			name = FirefoxBeta;
+@@ -6447,7 +6924,8 @@
+ 				SDKROOT = iphoneos;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/XCUITests/XCUITests-Bridging-Header.h";
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_TARGET_NAME = Client;
+ 			};
+ 			name = Fennec;
+@@ -6490,7 +6968,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = com.mozilla.XCUITests;
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SDKROOT = iphoneos;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_TARGET_NAME = Client;
+ 				VALIDATE_PRODUCT = YES;
+ 			};
+@@ -6534,7 +7013,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = com.mozilla.XCUITests;
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SDKROOT = iphoneos;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_TARGET_NAME = Client;
+ 				VALIDATE_PRODUCT = YES;
+ 			};
+@@ -6613,7 +7093,6 @@
+ 				GCC_WARN_UNUSED_FUNCTION = YES;
+ 				GCC_WARN_UNUSED_VARIABLE = YES;
+ 				HEADER_SEARCH_PATHS = (
+-					"$(SRCROOT)/ThirdParty/sqlcipher",
+ 					"$(inherited)",
+ 					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
+ 					"$(SRCROOT)",
+@@ -6677,7 +7156,8 @@
+ 				PRODUCT_NAME = Client;
+ 				PROVISIONING_PROFILE_SPECIFIER = "Firefox Development";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/Client-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Firefox;
+ 		};
+@@ -6695,7 +7175,8 @@
+ 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.ios.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = ClientTests;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = Firefox;
+@@ -6721,7 +7202,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				PROVISIONING_PROFILE_SPECIFIER = "Firefox ShareTo Development";
+ 				SKIP_INSTALL = YES;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 				TARGETED_DEVICE_FAMILY = "1,2";
+ 			};
+ 			name = Firefox;
+@@ -6748,7 +7230,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				PROVISIONING_PROFILE_SPECIFIER = "Firefox SendTo Development";
+ 				SKIP_INSTALL = YES;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Firefox;
+ 		};
+@@ -6779,7 +7262,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Shared/Shared-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Firefox;
+ 		};
+@@ -6803,7 +7287,8 @@
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Storage/Storage-Bridging-Header.h";
+ 				SWIFT_OPTIMIZATION_LEVEL = "-O";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Firefox;
+ 		};
+@@ -6817,7 +7302,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Storage/Storage-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = Firefox;
+@@ -6851,7 +7337,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Account/Account-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Firefox;
+ 		};
+@@ -6870,7 +7357,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Account/Account-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = Firefox;
+@@ -6899,7 +7387,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Sync/Sync-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Firefox;
+ 		};
+@@ -6918,6 +7407,57 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/SyncTests/SyncTests-Bridging-Header.h";
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
++				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
++			};
++			name = Firefox;
++		};
++		E448FCAA1AEE7A6000869B6C /* Firefox */ = {
++			isa = XCBuildConfiguration;
++			buildSettings = {
++				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
++				APPLICATION_EXTENSION_API_ONLY = YES;
++				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
++				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
++				DEFINES_MODULE = YES;
++				DYLIB_COMPATIBILITY_VERSION = 1;
++				DYLIB_CURRENT_VERSION = 1;
++				DYLIB_INSTALL_NAME_BASE = "@rpath";
++				ENABLE_TESTABILITY = YES;
++				FRAMEWORK_SEARCH_PATHS = (
++					"$(inherited)",
++					"$(PROJECT_DIR)/Carthage/Build/iOS",
++					"$(BUILD_DIR)/Release$(EFFECTIVE_PLATFORM_NAME)",
++				);
++				GCC_NO_COMMON_BLOCKS = YES;
++				INFOPLIST_FILE = ReadingList/Info.plist;
++				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
++				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
++				MTL_ENABLE_DEBUG_INFO = NO;
++				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.ios.$(PRODUCT_NAME:rfc1034identifier)";
++				PRODUCT_NAME = "$(TARGET_NAME)";
++				SKIP_INSTALL = YES;
++				SWIFT_OBJC_BRIDGING_HEADER = "";
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
++			};
++			name = Firefox;
++		};
++		E448FCAB1AEE7A6000869B6C /* Firefox */ = {
++			isa = XCBuildConfiguration;
++			buildSettings = {
++				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
++				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
++				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
++				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
++				GCC_WARN_UNDECLARED_SELECTOR = YES;
++				INFOPLIST_FILE = ReadingListTests/Info.plist;
++				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
++				MTL_ENABLE_DEBUG_INFO = NO;
++				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.ios.$(PRODUCT_NAME:rfc1034identifier)";
++				PRODUCT_NAME = "$(TARGET_NAME)";
++				SWIFT_OBJC_BRIDGING_HEADER = "";
+ 				SWIFT_VERSION = 3.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+@@ -6945,7 +7485,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				PROVISIONING_PROFILE_SPECIFIER = "Fennec View Later Development";
+ 				SKIP_INSTALL = YES;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec;
+ 		};
+@@ -6971,10 +7512,54 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				PROVISIONING_PROFILE_SPECIFIER = "Firefox View Later Development";
+ 				SKIP_INSTALL = YES;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Firefox;
+ 		};
++		E4D567311ADECE2900F1EFE7 /* Fennec */ = {
++			isa = XCBuildConfiguration;
++			buildSettings = {
++				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
++				APPLICATION_EXTENSION_API_ONLY = YES;
++				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
++				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
++				DEFINES_MODULE = YES;
++				DYLIB_COMPATIBILITY_VERSION = 1;
++				DYLIB_CURRENT_VERSION = 1;
++				DYLIB_INSTALL_NAME_BASE = "@rpath";
++				FRAMEWORK_SEARCH_PATHS = (
++					"$(inherited)",
++					"$(PROJECT_DIR)/Carthage/Build/iOS",
++					"$(BUILD_DIR)/Release$(EFFECTIVE_PLATFORM_NAME)",
++				);
++				GCC_NO_COMMON_BLOCKS = YES;
++				INFOPLIST_FILE = ReadingList/Info.plist;
++				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
++				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
++				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.ios.$(PRODUCT_NAME:rfc1034identifier)";
++				PRODUCT_NAME = "$(TARGET_NAME)";
++				SKIP_INSTALL = YES;
++				SWIFT_OBJC_BRIDGING_HEADER = "";
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
++			};
++			name = Fennec;
++		};
++		E4D567341ADECE2900F1EFE7 /* Fennec */ = {
++			isa = XCBuildConfiguration;
++			buildSettings = {
++				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
++				INFOPLIST_FILE = ReadingListTests/Info.plist;
++				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
++				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.ios.$(PRODUCT_NAME:rfc1034identifier)";
++				PRODUCT_NAME = "$(TARGET_NAME)";
++				SWIFT_OBJC_BRIDGING_HEADER = "";
++				SWIFT_VERSION = 3.0;
++				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
++			};
++			name = Fennec;
++		};
+ 		E601384C1C89EAE600DF9756 /* Fennec */ = {
+ 			isa = XCBuildConfiguration;
+ 			buildSettings = {
+@@ -7102,7 +7687,8 @@
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 				TARGETED_DEVICE_FAMILY = "1,2";
+ 				VERSIONING_SYSTEM = "apple-generic";
+ 				VERSION_INFO_PREFIX = "";
+@@ -7163,7 +7749,8 @@
+ 				SDKROOT = iphoneos;
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 				TARGETED_DEVICE_FAMILY = "1,2";
+ 				VALIDATE_PRODUCT = YES;
+ 				VERSIONING_SYSTEM = "apple-generic";
+@@ -7225,7 +7812,8 @@
+ 				SDKROOT = iphoneos;
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 				TARGETED_DEVICE_FAMILY = "1,2";
+ 				VALIDATE_PRODUCT = YES;
+ 				VERSIONING_SYSTEM = "apple-generic";
+@@ -7287,7 +7875,8 @@
+ 				SDKROOT = iphoneos;
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 				TARGETED_DEVICE_FAMILY = "1,2";
+ 				VALIDATE_PRODUCT = YES;
+ 				VERSIONING_SYSTEM = "apple-generic";
+@@ -7348,7 +7937,8 @@
+ 				SDKROOT = iphoneos;
+ 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = Fennec;
+@@ -7398,7 +7988,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SDKROOT = iphoneos;
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 				VALIDATE_PRODUCT = YES;
+ 			};
+@@ -7449,7 +8040,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SDKROOT = iphoneos;
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 				VALIDATE_PRODUCT = YES;
+ 			};
+@@ -7500,7 +8092,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SDKROOT = iphoneos;
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Owholemodule";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 				VALIDATE_PRODUCT = YES;
+ 			};
+@@ -7554,7 +8147,6 @@
+ 				GCC_WARN_UNUSED_FUNCTION = YES;
+ 				GCC_WARN_UNUSED_VARIABLE = YES;
+ 				HEADER_SEARCH_PATHS = (
+-					"$(SRCROOT)/ThirdParty/sqlcipher",
+ 					"$(inherited)",
+ 					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
+ 					"$(SRCROOT)",
+@@ -7636,7 +8228,8 @@
+ 				PROVISIONING_PROFILE_SPECIFIER = "FennecEnterprise Development";
+ 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = BUDDYBUILD;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/Client-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec_Enterprise;
+ 		};
+@@ -7662,7 +8255,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				PROVISIONING_PROFILE_SPECIFIER = "FennecEnterprise SendTo Development";
+ 				SKIP_INSTALL = YES;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec_Enterprise;
+ 		};
+@@ -7687,7 +8281,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				PROVISIONING_PROFILE_SPECIFIER = "FennecEnterprise Share To Development";
+ 				SKIP_INSTALL = YES;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 				TARGETED_DEVICE_FAMILY = "1,2";
+ 			};
+ 			name = Fennec_Enterprise;
+@@ -7708,7 +8303,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "$(MOZ_BUNDLE_ID).$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = Today;
+ 				PROVISIONING_PROFILE_SPECIFIER = "FennecEnterprise Today Development";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec_Enterprise;
+ 		};
+@@ -7734,7 +8330,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				PROVISIONING_PROFILE_SPECIFIER = "FennecEnterprise ViewLater Development";
+ 				SKIP_INSTALL = YES;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec_Enterprise;
+ 		};
+@@ -7755,7 +8352,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Shared/Shared-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec_Enterprise;
+ 		};
+@@ -7777,7 +8375,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Storage/Storage-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec_Enterprise;
+ 		};
+@@ -7809,7 +8408,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Account/Account-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec_Enterprise;
+ 		};
+@@ -7836,7 +8436,38 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Sync/Sync-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
++			};
++			name = Fennec_Enterprise;
++		};
++		E6DCC20F1DCBB6F100CEC4B7 /* Fennec_Enterprise */ = {
++			isa = XCBuildConfiguration;
++			buildSettings = {
++				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
++				APPLICATION_EXTENSION_API_ONLY = YES;
++				"CODE_SIGN_IDENTITY[sdk=iphoneos*]" = "iPhone Developer";
++				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
++				DEFINES_MODULE = YES;
++				DEVELOPMENT_TEAM = 43AQ936H96;
++				DYLIB_COMPATIBILITY_VERSION = 1;
++				DYLIB_CURRENT_VERSION = 1;
++				DYLIB_INSTALL_NAME_BASE = "@rpath";
++				FRAMEWORK_SEARCH_PATHS = (
++					"$(inherited)",
++					"$(PROJECT_DIR)/Carthage/Build/iOS",
++					"$(BUILD_DIR)/Release$(EFFECTIVE_PLATFORM_NAME)",
++				);
++				GCC_NO_COMMON_BLOCKS = YES;
++				INFOPLIST_FILE = ReadingList/Info.plist;
++				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
++				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
++				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.ios.$(PRODUCT_NAME:rfc1034identifier)";
++				PRODUCT_NAME = "$(TARGET_NAME)";
++				SKIP_INSTALL = YES;
++				SWIFT_OBJC_BRIDGING_HEADER = "";
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec_Enterprise;
+ 		};
+@@ -7853,7 +8484,8 @@
+ 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.ios.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = ClientTests;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = Fennec_Enterprise;
+@@ -7881,7 +8513,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Storage/Storage-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = Fennec_Enterprise;
+@@ -7899,7 +8532,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Account/Account-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = Fennec_Enterprise;
+@@ -7917,6 +8551,21 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/SyncTests/SyncTests-Bridging-Header.h";
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
++				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
++			};
++			name = Fennec_Enterprise;
++		};
++		E6DCC2161DCBB6F100CEC4B7 /* Fennec_Enterprise */ = {
++			isa = XCBuildConfiguration;
++			buildSettings = {
++				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
++				INFOPLIST_FILE = ReadingListTests/Info.plist;
++				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
++				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.ios.$(PRODUCT_NAME:rfc1034identifier)";
++				PRODUCT_NAME = "$(TARGET_NAME)";
++				SWIFT_OBJC_BRIDGING_HEADER = "";
+ 				SWIFT_VERSION = 3.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+@@ -7932,7 +8581,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Shared/Shared-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = Fennec_Enterprise;
+@@ -8005,7 +8655,8 @@
+ 				SDKROOT = iphoneos;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$(SRCROOT)/XCUITests/XCUITests-Bridging-Header.h";
+ 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_TARGET_NAME = Client;
+ 			};
+ 			name = Fennec_Enterprise;
+@@ -8076,7 +8727,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Shared/Shared-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = Fennec;
+@@ -8092,7 +8744,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Shared/Shared-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = Firefox;
+@@ -8141,7 +8794,6 @@
+ 				GCC_WARN_UNUSED_FUNCTION = YES;
+ 				GCC_WARN_UNUSED_VARIABLE = YES;
+ 				HEADER_SEARCH_PATHS = (
+-					"$(SRCROOT)/ThirdParty/sqlcipher",
+ 					"$(inherited)",
+ 					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
+ 					"$(SRCROOT)",
+@@ -8205,7 +8857,8 @@
+ 				PRODUCT_NAME = Client;
+ 				PROVISIONING_PROFILE_SPECIFIER = "Firefox Beta Development";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/Client-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = FirefoxBeta;
+ 		};
+@@ -8222,7 +8875,8 @@
+ 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.ios.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = ClientTests;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = FirefoxBeta;
+@@ -8249,7 +8903,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				PROVISIONING_PROFILE_SPECIFIER = "Firefox Beta SentTo Development";
+ 				SKIP_INSTALL = YES;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = FirefoxBeta;
+ 		};
+@@ -8274,7 +8929,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				PROVISIONING_PROFILE_SPECIFIER = "Firefox Beta ShareTo Development";
+ 				SKIP_INSTALL = YES;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 				TARGETED_DEVICE_FAMILY = "1,2";
+ 			};
+ 			name = FirefoxBeta;
+@@ -8301,7 +8957,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				PROVISIONING_PROFILE_SPECIFIER = "Firefox Beta ViewLater Development";
+ 				SKIP_INSTALL = YES;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = FirefoxBeta;
+ 		};
+@@ -8332,7 +8989,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Shared/Shared-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = FirefoxBeta;
+ 		};
+@@ -8356,7 +9014,8 @@
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Storage/Storage-Bridging-Header.h";
+ 				SWIFT_OPTIMIZATION_LEVEL = "-O";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = FirefoxBeta;
+ 		};
+@@ -8370,7 +9029,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Storage/Storage-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = FirefoxBeta;
+@@ -8404,7 +9064,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Account/Account-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = FirefoxBeta;
+ 		};
+@@ -8423,7 +9084,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Account/Account-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = FirefoxBeta;
+@@ -8452,7 +9114,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SKIP_INSTALL = YES;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Sync/Sync-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = FirefoxBeta;
+ 		};
+@@ -8471,6 +9134,56 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/SyncTests/SyncTests-Bridging-Header.h";
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
++				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
++			};
++			name = FirefoxBeta;
++		};
++		E6FCC4381C40562400DF6113 /* FirefoxBeta */ = {
++			isa = XCBuildConfiguration;
++			buildSettings = {
++				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
++				APPLICATION_EXTENSION_API_ONLY = YES;
++				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
++				DEFINES_MODULE = YES;
++				DYLIB_COMPATIBILITY_VERSION = 1;
++				DYLIB_CURRENT_VERSION = 1;
++				DYLIB_INSTALL_NAME_BASE = "@rpath";
++				ENABLE_TESTABILITY = YES;
++				FRAMEWORK_SEARCH_PATHS = (
++					"$(inherited)",
++					"$(PROJECT_DIR)/Carthage/Build/iOS",
++					"$(BUILD_DIR)/Release$(EFFECTIVE_PLATFORM_NAME)",
++				);
++				GCC_NO_COMMON_BLOCKS = YES;
++				INFOPLIST_FILE = ReadingList/Info.plist;
++				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
++				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
++				MTL_ENABLE_DEBUG_INFO = NO;
++				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.ios.$(PRODUCT_NAME:rfc1034identifier)";
++				PRODUCT_NAME = "$(TARGET_NAME)";
++				SKIP_INSTALL = YES;
++				SWIFT_OBJC_BRIDGING_HEADER = "";
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
++			};
++			name = FirefoxBeta;
++		};
++		E6FCC4391C40562400DF6113 /* FirefoxBeta */ = {
++			isa = XCBuildConfiguration;
++			buildSettings = {
++				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
++				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
++				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
++				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
++				GCC_WARN_UNDECLARED_SELECTOR = YES;
++				INFOPLIST_FILE = ReadingListTests/Info.plist;
++				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
++				MTL_ENABLE_DEBUG_INFO = NO;
++				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.ios.$(PRODUCT_NAME:rfc1034identifier)";
++				PRODUCT_NAME = "$(TARGET_NAME)";
++				SWIFT_OBJC_BRIDGING_HEADER = "";
+ 				SWIFT_VERSION = 3.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+@@ -8487,7 +9200,8 @@
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$SRCROOT/Shared/Shared-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = FirefoxBeta;
+@@ -8540,7 +9254,6 @@
+ 				GCC_WARN_UNUSED_FUNCTION = YES;
+ 				GCC_WARN_UNUSED_VARIABLE = YES;
+ 				HEADER_SEARCH_PATHS = (
+-					"$(SRCROOT)/ThirdParty/sqlcipher",
+ 					"$(inherited)",
+ 					/Applications/Xcode.app/Contents/Developer/Toolchains/XcodeDefault.xctoolchain/usr/include,
+ 					"$(SRCROOT)",
+@@ -8622,7 +9335,8 @@
+ 				PROVISIONING_PROFILE_SPECIFIER = "Fennec Development";
+ 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = BUDDYBUILD;
+ 				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/Client-Bridging-Header.h";
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec;
+ 		};
+@@ -8639,7 +9353,8 @@
+ 				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks @loader_path/Frameworks";
+ 				PRODUCT_BUNDLE_IDENTIFIER = "org.mozilla.ios.$(PRODUCT_NAME:rfc1034identifier)";
+ 				PRODUCT_NAME = ClientTests;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = On;
++				SWIFT_VERSION = 4.0;
+ 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Client.app/Client";
+ 			};
+ 			name = Fennec;
+@@ -8665,7 +9380,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				PROVISIONING_PROFILE_SPECIFIER = "Fennec ShareTo Development";
+ 				SKIP_INSTALL = YES;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 				TARGETED_DEVICE_FAMILY = "1,2";
+ 			};
+ 			name = Fennec;
+@@ -8692,7 +9408,8 @@
+ 				PRODUCT_NAME = "$(TARGET_NAME)";
+ 				PROVISIONING_PROFILE_SPECIFIER = "Fennec SendTo Development";
+ 				SKIP_INSTALL = YES;
+-				SWIFT_VERSION = 3.0;
++				SWIFT_SWIFT3_OBJC_INFERENCE = Off;
++				SWIFT_VERSION = 4.0;
+ 			};
+ 			name = Fennec;
+ 		};
+@@ -8843,6 +9560,28 @@
+ 			defaultConfigurationIsVisible = 0;
+ 			defaultConfigurationName = Fennec;
+ 		};
++		E4D567531ADECE2900F1EFE7 /* Build configuration list for PBXNativeTarget "ReadingList" */ = {
++			isa = XCConfigurationList;
++			buildConfigurations = (
++				E4D567311ADECE2900F1EFE7 /* Fennec */,
++				E6DCC20F1DCBB6F100CEC4B7 /* Fennec_Enterprise */,
++				E448FCAA1AEE7A6000869B6C /* Firefox */,
++				E6FCC4381C40562400DF6113 /* FirefoxBeta */,
++			);
++			defaultConfigurationIsVisible = 0;
++			defaultConfigurationName = Fennec;
++		};
++		E4D567541ADECE2900F1EFE7 /* Build configuration list for PBXNativeTarget "ReadingListTests" */ = {
++			isa = XCConfigurationList;
++			buildConfigurations = (
++				E4D567341ADECE2900F1EFE7 /* Fennec */,
++				E6DCC2161DCBB6F100CEC4B7 /* Fennec_Enterprise */,
++				E448FCAB1AEE7A6000869B6C /* Firefox */,
++				E6FCC4391C40562400DF6113 /* FirefoxBeta */,
++			);
++			defaultConfigurationIsVisible = 0;
++			defaultConfigurationName = Fennec;
++		};
+ 		E60138631C89EAE700DF9756 /* Build configuration list for PBXNativeTarget "L10nSnapshotTests" */ = {
+ 			isa = XCConfigurationList;
+ 			buildConfigurations = (
+diff --git a/Client/Extensions/UIViewExtensions.swift b/Client/Extensions/UIViewExtensions.swift
+index 6714521bb..996a660f3 100644
+--- a/Client/Extensions/UIViewExtensions.swift
++++ b/Client/Extensions/UIViewExtensions.swift
+@@ -49,7 +49,7 @@ extension UIView {
+     /*
+      * Performs a deep copy of the view. Does not copy constraints.
+      */
+-    func clone() -> UIView {
++    @objc func clone() -> UIView {
+         let data = NSKeyedArchiver.archivedData(withRootObject: self)
+         return NSKeyedUnarchiver.unarchiveObject(with: data) as! UIView
+     }
+diff --git a/Client/Frontend/AuthenticationManager/AuthenticationSettingsViewController.swift b/Client/Frontend/AuthenticationManager/AuthenticationSettingsViewController.swift
+index f3f39863a..c4b38a9a2 100644
+--- a/Client/Frontend/AuthenticationManager/AuthenticationSettingsViewController.swift
++++ b/Client/Frontend/AuthenticationManager/AuthenticationSettingsViewController.swift
+@@ -329,7 +329,7 @@ class AuthenticationSettingsViewController: SettingsTableViewController {
+ }
+ 
+ extension AuthenticationSettingsViewController {
+-    func refreshSettings(_ notification: Notification) {
++    @objc func refreshSettings(_ notification: Notification) {
+         updateTitleForTouchIDState()
+         settings = generateSettings()
+         tableView.reloadData()
+diff --git a/Client/Frontend/AuthenticationManager/BasePasscodeViewController.swift b/Client/Frontend/AuthenticationManager/BasePasscodeViewController.swift
+index b65d84150..922f539d1 100644
+--- a/Client/Frontend/AuthenticationManager/BasePasscodeViewController.swift
++++ b/Client/Frontend/AuthenticationManager/BasePasscodeViewController.swift
+@@ -30,7 +30,7 @@ class BasePasscodeViewController: UIViewController {
+         automaticallyAdjustsScrollViewInsets = false
+     }
+ 
+-    func dismissAnimated() {
++    @objc func dismissAnimated() {
+         self.dismiss(animated: true, completion: nil)
+     }
+ }
+diff --git a/Client/Frontend/AuthenticationManager/PasscodeViews.swift b/Client/Frontend/AuthenticationManager/PasscodeViews.swift
+index eb90594f4..ba38b789a 100644
+--- a/Client/Frontend/AuthenticationManager/PasscodeViews.swift
++++ b/Client/Frontend/AuthenticationManager/PasscodeViews.swift
+@@ -186,7 +186,7 @@ class PasscodePane: UIView {
+         fatalError("init(coder:) has not been implemented")
+     }
+     
+-    func keyboardWillShow(_ sender: Notification) {
++    @objc func keyboardWillShow(_ sender: Notification) {
+         guard let keyboardFrame = (sender.userInfo?[UIKeyboardFrameEndUserInfoKey] as AnyObject).cgRectValue else {
+             return
+         }
+@@ -197,7 +197,7 @@ class PasscodePane: UIView {
+         })
+     }
+     
+-    func keyboardWillHide(_ sender: Notification) {
++    @objc func keyboardWillHide(_ sender: Notification) {
+         UIView.animate(withDuration: 0.1, animations: {
+             self.containerCenterConstraint?.update(offset: 0)
+             self.layoutIfNeeded()
+diff --git a/Client/Frontend/AuthenticationManager/SensitiveViewController.swift b/Client/Frontend/AuthenticationManager/SensitiveViewController.swift
+index 9c7111805..af6806a56 100644
+--- a/Client/Frontend/AuthenticationManager/SensitiveViewController.swift
++++ b/Client/Frontend/AuthenticationManager/SensitiveViewController.swift
+@@ -31,7 +31,7 @@ class SensitiveViewController: UIViewController {
+         NotificationCenter.default.removeObserver(self)
+     }
+ 
+-    func checkIfUserRequiresValidation() {
++    @objc func checkIfUserRequiresValidation() {
+         guard authState != .presenting else {
+             return
+         }
+@@ -63,11 +63,11 @@ class SensitiveViewController: UIViewController {
+         authState = .presenting
+     }
+ 
+-    func hideLogins() {
++    @objc func hideLogins() {
+         _ = self.navigationController?.popToRootViewController(animated: true)
+     }
+ 
+-    func blurContents() {
++    @objc func blurContents() {
+         if backgroundedBlur == nil {
+             backgroundedBlur = addBlurredContent()
+         }
+diff --git a/Client/Frontend/Browser/BackForwardListViewController.swift b/Client/Frontend/Browser/BackForwardListViewController.swift
+index cc3296447..11a2886c1 100644
+--- a/Client/Frontend/Browser/BackForwardListViewController.swift
++++ b/Client/Frontend/Browser/BackForwardListViewController.swift
+@@ -198,7 +198,7 @@ class BackForwardListViewController: UIViewController, UITableViewDataSource, UI
+         view.addGestureRecognizer(tap)
+     }
+     
+-    func handleTap() {
++    @objc func handleTap() {
+         dismiss(animated: true, completion: nil)
+     }
+     
+diff --git a/Client/Frontend/Browser/BrowserViewController.swift b/Client/Frontend/Browser/BrowserViewController.swift
+index 0a719ad62..94bee8c3e 100644
+--- a/Client/Frontend/Browser/BrowserViewController.swift
++++ b/Client/Frontend/Browser/BrowserViewController.swift
+@@ -261,17 +261,17 @@ class BrowserViewController: UIViewController {
+         }
+     }
+ 
+-    func appDidEnterBackgroundNotification() {
++    @objc func appDidEnterBackgroundNotification() {
+         displayedPopoverController?.dismiss(animated: false) {
+             self.displayedPopoverController = nil
+         }
+     }
+ 
+-    func tappedTopArea() {
++    @objc func tappedTopArea() {
+         scrollController.showToolbars(animated: true)
+     }
+ 
+-    func appWillResignActiveNotification() {
++   @objc  func appWillResignActiveNotification() {
+         // Dismiss any popovers that might be visible
+         displayedPopoverController?.dismiss(animated: false) {
+             self.displayedPopoverController = nil
+@@ -291,7 +291,7 @@ class BrowserViewController: UIViewController {
+         presentedViewController?.view.alpha = 0
+     }
+ 
+-    func appDidBecomeActiveNotification() {
++    @objc func appDidBecomeActiveNotification() {
+         // Re-show any components that might have been hidden because they were being displayed
+         // as part of a private mode tab
+         UIView.animate(withDuration: 0.2, delay: 0, options: UIViewAnimationOptions(), animations: {
+@@ -2225,7 +2225,7 @@ extension BrowserViewController {
+         }
+     }
+ 
+-    func dynamicFontChanged(_ notification: Notification) {
++    @objc func dynamicFontChanged(_ notification: Notification) {
+         guard notification.name == .DynamicFontChanged else { return }
+ 
+         var readerModeStyle = DefaultReaderModeStyle
+@@ -2380,7 +2380,7 @@ extension BrowserViewController: IntroViewControllerDelegate {
+         self.present(settingsNavigationController, animated: true, completion: nil)
+     }
+ 
+-    func dismissSignInViewController() {
++    @objc func dismissSignInViewController() {
+         self.dismiss(animated: true, completion: nil)
+     }
+ 
+@@ -2543,7 +2543,7 @@ extension BrowserViewController: ContextMenuHelperDelegate {
+ }
+ 
+ extension BrowserViewController {
+-    func image(_ image: UIImage, didFinishSavingWithError error: NSError?, contextInfo: UnsafeRawPointer) {
++    @objc func image(_ image: UIImage, didFinishSavingWithError error: NSError?, contextInfo: UnsafeRawPointer) {
+         if error == nil {
+             LeanPlumClient.shared.track(event: .saveImage)
+         }
+@@ -2624,7 +2624,7 @@ extension BrowserViewController {
+         }
+     }
+ 
+-    func addCustomSearchEngineForFocusedElement() {
++    @objc func addCustomSearchEngineForFocusedElement() {
+         guard let webView = tabManager.selectedTab?.webView else {
+             return
+         }
+diff --git a/Client/Frontend/Browser/ButtonToast.swift b/Client/Frontend/Browser/ButtonToast.swift
+index 8efb129b1..749364b31 100644
+--- a/Client/Frontend/Browser/ButtonToast.swift
++++ b/Client/Frontend/Browser/ButtonToast.swift
+@@ -171,7 +171,7 @@ class ButtonToast: UIView {
+         superview?.addGestureRecognizer(gestureRecognizer)
+     }
+     
+-    func handleTap(_ gestureRecognizer: UIGestureRecognizer) {
++    @objc func handleTap(_ gestureRecognizer: UIGestureRecognizer) {
+         dismiss(false)
+     }
+ }
+diff --git a/Client/Frontend/Browser/ContextMenuHelper.swift b/Client/Frontend/Browser/ContextMenuHelper.swift
+index 3f5b0afa2..71a654793 100644
+--- a/Client/Frontend/Browser/ContextMenuHelper.swift
++++ b/Client/Frontend/Browser/ContextMenuHelper.swift
+@@ -39,7 +39,7 @@ class ContextMenuHelper: NSObject {
+         return tab?.webView?.scrollView.subviews.flatMap({ $0.gestureRecognizers }).joined().first(where: { $0.description.contains(descriptionFragment) })
+     }
+ 
+-    func longPressGestureDetected(_ sender: UIGestureRecognizer) {
++    @objc func longPressGestureDetected(_ sender: UIGestureRecognizer) {
+         if sender.state == .cancelled {
+             delegate?.contextMenuHelper(self, didCancelGestureRecognizer: sender)
+             return
+diff --git a/Client/Frontend/Browser/OpenInHelper.swift b/Client/Frontend/Browser/OpenInHelper.swift
+index 9e2c937f7..f5789e414 100644
+--- a/Client/Frontend/Browser/OpenInHelper.swift
++++ b/Client/Frontend/Browser/OpenInHelper.swift
+@@ -193,7 +193,7 @@ class OpenPdfInHelper: NSObject, OpenInHelper, UIDocumentInteractionControllerDe
+         }
+     }
+ 
+-    func open() {
++    @objc func open() {
+         createLocalCopyOfPDF()
+         guard let _parentView = self.openInView!.superview, let docController = self.docController else { log.error("view doesn't have a superview so can't open anything"); return }
+         // iBooks should be installed by default on all devices we care about, so regardless of whether or not there are other pdf-capable
+diff --git a/Client/Frontend/Browser/OpenWithSettingsViewController.swift b/Client/Frontend/Browser/OpenWithSettingsViewController.swift
+index fe6f48036..f58feda86 100644
+--- a/Client/Frontend/Browser/OpenWithSettingsViewController.swift
++++ b/Client/Frontend/Browser/OpenWithSettingsViewController.swift
+@@ -58,7 +58,7 @@ class OpenWithSettingsViewController: UITableViewController {
+         self.prefs.setString(currentChoice, forKey: PrefsKeys.KeyMailToOption)
+     }
+ 
+-    func appDidBecomeActive() {
++    @objc func appDidBecomeActive() {
+         reloadMailProviderSource()
+         updateCurrentChoice()
+         tableView.reloadData()
+diff --git a/Client/Frontend/Browser/QRCodeViewController.swift b/Client/Frontend/Browser/QRCodeViewController.swift
+index 7e799cd9a..86e29d768 100644
+--- a/Client/Frontend/Browser/QRCodeViewController.swift
++++ b/Client/Frontend/Browser/QRCodeViewController.swift
+@@ -147,7 +147,7 @@ class QRCodeViewController: UIViewController {
+         }
+     }
+ 
+-    func startScanLineAnimation() {
++    @objc func startScanLineAnimation() {
+         if !isAnimationing {
+             return
+         }
+@@ -170,11 +170,11 @@ class QRCodeViewController: UIViewController {
+         isAnimationing = false
+     }
+ 
+-    func goBack() {
++    @objc func goBack() {
+         self.dismiss(animated: true, completion: nil)
+     }
+ 
+-    func openLight() {
++    @objc func openLight() {
+         guard let captureDevice = self.captureDevice else {
+             return
+         }
+diff --git a/Client/Frontend/Browser/ReaderModeBarView.swift b/Client/Frontend/Browser/ReaderModeBarView.swift
+index b1a1ff826..03e4d7497 100644
+--- a/Client/Frontend/Browser/ReaderModeBarView.swift
++++ b/Client/Frontend/Browser/ReaderModeBarView.swift
+@@ -50,7 +50,7 @@ class ReaderModeBarView: UIView {
+     var settingsButton: UIButton!
+     var listStatusButton: UIButton!
+ 
+-    dynamic var buttonTintColor: UIColor = UIColor.clear {
++    @objc dynamic var buttonTintColor: UIColor = UIColor.clear {
+         didSet {
+             readStatusButton.tintColor = self.buttonTintColor
+             settingsButton.tintColor = self.buttonTintColor
+@@ -109,16 +109,16 @@ class ReaderModeBarView: UIView {
+         return button
+     }
+ 
+-    func tappedReadStatusButton(_ sender: UIButton!) {
++    @objc func tappedReadStatusButton(_ sender: UIButton!) {
+         UnifiedTelemetry.recordEvent(category: .action, method: .tap, object: .readingListItem, value: unread ? .markAsRead : .markAsUnread, extras: [ "from": "reader-mode-toolbar" ])
+         delegate?.readerModeBar(self, didSelectButton: unread ? .markAsRead : .markAsUnread)
+     }
+ 
+-    func tappedSettingsButton(_ sender: UIButton!) {
++    @objc func tappedSettingsButton(_ sender: UIButton!) {
+         delegate?.readerModeBar(self, didSelectButton: .settings)
+     }
+ 
+-    func tappedListStatusButton(_ sender: UIButton!) {
++    @objc func tappedListStatusButton(_ sender: UIButton!) {
+         UnifiedTelemetry.recordEvent(category: .action, method: added ? .delete : .add, object: .readingListItem, value: .readerModeToolbar)
+         delegate?.readerModeBar(self, didSelectButton: added ? .removeFromReadingList : .addToReadingList)
+     }
+diff --git a/Client/Frontend/Browser/SearchViewController.swift b/Client/Frontend/Browser/SearchViewController.swift
+index 5f7021519..6b2572afd 100644
+--- a/Client/Frontend/Browser/SearchViewController.swift
++++ b/Client/Frontend/Browser/SearchViewController.swift
+@@ -126,7 +126,7 @@ class SearchViewController: SiteTableViewController, KeyboardHelperDelegate, Loa
+         NotificationCenter.default.addObserver(self, selector: #selector(dynamicFontChanged), name: .DynamicFontChanged, object: nil)
+     }
+ 
+-    func dynamicFontChanged(_ notification: Notification) {
++    @objc func dynamicFontChanged(_ notification: Notification) {
+         guard notification.name == .DynamicFontChanged else { return }
+ 
+         reloadData()
+@@ -251,7 +251,7 @@ class SearchViewController: SiteTableViewController, KeyboardHelperDelegate, Loa
+         }
+     }
+ 
+-    func didSelectEngine(_ sender: UIButton) {
++    @objc func didSelectEngine(_ sender: UIButton) {
+         // The UIButtons are the same cardinality and order as the array of quick search engines.
+         // Subtract 1 from index to account for magnifying glass accessory.
+         guard let index = searchEngineScrollViewContent.subviews.index(of: sender) else {
+@@ -271,7 +271,7 @@ class SearchViewController: SiteTableViewController, KeyboardHelperDelegate, Loa
+         searchDelegate?.searchViewController(self, didSelectURL: url)
+     }
+ 
+-    func didClickSearchButton() {
++    @objc func didClickSearchButton() {
+         self.searchDelegate?.presentSearchSettingsController()  
+     }
+ 
+diff --git a/Client/Frontend/Browser/TabLocationView.swift b/Client/Frontend/Browser/TabLocationView.swift
+index a4e0b0b2a..82ae19815 100644
+--- a/Client/Frontend/Browser/TabLocationView.swift
++++ b/Client/Frontend/Browser/TabLocationView.swift
+@@ -40,7 +40,7 @@ class TabLocationView: UIView, TabEventHandler {
+     private var contentView: UIStackView!
+     private var tabObservers: TabObservers!
+ 
+-    dynamic var baseURLFontColor: UIColor = TabLocationViewUX.BaseURLFontColor {
++    @objc dynamic var baseURLFontColor: UIColor = TabLocationViewUX.BaseURLFontColor {
+         didSet { updateTextWithURL() }
+     }
+ 
+@@ -263,39 +263,39 @@ class TabLocationView: UIView, TabEventHandler {
+         }
+     }
+ 
+-    func tapReaderModeButton() {
++    @objc func tapReaderModeButton() {
+         delegate?.tabLocationViewDidTapReaderMode(self)
+     }
+ 
+-    func longPressReaderModeButton(_ recognizer: UILongPressGestureRecognizer) {
++    @objc func longPressReaderModeButton(_ recognizer: UILongPressGestureRecognizer) {
+         if recognizer.state == .began {
+             delegate?.tabLocationViewDidLongPressReaderMode(self)
+         }
+     }
+     
+-    func didPressPageOptionsButton(_ button: UIButton) {
++    @objc func didPressPageOptionsButton(_ button: UIButton) {
+         delegate?.tabLocationViewDidTapPageOptions(self, from: button)
+     }
+     
+-    func didLongPressPageOptionsButton(_ recognizer: UILongPressGestureRecognizer) {
++    @objc func didLongPressPageOptionsButton(_ recognizer: UILongPressGestureRecognizer) {
+         delegate?.tabLocationViewDidLongPressPageOptions(self)
+     }
+ 
+-    func longPressLocation(_ recognizer: UITapGestureRecognizer) {
++    @objc func longPressLocation(_ recognizer: UITapGestureRecognizer) {
+         if recognizer.state == .began {
+             delegate?.tabLocationViewDidLongPressLocation(self)
+         }
+     }
+ 
+-    func tapLocation(_ recognizer: UITapGestureRecognizer) {
++    @objc func tapLocation(_ recognizer: UITapGestureRecognizer) {
+         delegate?.tabLocationViewDidTapLocation(self)
+     }
+ 
+-    func didPressTPShieldButton(_ button: UIButton) {
++    @objc func didPressTPShieldButton(_ button: UIButton) {
+         delegate?.tabLocationViewDidTapShield(self)
+     }
+ 
+-    func readerModeCustomAction() -> Bool {
++    @objc func readerModeCustomAction() -> Bool {
+         return delegate?.tabLocationViewDidLongPressReaderMode(self) ?? false
+     }
+ 
+diff --git a/Client/Frontend/Browser/TabManager.swift b/Client/Frontend/Browser/TabManager.swift
+index f75b3a783..129409e67 100644
+--- a/Client/Frontend/Browser/TabManager.swift
++++ b/Client/Frontend/Browser/TabManager.swift
+@@ -572,7 +572,7 @@ class TabManager: NSObject {
+         preserveTabs()
+     }
+ 
+-    func prefsDidChange() {
++    @objc func prefsDidChange() {
+         DispatchQueue.main.async {
+             let allowPopups = !(self.prefs.boolForKey("blockPopups") ?? true)
+             // Each tab may have its own configuration, so we should tell each of them in turn.
+diff --git a/Client/Frontend/Browser/TabToolbar.swift b/Client/Frontend/Browser/TabToolbar.swift
+index 73eca8e5f..81393787d 100644
+--- a/Client/Frontend/Browser/TabToolbar.swift
++++ b/Client/Frontend/Browser/TabToolbar.swift
+@@ -35,7 +35,7 @@ protocol TabToolbarDelegate: class {
+     func tabToolbarDidLongPressTabs(_ tabToolbar: TabToolbarProtocol, button: UIButton)
+ }
+ 
+-@objc
++@objcMembers
+ open class TabToolbarHelper: NSObject {
+     let toolbar: TabToolbarProtocol
+ 
+diff --git a/Client/Frontend/Browser/TabTrayController+KeyCommands.swift b/Client/Frontend/Browser/TabTrayController+KeyCommands.swift
+index ea8857441..505204c2f 100644
+--- a/Client/Frontend/Browser/TabTrayController+KeyCommands.swift
++++ b/Client/Frontend/Browser/TabTrayController+KeyCommands.swift
+@@ -29,29 +29,29 @@ extension TabTrayController {
+         didTogglePrivateMode()
+     }
+ 
+-    func didCloseTabKeyCommand() {
++    @objc func didCloseTabKeyCommand() {
+         UnifiedTelemetry.recordEvent(category: .action, method: .press, object: .keyCommand, extras: ["action": "close-tab"])
+         if let tab = tabManager.selectedTab {
+             tabManager.removeTab(tab)
+         }
+     }
+ 
+-    func didCloseAllTabsKeyCommand() {
++    @objc func didCloseAllTabsKeyCommand() {
+         UnifiedTelemetry.recordEvent(category: .action, method: .press, object: .keyCommand, extras: ["action": "close-all-tabs"])
+         closeTabsForCurrentTray()
+     }
+ 
+-    func didEnterTabKeyCommand() {
++    @objc func didEnterTabKeyCommand() {
+         UnifiedTelemetry.recordEvent(category: .action, method: .press, object: .keyCommand, extras: ["action": "enter-tab"])
+         _ = self.navigationController?.popViewController(animated: true)
+     }
+ 
+-    func didOpenNewTabKeyCommand() {
++    @objc func didOpenNewTabKeyCommand() {
+         UnifiedTelemetry.recordEvent(category: .action, method: .press, object: .keyCommand, extras: ["action": "new-tab"])
+         openNewTab()
+     }
+ 
+-    func didChangeSelectedTabKeyCommand(sender: UIKeyCommand) {
++    @objc func didChangeSelectedTabKeyCommand(sender: UIKeyCommand) {
+         UnifiedTelemetry.recordEvent(category: .action, method: .press, object: .keyCommand, extras: ["action": "select-tab"])
+         let step: Int
+         guard let input = sender.input else { return }
+diff --git a/Client/Frontend/Browser/TabTrayController.swift b/Client/Frontend/Browser/TabTrayController.swift
+index 2687a2872..002351bf4 100644
+--- a/Client/Frontend/Browser/TabTrayController.swift
++++ b/Client/Frontend/Browser/TabTrayController.swift
+@@ -302,7 +302,7 @@ class TabTrayController: UIViewController {
+         self.tabManager.removeDelegate(self)
+     }
+ 
+-    func dynamicFontChanged(_ notification: Notification) {
++    @objc func dynamicFontChanged(_ notification: Notification) {
+         guard notification.name == .DynamicFontChanged else { return }
+ 
+         self.collectionView.reloadData()
+@@ -406,11 +406,11 @@ class TabTrayController: UIViewController {
+     }
+ 
+ // MARK: Selectors
+-    func didClickDone() {
++    @objc func didClickDone() {
+         presentingViewController!.dismiss(animated: true, completion: nil)
+     }
+ 
+-    func didClickSettingsItem() {
++    @objc func didClickSettingsItem() {
+         assert(Thread.isMainThread, "Opening settings requires being invoked on the main thread")
+ 
+         let settingsTableViewController = AppSettingsTableViewController()
+@@ -424,11 +424,11 @@ class TabTrayController: UIViewController {
+         present(controller, animated: true, completion: nil)
+     }
+ 
+-    func didClickAddTab() {
++    @objc func didClickAddTab() {
+         openNewTab()
+     }
+ 
+-    func didTapLearnMore() {
++    @objc func didTapLearnMore() {
+         let appVersion = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as! String
+         if let langID = Locale.preferredLanguages.first {
+             let learnMoreRequest = URLRequest(url: "https://support.mozilla.org/1/mobile/\(appVersion)/iOS/\(langID)/private-browsing-ios".asURL!)
+@@ -436,7 +436,7 @@ class TabTrayController: UIViewController {
+         }
+     }
+ 
+-    func didTogglePrivateMode() {
++    @objc func didTogglePrivateMode() {
+         let scaleDownTransform = CGAffineTransform(scaleX: 0.9, y: 0.9)
+ 
+         let fromView: UIView
+@@ -542,13 +542,13 @@ class TabTrayController: UIViewController {
+ 
+ // MARK: - App Notifications
+ extension TabTrayController {
+-    func appWillResignActiveNotification() {
++    @objc func appWillResignActiveNotification() {
+         if privateMode {
+             collectionView.alpha = 0
+         }
+     }
+ 
+-    func appDidBecomeActiveNotification() {
++    @objc func appDidBecomeActiveNotification() {
+         // Re-show any components that might have been hidden because they were being displayed
+         // as part of a private mode tab
+         UIView.animate(withDuration: 0.2, delay: 0, options: [], animations: {
+@@ -725,7 +725,7 @@ extension TabTrayController: SettingsDelegate {
+ }
+ 
+ extension TabTrayController: PhotonActionSheetProtocol {
+-    func didTapDelete(_ sender: UIButton) {
++    @objc func didTapDelete(_ sender: UIButton) {
+         let controller = UIAlertController(title: nil, message: nil, preferredStyle: .actionSheet)
+         controller.addAction(UIAlertAction(title: Strings.AppMenuCloseAllTabsTitleString, style: .default, handler: { _ in self.closeTabsForCurrentTray() }))
+         controller.addAction(UIAlertAction(title: NSLocalizedString("Cancel", comment: "Label for Cancel button"), style: .cancel, handler: nil))
+diff --git a/Client/Frontend/Browser/TopTabsViewController.swift b/Client/Frontend/Browser/TopTabsViewController.swift
+index cff6e0539..1902b044f 100644
+--- a/Client/Frontend/Browser/TopTabsViewController.swift
++++ b/Client/Frontend/Browser/TopTabsViewController.swift
+@@ -196,11 +196,11 @@ class TopTabsViewController: UIViewController {
+         self.tabsButton.updateTabCount(count, animated: animated)
+     }
+     
+-    func tabsTrayTapped() {
++    @objc func tabsTrayTapped() {
+         delegate?.topTabsDidPressTabs()
+     }
+     
+-    func newTabTapped() {
++    @objc func newTabTapped() {
+         if pendingReloadData {
+             return
+         }
+@@ -208,7 +208,7 @@ class TopTabsViewController: UIViewController {
+         LeanPlumClient.shared.track(event: .openedNewTab, withParameters: ["Source": "Add tab button in the URL Bar on iPad" as AnyObject])
+     }
+ 
+-    func togglePrivateModeTapped() {
++    @objc func togglePrivateModeTapped() {
+         if isUpdating || pendingReloadData {
+             return
+         }
+diff --git a/Client/Frontend/Browser/TopTabsViews.swift b/Client/Frontend/Browser/TopTabsViews.swift
+index 5f0fc1d51..9a460ce1b 100644
+--- a/Client/Frontend/Browser/TopTabsViews.swift
++++ b/Client/Frontend/Browser/TopTabsViews.swift
+@@ -199,7 +199,7 @@ class TopTabCell: UICollectionViewCell {
+         self.layer.shadowOpacity = 0
+     }
+     
+-    func closeTab() {
++    @objc func closeTab() {
+         delegate?.tabCellDidClose(self)
+     }
+ 
+diff --git a/Client/Frontend/Browser/URLBarView.swift b/Client/Frontend/Browser/URLBarView.swift
+index c139fcfef..78a10a5bd 100644
+--- a/Client/Frontend/Browser/URLBarView.swift
++++ b/Client/Frontend/Browser/URLBarView.swift
+@@ -49,14 +49,14 @@ protocol URLBarDelegate: class {
+ 
+ class URLBarView: UIView {
+     // Additional UIAppearance-configurable properties
+-    dynamic var locationBorderColor: UIColor = URLBarViewUX.TextFieldBorderColor {
++    @objc dynamic var locationBorderColor: UIColor = URLBarViewUX.TextFieldBorderColor {
+         didSet {
+             if !inOverlayMode {
+                 locationContainer.layer.borderColor = locationBorderColor.cgColor
+             }
+         }
+     }
+-    dynamic var locationActiveBorderColor: UIColor = URLBarViewUX.TextFieldActiveBorderColor {
++    @objc dynamic var locationActiveBorderColor: UIColor = URLBarViewUX.TextFieldActiveBorderColor {
+         didSet {
+             if inOverlayMode {
+                 locationContainer.layer.borderColor = locationActiveBorderColor.cgColor
+@@ -305,7 +305,7 @@ class URLBarView: UIView {
+ 
+     }
+     
+-    func showQRScanner() {
++    @objc func showQRScanner() {
+         self.delegate?.urlBarDidPressQRButton(self)
+     }
+ 
+@@ -508,11 +508,11 @@ class URLBarView: UIView {
+         delegate?.urlBarDidPressTabs(self)
+     }
+ 
+-    func didClickCancel() {
++    @objc func didClickCancel() {
+         leaveOverlayMode(didCancel: true)
+     }
+ 
+-    func tappedScrollToTopArea() {
++    @objc func tappedScrollToTopArea() {
+         delegate?.urlBarDidPressScrollToTop(self)
+     }
+ }
+@@ -648,12 +648,12 @@ extension URLBarView: AutocompleteTextFieldDelegate {
+ // MARK: UIAppearance
+ extension URLBarView {
+ 
+-    dynamic var cancelTintColor: UIColor? {
++    @objc dynamic var cancelTintColor: UIColor? {
+         get { return cancelButton.tintColor }
+         set { return cancelButton.tintColor = newValue }
+     }
+     
+-    dynamic var showQRButtonTintColor: UIColor? {
++    @objc dynamic var showQRButtonTintColor: UIColor? {
+         get { return showQRScannerButton.tintColor }
+         set { return showQRScannerButton.tintColor = newValue }
+     }
+@@ -717,7 +717,7 @@ class TabLocationContainerView: UIView {
+ 
+ class ToolbarTextField: AutocompleteTextField {
+ 
+-    dynamic var clearButtonTintColor: UIColor? {
++    @objc dynamic var clearButtonTintColor: UIColor? {
+         didSet {
+             // Clear previous tinted image that's cache and ask for a relayout
+             tintedClearImage = nil
+diff --git a/Client/Frontend/ContentBlocker/ContentBlockerSettingViewController.swift b/Client/Frontend/ContentBlocker/ContentBlockerSettingViewController.swift
+index ec5990089..4a0870757 100644
+--- a/Client/Frontend/ContentBlocker/ContentBlockerSettingViewController.swift
++++ b/Client/Frontend/ContentBlocker/ContentBlockerSettingViewController.swift
+@@ -35,7 +35,7 @@ class ContentBlockerSettingsTableView: SettingsTableViewController {
+         return footer
+     }
+ 
+-    func moreInfoTapped() {
++    @objc func moreInfoTapped() {
+         let viewController = SettingsContentViewController()
+         viewController.url = SupportUtils.URLForTopic("tracking-protection-ios")
+         navigationController?.pushViewController(viewController, animated: true)
+diff --git a/Client/Frontend/Home/ActivityStreamPanel.swift b/Client/Frontend/Home/ActivityStreamPanel.swift
+index e97a8adc2..79b77b63b 100644
+--- a/Client/Frontend/Home/ActivityStreamPanel.swift
++++ b/Client/Frontend/Home/ActivityStreamPanel.swift
+@@ -141,7 +141,7 @@ class ActivityStreamPanel: UICollectionViewController, HomePanel {
+         self.topSitesManager.currentTraits = self.traitCollection
+     }
+ 
+-    func reload(notification: Notification) {
++    @objc func reload(notification: Notification) {
+         reloadAll()
+     }
+ }
+diff --git a/Client/Frontend/Home/ActivityStreamTopSitesCell.swift b/Client/Frontend/Home/ActivityStreamTopSitesCell.swift
+index b83b0d639..4a4c0e9bb 100644
+--- a/Client/Frontend/Home/ActivityStreamTopSitesCell.swift
++++ b/Client/Frontend/Home/ActivityStreamTopSitesCell.swift
+@@ -283,7 +283,7 @@ class ASHorizontalScrollCell: UICollectionViewCell {
+         }
+     }
+ 
+-    func handlePageTap(_ gesture: UITapGestureRecognizer) {
++    @objc func handlePageTap(_ gesture: UITapGestureRecognizer) {
+         guard pageControl.pageCount > 1 else {
+             return
+         }
+diff --git a/Client/Frontend/Home/BookmarksPanel.swift b/Client/Frontend/Home/BookmarksPanel.swift
+index 84017dd81..a842e877d 100644
+--- a/Client/Frontend/Home/BookmarksPanel.swift
++++ b/Client/Frontend/Home/BookmarksPanel.swift
+@@ -108,7 +108,7 @@ class BookmarksPanel: SiteTableViewController, HomePanel {
+         }
+     }
+ 
+-    func notificationReceived(_ notification: Notification) {
++    @objc func notificationReceived(_ notification: Notification) {
+         switch notification.name {
+         case .FirefoxAccountChanged:
+             self.reloadData()
+diff --git a/Client/Frontend/Home/HistoryPanel.swift b/Client/Frontend/Home/HistoryPanel.swift
+index 842dfdd19..9dfdc9f71 100644
+--- a/Client/Frontend/Home/HistoryPanel.swift
++++ b/Client/Frontend/Home/HistoryPanel.swift
+@@ -120,7 +120,7 @@ class HistoryPanel: SiteTableViewController, HomePanel {
+         }
+     }
+ 
+-    func notificationReceived(_ notification: Notification) {
++    @objc func notificationReceived(_ notification: Notification) {
+         reloadData()
+ 
+         switch notification.name {
+diff --git a/Client/Frontend/Home/HomePanelViewController.swift b/Client/Frontend/Home/HomePanelViewController.swift
+index 32e31c971..0a64db04c 100644
+--- a/Client/Frontend/Home/HomePanelViewController.swift
++++ b/Client/Frontend/Home/HomePanelViewController.swift
+@@ -124,7 +124,7 @@ class HomePanelViewController: UIViewController, UITextFieldDelegate, HomePanelD
+         buttonContainerView.addGestureRecognizer(dismissKeyboardGestureRecognizer)
+     }
+ 
+-    func dismissKeyboard(_ gestureRecognizer: UITapGestureRecognizer) {
++    @objc func dismissKeyboard(_ gestureRecognizer: UITapGestureRecognizer) {
+         view.window?.rootViewController?.view.endEditing(true)
+     }
+ 
+@@ -201,7 +201,7 @@ class HomePanelViewController: UIViewController, UITextFieldDelegate, HomePanelD
+         panel.didMove(toParentViewController: self)
+     }
+ 
+-    func tappedButton(_ sender: UIButton!) {
++    @objc func tappedButton(_ sender: UIButton!) {
+         for (index, button) in buttons.enumerated() where button == sender {
+             selectedPanel = HomePanelType(rawValue: index)
+             delegate?.homePanelViewController(self, didSelectPanel: index)
+diff --git a/Client/Frontend/Home/ReaderPanel.swift b/Client/Frontend/Home/ReaderPanel.swift
+index 85fad2913..b67892739 100644
+--- a/Client/Frontend/Home/ReaderPanel.swift
++++ b/Client/Frontend/Home/ReaderPanel.swift
+@@ -231,7 +231,7 @@ class ReadingListPanel: UITableViewController, HomePanel {
+         }
+     }
+ 
+-    func notificationReceived(_ notification: Notification) {
++    @objc func notificationReceived(_ notification: Notification) {
+         switch notification.name {
+         case .FirefoxAccountChanged:
+             refreshReadingList()
+diff --git a/Client/Frontend/Home/RemoteTabsPanel.swift b/Client/Frontend/Home/RemoteTabsPanel.swift
+index 6dbd3fc1d..2b7f2f6cb 100644
+--- a/Client/Frontend/Home/RemoteTabsPanel.swift
++++ b/Client/Frontend/Home/RemoteTabsPanel.swift
+@@ -89,7 +89,7 @@ class RemoteTabsPanel: UIViewController, HomePanel {
+         tableViewController.didMove(toParentViewController: self)
+     }
+ 
+-    func notificationReceived(_ notification: Notification) {
++    @objc func notificationReceived(_ notification: Notification) {
+         switch notification.name {
+         case .FirefoxAccountChanged, .ProfileDidFinishSyncing:
+             DispatchQueue.main.async {
+diff --git a/Client/Frontend/Intro/IntroViewController.swift b/Client/Frontend/Intro/IntroViewController.swift
+index cad176756..d0478572f 100644
+--- a/Client/Frontend/Intro/IntroViewController.swift
++++ b/Client/Frontend/Intro/IntroViewController.swift
+@@ -219,17 +219,17 @@ class IntroViewController: UIViewController {
+         return cardView
+     }
+ 
+-    func startBrowsing() {
++    @objc func startBrowsing() {
+         delegate?.introViewControllerDidFinish(self, requestToLogin: false)
+         LeanPlumClient.shared.track(event: .dismissedOnboarding, withParameters: ["dismissedOnSlide": pageControl.currentPage as AnyObject])
+     }
+ 
+-    func login() {
++    @objc func login() {
+         delegate?.introViewControllerDidFinish(self, requestToLogin: true)
+         LeanPlumClient.shared.track(event: .dismissedOnboardingShowLogin, withParameters: ["dismissedOnSlide": pageControl.currentPage as AnyObject])
+     }
+ 
+-    func changePage() {
++    @objc func changePage() {
+         let swipeCoordinate = CGFloat(pageControl.currentPage) * scrollView.frame.size.width
+         scrollView.setContentOffset(CGPoint(x: swipeCoordinate, y: 0), animated: true)
+     }
+@@ -276,7 +276,7 @@ extension IntroViewController {
+         NotificationCenter.default.removeObserver(self, name: .DynamicFontChanged, object: nil)
+     }
+ 
+-    func dynamicFontChanged(_ notification: Notification) {
++    @objc func dynamicFontChanged(_ notification: Notification) {
+         guard notification.name == .DynamicFontChanged else { return }
+         setupDynamicFonts()
+     }
+diff --git a/Client/Frontend/Reader/ReaderModeStyleViewController.swift b/Client/Frontend/Reader/ReaderModeStyleViewController.swift
+index 7e5bb154d..9922b8474 100644
+--- a/Client/Frontend/Reader/ReaderModeStyleViewController.swift
++++ b/Client/Frontend/Reader/ReaderModeStyleViewController.swift
+@@ -188,7 +188,7 @@ class ReaderModeStyleViewController: UIViewController {
+         }
+     }
+ 
+-    func changeFontType(_ button: FontTypeButton) {
++    @objc func changeFontType(_ button: FontTypeButton) {
+         selectFontType(button.fontType)
+         delegate?.readerModeStyleViewController(self, didConfigureStyle: readerModeStyle)
+     }
+@@ -204,7 +204,7 @@ class ReaderModeStyleViewController: UIViewController {
+         fontSizeLabel.fontType = fontType
+     }
+ 
+-    func changeFontSize(_ button: FontSizeButton) {
++    @objc func changeFontSize(_ button: FontSizeButton) {
+         switch button.fontSizeAction {
+         case .smaller:
+             readerModeStyle.fontSize = readerModeStyle.fontSize.smaller()
+@@ -232,7 +232,7 @@ class ReaderModeStyleViewController: UIViewController {
+         }
+     }
+ 
+-    func changeTheme(_ button: ThemeButton) {
++    @objc func changeTheme(_ button: ThemeButton) {
+         selectTheme(button.theme)
+         delegate?.readerModeStyleViewController(self, didConfigureStyle: readerModeStyle)
+     }
+@@ -241,7 +241,7 @@ class ReaderModeStyleViewController: UIViewController {
+         readerModeStyle.theme = theme
+     }
+ 
+-    func changeBrightness(_ slider: UISlider) {
++    @objc func changeBrightness(_ slider: UISlider) {
+         UIScreen.main.brightness = CGFloat(slider.value)
+     }
+ }
+diff --git a/Client/Frontend/Settings/AppSettingsOptions.swift b/Client/Frontend/Settings/AppSettingsOptions.swift
+index d617f9eb9..02817067c 100644
+--- a/Client/Frontend/Settings/AppSettingsOptions.swift
++++ b/Client/Frontend/Settings/AppSettingsOptions.swift
+@@ -104,7 +104,7 @@ class SyncNowSetting: WithAccountSetting {
+         }
+     }
+     
+-    func stopRotateSyncIcon() {
++    @objc func stopRotateSyncIcon() {
+         DispatchQueue.main.async {
+             self.imageView.layer.removeAllAnimations()
+         }
+@@ -294,8 +294,8 @@ class AccountStatusSetting: WithAccountSetting {
+         super.init(settings: settings)
+         NotificationCenter.default.addObserver(self, selector: #selector(updateAccount), name: .FirefoxAccountProfileChanged, object: nil)
+     }
+-    
+-    func updateAccount(notification: Notification) {
++
++    @objc func updateAccount(notification: Notification) {
+         DispatchQueue.main.async {
+             self.settings.tableView.reloadData()
+         }
+diff --git a/Client/Frontend/Settings/CustomSearchViewController.swift b/Client/Frontend/Settings/CustomSearchViewController.swift
+index 951176121..a3b1fc011 100644
+--- a/Client/Frontend/Settings/CustomSearchViewController.swift
++++ b/Client/Frontend/Settings/CustomSearchViewController.swift
+@@ -159,7 +159,7 @@ class CustomSearchViewController: SettingsTableViewController {
+         return settings
+     }
+ 
+-    func addCustomSearchEngine(_ nav: UINavigationController?) {
++    @objc func addCustomSearchEngine(_ nav: UINavigationController?) {
+         self.view.endEditing(true)
+         navigationItem.rightBarButtonItem?.isEnabled = false
+         if let url = self.urlString {
+diff --git a/Client/Frontend/Settings/LoginDetailViewController.swift b/Client/Frontend/Settings/LoginDetailViewController.swift
+index f59a32666..c4ad03c1f 100644
+--- a/Client/Frontend/Settings/LoginDetailViewController.swift
++++ b/Client/Frontend/Settings/LoginDetailViewController.swift
+@@ -299,7 +299,7 @@ extension LoginDetailViewController {
+         }
+     }
+ 
+-    func edit() {
++    @objc func edit() {
+         editingInfo = true
+ 
+         let cell = tableView.cellForRow(at: InfoItem.usernameItem.indexPath) as! LoginTableViewCell
+@@ -308,7 +308,7 @@ extension LoginDetailViewController {
+         navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .done, target: self, action: #selector(doneEditing))
+     }
+ 
+-    func doneEditing() {
++    @objc func doneEditing() {
+         editingInfo = false
+         navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .edit, target: self, action: #selector(edit))
+         
+diff --git a/Client/Frontend/Settings/SearchEnginePicker.swift b/Client/Frontend/Settings/SearchEnginePicker.swift
+index 6d6b03a93..1b8db4d31 100644
+--- a/Client/Frontend/Settings/SearchEnginePicker.swift
++++ b/Client/Frontend/Settings/SearchEnginePicker.swift
+@@ -41,7 +41,7 @@ class SearchEnginePicker: UITableViewController {
+         tableView.cellForRow(at: indexPath)?.accessoryType = .none
+     }
+ 
+-    func cancel() {
++    @objc func cancel() {
+         delegate?.searchEnginePicker(self, didSelectSearchEngine: nil)
+     }
+ }
+diff --git a/Client/Frontend/Settings/SearchSettingsTableViewController.swift b/Client/Frontend/Settings/SearchSettingsTableViewController.swift
+index 0ed6b031a..53c7fd4f9 100644
+--- a/Client/Frontend/Settings/SearchSettingsTableViewController.swift
++++ b/Client/Frontend/Settings/SearchSettingsTableViewController.swift
+@@ -288,7 +288,7 @@ class SearchSettingsTableViewController: UITableViewController {
+ 
+ // MARK: - Selectors
+ extension SearchSettingsTableViewController {
+-    func didToggleEngine(_ toggle: UISwitch) {
++    @objc func didToggleEngine(_ toggle: UISwitch) {
+         let engine = model.orderedEngines[toggle.tag] // The tag is 1-based.
+         if toggle.isOn {
+             model.enableEngine(engine)
+@@ -297,7 +297,7 @@ extension SearchSettingsTableViewController {
+         }
+     }
+ 
+-    func didToggleSearchSuggestions(_ toggle: UISwitch) {
++    @objc func didToggleSearchSuggestions(_ toggle: UISwitch) {
+         // Setting the value in settings dismisses any opt-in.
+         model.shouldShowSearchSuggestions = toggle.isOn
+     }
+@@ -306,15 +306,15 @@ extension SearchSettingsTableViewController {
+         _ = navigationController?.popViewController(animated: true)
+     }
+ 
+-    func dismissAnimated() {
++    @objc func dismissAnimated() {
+         self.dismiss(animated: true, completion: nil)
+     }
+ 
+-    func beginEditing() {
++    @objc func beginEditing() {
+         setEditing(true, animated: false)
+     }
+ 
+-    func finishEditing() {
++    @objc func finishEditing() {
+         setEditing(false, animated: false)
+     }
+ }
+diff --git a/Client/Frontend/Settings/SettingsContentViewController.swift b/Client/Frontend/Settings/SettingsContentViewController.swift
+index 8665d548d..03003aedd 100644
+--- a/Client/Frontend/Settings/SettingsContentViewController.swift
++++ b/Client/Frontend/Settings/SettingsContentViewController.swift
+@@ -151,7 +151,7 @@ class SettingsContentViewController: UIViewController, WKNavigationDelegate {
+         return (view, spinner, error)
+     }
+ 
+-    func didTimeOut() {
++    @objc func didTimeOut() {
+         self.timer = nil
+         self.isError = true
+     }
+diff --git a/Client/Frontend/Settings/SettingsNavigationController.swift b/Client/Frontend/Settings/SettingsNavigationController.swift
+index 97763bed5..3c1c017dc 100644
+--- a/Client/Frontend/Settings/SettingsNavigationController.swift
++++ b/Client/Frontend/Settings/SettingsNavigationController.swift
+@@ -7,7 +7,7 @@ import UIKit
+ class SettingsNavigationController: UINavigationController {
+     var popoverDelegate: PresentingModalViewControllerDelegate?
+ 
+-    func done() {
++    @objc func done() {
+         if let delegate = popoverDelegate {
+             delegate.dismissPresentedModalViewController(self, animated: true)
+         } else {
+diff --git a/Client/Frontend/Widgets/AutocompleteTextField.swift b/Client/Frontend/Widgets/AutocompleteTextField.swift
+index 4a142742d..65fb87ada 100644
+--- a/Client/Frontend/Widgets/AutocompleteTextField.swift
++++ b/Client/Frontend/Widgets/AutocompleteTextField.swift
+@@ -89,7 +89,7 @@ class AutocompleteTextField: UITextField, UITextFieldDelegate {
+         ]
+     }
+ 
+-    func handleKeyCommand(sender: UIKeyCommand) {
++    @objc func handleKeyCommand(sender: UIKeyCommand) {
+         guard let input = sender.input else {
+             return
+         }
+@@ -255,7 +255,7 @@ class AutocompleteTextField: UITextField, UITextFieldDelegate {
+         removeCompletion()
+     }
+ 
+-    func textDidChange(_ textField: UITextField) {
++   @objc func textDidChange(_ textField: UITextField) {
+         hideCursor = autocompleteTextLabel != nil
+         removeCompletion()
+ 
+diff --git a/Client/Frontend/Widgets/PhotonActionSheet.swift b/Client/Frontend/Widgets/PhotonActionSheet.swift
+index ab5528be0..454fe6ae1 100644
+--- a/Client/Frontend/Widgets/PhotonActionSheet.swift
++++ b/Client/Frontend/Widgets/PhotonActionSheet.swift
+@@ -213,7 +213,7 @@ class PhotonActionSheet: UIViewController, UITableViewDelegate, UITableViewDataS
+         }
+     }
+     
+-    func dismiss(_ gestureRecognizer: UIGestureRecognizer?) {
++    @objc func dismiss(_ gestureRecognizer: UIGestureRecognizer?) {
+         self.dismiss(animated: true, completion: nil)
+     }
+     
+diff --git a/Client/Frontend/Widgets/SearchInputView.swift b/Client/Frontend/Widgets/SearchInputView.swift
+index 96c94f84f..0b184ae0d 100644
+--- a/Client/Frontend/Widgets/SearchInputView.swift
++++ b/Client/Frontend/Widgets/SearchInputView.swift
+@@ -174,20 +174,20 @@ class SearchInputView: UIView {
+ // MARK: - Selectors
+ extension SearchInputView {
+ 
+-    func tappedSearch() {
++    @objc func tappedSearch() {
+         isEditing = true
+         inputField.becomeFirstResponder()
+         delegate?.searchInputViewBeganEditing(self)
+     }
+ 
+-    func tappedClose() {
++    @objc func tappedClose() {
+         isEditing = false
+         delegate?.searchInputViewFinishedEditing(self)
+         inputField.text = nil
+         inputField.resignFirstResponder()
+     }
+ 
+-    func inputTextDidChange(_ textField: UITextField) {
++    @objc func inputTextDidChange(_ textField: UITextField) {
+         delegate?.searchInputView(self, didChangeTextTo: textField.text ?? "")
+     }
+ }
+diff --git a/Client/Frontend/Widgets/SnackBar.swift b/Client/Frontend/Widgets/SnackBar.swift
+index a698c60e0..5081f38db 100644
+--- a/Client/Frontend/Widgets/SnackBar.swift
++++ b/Client/Frontend/Widgets/SnackBar.swift
+@@ -46,7 +46,7 @@ class SnackButton: UIButton {
+         fatalError("init(coder:) has not been implemented")
+     }
+ 
+-    func onClick() {
++    @objc func onClick() {
+         callback?(bar)
+     }
+ 
+diff --git a/Client/Frontend/Widgets/TabsButton.swift b/Client/Frontend/Widgets/TabsButton.swift
+index 74fe05a73..7e31e09c1 100644
+--- a/Client/Frontend/Widgets/TabsButton.swift
++++ b/Client/Frontend/Widgets/TabsButton.swift
+@@ -115,7 +115,7 @@ class TabsButton: UIButton {
+         fatalError("init(coder:) has not been implemented")
+     }
+ 
+-    override func clone() -> UIView {
++    @objc override func clone() -> UIView {
+         let button = TabsButton()
+ 
+         button.accessibilityLabel = accessibilityLabel
+@@ -205,7 +205,7 @@ class TabsButton: UIButton {
+             }
+         }
+     }
+-    func cloneDidClickTabs() {
++    @objc func cloneDidClickTabs() {
+         sendActions(for: .touchUpInside)
+     }
+ }
+diff --git a/Client/Helpers/DynamicFontHelper.swift b/Client/Helpers/DynamicFontHelper.swift
+index a96eda383..2a304dc05 100644
+--- a/Client/Helpers/DynamicFontHelper.swift
++++ b/Client/Helpers/DynamicFontHelper.swift
+@@ -185,7 +185,7 @@ class DynamicFontHelper: NSObject {
+         defaultSmallFontSize = UIFontDescriptor.preferredFontDescriptor(withTextStyle: .caption2).pointSize
+     }
+ 
+-    func contentSizeCategoryDidChange(_ notification: Notification) {
++    @objc func contentSizeCategoryDidChange(_ notification: Notification) {
+         refreshFonts()
+         let notification = Notification(name: .DynamicFontChanged, object: nil)
+         NotificationCenter.default.post(notification)
+diff --git a/Extensions/SendTo/ClientPickerViewController.swift b/Extensions/SendTo/ClientPickerViewController.swift
+index d84c33f68..010aea377 100644
+--- a/Extensions/SendTo/ClientPickerViewController.swift
++++ b/Extensions/SendTo/ClientPickerViewController.swift
+@@ -1,3 +1,4 @@
++
+ /* This Source Code Form is subject to the terms of the Mozilla Public
+  * License, v. 2.0. If a copy of the MPL was not distributed with this
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+@@ -242,7 +243,7 @@ class ClientPickerViewController: UITableViewController {
+         }
+     }
+ 
+-    func refresh() {
++    @objc func refresh() {
+         DispatchQueue.main.async {
+             if let refreshControl = self.refreshControl {
+                 refreshControl.beginRefreshing()
+@@ -253,11 +254,11 @@ class ClientPickerViewController: UITableViewController {
+         reloadClients()
+     }
+ 
+-    func cancel() {
++    @objc func cancel() {
+         clientPickerDelegate?.clientPickerViewControllerDidCancel(self)
+     }
+ 
+-    func send() {
++    @objc func send() {
+         var clients = [RemoteClient]()
+         for indexPath in selectedClients {
+             clients.append(self.clients[(indexPath as AnyObject).row])
+diff --git a/Extensions/SendTo/InstructionsViewController.swift b/Extensions/SendTo/InstructionsViewController.swift
+index 90c4f21ec..48141fc92 100644
+--- a/Extensions/SendTo/InstructionsViewController.swift
++++ b/Extensions/SendTo/InstructionsViewController.swift
+@@ -85,7 +85,7 @@ class InstructionsViewController: UIViewController {
+                 showMeText: NSLocalizedString("Please open Firefox, go to Settings and sign in to continue.", tableName: "SendTo", comment: "See http://mzl.la/1ISlXnU"))
+     }
+ 
+-    func close() {
++    @objc func close() {
+         delegate?.instructionsViewControllerDidClose(self)
+     }
+ 
+diff --git a/Extensions/ShareTo/ShareViewController.swift b/Extensions/ShareTo/ShareViewController.swift
+index 4554d4ca1..cc687fe9d 100644
+--- a/Extensions/ShareTo/ShareViewController.swift
++++ b/Extensions/ShareTo/ShareViewController.swift
+@@ -193,11 +193,11 @@ class ShareDialogController: UIViewController, UITableViewDataSource, UITableVie
+ 
+     // UITabBarItem Actions that map to our delegate methods
+ 
+-    func cancel() {
++    @objc func cancel() {
+         delegate?.shareControllerDidCancel(self)
+     }
+ 
+-    func add() {
++    @objc func add() {
+         delegate?.shareController(self, didShareItem: item, toDestinations: NSSet(set: selectedShareDestinations))
+     }
+ 
+diff --git a/Providers/Profile.swift b/Providers/Profile.swift
+index 168c7bd20..bf58d574c 100644
+--- a/Providers/Profile.swift
++++ b/Providers/Profile.swift
+@@ -670,7 +670,7 @@ open class BrowserProfile: Profile {
+             center.addObserver(self, selector: #selector(onBookmarkBufferValidated), name: .BookmarkBufferValidated, object: nil)
+         }
+ 
+-        func onBookmarkBufferValidated(notification: NSNotification) {
++        @objc func onBookmarkBufferValidated(notification: NSNotification) {
+             #if MOZ_TARGET_CLIENT
+                 // We don't send this ad hoc telemetry on the release channel.
+                 guard AppConstants.BuildChannel != AppBuildChannel.release else {

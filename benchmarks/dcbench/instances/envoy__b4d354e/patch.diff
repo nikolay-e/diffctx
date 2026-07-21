@@ -1,0 +1,2995 @@
+From b4d354eff35b9727d3cee301260f08ed7d03ab3c Mon Sep 17 00:00:00 2001
+From: Raven Black <ravenblack@dropbox.com>
+Date: Mon, 22 Jun 2026 14:58:16 -0400
+Subject: [PATCH] Add BandwidthShare filter (#44275)
+
+Commit Message: Add BandwidthShare filter
+Additional Description: This is similar in concept and implementation to
+`BandwidthLimit`, but resolving some usability issues of that filter for
+certain purposes, briefly discussed in issue #42985. While that
+discussion ended at "the behavior change should be tacked onto the
+existing filter" the reviews of the resulting change demanded
+significant API changes that made that approach unreasonable, hence, a
+new filter.
+
+Some relevant prerequisites of this PR (for anyone who wants to patch it
+in) are #44012, #44145, #44171, #44145 and #44862, and (if running CI
+tests) #44368 and #44864.
+Risk Level: New filter, no risk to existing configs.
+Testing: Yes, coverage >= default required.
+Docs Changes: Added docs for the new filter.
+Release Notes: Yes.
+Platform Specific Features: n/a
+
+---------
+
+Signed-off-by: Raven Black <ravenblack@dropbox.com>
+---
+ api/BUILD                                     |   1 +
+ .../filters/http/bandwidth_share/v3/BUILD     |  13 +
+ .../bandwidth_share/v3/bandwidth_share.proto  | 153 +++++
+ api/versioning/BUILD                          |   1 +
+ .../http__added-bandwidth-share-filter.rst    |   3 +
+ .../_include/bandwidth-share-filter.yaml      |  77 +++
+ .../http_filters/bandwidth_share_filter.rst   |  68 ++
+ .../http/http_filters/http_filters.rst        |   1 +
+ .../other_features/bandwidth_limiting.rst     |   7 +-
+ source/extensions/extensions_build_config.bzl |   1 +
+ source/extensions/extensions_metadata.yaml    |   7 +
+ .../filters/http/bandwidth_share/BUILD        |  72 +++
+ .../filters/http/bandwidth_share/config.cc    | 154 +++++
+ .../bandwidth_share/fair_token_bucket_impl.cc |  24 +-
+ .../bandwidth_share/fair_token_bucket_impl.h  |   2 +
+ .../filters/http/bandwidth_share/filter.cc    | 248 ++++++++
+ .../filters/http/bandwidth_share/filter.h     |  87 +++
+ .../http/bandwidth_share/filter_config.cc     | 172 ++++++
+ .../http/bandwidth_share/filter_config.h      | 109 ++++
+ .../filters/http/bandwidth_share/stats.cc     |  40 ++
+ .../filters/http/bandwidth_share/stats.h      |  63 ++
+ .../bandwidth_share/token_bucket_singleton.cc | 180 ++++++
+ .../bandwidth_share/token_bucket_singleton.h  |  69 +++
+ .../filters/http/bandwidth_share/BUILD        |  50 ++
+ .../http/bandwidth_share/config_test.cc       | 332 ++++++++++
+ .../fair_token_bucket_impl_test.cc            |  12 +
+ .../filter_integration_test.cc                | 581 ++++++++++++++++++
+ .../token_bucket_singleton_test.cc            | 121 ++++
+ 28 files changed, 2643 insertions(+), 5 deletions(-)
+ create mode 100644 api/envoy/extensions/filters/http/bandwidth_share/v3/BUILD
+ create mode 100644 api/envoy/extensions/filters/http/bandwidth_share/v3/bandwidth_share.proto
+ create mode 100644 changelogs/current/new_features/http__added-bandwidth-share-filter.rst
+ create mode 100644 docs/root/configuration/http/http_filters/_include/bandwidth-share-filter.yaml
+ create mode 100644 docs/root/configuration/http/http_filters/bandwidth_share_filter.rst
+ create mode 100644 source/extensions/filters/http/bandwidth_share/config.cc
+ create mode 100644 source/extensions/filters/http/bandwidth_share/filter.cc
+ create mode 100644 source/extensions/filters/http/bandwidth_share/filter.h
+ create mode 100644 source/extensions/filters/http/bandwidth_share/filter_config.cc
+ create mode 100644 source/extensions/filters/http/bandwidth_share/filter_config.h
+ create mode 100644 source/extensions/filters/http/bandwidth_share/stats.cc
+ create mode 100644 source/extensions/filters/http/bandwidth_share/stats.h
+ create mode 100644 source/extensions/filters/http/bandwidth_share/token_bucket_singleton.cc
+ create mode 100644 source/extensions/filters/http/bandwidth_share/token_bucket_singleton.h
+ create mode 100644 test/extensions/filters/http/bandwidth_share/config_test.cc
+ create mode 100644 test/extensions/filters/http/bandwidth_share/filter_integration_test.cc
+ create mode 100644 test/extensions/filters/http/bandwidth_share/token_bucket_singleton_test.cc
+
+diff --git a/api/BUILD b/api/BUILD
+index 5a984dfb8..47d294ebc 100644
+--- a/api/BUILD
++++ b/api/BUILD
+@@ -194,6 +194,7 @@ proto_library(
+         "//envoy/extensions/filters/http/aws_lambda/v3:pkg",
+         "//envoy/extensions/filters/http/aws_request_signing/v3:pkg",
+         "//envoy/extensions/filters/http/bandwidth_limit/v3:pkg",
++        "//envoy/extensions/filters/http/bandwidth_share/v3:pkg",
+         "//envoy/extensions/filters/http/basic_auth/v3:pkg",
+         "//envoy/extensions/filters/http/buffer/v3:pkg",
+         "//envoy/extensions/filters/http/cache/v3:pkg",
+diff --git a/api/envoy/extensions/filters/http/bandwidth_share/v3/BUILD b/api/envoy/extensions/filters/http/bandwidth_share/v3/BUILD
+new file mode 100644
+index 000000000..df26f8d13
+--- /dev/null
++++ b/api/envoy/extensions/filters/http/bandwidth_share/v3/BUILD
+@@ -0,0 +1,13 @@
++# DO NOT EDIT. This file is generated by tools/proto_format/proto_sync.py.
++
++load("@envoy_api//bazel:api_build_system.bzl", "api_proto_package")
++
++licenses(["notice"])  # Apache 2
++
++api_proto_package(
++    deps = [
++        "//envoy/config/core/v3:pkg",
++        "@xds//udpa/annotations:pkg",
++        "@xds//xds/type/matcher/v3:pkg",
++    ],
++)
+diff --git a/api/envoy/extensions/filters/http/bandwidth_share/v3/bandwidth_share.proto b/api/envoy/extensions/filters/http/bandwidth_share/v3/bandwidth_share.proto
+new file mode 100644
+index 000000000..24bbcae05
+--- /dev/null
++++ b/api/envoy/extensions/filters/http/bandwidth_share/v3/bandwidth_share.proto
+@@ -0,0 +1,153 @@
++syntax = "proto3";
++
++package envoy.extensions.filters.http.bandwidth_share.v3;
++
++import "envoy/config/core/v3/base.proto";
++
++import "google/protobuf/duration.proto";
++
++import "xds/type/matcher/v3/matcher.proto";
++
++import "udpa/annotations/status.proto";
++import "validate/validate.proto";
++
++option java_package = "io.envoyproxy.envoy.extensions.filters.http.bandwidth_share.v3";
++option java_outer_classname = "BandwidthShareProto";
++option java_multiple_files = true;
++option go_package = "github.com/envoyproxy/go-control-plane/envoy/extensions/filters/http/bandwidth_share/v3;bandwidth_sharev3";
++option (udpa.annotations.file_status).package_version_status = ACTIVE;
++
++// [#protodoc-title: Bandwidth share]
++// Bandwidth share :ref:`configuration overview <config_http_filters_bandwidth_share>`.
++// [#extension: envoy.filters.http.bandwidth_share]
++
++// [#next-free-field: 9]
++message BandwidthShare {
++  message TenantConfig {
++    // Weight of the tenant. For example, if two tenants are competing for
++    // limited bandwidth, one has weight=3 and the other has weight=1, the
++    // contested bandwidth will be distributed 3/4 to the weight=3 tenant
++    // and 1/4 to the weight=1 tenant.
++    //
++    // If unset or 0, the default weight of 1 will be used.
++    uint32 weight = 1;
++
++    // True to record stats with ``tenant`` tag set to the tenant name.
++    // If false or unset, the stats tag will be empty. It is recommended not
++    // to set this to default true if tenant names are dynamically generated
++    // from untrusted sources (or otherwise with unlimited scope), to
++    // avoid creating unlimited stats cardinality.
++    bool include_stats_tag = 2;
++  }
++
++  message Limit {
++    // The unique id of the limiter. Should be set if you want to apply distinct
++    // limits on different listeners, or distinct limits for requests and responses.
++    // With matching ``bucket_id`` values, multiple listeners can share a single limit
++    // (e.g. for https and http listener that share a network bandwidth constraint).
++    //
++    // Also used for the ``bucket_id`` stats tag.
++    //
++    // The empty string is a valid ``bucket_id``.
++    string bucket_id = 1;
++
++    // The limit supplied in KiB/s.
++    //
++    // .. note::
++    //   The limit is associated with the ``bucket_id``. If the same ``bucket_id``
++    //   is used in multiple listeners/routes, it is a config error for the
++    //   configurations to not be identical. If the configuration is updated
++    //   dynamically via xds, changing the runtime key, the ``bucket_id`` must
++    //   also be changed or it is a config error.
++    //
++    // The limit can be updated dynamically via runtime. Setting the limit
++    // to zero, or unset, disables the filter.
++    config.core.v3.RuntimeUInt32 kbps = 2 [(validate.rules).message = {required: true}];
++  }
++
++  // Configuration for request limiting. If unset, requests are not limited.
++  // If ``kbps`` is zero, requests are not limited.
++  Limit request_limit = 1;
++
++  // Configuration for response limiting. If unset, responses are not limited.
++  // If ``kbps`` is zero, responses are not limited.
++  Limit response_limit = 2;
++
++  // Optional fill interval in milliseconds for the token refills. Defaults to 50ms.
++  // It must be at least 20ms to avoid too aggressive refills.
++  //
++  // Lower values will use more CPU and provide smoother bandwidth distribution
++  // when the limit is being enforced.
++  google.protobuf.Duration fill_interval = 3 [(validate.rules).duration = {
++    lte {seconds: 1}
++    gte {nanos: 20000000}
++  }];
++
++  // Enable response trailers.
++  //
++  // .. note::
++  //
++  //   If set true, the following 4 trailers will be added, prefixed by ``response_trailer_prefix``:
++  //   * bandwidth-request-delay-ms: delay time in milliseconds added by the limiter.
++  //   * bandwidth-response-delay-ms: delay time in milliseconds added by the limiter.
++  //   * bandwidth-request-duration-ms: total duration of receiving and processing the request.
++  //   * bandwidth-response-duration-ms: total duration of receiving and processing the response.
++  //
++  //   If ``response_limit`` is unset or has ``kbps`` of 0, the trailers will not be set.
++  //
++  //   If both the request and response delay time is 0, the trailers will not be set.
++  //
++  //   Note that the delay time may overlap with other factors such that it may not actually
++  //   increase the duration by the stated amount - for example, the source data may still be
++  //   arriving into a buffer during the artificial delay, such that it's possible to fully
++  //   "catch up" the lost time by reading from that buffer at a later, less-constrained time.
++  bool enable_response_trailers = 4;
++
++  // The prefix for the response trailers. Empty string is a valid prefix.
++  //
++  // If set, ``enable_response_trailers`` must be true.
++  //
++  // For example, if this value is ``x-banana-`` then the trailer keys will be
++  // ``x-banana-bandwidth-request-delay-ms``, ``x-banana-bandwidth-response-duration-ms``,
++  // etc.
++  string response_trailer_prefix = 5
++      [(validate.rules).string = {well_known_regex: HTTP_HEADER_NAME strict: false}];
++
++  // An optional matcher which returns a string to use as a tenant name.
++  //
++  // If unset, the tenant name will always be the empty string, and all requests will
++  // have equal weight when limiting is being enforced.
++  //
++  // If tenant names are set when limiting is being enforced, traffic may be
++  // distributed unevenly - for example, assuming all requests want all possible
++  // bandwidth, if there are five streams with tenant ``foo`` and two streams with
++  // tenant ``bar``, and no custom weights, ``foo`` and ``bar`` will get an equal
++  // share of the bandwidth (half), then the requests within each tenant will get
++  // an equal share of that tenant's share, i.e. the ``foo`` requests will each
++  // get a fifth of the ``foo`` half, a tenth of the total, and the ``bar`` requests
++  // will each get half of the ``bar`` half, a quarter of the total.
++  //
++  // An example way this might be used is to have ``tenant_name_selector`` make
++  // each source IP address a tenant. Then if one source IP is trying to make 100
++  // requests in parallel, and 99 other IPs are making one request each, the
++  // total bandwidth distribution (assuming the limit is being exceeded) would
++  // be equal per IP, versus with no tenants it would be equal per request and
++  // the greedy IP address would be getting 100x more bandwidth than the others.
++  //
++  // Note that if the limit is not consistently exceeded, all available bandwidth
++  // is still distributed - so in this case if the 99 other IPs were only using
++  // half the available bandwidth total between them, the greedy IP would still
++  // be able to get 50x more bandwidth than the rest. In this example the value is
++  // clearer - the less greedy tenants get all the bandwidth they want, and
++  // only the greedy tenant gets throttled, vs. without tenants all the requests
++  // would be throttled equally.
++  xds.type.matcher.v3.Matcher tenant_name_selector = 6;
++
++  // A map from tenant names to configurations. If a tenant name is not present
++  // in the map, ``default_tenant_config`` is used.
++  map<string, TenantConfig> tenant_configs = 7;
++
++  // Optional configuration override for the default tenant. If unset, the
++  // default values are used.
++  TenantConfig default_tenant_config = 8;
++}
+diff --git a/api/versioning/BUILD b/api/versioning/BUILD
+index 153cc7f38..c779979f0 100644
+--- a/api/versioning/BUILD
++++ b/api/versioning/BUILD
+@@ -133,6 +133,7 @@ proto_library(
+         "//envoy/extensions/filters/http/aws_lambda/v3:pkg",
+         "//envoy/extensions/filters/http/aws_request_signing/v3:pkg",
+         "//envoy/extensions/filters/http/bandwidth_limit/v3:pkg",
++        "//envoy/extensions/filters/http/bandwidth_share/v3:pkg",
+         "//envoy/extensions/filters/http/basic_auth/v3:pkg",
+         "//envoy/extensions/filters/http/buffer/v3:pkg",
+         "//envoy/extensions/filters/http/cache/v3:pkg",
+diff --git a/changelogs/current/new_features/http__added-bandwidth-share-filter.rst b/changelogs/current/new_features/http__added-bandwidth-share-filter.rst
+new file mode 100644
+index 000000000..7a6136821
+--- /dev/null
++++ b/changelogs/current/new_features/http__added-bandwidth-share-filter.rst
+@@ -0,0 +1,3 @@
++Added the HTTP :ref:`bandwidth share filter <config_http_filters_bandwidth_share>`, which provides
++local fair-sharing of request and response bandwidth across tenants using configurable weights and
++per-filter-chain or per-route limits.
+diff --git a/docs/root/configuration/http/http_filters/_include/bandwidth-share-filter.yaml b/docs/root/configuration/http/http_filters/_include/bandwidth-share-filter.yaml
+new file mode 100644
+index 000000000..22f4d81da
+--- /dev/null
++++ b/docs/root/configuration/http/http_filters/_include/bandwidth-share-filter.yaml
+@@ -0,0 +1,77 @@
++static_resources:
++  listeners:
++  - address:
++      socket_address:
++        address: 0.0.0.0
++        port_value: 8000
++    filter_chains:
++    - filters:
++      - name: envoy.filters.network.http_connection_manager
++        typed_config:
++          "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
++          codec_type: AUTO
++          stat_prefix: ingress_http
++          route_config:
++            name: local_route
++            virtual_hosts:
++            - name: local_service
++              domains: ["*"]
++              routes:
++              - match: {prefix: "/path/with/bandwidth/share"}
++                route: {cluster: service_protected_by_bandwidth_share}
++                typed_per_filter_config:
++                  envoy.filters.http.bandwidth_share:
++                    "@type": type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare
++                    request_limit:
++                      bucket_id: foo
++                      kbps:
++                        default_value: 10000
++                        runtime_key: bandwidth_share_limit_foo
++                    fill_interval: 0.1s
++                    tenant_name_selector:
++                      on_no_match:
++                        action:
++                          name: use_client_certificate_name_as_tenant_name
++                          typed_config:
++                            "@type": type.googleapis.com/envoy.config.core.v3.SubstitutionFormatString
++                            omit_empty_values: true
++                            text_format_source:
++                              inline_string: '%CEL(re.extract(connection.subject_peer_certificate, R"CN=([^,]*)", "\\1"))%'
++                            formatters:
++                            - name: envoy.formatter.cel
++                              typed_config:
++                                "@type": type.googleapis.com/envoy.extensions.formatter.cel.v3.Cel
++              - match: {prefix: "/"}
++                route: {cluster: web_service}
++          http_filters:
++          - name: envoy.filters.http.bandwidth_share
++            typed_config:
++              "@type": type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare
++          - name: envoy.filters.http.router
++            typed_config:
++              "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
++  clusters:
++  - name: service_protected_by_bandwidth_share
++    type: STRICT_DNS
++    lb_policy: ROUND_ROBIN
++    load_assignment:
++      cluster_name: service1
++      endpoints:
++      - lb_endpoints:
++        - endpoint:
++            address:
++              socket_address:
++                address: web_service
++                port_value: 9000
++  - name: web_service
++    type: STRICT_DNS
++    lb_policy: ROUND_ROBIN
++    load_assignment:
++      cluster_name: service1
++      endpoints:
++      - lb_endpoints:
++        - endpoint:
++            address:
++              socket_address:
++                address: web_service
++                port_value: 9000
+diff --git a/docs/root/configuration/http/http_filters/bandwidth_share_filter.rst b/docs/root/configuration/http/http_filters/bandwidth_share_filter.rst
+new file mode 100644
+index 000000000..5c5772413
+--- /dev/null
++++ b/docs/root/configuration/http/http_filters/bandwidth_share_filter.rst
+@@ -0,0 +1,68 @@
++.. _config_http_filters_bandwidth_share:
++
++Bandwidth share
++===============
++
++* Bandwidth limiting :ref:`architecture overview <arch_overview_bandwidth_limit>`
++* This filter should be configured with the type URL ``type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare``.
++* :ref:`v3 API reference <envoy_v3_api_msg_extensions.filters.http.bandwidth_share.v3.BandwidthShare>`
++
++The HTTP Bandwidth share filter limits the size of data flow to the max bandwidth set in ``request_limit.kbps``
++or ``response_limit.kbps`` when the request's route, virtual host or filter chain has a
++:ref:`bandwidth share configuration <envoy_v3_api_msg_extensions.filters.http.bandwidth_share.v3.BandwidthShare>`.
++
++If the bandwidth limit has been exhausted the filter stops further transfer until more bandwidth gets allocated
++according to the ``fill_interval`` (default is 50 milliseconds). If the connection buffer fills up with accumulated
++data then the source of data will have ``readDisable(true)`` set as described in the :repo:`flow control doc<source/docs/flow_control.md>`.
++
++When actively being limited, the filter splits the available bandwidth between active tenants by weight, and
++between parallel requests for a single tenant evenly. For example, with six active requests divided
++among three tenants:
++
++====== ====== =============== ================
++Tenant Weight Share to tenant Share to request
++====== ====== =============== ================
++foo    1      20%             6.6̅%
++bar    3      60%             30%
++foo    1      20%             6.6̅%
++foo    1      20%             6.6̅%
++bar    3      60%             30%
++baz    1      20%             20%
++====== ====== =============== ================
++
++.. note::
++  The token bucket is shared across all workers, thus the limits are applied per Envoy process.
++
++Example configuration
++---------------------
++
++Example filter configuration for a globally enabled bandwidth share but disabled for a specific route:
++
++.. literalinclude:: _include/bandwidth-share-filter.yaml
++    :language: yaml
++    :lines: 11-53
++    :emphasize-lines: 9-25
++    :caption: :download:`bandwidth-share-filter.yaml <_include/bandwidth-share-filter.yaml>`
++
++Statistics
++----------
++
++The HTTP bandwidth share filter outputs statistics in the ``<stat_prefix>.bandwidth_share.`` namespace.
++
++All metrics are emitted with the following tags:
++
++* ``bucket_id`` (may be empty-string, as configured in ``request_limit`` or ``response_limit``)
++* ``tenant`` (if not explicitly configured for inclusion with ``include_stats_tag`` in ``tenant_config``, will be empty-string)
++* ``direction`` (``request`` or ``response``)
++
++The counter ``bytes`` is additionally emitted with the following tag:
++
++* ``handling`` (``limited`` or ``not_limited`` - ``not_limited`` is used for bytes for which the limiter remained in "fast" mode as the configured limit had not been approached.)
++
++.. csv-table::
++  :header: Name, Type, Description
++  :widths: 1, 1, 2
++
++  bytes, Counter, Number of bytes for which the bandwidth share filter was consulted.
++  streams_currently_limited, Gauge, Number of streams that are currently experiencing delays.
++  bytes_pending, Gauge, Number of bytes that are currently buffered due to delays.
+diff --git a/docs/root/configuration/http/http_filters/http_filters.rst b/docs/root/configuration/http/http_filters/http_filters.rst
+index 58fc189b1..5bfca3fff 100644
+--- a/docs/root/configuration/http/http_filters/http_filters.rst
++++ b/docs/root/configuration/http/http_filters/http_filters.rst
+@@ -13,6 +13,7 @@ HTTP filters
+   api_key_auth_filter
+   aws_request_signing_filter
+   bandwidth_limit_filter
++  bandwidth_share_filter
+   basic_auth_filter
+   buffer_filter
+   cache_filter
+diff --git a/docs/root/intro/arch_overview/other_features/bandwidth_limiting.rst b/docs/root/intro/arch_overview/other_features/bandwidth_limiting.rst
+index 146ce50cc..ee822256c 100644
+--- a/docs/root/intro/arch_overview/other_features/bandwidth_limiting.rst
++++ b/docs/root/intro/arch_overview/other_features/bandwidth_limiting.rst
+@@ -3,7 +3,12 @@
+ Bandwidth limiting
+ ===================
+ 
+-Envoy supports local (non-distributed) bandwidth limiting of HTTP requests and response via the
++Envoy supports local (non-distributed) bandwidth limiting of HTTP requests and responses via the
+ :ref:`HTTP bandwidth limit filter <config_http_filters_bandwidth_limit>`. This can be activated
+ globally at the listener level or at a more specific level (e.g.: the virtual host or route level).
+ 
++Envoy supports local (non-distributed) bandwidth fair-sharing of HTTP requests and responses, via the
++:ref:`HTTP bandwidth share filter <config_http_filters_bandwidth_share>`. This can be activated
++globally at the listener level or at a more specific level (e.g.: the virtual host or route level).
++Bandwidth fair sharing is distinct from bandwidth limiting in that one limit can be weighted split
++between tenants when overloaded.
+diff --git a/source/extensions/extensions_build_config.bzl b/source/extensions/extensions_build_config.bzl
+index e80bc96ae..bcfc15c85 100644
+--- a/source/extensions/extensions_build_config.bzl
++++ b/source/extensions/extensions_build_config.bzl
+@@ -166,6 +166,7 @@ EXTENSIONS = {
+     "envoy.filters.http.aws_lambda":                    "//source/extensions/filters/http/aws_lambda:config",
+     "envoy.filters.http.aws_request_signing":           "//source/extensions/filters/http/aws_request_signing:config",
+     "envoy.filters.http.bandwidth_limit":               "//source/extensions/filters/http/bandwidth_limit:config",
++    "envoy.filters.http.bandwidth_share":               "//source/extensions/filters/http/bandwidth_share:config",
+     "envoy.filters.http.basic_auth":                    "//source/extensions/filters/http/basic_auth:config",
+     "envoy.filters.http.buffer":                        "//source/extensions/filters/http/buffer:config",
+     "envoy.filters.http.cache":                         "//source/extensions/filters/http/cache:config",
+diff --git a/source/extensions/extensions_metadata.yaml b/source/extensions/extensions_metadata.yaml
+index c5694198e..7552248b9 100644
+--- a/source/extensions/extensions_metadata.yaml
++++ b/source/extensions/extensions_metadata.yaml
+@@ -341,6 +341,13 @@ envoy.filters.http.bandwidth_limit:
+   status: stable
+   type_urls:
+   - envoy.extensions.filters.http.bandwidth_limit.v3.BandwidthLimit
++envoy.filters.http.bandwidth_share:
++  categories:
++  - envoy.filters.http
++  security_posture: unknown
++  status: wip
++  type_urls:
++  - envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare
+ envoy.filters.http.basic_auth:
+   categories:
+   - envoy.filters.http
+diff --git a/source/extensions/filters/http/bandwidth_share/BUILD b/source/extensions/filters/http/bandwidth_share/BUILD
+index a0779f6f3..e2621288c 100644
+--- a/source/extensions/filters/http/bandwidth_share/BUILD
++++ b/source/extensions/filters/http/bandwidth_share/BUILD
+@@ -1,5 +1,6 @@
+ load(
+     "//bazel:envoy_build_system.bzl",
++    "envoy_cc_extension",
+     "envoy_cc_library",
+     "envoy_extension_package",
+ )
+@@ -20,5 +21,76 @@ envoy_cc_library(
+         "//envoy/common:token_bucket_interface",
+         "//source/common/common:thread_lib",
+         "//source/common/common:utility_lib",
++        "@abseil-cpp//absl/numeric:int128",
++    ],
++)
++
++envoy_cc_library(
++    name = "token_bucket_singleton_lib",
++    srcs = ["token_bucket_singleton.cc"],
++    hdrs = ["token_bucket_singleton.h"],
++    deps = [
++        ":fair_token_bucket_impl_lib",
++        ":stats_lib",
++        "//envoy/common:time_interface",
++        "//envoy/singleton:instance_interface",
++        "//envoy/singleton:manager_interface",
++        "//envoy/thread_local:thread_local_interface",
++        "//source/common/common:thread_lib",
++        "//source/common/runtime:runtime_lib",
++    ],
++)
++
++envoy_cc_library(
++    name = "stats_lib",
++    srcs = ["stats.cc"],
++    hdrs = ["stats.h"],
++    deps = [
++        "//envoy/stats:stats_interface",
++        "//envoy/stats:tag_interface",
++        "//source/common/common:thread_lib",
++        "//source/common/stats:symbol_table_lib",
++        "//source/common/stats:utility_lib",
++    ],
++)
++
++envoy_cc_library(
++    name = "bandwidth_share_lib",
++    srcs = [
++        "filter.cc",
++        "filter_config.cc",
++    ],
++    hdrs = [
++        "filter.h",
++        "filter_config.h",
++    ],
++    deps = [
++        ":fair_token_bucket_impl_lib",
++        ":stats_lib",
++        ":token_bucket_singleton_lib",
++        "//envoy/http:filter_interface",
++        "//envoy/matcher:matcher_interface",
++        "//envoy/stats:timespan_interface",
++        "//envoy/thread_local:thread_local_interface",
++        "//source/common/http/matching:data_impl_lib",
++        "//source/common/matcher/actions:string_returning_action_lib",
++        "//source/common/runtime:runtime_protos_lib",
++        "//source/common/stats:timespan_lib",
++        "//source/extensions/filters/http/common:stream_rate_limiter_lib",
++    ],
++)
++
++envoy_cc_extension(
++    name = "config",
++    srcs = ["config.cc"],
++    deps = [
++        ":bandwidth_share_lib",
++        "//envoy/http:filter_interface",
++        "//source/common/http/matching:data_impl_lib",
++        "//source/common/matcher:matcher_lib",
++        "//source/common/matcher/actions:string_returning_action_lib",
++        "//source/common/protobuf:utility_lib",
++        "//source/extensions/filters/http/common:factory_base_lib",
++        "@envoy_api//envoy/extensions/filters/http/bandwidth_share/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/source/extensions/filters/http/bandwidth_share/config.cc b/source/extensions/filters/http/bandwidth_share/config.cc
+new file mode 100644
+index 000000000..78a1d0a12
+--- /dev/null
++++ b/source/extensions/filters/http/bandwidth_share/config.cc
+@@ -0,0 +1,154 @@
++#include <string>
++
++#include "envoy/extensions/filters/http/bandwidth_share/v3/bandwidth_share.pb.h"
++#include "envoy/extensions/filters/http/bandwidth_share/v3/bandwidth_share.pb.validate.h"
++#include "envoy/registry/registry.h"
++
++#include "source/common/common/macros.h"
++#include "source/common/matcher/actions/string_returning_action.h"
++#include "source/common/matcher/matcher.h"
++#include "source/common/matcher/validation_visitor.h"
++#include "source/common/protobuf/utility.h"
++#include "source/extensions/filters/http/bandwidth_share/filter.h"
++#include "source/extensions/filters/http/bandwidth_share/filter_config.h"
++#include "source/extensions/filters/http/common/factory_base.h"
++
++#include "absl/container/flat_hash_map.h"
++#include "absl/strings/string_view.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace BandwidthShareFilter {
++
++using ProtoConfig = envoy::extensions::filters::http::bandwidth_share::v3::BandwidthShare;
++using Matcher::Actions::StringReturningActionFactoryContext;
++
++namespace {
++
++const xds::type::matcher::v3::Matcher& blankTenantSelector() {
++  CONSTRUCT_ON_FIRST_USE(xds::type::matcher::v3::Matcher, [] {
++    xds::type::matcher::v3::Matcher matcher;
++    auto action = matcher.mutable_on_no_match()->mutable_action();
++    action->set_name("empty_tenant");
++    Protobuf::StringValue str;
++    str.set_value("");
++    action->mutable_typed_config()->PackFrom(str);
++    return matcher;
++  }());
++}
++
++class MatcherDataInputValidator
++    : public Matcher::MatchTreeValidationVisitor<Http::HttpMatchingData> {
++public:
++  absl::Status performDataInputValidation(const Matcher::DataInputFactory<Http::HttpMatchingData>&,
++                                          absl::string_view /*type_url*/) override {
++    // All correctly typed inputs are fine, and actions are also validated by type.
++    return absl::OkStatus();
++  }
++};
++
++absl::StatusOr<std::shared_ptr<FilterConfig>>
++protoToSharedState(const ProtoConfig& config,
++                   Server::Configuration::ServerFactoryContext& context) {
++  if (!config.response_trailer_prefix().empty() && !config.enable_response_trailers()) {
++    return absl::InvalidArgumentError(
++        "enable_response_trailers must be true if response_trailer_prefix is set");
++  }
++  HttpMatchTreePtr tenant_name_selector;
++  // MatchTreeFactory::create doesn't have an exception-free variant.
++  TRY_NEEDS_AUDIT {
++    MatcherDataInputValidator matcher_validator;
++    StringReturningActionFactoryContext string_context{context};
++    Matcher::MatchTreeFactory<Http::HttpMatchingData, StringReturningActionFactoryContext>
++        matcher_factory(string_context, context, matcher_validator);
++    auto matcher_factory_cb = matcher_factory.create(
++        config.has_tenant_name_selector() ? config.tenant_name_selector() : blankTenantSelector());
++    tenant_name_selector = matcher_factory_cb();
++  }
++  END_TRY CATCH(const EnvoyException& e, {
++    return absl::InvalidArgumentError(absl::StrCat("invalid tenant_name_selector:\n", e.what()));
++  });
++  auto bucket_singleton = TokenBucketSingleton::get(
++      context.singletonManager(), context.timeSource(), context.scope(), context.threadLocal());
++  std::chrono::milliseconds fill_interval{PROTOBUF_GET_MS_OR_DEFAULT(config, fill_interval, 50)};
++  if (config.has_request_limit()) {
++    RETURN_IF_NOT_OK(bucket_singleton->setBucket(
++        config.request_limit().bucket_id(),
++        Runtime::UInt32(config.request_limit().kbps(), context.runtime()),
++        config.request_limit().kbps().default_value(), fill_interval));
++  }
++  if (config.has_response_limit()) {
++    RETURN_IF_NOT_OK(bucket_singleton->setBucket(
++        config.response_limit().bucket_id(),
++        Runtime::UInt32(config.response_limit().kbps(), context.runtime()),
++        config.response_limit().kbps().default_value(), fill_interval));
++  }
++  absl::flat_hash_map<std::string, FilterConfig::TenantConfig> tenant_configs;
++  for (const auto& pair : config.tenant_configs()) {
++    tenant_configs.try_emplace(pair.first, std::max(pair.second.weight(), 1U),
++                               pair.second.include_stats_tag());
++  }
++  FilterConfig::TenantConfig default_tenant_config{
++      std::max(config.default_tenant_config().weight(), 1U),
++      config.default_tenant_config().include_stats_tag()};
++  return std::make_shared<FilterConfig>(
++      context, bucket_singleton,
++      config.has_request_limit()
++          ? absl::optional<absl::string_view>(config.request_limit().bucket_id())
++          : absl::nullopt,
++      config.has_response_limit()
++          ? absl::optional<absl::string_view>(config.response_limit().bucket_id())
++          : absl::nullopt,
++      config.enable_response_trailers()
++          ? absl::optional<absl::string_view>(config.response_trailer_prefix())
++          : absl::nullopt,
++      std::move(tenant_name_selector), std::move(tenant_configs), std::move(default_tenant_config));
++}
++} // namespace
++
++class BandwidthShareFilterFactory : public Common::DualFactoryBase<ProtoConfig, ProtoConfig> {
++public:
++  BandwidthShareFilterFactory();
++
++private:
++  absl::StatusOr<Http::FilterFactoryCb>
++  createFilterFactoryFromProtoTyped(const ProtoConfig&, const std::string& stats_prefix, DualInfo,
++                                    Server::Configuration::ServerFactoryContext&) override;
++
++  absl::StatusOr<Router::RouteSpecificFilterConfigConstSharedPtr>
++  createRouteSpecificFilterConfigTyped(const ProtoConfig&,
++                                       Server::Configuration::ServerFactoryContext&,
++                                       ProtobufMessage::ValidationVisitor&) override;
++};
++
++BandwidthShareFilterFactory::BandwidthShareFilterFactory()
++    : DualFactoryBase(BandwidthShare::filterName()) {}
++
++absl::StatusOr<Http::FilterFactoryCb>
++BandwidthShareFilterFactory::createFilterFactoryFromProtoTyped(
++    const ProtoConfig& proto_config, const std::string&, DualInfo,
++    Server::Configuration::ServerFactoryContext& context) {
++  auto shared_state = protoToSharedState(proto_config, context);
++  if (!shared_state.ok()) {
++    return shared_state.status();
++  }
++  return
++      [ss = std::move(shared_state).value()](Http::FilterChainFactoryCallbacks& callbacks) -> void {
++        callbacks.addStreamFilter(std::make_shared<BandwidthShare>(ss));
++      };
++}
++
++absl::StatusOr<Router::RouteSpecificFilterConfigConstSharedPtr>
++BandwidthShareFilterFactory::createRouteSpecificFilterConfigTyped(
++    const ProtoConfig& proto_config, Server::Configuration::ServerFactoryContext& context,
++    ProtobufMessage::ValidationVisitor&) {
++  return protoToSharedState(proto_config, context);
++}
++
++REGISTER_FACTORY(BandwidthShareFilterFactory, Server::Configuration::NamedHttpFilterConfigFactory);
++
++} // namespace BandwidthShareFilter
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/bandwidth_share/fair_token_bucket_impl.cc b/source/extensions/filters/http/bandwidth_share/fair_token_bucket_impl.cc
+index 96ef777e6..16ec33047 100644
+--- a/source/extensions/filters/http/bandwidth_share/fair_token_bucket_impl.cc
++++ b/source/extensions/filters/http/bandwidth_share/fair_token_bucket_impl.cc
+@@ -1,23 +1,31 @@
+ #include "source/extensions/filters/http/bandwidth_share/fair_token_bucket_impl.h"
+ 
+ #include <algorithm>
+-#include <limits>
+ 
+ #include "source/common/common/assert.h"
+ #include "source/common/common/lock_guard.h"
+ 
++#include "absl/numeric/int128.h"
++
+ namespace Envoy {
+ namespace Extensions {
+ namespace HttpFilters {
+ namespace BandwidthShareFilter {
+ namespace FairTokenBucket {
+ 
++namespace {
++
++constexpr uint64_t NanosPerSecond = 1000000000UL;
++
++} // namespace
++
+ Client::~Client() { bucket_->clientDestroyed(*this); }
+ 
++std::chrono::milliseconds Client::fillInterval() const { return bucket_->fillInterval(); }
++
+ Bucket::Bucket(uint64_t max_tokens, TimeSource& time_source,
+                std::chrono::milliseconds fill_interval)
+     : time_source_(time_source), fill_interval_(fill_interval), max_tokens_(max_tokens) {
+-  ASSERT(max_tokens_ < std::numeric_limits<uint64_t>::max() / 1000000000UL);
+   ASSERT(max_tokens_ > 0);
+   ASSERT(fill_interval_ >= std::chrono::milliseconds(10));
+   ASSERT(fill_interval_ <= std::chrono::milliseconds(1000));
+@@ -80,11 +88,19 @@ uint64_t Bucket::tokensInBucket() {
+   empty_at_ = std::max(empty_at_, now - std::chrono::seconds{1});
+   std::chrono::nanoseconds fill_duration_nanos =
+       std::chrono::duration_cast<std::chrono::nanoseconds>(now - empty_at_);
+-  return fill_duration_nanos.count() * max_tokens_ / 1000000000UL;
++  ASSERT(fill_duration_nanos.count() >= 0);
++  return static_cast<uint64_t>(absl::uint128{static_cast<uint64_t>(fill_duration_nanos.count())} *
++                               max_tokens_ / NanosPerSecond);
+ }
+ 
+ void Bucket::consumeTokens(uint64_t tokens) {
+-  empty_at_ += std::chrono::nanoseconds{tokens * 1000000000UL / max_tokens_};
++  // With very high token limits, very small consumes can round down to 0 ns of
++  // bucket time. That is acceptable: each consume is below the bucket's time
++  // resolution, and it would take an impractical number of such consumes to
++  // materially exceed the limit.
++  const uint64_t nanos =
++      static_cast<uint64_t>(absl::uint128{tokens} * NanosPerSecond / max_tokens_);
++  empty_at_ += std::chrono::nanoseconds{nanos};
+ }
+ 
+ uint64_t Bucket::requestTokens(Client& client, uint64_t want_tokens) {
+diff --git a/source/extensions/filters/http/bandwidth_share/fair_token_bucket_impl.h b/source/extensions/filters/http/bandwidth_share/fair_token_bucket_impl.h
+index b0eebd900..db3c431ca 100644
+--- a/source/extensions/filters/http/bandwidth_share/fair_token_bucket_impl.h
++++ b/source/extensions/filters/http/bandwidth_share/fair_token_bucket_impl.h
+@@ -75,6 +75,7 @@ public:
+   // Actual bucket belongs to the factory and is reset at create-time,
+   // so maybeReset is a no-op.
+   void maybeReset(uint64_t) override{};
++  std::chrono::milliseconds fillInterval() const;
+ 
+ private:
+   const std::string tenant_name_;
+@@ -141,6 +142,7 @@ public:
+ 
+   uint64_t requestTokens(Client& client, uint64_t want_tokens);
+   void clientDestroyed(Client& client);
++  std::chrono::milliseconds fillInterval() const { return fill_interval_; }
+ 
+ private:
+   void clientDrained(Client& client) ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+diff --git a/source/extensions/filters/http/bandwidth_share/filter.cc b/source/extensions/filters/http/bandwidth_share/filter.cc
+new file mode 100644
+index 000000000..46277798a
+--- /dev/null
++++ b/source/extensions/filters/http/bandwidth_share/filter.cc
+@@ -0,0 +1,248 @@
++#include "source/extensions/filters/http/bandwidth_share/filter.h"
++
++#include <string>
++#include <vector>
++
++#include "envoy/http/codes.h"
++
++#include "source/common/http/utility.h"
++#include "source/common/stats/timespan_impl.h"
++#include "source/extensions/filters/http/bandwidth_share/stats.h"
++
++using Envoy::Extensions::HttpFilters::Common::StreamRateLimiter;
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace BandwidthShareFilter {
++
++const std::string& BandwidthShare::filterName() {
++  CONSTRUCT_ON_FIRST_USE(std::string, "envoy.filters.http.bandwidth_share");
++}
++
++void BandwidthShare::StatsInProgress::update(uint64_t length_sent, uint64_t bytes_buffered,
++                                             std::chrono::milliseconds delay) {
++  ASSERT(stats_.has_value());
++  if (bytes_buffered_ || bytes_buffered) {
++    stats_->bytes_limited_.add(length_sent);
++  } else {
++    stats_->bytes_not_limited_.add(length_sent);
++  }
++
++  if (bytes_buffered) {
++    if (bytes_buffered_ > bytes_buffered) {
++      stats_->bytes_pending_.sub(bytes_buffered_ - bytes_buffered);
++    } else {
++      stats_->bytes_pending_.add(bytes_buffered - bytes_buffered_);
++      if (bytes_buffered_ == 0) {
++        stats_->streams_currently_limited_.inc();
++      }
++    }
++    bytes_buffered_ = bytes_buffered;
++    delay_ += delay;
++  } else {
++    if (bytes_buffered_ > 0) {
++      stats_->bytes_pending_.sub(bytes_buffered_);
++      stats_->streams_currently_limited_.dec();
++      bytes_buffered_ = 0;
++    }
++  }
++}
++
++Http::FilterHeadersStatus BandwidthShare::decodeHeaders(Http::RequestHeaderMap& request_headers,
++                                                        bool end_stream) {
++  const auto& config = getConfig();
++  request_state_.start_time_ = config.timeSource().monotonicTime();
++  if (config.enabled()) {
++    tenant_ = config.getTenantName(decoder_callbacks_->streamInfo(), request_headers);
++    if (!end_stream) {
++      request_bucket_ = config.getRequestBucket(tenant_);
++    }
++  }
++  if (request_bucket_) {
++    request_state_.stats_ = config.requestStatsForTenant(tenant_);
++    request_limiter_ = std::make_unique<StreamRateLimiter>(
++        decoder_callbacks_->bufferLimit(),
++        // pause_data_cb
++        [this] { decoder_callbacks_->onDecoderFilterAboveWriteBufferHighWatermark(); },
++        // resume_data_cb
++        [this] { decoder_callbacks_->onDecoderFilterBelowWriteBufferLowWatermark(); },
++        // write_data_cb
++        [this](Buffer::Instance& data, bool end_stream) {
++          if (end_stream) {
++            updateStatsOnDecodeFinish();
++          }
++          decoder_callbacks_->injectDecodedDataToFilterChain(data, end_stream);
++        },
++        // continue_cb
++        [this] {
++          updateStatsOnDecodeFinish();
++          decoder_callbacks_->continueDecoding();
++        },
++        // write_stats_cb
++        [this](uint64_t len, uint64_t buffered, std::chrono::milliseconds delay) {
++          request_state_.update(len, buffered, delay);
++        },
++        decoder_callbacks_->dispatcher(), decoder_callbacks_->scope(), request_bucket_,
++        request_bucket_->fillInterval());
++  }
++  return Http::FilterHeadersStatus::Continue;
++}
++
++Http::FilterDataStatus BandwidthShare::decodeData(Buffer::Instance& data, bool end_stream) {
++  if (request_limiter_ != nullptr) {
++    request_limiter_->writeData(data, end_stream);
++    return Http::FilterDataStatus::StopIterationNoBuffer;
++  }
++  return Http::FilterDataStatus::Continue;
++}
++
++Http::FilterTrailersStatus BandwidthShare::decodeTrailers(Http::RequestTrailerMap&) {
++  if (request_limiter_ != nullptr) {
++    if (request_limiter_->onTrailers()) {
++      return Http::FilterTrailersStatus::StopIteration;
++    } else {
++      updateStatsOnDecodeFinish();
++      return Http::FilterTrailersStatus::Continue;
++    }
++  }
++  return Http::FilterTrailersStatus::Continue;
++}
++
++Http::FilterHeadersStatus BandwidthShare::encodeHeaders(Http::ResponseHeaderMap&, bool end_stream) {
++  auto& config = getConfig();
++  response_state_.start_time_ = config.timeSource().monotonicTime();
++  if (!end_stream) {
++    response_bucket_ = config.getResponseBucket(tenant_);
++  }
++  if (response_bucket_) {
++    response_state_.stats_ = config.responseStatsForTenant(tenant_);
++    response_limiter_ = std::make_unique<StreamRateLimiter>(
++        encoder_callbacks_->bufferLimit(),
++        [this] { encoder_callbacks_->onEncoderFilterAboveWriteBufferHighWatermark(); },
++        [this] { encoder_callbacks_->onEncoderFilterBelowWriteBufferLowWatermark(); },
++        [this](Buffer::Instance& data, bool end_stream) {
++          if (end_stream) {
++            updateStatsOnEncodeFinish();
++          }
++          encoder_callbacks_->injectEncodedDataToFilterChain(data, end_stream);
++        },
++        [this] {
++          updateStatsOnEncodeFinish();
++          encoder_callbacks_->continueEncoding();
++        },
++        [this](uint64_t len, uint64_t buffered_bytes, std::chrono::milliseconds delay) {
++          response_state_.update(len, buffered_bytes, delay);
++        },
++        encoder_callbacks_->dispatcher(), encoder_callbacks_->scope(), response_bucket_,
++        response_bucket_->fillInterval());
++  }
++  return Http::FilterHeadersStatus::Continue;
++}
++
++Http::FilterDataStatus BandwidthShare::encodeData(Buffer::Instance& data, bool end_stream) {
++  if (response_limiter_ != nullptr) {
++    const auto& config = getConfig();
++
++    // Adds encoded trailers. May only be called in encodeData when end_stream is set to true.
++    // If upstream has trailers, addEncodedTrailers won't be called.
++    bool trailer_added = false;
++    if (end_stream && config.enableResponseTrailers() && shouldSetResponseTrailers()) {
++      trailers_ = &encoder_callbacks_->addEncodedTrailers();
++      trailer_added = true;
++    }
++
++    response_limiter_->writeData(data, end_stream, trailer_added);
++    return Http::FilterDataStatus::StopIterationNoBuffer;
++  }
++  return Http::FilterDataStatus::Continue;
++}
++
++Http::FilterTrailersStatus
++BandwidthShare::encodeTrailers(Http::ResponseTrailerMap& response_trailers) {
++  if (response_limiter_ != nullptr) {
++    trailers_ = &response_trailers;
++
++    if (response_limiter_->onTrailers()) {
++      return Http::FilterTrailersStatus::StopIteration;
++    } else {
++      updateStatsOnEncodeFinish();
++      return Http::FilterTrailersStatus::Continue;
++    }
++  }
++  return Http::FilterTrailersStatus::Continue;
++}
++
++void BandwidthShare::updateStatsOnDecodeFinish() {
++  const auto& config = getConfig();
++  request_duration_ = std::chrono::duration_cast<std::chrono::milliseconds>(
++      config.timeSource().monotonicTime() - request_state_.start_time_);
++}
++
++bool BandwidthShare::shouldSetResponseTrailers() const {
++  return request_state_.delay_ != std::chrono::milliseconds{0} ||
++         response_state_.delay_ != std::chrono::milliseconds{0};
++}
++
++void BandwidthShare::updateStatsOnEncodeFinish() {
++  const auto& config = getConfig();
++  std::chrono::milliseconds response_duration =
++      std::chrono::duration_cast<std::chrono::milliseconds>(config.timeSource().monotonicTime() -
++                                                            response_state_.start_time_);
++
++  if (!response_bucket_ || !config.enableResponseTrailers() || trailers_ == nullptr) {
++    return;
++  }
++
++  if (!shouldSetResponseTrailers()) {
++    return;
++  }
++
++  const auto& response_trailers = config.responseTrailers();
++  trailers_->setCopy(response_trailers.request_duration_,
++                     std::to_string(request_duration_.count()));
++  trailers_->setCopy(response_trailers.request_delay_,
++                     std::to_string(request_state_.delay_.count()));
++  trailers_->setCopy(response_trailers.response_duration_,
++                     std::to_string(response_duration.count()));
++  trailers_->setCopy(response_trailers.response_delay_,
++                     std::to_string(response_state_.delay_.count()));
++}
++
++const FilterConfig& BandwidthShare::getConfig() {
++  if (selected_shared_state_) {
++    return *selected_shared_state_;
++  }
++  auto* config =
++      Http::Utility::resolveMostSpecificPerFilterConfig<FilterConfig>(decoder_callbacks_);
++  if (config) {
++    selected_shared_state_.emplace(*config);
++  } else {
++    selected_shared_state_.emplace(*shared_state_);
++  }
++  return *selected_shared_state_;
++}
++
++void BandwidthShare::onDestroy() {
++  if (request_limiter_ != nullptr) {
++    request_limiter_->destroy();
++  }
++  if (response_limiter_ != nullptr) {
++    response_limiter_->destroy();
++  }
++  if (request_state_.bytes_buffered_ > 0) {
++    request_state_.stats_->bytes_pending_.sub(request_state_.bytes_buffered_);
++    request_state_.stats_->streams_currently_limited_.dec();
++    request_state_.bytes_buffered_ = 0;
++  }
++  if (response_state_.bytes_buffered_ > 0) {
++    response_state_.stats_->bytes_pending_.sub(response_state_.bytes_buffered_);
++    response_state_.stats_->streams_currently_limited_.dec();
++    response_state_.bytes_buffered_ = 0;
++  }
++}
++
++} // namespace BandwidthShareFilter
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/bandwidth_share/filter.h b/source/extensions/filters/http/bandwidth_share/filter.h
+new file mode 100644
+index 000000000..3a173a2bf
+--- /dev/null
++++ b/source/extensions/filters/http/bandwidth_share/filter.h
+@@ -0,0 +1,87 @@
++#pragma once
++
++#include <memory>
++
++#include "envoy/common/optref.h"
++#include "envoy/common/time.h"
++#include "envoy/http/filter.h"
++
++#include "source/extensions/filters/http/bandwidth_share/filter_config.h"
++#include "source/extensions/filters/http/common/stream_rate_limiter.h"
++
++#include "absl/types/optional.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace BandwidthShareFilter {
++
++class BandwidthShare : public Http::StreamFilter, Logger::Loggable<Logger::Id::filter> {
++public:
++  BandwidthShare(std::shared_ptr<FilterConfig> shared_state)
++      : shared_state_(std::move(shared_state)) {}
++
++  static const std::string& filterName();
++
++  // Http::StreamDecoderFilter
++  Http::FilterHeadersStatus decodeHeaders(Http::RequestHeaderMap&, bool) override;
++  Http::FilterDataStatus decodeData(Buffer::Instance& data, bool end_stream) override;
++  Http::FilterTrailersStatus decodeTrailers(Http::RequestTrailerMap& trailers) override;
++
++  void setDecoderFilterCallbacks(Http::StreamDecoderFilterCallbacks& callbacks) override {
++    decoder_callbacks_ = &callbacks;
++  }
++
++  // Http::StreamEncoderFilter
++  Http::Filter1xxHeadersStatus encode1xxHeaders(Http::ResponseHeaderMap&) override {
++    return Http::Filter1xxHeadersStatus::Continue;
++  }
++
++  Http::FilterHeadersStatus encodeHeaders(Http::ResponseHeaderMap&, bool) override;
++  Http::FilterDataStatus encodeData(Buffer::Instance& data, bool end_stream) override;
++  Http::FilterTrailersStatus encodeTrailers(Http::ResponseTrailerMap&) override;
++
++  Http::FilterMetadataStatus encodeMetadata(Http::MetadataMap&) override {
++    return Http::FilterMetadataStatus::Continue;
++  }
++
++  void setEncoderFilterCallbacks(Http::StreamEncoderFilterCallbacks& callbacks) override {
++    encoder_callbacks_ = &callbacks;
++  }
++
++  // Http::StreamFilterBase
++  void onDestroy() override;
++
++private:
++  struct StatsInProgress {
++    MonotonicTime start_time_;
++    uint64_t bytes_buffered_{0};
++    std::chrono::milliseconds delay_{0};
++    OptRef<BandwidthShareStats> stats_;
++    void update(uint64_t length_sent, uint64_t bytes_buffered, std::chrono::milliseconds delay);
++  };
++  friend class FilterTest;
++  const FilterConfig& getConfig();
++
++  bool shouldSetResponseTrailers() const;
++  void updateStatsOnDecodeFinish();
++  void updateStatsOnEncodeFinish();
++
++  Http::StreamDecoderFilterCallbacks* decoder_callbacks_{};
++  Http::StreamEncoderFilterCallbacks* encoder_callbacks_{};
++  const std::shared_ptr<const FilterConfig> shared_state_;
++  OptRef<const FilterConfig> selected_shared_state_;
++  std::shared_ptr<FairTokenBucket::Client> request_bucket_;
++  std::shared_ptr<FairTokenBucket::Client> response_bucket_;
++  std::unique_ptr<Envoy::Extensions::HttpFilters::Common::StreamRateLimiter> request_limiter_;
++  std::unique_ptr<Envoy::Extensions::HttpFilters::Common::StreamRateLimiter> response_limiter_;
++  std::string tenant_;
++  StatsInProgress request_state_, response_state_;
++  std::chrono::milliseconds request_duration_{0};
++  Http::ResponseTrailerMap* trailers_{nullptr};
++};
++
++} // namespace BandwidthShareFilter
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/bandwidth_share/filter_config.cc b/source/extensions/filters/http/bandwidth_share/filter_config.cc
+new file mode 100644
+index 000000000..28bc21f74
+--- /dev/null
++++ b/source/extensions/filters/http/bandwidth_share/filter_config.cc
+@@ -0,0 +1,172 @@
++#include "source/extensions/filters/http/bandwidth_share/filter_config.h"
++
++#include <utility>
++
++#include "envoy/server/factory_context.h"
++
++#include "source/common/http/matching/data_impl.h"
++#include "source/common/matcher/actions/string_returning_action.h"
++
++#include "absl/container/node_hash_map.h"
++#include "absl/strings/str_cat.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace BandwidthShareFilter {
++
++using Matcher::Actions::StringReturningAction;
++
++namespace {
++
++template <class MakeInit> class LazyInit {
++public:
++  using Value = decltype(std::declval<MakeInit>()());
++
++  explicit LazyInit(MakeInit make_init) : make_init_(std::move(make_init)) {}
++  operator Value() const { return make_init_(); }
++
++private:
++  MakeInit make_init_;
++};
++
++template <class MakeInit> LazyInit<MakeInit> lazyInit(MakeInit make_init) {
++  return LazyInit<MakeInit>(std::move(make_init));
++}
++
++} // namespace
++
++class FilterConfig::SharedStats::ThreadLocalStatsStore : public ThreadLocal::ThreadLocalObject {
++public:
++  ThreadLocalStatsStore(absl::string_view bucket_id,
++                        std::shared_ptr<TokenBucketSingleton> bucket_singleton,
++                        Stats::Scope& stats_scope, bool is_response)
++      : dynamic_pool_(stats_scope.symbolTable()), bucket_id_(dynamic_pool_.add(bucket_id)),
++        bucket_singleton_(std::move(bucket_singleton)), stats_scope_(stats_scope),
++        is_response_(is_response) {}
++
++  BandwidthShareStats& forTenant(absl::string_view tenant) {
++    auto [it, _] = stats_by_tenant_.try_emplace(
++        tenant, bucket_singleton_->stat_names_, stats_scope_, bucket_id_,
++        lazyInit([this, tenant] { return dynamic_pool_.add(tenant); }), is_response_);
++    return it->second;
++  }
++
++private:
++  Stats::StatNameDynamicPool dynamic_pool_;
++  const Stats::StatName bucket_id_;
++  const std::shared_ptr<TokenBucketSingleton> bucket_singleton_;
++  Stats::Scope& stats_scope_;
++  const bool is_response_;
++  absl::node_hash_map<std::string, BandwidthShareStats> stats_by_tenant_;
++};
++
++FilterConfig::SharedStats::SharedStats(absl::string_view bucket_id,
++                                       std::shared_ptr<TokenBucketSingleton> bucket_singleton,
++                                       Stats::Scope& scope, bool is_response,
++                                       ThreadLocal::SlotAllocator& tls)
++    : tls_(tls) {
++  tls_.set([bucket_id = std::string(bucket_id), bucket_singleton = std::move(bucket_singleton),
++            stats_scope = &scope, is_response](Event::Dispatcher&) {
++    return std::make_shared<ThreadLocalStatsStore>(bucket_id, bucket_singleton, *stats_scope,
++                                                   is_response);
++  });
++}
++
++BandwidthShareStats& FilterConfig::SharedStats::forTenant(absl::string_view tenant) {
++  return tls_->forTenant(tenant);
++}
++
++absl::string_view FilterConfig::tenantForStats(absl::string_view tenant) const {
++  const TenantConfig& tc = getTenantConfig(tenant);
++  return tc.include_stats_tag_ ? tenant : "";
++}
++
++BandwidthShareStats& FilterConfig::requestStatsForTenant(absl::string_view tenant) const {
++  ASSERT(request_stats_);
++  return request_stats_->forTenant(tenantForStats(tenant));
++}
++BandwidthShareStats& FilterConfig::responseStatsForTenant(absl::string_view tenant) const {
++  ASSERT(response_stats_);
++  return response_stats_->forTenant(tenantForStats(tenant));
++}
++
++FilterConfig::ResponseTrailers::ResponseTrailers(absl::string_view prefix)
++    : request_duration_(absl::StrCat(prefix, "bandwidth-request-duration-ms")),
++      response_duration_(absl::StrCat(prefix, "bandwidth-response-duration-ms")),
++      request_delay_(absl::StrCat(prefix, "bandwidth-request-delay-ms")),
++      response_delay_(absl::StrCat(prefix, "bandwidth-response-delay-ms")) {}
++
++std::string FilterConfig::getTenantName(const StreamInfo::StreamInfo& stream_info,
++                                        const Http::RequestHeaderMap& request_headers) const {
++  Http::Matching::HttpMatchingDataImpl data(stream_info);
++  data.onRequestHeaders(request_headers);
++  auto match_result = Matcher::evaluateMatch<Http::HttpMatchingData>(*tenant_name_selector_, data);
++  if (!match_result.isMatch() || match_result.action() == nullptr) {
++    return "";
++  }
++  const auto& action = match_result.action()->getTyped<StringReturningAction>();
++  return action.getOutputString(stream_info);
++}
++
++FilterConfig::FilterConfig(Server::Configuration::ServerFactoryContext& context,
++                           std::shared_ptr<TokenBucketSingleton> bucket_singleton,
++                           absl::optional<absl::string_view> request_bucket_id,
++                           absl::optional<absl::string_view> response_bucket_id,
++                           absl::optional<absl::string_view> response_trailer_prefix,
++                           HttpMatchTreePtr tenant_name_selector,
++                           absl::flat_hash_map<std::string, TenantConfig>&& tenant_configs,
++                           TenantConfig default_tenant_config)
++    : time_source_(context.timeSource()), bucket_singleton_(std::move(bucket_singleton)),
++      request_bucket_id_(std::move(request_bucket_id)),
++      response_bucket_id_(std::move(response_bucket_id)),
++      response_trailers_(response_trailer_prefix
++                             ? absl::optional<ResponseTrailers>(response_trailer_prefix.value())
++                             : absl::nullopt),
++      tenant_name_selector_(std::move(tenant_name_selector)),
++      tenant_configs_(std::move(tenant_configs)),
++      default_tenant_config_(std::move(default_tenant_config)),
++      request_stats_(request_bucket_id_ ? std::make_unique<SharedStats>(
++                                              *request_bucket_id_, bucket_singleton_,
++                                              context.scope(), false, context.threadLocal())
++                                        : nullptr),
++      response_stats_(response_bucket_id_ ? std::make_unique<SharedStats>(
++                                                *response_bucket_id_, bucket_singleton_,
++                                                context.scope(), true, context.threadLocal())
++                                          : nullptr) {}
++
++std::shared_ptr<FairTokenBucket::Client>
++FilterConfig::getBucketById(const absl::optional<std::string>& id, absl::string_view tenant) const {
++  if (!id) {
++    return nullptr;
++  }
++  std::shared_ptr<FairTokenBucket::Bucket> bucket = bucket_singleton_->getBucket(*id);
++  if (!bucket) {
++    return nullptr;
++  }
++  return std::make_shared<FairTokenBucket::Client>(std::move(bucket), tenant,
++                                                   getTenantConfig(tenant).weight_);
++}
++
++std::shared_ptr<FairTokenBucket::Client>
++FilterConfig::getRequestBucket(absl::string_view tenant) const {
++  return getBucketById(request_bucket_id_, tenant);
++}
++
++std::shared_ptr<FairTokenBucket::Client>
++FilterConfig::getResponseBucket(absl::string_view tenant) const {
++  return getBucketById(response_bucket_id_, tenant);
++}
++
++const FilterConfig::TenantConfig& FilterConfig::getTenantConfig(absl::string_view tenant) const {
++  auto it = tenant_configs_.find(tenant);
++  if (it != tenant_configs_.end()) {
++    return it->second;
++  }
++  return default_tenant_config_;
++}
++
++} // namespace BandwidthShareFilter
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/bandwidth_share/filter_config.h b/source/extensions/filters/http/bandwidth_share/filter_config.h
+new file mode 100644
+index 000000000..c8da5c1d6
+--- /dev/null
++++ b/source/extensions/filters/http/bandwidth_share/filter_config.h
+@@ -0,0 +1,109 @@
++#pragma once
++
++#include <memory>
++#include <string>
++
++#include "envoy/http/filter.h"
++#include "envoy/matcher/matcher.h"
++#include "envoy/router/router.h"
++#include "envoy/thread_local/thread_local.h"
++
++#include "source/extensions/filters/http/bandwidth_share/fair_token_bucket_impl.h"
++#include "source/extensions/filters/http/bandwidth_share/token_bucket_singleton.h"
++
++#include "absl/container/flat_hash_map.h"
++#include "absl/strings/string_view.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace BandwidthShareFilter {
++
++using HttpMatchTreePtr = Matcher::MatchTreePtr<Http::HttpMatchingData>;
++
++class FilterConfig : public Router::RouteSpecificFilterConfig {
++public:
++  struct TenantConfig {
++    uint32_t weight_;
++    bool include_stats_tag_;
++  };
++  struct ResponseTrailers {
++    ResponseTrailers(absl::string_view prefix);
++    Http::LowerCaseString request_duration_;
++    Http::LowerCaseString response_duration_;
++    Http::LowerCaseString request_delay_;
++    Http::LowerCaseString response_delay_;
++  };
++  class SharedStats {
++  public:
++    SharedStats(absl::string_view bucket_id, std::shared_ptr<TokenBucketSingleton> bucket_singleton,
++                Stats::Scope& scope, bool is_response, ThreadLocal::SlotAllocator& tls);
++    BandwidthShareStats& forTenant(absl::string_view tenant);
++
++  private:
++    class ThreadLocalStatsStore;
++
++    ThreadLocal::TypedSlot<ThreadLocalStatsStore> tls_;
++  };
++
++  /**
++   * @param context provides time source, stats scope etc.
++   * @param bucket_singleton provides token buckets on-demand - may update between or
++   * during requests.
++   * @param request_bucket_id identifies the bucket to use for requests, or if nullopt, don't limit
++   * requests.
++   * @param response_bucket_id identifies the bucket to use for responses, or if nullopt, don't
++   * limit responses.
++   * @param response_trailer_prefix is the prefix to add to response trailers, which may be an empty
++   * string. If nullopt, don't add response trailers.
++   * @param tenant_name_selector results in an action that outputs a tenant name, which may be based
++   * on the stream info.
++   * @param tenant_configs provides additional config for specific named tenants.
++   * @param default_tenant_config provides additional config for tenants not named in
++   * tenant_configs.
++   */
++  FilterConfig(Server::Configuration::ServerFactoryContext& context,
++               std::shared_ptr<TokenBucketSingleton> bucket_singleton,
++               absl::optional<absl::string_view> request_bucket_id,
++               absl::optional<absl::string_view> response_bucket_id,
++               absl::optional<absl::string_view> response_trailer_prefix,
++               HttpMatchTreePtr tenant_name_selector,
++               absl::flat_hash_map<std::string, TenantConfig>&& tenant_configs,
++               TenantConfig default_tenant_config);
++
++  bool enabled() const { return request_bucket_id_.has_value() || response_bucket_id_.has_value(); }
++  std::shared_ptr<FairTokenBucket::Client> getRequestBucket(absl::string_view tenant) const;
++  std::shared_ptr<FairTokenBucket::Client> getResponseBucket(absl::string_view tenant) const;
++  std::string getTenantName(const StreamInfo::StreamInfo& stream_info,
++                            const Http::RequestHeaderMap& request_headers) const;
++  const TenantConfig& getTenantConfig(absl::string_view tenant) const;
++  absl::string_view tenantForStats(absl::string_view tenant) const;
++  BandwidthShareStats& requestStatsForTenant(absl::string_view tenant) const;
++  BandwidthShareStats& responseStatsForTenant(absl::string_view tenant) const;
++  bool enableResponseTrailers() const { return response_trailers_.has_value(); }
++  const ResponseTrailers& responseTrailers() const {
++    ASSERT(response_trailers_.has_value());
++    return *response_trailers_;
++  }
++  TimeSource& timeSource() const { return time_source_; }
++
++private:
++  std::shared_ptr<FairTokenBucket::Client> getBucketById(const absl::optional<std::string>& id,
++                                                         absl::string_view tenant) const;
++  TimeSource& time_source_;
++  const std::shared_ptr<TokenBucketSingleton> bucket_singleton_;
++  const absl::optional<std::string> request_bucket_id_;
++  const absl::optional<std::string> response_bucket_id_;
++  // Unset means don't do response trailers.
++  const absl::optional<ResponseTrailers> response_trailers_;
++  const HttpMatchTreePtr tenant_name_selector_;
++  const absl::flat_hash_map<std::string, TenantConfig> tenant_configs_;
++  const TenantConfig default_tenant_config_;
++  const std::unique_ptr<SharedStats> request_stats_;
++  const std::unique_ptr<SharedStats> response_stats_;
++};
++
++} // namespace BandwidthShareFilter
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/bandwidth_share/stats.cc b/source/extensions/filters/http/bandwidth_share/stats.cc
+new file mode 100644
+index 000000000..9fdb2b2f9
+--- /dev/null
++++ b/source/extensions/filters/http/bandwidth_share/stats.cc
+@@ -0,0 +1,40 @@
++#include "source/extensions/filters/http/bandwidth_share/stats.h"
++
++#include "source/common/stats/utility.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace BandwidthShareFilter {
++
++BandwidthShareStats::BandwidthShareStats(const BandwidthShareStatNames& stat_names,
++                                         Stats::Scope& scope, Stats::StatName bucket_id,
++                                         Stats::StatName tenant, bool is_response)
++    : stat_names_(stat_names), bucket_id_(bucket_id), tenant_(tenant),
++      request_or_response_(is_response ? stat_names_.response_ : stat_names_.request_),
++      tags_gauge_({{stat_names_.bucket_id_, bucket_id_},
++                   {stat_names_.tenant_, tenant_},
++                   {stat_names_.direction_, request_or_response_}}),
++      tags_limited_({{stat_names_.bucket_id_, bucket_id_},
++                     {stat_names_.tenant_, tenant_},
++                     {stat_names_.direction_, request_or_response_},
++                     {stat_names_.handling_, stat_names_.limited_}}),
++      tags_not_limited_({{stat_names_.bucket_id_, bucket_id_},
++                         {stat_names_.tenant_, tenant_},
++                         {stat_names_.direction_, request_or_response_},
++                         {stat_names_.handling_, stat_names_.not_limited_}}),
++      bytes_not_limited_(Stats::Utility::counterFromStatNames(
++          scope, {stat_names_.bandwidth_share_, stat_names_.bytes_}, tags_not_limited_)),
++      bytes_limited_(Stats::Utility::counterFromStatNames(
++          scope, {stat_names_.bandwidth_share_, stat_names_.bytes_}, tags_limited_)),
++      streams_currently_limited_(Stats::Utility::gaugeFromStatNames(
++          scope, {stat_names_.bandwidth_share_, stat_names_.streams_currently_limited_},
++          Stats::Gauge::ImportMode::Accumulate, tags_gauge_)),
++      bytes_pending_(Stats::Utility::gaugeFromStatNames(
++          scope, {stat_names_.bandwidth_share_, stat_names_.bytes_pending_},
++          Stats::Gauge::ImportMode::Accumulate, tags_gauge_)) {}
++
++} // namespace BandwidthShareFilter
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/bandwidth_share/stats.h b/source/extensions/filters/http/bandwidth_share/stats.h
+new file mode 100644
+index 000000000..5f4f19743
+--- /dev/null
++++ b/source/extensions/filters/http/bandwidth_share/stats.h
+@@ -0,0 +1,63 @@
++#pragma once
++
++#include "envoy/stats/scope.h"
++#include "envoy/stats/tag.h"
++
++#include "source/common/stats/symbol_table.h"
++
++#include "absl/strings/string_view.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace BandwidthShareFilter {
++
++/**
++ * All BandwidthShare stats.
++ *
++ * Not using stats macros due to using tags that macros don't support well.
++ *
++ * Stats-groups may be periodically purged if unused, to prevent accumulation
++ * of unlimited tag names.
++ **/
++
++struct BandwidthShareStatNames {
++  explicit BandwidthShareStatNames(Stats::Scope& scope)
++      : pool_(scope.symbolTable()), bytes_(pool_.add("bytes")), handling_(pool_.add("handling")),
++        limited_(pool_.add("limited")), not_limited_(pool_.add("not_limited")),
++        streams_currently_limited_(pool_.add("streams_currently_limited")),
++        bytes_pending_(pool_.add("bytes_pending")), bandwidth_share_(pool_.add("bandwidth_share")),
++        direction_(pool_.add("direction")), request_(pool_.add("request")),
++        response_(pool_.add("response")), bucket_id_(pool_.add("bucket_id")),
++        tenant_(pool_.add("tenant")) {}
++
++  Stats::StatNamePool pool_;
++  Stats::StatName bytes_, handling_, limited_, not_limited_, streams_currently_limited_,
++      bytes_pending_, bandwidth_share_, direction_, request_, response_, bucket_id_, tenant_;
++};
++
++struct BandwidthShareStats {
++public:
++  BandwidthShareStats(const BandwidthShareStatNames& stat_names, Stats::Scope& scope,
++                      Stats::StatName bucket_id, Stats::StatName tenant, bool is_response);
++
++private:
++  const BandwidthShareStatNames& stat_names_;
++  const Stats::StatName bucket_id_;
++  const Stats::StatName tenant_;
++  const Stats::StatName request_or_response_;
++  const Stats::StatNameTagVector tags_gauge_;
++  const Stats::StatNameTagVector tags_limited_;
++  const Stats::StatNameTagVector tags_not_limited_;
++
++public:
++  Stats::Counter& bytes_not_limited_;
++  Stats::Counter& bytes_limited_;
++  Stats::Gauge& streams_currently_limited_;
++  Stats::Gauge& bytes_pending_;
++};
++
++} // namespace BandwidthShareFilter
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/bandwidth_share/token_bucket_singleton.cc b/source/extensions/filters/http/bandwidth_share/token_bucket_singleton.cc
+new file mode 100644
+index 000000000..abfab323e
+--- /dev/null
++++ b/source/extensions/filters/http/bandwidth_share/token_bucket_singleton.cc
+@@ -0,0 +1,180 @@
++#include "source/extensions/filters/http/bandwidth_share/token_bucket_singleton.h"
++
++#include <atomic>
++#include <utility>
++
++#include "source/common/common/assert.h"
++#include "source/common/common/thread.h"
++
++#include "absl/strings/str_cat.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace BandwidthShareFilter {
++
++SINGLETON_MANAGER_REGISTRATION(fair_token_bucket_singleton);
++
++namespace {
++
++uint64_t bytesPerSecond(const Runtime::UInt32& kbps_runtime_config) {
++  // The proto/runtime value is in KiB/s; the token bucket accounts in bytes.
++  return static_cast<uint64_t>(kbps_runtime_config.value()) * 1024;
++}
++
++} // namespace
++
++class TokenBucketSingleton::BucketState {
++public:
++  BucketState(Runtime::UInt32&& max_tokens_runtime_config, uint32_t max_tokens_default_value,
++              std::chrono::milliseconds fill_interval, TimeSource& time_source)
++      : max_tokens_runtime_config_(std::move(max_tokens_runtime_config)),
++        max_tokens_default_value_(max_tokens_default_value), fill_interval_(fill_interval),
++        time_source_(time_source), max_tokens_(bytesPerSecond(max_tokens_runtime_config_)),
++        bucket_(makeBucket(max_tokens_)) {}
++
++  const Runtime::UInt32& maxTokensRuntimeConfig() const { return max_tokens_runtime_config_; }
++  uint32_t maxTokensDefaultValue() const { return max_tokens_default_value_; }
++  std::chrono::milliseconds fillInterval() const { return fill_interval_; }
++
++  uint64_t bucketGeneration() const { return bucket_generation_.load(std::memory_order_acquire); }
++
++  std::shared_ptr<FairTokenBucket::Bucket> bucketForRuntimeValue(uint64_t max_tokens_value,
++                                                                 uint64_t& generation) {
++    Thread::LockGuard lock(update_mu_);
++    generation = bucket_generation_.load(std::memory_order_relaxed);
++    if (max_tokens_ != max_tokens_value) {
++      max_tokens_ = max_tokens_value;
++      bucket_ = makeBucket(max_tokens_value);
++      generation++;
++      bucket_generation_.store(generation, std::memory_order_release);
++    }
++    return bucket_;
++  }
++
++private:
++  std::shared_ptr<FairTokenBucket::Bucket> makeBucket(uint64_t max_tokens_value) const {
++    return max_tokens_value == 0
++               ? nullptr
++               : FairTokenBucket::Bucket::create(max_tokens_value, time_source_, fill_interval_);
++  }
++
++  const Runtime::UInt32 max_tokens_runtime_config_;
++  const uint32_t max_tokens_default_value_;
++  const std::chrono::milliseconds fill_interval_;
++  TimeSource& time_source_;
++  Thread::MutexBasicLockable update_mu_;
++  uint64_t max_tokens_ ABSL_GUARDED_BY(update_mu_);
++  std::shared_ptr<FairTokenBucket::Bucket> bucket_ ABSL_GUARDED_BY(update_mu_);
++  // Cheap invalidation signal for thread-local caches; avoids locking on unchanged requests.
++  std::atomic<uint64_t> bucket_generation_{1};
++};
++
++class TokenBucketSingleton::ThreadLocalBuckets : public ThreadLocal::ThreadLocalObject {
++public:
++  void addBucket(std::string bucket_id, std::shared_ptr<BucketState> state) {
++    const bool inserted = buckets_.try_emplace(std::move(bucket_id), std::move(state)).second;
++    ASSERT(inserted);
++  }
++
++  std::shared_ptr<FairTokenBucket::Bucket> getBucket(absl::string_view bucket_id) {
++    auto it = buckets_.find(bucket_id);
++    // There is a code error if the entry is not found, since getBucket should
++    // only ever be called with an id that has already been configured and therefore
++    // passed to setBucket successfully.
++    ASSERT(it != buckets_.end());
++    return it->second.getBucket();
++  }
++
++private:
++  struct Entry {
++    explicit Entry(std::shared_ptr<BucketState> state) : state_(std::move(state)) {}
++
++    std::shared_ptr<FairTokenBucket::Bucket> getBucket() {
++      const uint64_t max_tokens_value = bytesPerSecond(state_->maxTokensRuntimeConfig());
++      if (max_tokens_ == max_tokens_value && generation_ == state_->bucketGeneration()) {
++        return bucket_;
++      }
++      bucket_ = state_->bucketForRuntimeValue(max_tokens_value, generation_);
++      max_tokens_ = max_tokens_value;
++      return bucket_;
++    }
++
++    std::shared_ptr<BucketState> state_;
++    uint64_t generation_{};
++    uint64_t max_tokens_{};
++    std::shared_ptr<FairTokenBucket::Bucket> bucket_;
++  };
++
++  absl::flat_hash_map<std::string, Entry> buckets_;
++};
++
++TokenBucketSingleton::TokenBucketSingleton(TimeSource& time_source, Stats::Scope& scope,
++                                           ThreadLocal::SlotAllocator& tls)
++    : stat_names_(scope), time_source_(time_source), buckets_tls_(tls) {
++  buckets_tls_.set([](Event::Dispatcher&) { return std::make_shared<ThreadLocalBuckets>(); });
++}
++
++std::shared_ptr<TokenBucketSingleton>
++TokenBucketSingleton::get(Singleton::Manager& singleton_manager, TimeSource& time_source,
++                          Stats::Scope& stats_scope, ThreadLocal::SlotAllocator& tls) {
++  return singleton_manager.getTyped<TokenBucketSingleton>(
++      SINGLETON_MANAGER_REGISTERED_NAME(fair_token_bucket_singleton),
++      [&time_source, &stats_scope, &tls] {
++        return std::make_shared<TokenBucketSingleton>(time_source, stats_scope, tls);
++      });
++}
++
++absl::Status TokenBucketSingleton::setBucket(absl::string_view bucket_id,
++                                             Runtime::UInt32&& max_tokens_runtime_config,
++                                             uint32_t max_tokens_default_value,
++                                             std::chrono::milliseconds fill_interval) {
++  ASSERT_IS_MAIN_OR_TEST_THREAD();
++  auto it = buckets_.find(bucket_id);
++  if (it == buckets_.end()) {
++    auto state =
++        std::make_shared<BucketState>(std::move(max_tokens_runtime_config),
++                                      max_tokens_default_value, fill_interval, time_source_);
++    buckets_.emplace(bucket_id, state);
++    buckets_tls_.runOnAllThreads([bucket_id = std::string(bucket_id),
++                                  state = std::move(state)](OptRef<ThreadLocalBuckets> buckets) {
++      ASSERT(buckets.has_value());
++      buckets->addBucket(bucket_id, state);
++    });
++    return absl::OkStatus();
++  }
++  auto& state = *it->second;
++  if (max_tokens_runtime_config.runtimeKey() != state.maxTokensRuntimeConfig().runtimeKey()) {
++    return absl::InvalidArgumentError(
++        absl::StrCat("bandwidth_share bucket ", bucket_id,
++                     " attempted configuration with mismatched runtime config key ",
++                     max_tokens_runtime_config.runtimeKey(), " vs. existing ",
++                     state.maxTokensRuntimeConfig().runtimeKey(),
++                     " - to have different config you must use a distinct bucket_id"));
++  } else if (max_tokens_default_value != state.maxTokensDefaultValue()) {
++    return absl::InvalidArgumentError(
++        absl::StrCat("bandwidth_share bucket ", bucket_id,
++                     " attempted configuration with mismatched default value ",
++                     max_tokens_default_value, "KiB/s vs. existing ", state.maxTokensDefaultValue(),
++                     "KiB/s - to have different config you must use a distinct bucket_id"));
++  } else if (fill_interval != state.fillInterval()) {
++    return absl::InvalidArgumentError(
++        absl::StrCat("bandwidth_share bucket ", bucket_id,
++                     " attempted configuration with mismatched fill_interval ",
++                     fill_interval.count(), "ms vs. existing ", state.fillInterval().count(),
++                     "ms - to have different config you must use a distinct bucket_id"));
++  }
++  return absl::OkStatus();
++}
++
++std::shared_ptr<FairTokenBucket::Bucket>
++TokenBucketSingleton::getBucket(absl::string_view bucket_id) {
++  auto buckets = buckets_tls_.get();
++  ASSERT(buckets.has_value());
++  return buckets->getBucket(bucket_id);
++}
++
++} // namespace BandwidthShareFilter
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/source/extensions/filters/http/bandwidth_share/token_bucket_singleton.h b/source/extensions/filters/http/bandwidth_share/token_bucket_singleton.h
+new file mode 100644
+index 000000000..09c9c7434
+--- /dev/null
++++ b/source/extensions/filters/http/bandwidth_share/token_bucket_singleton.h
+@@ -0,0 +1,69 @@
++#pragma once
++
++#include <chrono>
++#include <cstdint>
++#include <memory>
++#include <string>
++
++#include "envoy/singleton/instance.h"
++#include "envoy/singleton/manager.h"
++#include "envoy/thread_local/thread_local.h"
++
++#include "source/common/runtime/runtime_protos.h"
++#include "source/extensions/filters/http/bandwidth_share/fair_token_bucket_impl.h"
++#include "source/extensions/filters/http/bandwidth_share/stats.h"
++
++#include "absl/container/flat_hash_map.h"
++#include "absl/status/status.h"
++#include "absl/strings/string_view.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace BandwidthShareFilter {
++
++class TokenBucketSingleton : public Singleton::Instance {
++public:
++  TokenBucketSingleton(TimeSource& time_source, Stats::Scope& scope,
++                       ThreadLocal::SlotAllocator& tls);
++
++  // If the returned singleton becomes un-owned, the singleton manager will
++  // generate a new one if get is called afterwards.
++  static std::shared_ptr<TokenBucketSingleton> get(Singleton::Manager& singleton_manager,
++                                                   TimeSource& time_source,
++                                                   Stats::Scope& stats_scope,
++                                                   ThreadLocal::SlotAllocator& tls);
++
++  // Adds a bucket to the singleton. If the bucket_id already exists and
++  // has a different runtime config key, default value, or fill interval, an
++  // error is returned.
++  absl::Status setBucket(absl::string_view bucket_id, Runtime::UInt32&& max_tokens_runtime_config,
++                         uint32_t max_tokens_default_value,
++                         std::chrono::milliseconds fill_interval);
++
++  // Retrieves a bucket with the given id. Should never be called with
++  // a nonexistent bucket id, as config should always have called setBucket.
++  //
++  // If max_tokens is zero, returns a nullptr.
++  //
++  // The returned bucket can potentially be replaced between calls on the
++  // same request, if the runtime token limit is altered - for this reason
++  // a shared_ptr is returned rather than a reference, so clients can
++  // continue to use the instance they received while a new one replaces it.
++  std::shared_ptr<FairTokenBucket::Bucket> getBucket(absl::string_view bucket_id);
++
++  BandwidthShareStatNames stat_names_;
++
++private:
++  class BucketState;
++  class ThreadLocalBuckets;
++
++  TimeSource& time_source_;
++  ThreadLocal::TypedSlot<ThreadLocalBuckets> buckets_tls_;
++  absl::flat_hash_map<std::string, std::shared_ptr<BucketState>> buckets_;
++};
++
++} // namespace BandwidthShareFilter
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/test/extensions/filters/http/bandwidth_share/BUILD b/test/extensions/filters/http/bandwidth_share/BUILD
+index 0ed92cb24..df54c6092 100644
+--- a/test/extensions/filters/http/bandwidth_share/BUILD
++++ b/test/extensions/filters/http/bandwidth_share/BUILD
+@@ -3,11 +3,31 @@ load(
+     "envoy_cc_test",
+     "envoy_package",
+ )
++load(
++    "//test/extensions:extensions_build_system.bzl",
++    "envoy_extension_cc_test",
++)
+ 
+ licenses(["notice"])  # Apache 2
+ 
+ envoy_package()
+ 
++envoy_extension_cc_test(
++    name = "config_test",
++    srcs = ["config_test.cc"],
++    extension_names = [
++        "envoy.filters.http.bandwidth_share",
++        "envoy.formatter.cel",
++    ],
++    rbe_pool = "6gig",
++    deps = [
++        "//source/extensions/filters/http/bandwidth_share:config",
++        "//source/extensions/formatter/cel:config",
++        "//test/mocks/server:server_mocks",
++        "//test/test_common:status_utility_lib",
++    ],
++)
++
+ envoy_cc_test(
+     name = "fair_token_bucket_impl_test",
+     srcs = ["fair_token_bucket_impl_test.cc"],
+@@ -19,3 +39,33 @@ envoy_cc_test(
+         "//test/test_common:utility_lib",
+     ],
+ )
++
++envoy_cc_test(
++    name = "token_bucket_singleton_test",
++    srcs = ["token_bucket_singleton_test.cc"],
++    rbe_pool = "6gig",
++    deps = [
++        "//source/common/singleton:manager_impl_lib",
++        "//source/common/stats:isolated_store_lib",
++        "//source/extensions/filters/http/bandwidth_share:token_bucket_singleton_lib",
++        "//test/mocks/runtime:runtime_mocks",
++        "//test/mocks/thread_local:thread_local_mocks",
++        "//test/test_common:simulated_time_system_lib",
++        "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
++    ],
++)
++
++envoy_extension_cc_test(
++    name = "filter_integration_test",
++    srcs = ["filter_integration_test.cc"],
++    extension_names = ["envoy.filters.http.bandwidth_share"],
++    rbe_pool = "6gig",
++    deps = [
++        "//source/extensions/filters/http/bandwidth_share:config",
++        "//test/integration:http_protocol_integration_lib",
++        "//test/test_common:simulated_time_system_lib",
++        "//test/test_common:status_utility_lib",
++        "@envoy_api//envoy/extensions/filters/http/bandwidth_share/v3:pkg_cc_proto",
++        "@envoy_api//envoy/extensions/filters/network/http_connection_manager/v3:pkg_cc_proto",
++    ],
++)
+diff --git a/test/extensions/filters/http/bandwidth_share/config_test.cc b/test/extensions/filters/http/bandwidth_share/config_test.cc
+new file mode 100644
+index 000000000..d4a797e13
+--- /dev/null
++++ b/test/extensions/filters/http/bandwidth_share/config_test.cc
+@@ -0,0 +1,332 @@
++#include "source/extensions/filters/http/bandwidth_share/filter_config.h"
++
++#include "test/mocks/protobuf/mocks.h"
++#include "test/mocks/server/factory_context.h"
++#include "test/test_common/status_utility.h"
++
++#include "gmock/gmock.h"
++#include "gtest/gtest.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace BandwidthShareFilter {
++
++using StatusHelpers::HasStatus;
++using StatusHelpers::HasStatusCode;
++using testing::HasSubstr;
++using testing::NiceMock;
++using testing::NotNull;
++using testing::ReturnRef;
++
++class ConfigTest : public testing::Test {
++public:
++  auto factory() {
++    auto factory_type_url =
++        TypeUtil::typeUrlToDescriptorFullName(config_.typed_config().type_url());
++    return Registry::FactoryRegistry<
++        Server::Configuration::NamedHttpFilterConfigFactory>::getFactoryByType(factory_type_url);
++  }
++  void setConfigFromYaml(std::string yaml) { TestUtility::loadFromYaml(std::move(yaml), config_); }
++
++  absl::StatusOr<Http::FilterFactoryCb> filterFactory() {
++    if (!factory()) {
++      return absl::InvalidArgumentError(
++          absl::StrCat("No factory for type ", config_.typed_config().type_url()));
++    }
++    ProtobufTypes::MessagePtr config = factory()->createEmptyConfigProto();
++    config_.typed_config().UnpackTo(config.get());
++    return factory()->createFilterFactoryFromProto(*config, "statprefix", mock_factory_context_);
++  }
++
++  absl::StatusOr<Router::RouteSpecificFilterConfigConstSharedPtr> routeConfig() {
++    if (!factory()) {
++      return absl::InvalidArgumentError(
++          absl::StrCat("No factory for type ", config_.typed_config().type_url()));
++    }
++    ProtobufTypes::MessagePtr config = factory()->createEmptyConfigProto();
++    config_.typed_config().UnpackTo(config.get());
++    return factory()->createRouteSpecificFilterConfig(
++        *config, mock_factory_context_.server_factory_context_, validation_visitor_);
++  }
++
++  std::shared_ptr<const FilterConfig> filterConfig() {
++    auto route_config = routeConfig();
++    EXPECT_OK(route_config);
++    auto ret = std::dynamic_pointer_cast<const FilterConfig>(*route_config);
++    EXPECT_THAT(ret, NotNull());
++    return ret;
++  }
++
++  xds::core::v3::TypedExtensionConfig config_;
++  NiceMock<Server::Configuration::MockFactoryContext> mock_factory_context_;
++  NiceMock<ProtobufMessage::MockValidationVisitor> validation_visitor_;
++  // CEL uses the global ServerContext singleton so it must be initialized.
++  ScopedThreadLocalServerContextSetter server_context_singleton_setter_{
++      mock_factory_context_.server_factory_context_};
++};
++
++TEST_F(ConfigTest, ListenerEmptyConfig) {
++  setConfigFromYaml(R"(
++    name: "empty"
++    typed_config:
++      "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++  )");
++  EXPECT_OK(filterFactory());
++}
++
++TEST_F(ConfigTest, ProtoValidationIsApplied) {
++  setConfigFromYaml(R"(
++    name: "too_small_fill_interval"
++    typed_config:
++      "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++      "fill_interval": 0.005s
++  )");
++  // Proto validation occurs before it even gets into any of the functions,
++  // so only a throw is available, there's no way to catch it for a status.
++  EXPECT_THROW_WITH_REGEX(filterFactory().IgnoreError(), EnvoyException,
++                          "value must be inside range \\[20ms, 1s\\]");
++}
++
++TEST_F(ConfigTest, ReusedBucketIdWithDifferentRuntimeKeyIsAConfigError) {
++  setConfigFromYaml(R"YAML(
++    name: "first_bucket_config"
++    typed_config:
++      "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++      request_limit: {bucket_id: "shared_bucket", kbps: {default_value: 1000, runtime_key: "first"}}
++  )YAML");
++  auto first_config = routeConfig();
++  ASSERT_OK(first_config);
++
++  setConfigFromYaml(R"YAML(
++    name: "second_bucket_config"
++    typed_config:
++      "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++      request_limit: {bucket_id: "shared_bucket", kbps: {default_value: 1000, runtime_key: "second"}}
++  )YAML");
++  EXPECT_THAT(routeConfig(), HasStatus(absl::StatusCode::kInvalidArgument,
++                                       HasSubstr("mismatched runtime config key second vs. "
++                                                 "existing first")));
++}
++
++TEST_F(ConfigTest, ReusedBucketIdWithDifferentDefaultValueIsAConfigError) {
++  setConfigFromYaml(R"YAML(
++    name: "first_bucket_config"
++    typed_config:
++      "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++      request_limit: {bucket_id: "shared_bucket", kbps: {default_value: 1000, runtime_key: "same"}}
++  )YAML");
++  auto first_config = routeConfig();
++  ASSERT_OK(first_config);
++
++  setConfigFromYaml(R"YAML(
++    name: "second_bucket_config"
++    typed_config:
++      "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++      request_limit: {bucket_id: "shared_bucket", kbps: {default_value: 2000, runtime_key: "same"}}
++  )YAML");
++  EXPECT_THAT(routeConfig(), HasStatus(absl::StatusCode::kInvalidArgument,
++                                       HasSubstr("mismatched default value 2000KiB/s vs. existing "
++                                                 "1000KiB/s")));
++}
++
++TEST_F(ConfigTest, ReusedBucketIdWithDifferentFillIntervalIsAConfigError) {
++  setConfigFromYaml(R"YAML(
++    name: "first_bucket_config"
++    typed_config:
++      "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++      fill_interval: 0.050s
++      request_limit: {bucket_id: "shared_bucket", kbps: {default_value: 1000, runtime_key: "same"}}
++  )YAML");
++  auto first_config = routeConfig();
++  ASSERT_OK(first_config);
++
++  setConfigFromYaml(R"YAML(
++    name: "second_bucket_config"
++    typed_config:
++      "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++      fill_interval: 0.100s
++      request_limit: {bucket_id: "shared_bucket", kbps: {default_value: 1000, runtime_key: "same"}}
++  )YAML");
++  EXPECT_THAT(routeConfig(), HasStatus(absl::StatusCode::kInvalidArgument,
++                                       HasSubstr("mismatched fill_interval 100ms vs. existing "
++                                                 "50ms")));
++}
++
++TEST_F(ConfigTest, ValidTenantNameSelectorPlainStringParses) {
++  setConfigFromYaml(R"YAML(
++    name: "plain_string"
++    typed_config:
++      "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++      tenant_name_selector:
++        on_no_match:
++          action:
++            name: use_constant_string_as_tenant_name
++            typed_config:
++              "@type": type.googleapis.com/google.protobuf.StringValue
++              value: foo
++  )YAML");
++  auto filter_cb = filterFactory();
++  ASSERT_OK(filter_cb);
++  Http::MockFilterChainFactoryCallbacks callbacks;
++  EXPECT_CALL(callbacks, addStreamFilter);
++  (*filter_cb)(callbacks);
++}
++
++TEST_F(ConfigTest, TenantNameSelectorWithInvalidActionTypeIsAConfigError) {
++  setConfigFromYaml(R"YAML(
++    name: "invalid_action_type"
++    typed_config:
++      "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++      tenant_name_selector:
++        on_no_match:
++          action:
++            name: do_something_unreasonable
++            typed_config:
++              "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++  )YAML");
++  EXPECT_THAT(filterFactory(), HasStatus(absl::StatusCode::kInvalidArgument,
++                                         HasSubstr("Didn't find a registered implementation")));
++}
++
++TEST_F(ConfigTest, RouteConfigAlsoDoesValidation) {
++  setConfigFromYaml(R"YAML(
++    name: "invalid_action_type"
++    typed_config:
++      "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++      tenant_name_selector:
++        on_no_match:
++          action:
++            name: do_something_unreasonable
++            typed_config:
++              "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++  )YAML");
++  EXPECT_THAT(routeConfig(), HasStatus(absl::StatusCode::kInvalidArgument,
++                                       HasSubstr("Didn't find a registered implementation")));
++}
++
++TEST_F(ConfigTest, CelFormatterCanExtractCertificateNameAsTenant) {
++  setConfigFromYaml(R"YAML(
++    name: "cel_config"
++    typed_config:
++      "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++      tenant_name_selector:
++        on_no_match:
++          action:
++            name: use_client_certificate_name_as_tenant_name
++            typed_config:
++              "@type": type.googleapis.com/envoy.config.core.v3.SubstitutionFormatString
++              omit_empty_values: true
++              text_format_source:
++                inline_string: '%CEL(re.extract(connection.subject_peer_certificate, R"CN=([^,]*)", "\\1"))%'
++              formatters:
++              - name: envoy.formatter.cel
++                typed_config:
++                  "@type": type.googleapis.com/envoy.extensions.formatter.cel.v3.Cel
++  )YAML");
++  auto filter_config = filterConfig();
++  NiceMock<StreamInfo::MockStreamInfo> stream_info;
++  auto ssl = std::make_shared<Ssl::MockConnectionInfo>();
++  Http::TestRequestHeaderMapImpl request_headers{};
++  std::string cert{"CN=example_cn,something_else"};
++  EXPECT_CALL(*ssl, subjectPeerCertificate).WillRepeatedly(ReturnRef(cert));
++  stream_info.downstream_connection_info_provider_->setSslConnection(ssl);
++  EXPECT_THAT(filter_config->getTenantName(stream_info, request_headers), "example_cn");
++  // Also try with no certificate to check that's formatted reasonably and not an error.
++  stream_info.downstream_connection_info_provider_->setSslConnection(nullptr);
++  EXPECT_THAT(filter_config->getTenantName(stream_info, request_headers), "");
++}
++
++TEST_F(ConfigTest, StatsGetTenantTagOnlyIfExplicitlyConfiguredTo) {
++  setConfigFromYaml(R"YAML(
++    name: "optional_tenant_tagging"
++    typed_config:
++      "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++      request_limit: {bucket_id: "bucket1", kbps: {default_value: 1000, runtime_key: "a"}}
++      response_limit: {bucket_id: "bucket2", kbps: {default_value: 1000, runtime_key: "a"}}
++      tenant_configs:
++        "foo": {include_stats_tag: true}
++  )YAML");
++  auto filter_config = filterConfig();
++  BandwidthShareStats& foo_stats = filter_config->requestStatsForTenant("foo");
++  BandwidthShareStats& bar_stats = filter_config->responseStatsForTenant("bar");
++  EXPECT_THAT(
++      foo_stats.bytes_limited_.name(),
++      "bandwidth_share.bytes.bucket_id.bucket1.tenant.foo.direction.request.handling.limited");
++  EXPECT_THAT(
++      foo_stats.bytes_not_limited_.name(),
++      "bandwidth_share.bytes.bucket_id.bucket1.tenant.foo.direction.request.handling.not_limited");
++  EXPECT_THAT(
++      foo_stats.streams_currently_limited_.name(),
++      "bandwidth_share.streams_currently_limited.bucket_id.bucket1.tenant.foo.direction.request");
++  EXPECT_THAT(foo_stats.bytes_pending_.name(),
++              "bandwidth_share.bytes_pending.bucket_id.bucket1.tenant.foo.direction.request");
++  // bar_stats should have omitted tenant, and response stats should have direction=response.
++  EXPECT_THAT(
++      bar_stats.bytes_limited_.name(),
++      "bandwidth_share.bytes.bucket_id.bucket2.tenant..direction.response.handling.limited");
++}
++
++TEST_F(ConfigTest, ResponseTrailersPrefixWhenNotEnabledIsAConfigError) {
++  setConfigFromYaml(R"YAML(
++    name: "optional_tenant_tagging"
++    typed_config:
++      "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++      response_trailer_prefix: foo-
++  )YAML");
++  EXPECT_THAT(routeConfig(), HasStatus(absl::StatusCode::kInvalidArgument,
++                                       HasSubstr("enable_response_trailers must be true")));
++}
++
++TEST_F(ConfigTest, ResponseTrailersDisabledIsReflectedInConfig) {
++  setConfigFromYaml(R"YAML(
++    name: "optional_tenant_tagging"
++    typed_config:
++      "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++      enable_response_trailers: false
++  )YAML");
++  auto filter_config = filterConfig();
++  EXPECT_FALSE(filter_config->enableResponseTrailers());
++}
++
++TEST_F(ConfigTest, ResponseTrailersWithNoPrefixSetsTrailers) {
++  setConfigFromYaml(R"YAML(
++    name: "optional_tenant_tagging"
++    typed_config:
++      "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++      enable_response_trailers: true
++  )YAML");
++  auto filter_config = filterConfig();
++  EXPECT_TRUE(filter_config->enableResponseTrailers());
++  EXPECT_EQ(filter_config->responseTrailers().request_duration_.get(),
++            "bandwidth-request-duration-ms");
++  EXPECT_EQ(filter_config->responseTrailers().response_duration_.get(),
++            "bandwidth-response-duration-ms");
++  EXPECT_EQ(filter_config->responseTrailers().request_delay_.get(), "bandwidth-request-delay-ms");
++  EXPECT_EQ(filter_config->responseTrailers().response_delay_.get(), "bandwidth-response-delay-ms");
++}
++
++TEST_F(ConfigTest, ResponseTrailersWithPrefixSetsTrailersWithPrefix) {
++  setConfigFromYaml(R"YAML(
++    name: "optional_tenant_tagging"
++    typed_config:
++      "@type": "type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare"
++      enable_response_trailers: true
++      response_trailer_prefix: "foo-"
++  )YAML");
++  auto filter_config = filterConfig();
++  EXPECT_TRUE(filter_config->enableResponseTrailers());
++  EXPECT_EQ(filter_config->responseTrailers().request_duration_.get(),
++            "foo-bandwidth-request-duration-ms");
++  EXPECT_EQ(filter_config->responseTrailers().response_duration_.get(),
++            "foo-bandwidth-response-duration-ms");
++  EXPECT_EQ(filter_config->responseTrailers().request_delay_.get(),
++            "foo-bandwidth-request-delay-ms");
++  EXPECT_EQ(filter_config->responseTrailers().response_delay_.get(),
++            "foo-bandwidth-response-delay-ms");
++}
++
++} // namespace BandwidthShareFilter
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy
+diff --git a/test/extensions/filters/http/bandwidth_share/fair_token_bucket_impl_test.cc b/test/extensions/filters/http/bandwidth_share/fair_token_bucket_impl_test.cc
+index 3d90f5315..9b556d432 100644
+--- a/test/extensions/filters/http/bandwidth_share/fair_token_bucket_impl_test.cc
++++ b/test/extensions/filters/http/bandwidth_share/fair_token_bucket_impl_test.cc
+@@ -1,3 +1,5 @@
++#include <limits>
++
+ #include "source/extensions/filters/http/bandwidth_share/fair_token_bucket_impl.h"
+ 
+ #include "test/test_common/simulated_time_system.h"
+@@ -62,6 +64,16 @@ TEST_F(ClientTest, InitializationAndTimeBothFillTheBucket) {
+   EXPECT_EQ(950, client.consume(950));
+ }
+ 
++TEST_F(ClientTest, AllowsRatesAboveNanosecondsPerSecondWithoutOverflow) {
++  const uint64_t max_tokens = std::numeric_limits<uint64_t>::max() / 1000000000UL + 1;
++  std::shared_ptr<Bucket> bucket = Bucket::create(max_tokens, time_system_);
++  Client client(bucket, "foo", 1);
++
++  const uint64_t tokens_per_interval = max_tokens * 50 / 1000;
++  EXPECT_EQ(max_tokens - tokens_per_interval, client.consume(max_tokens));
++  EXPECT_EQ(tokens_per_interval, client.consume(max_tokens));
++}
++
+ TEST_F(ClientTest, CompetingRequestsGetAppropriateShares) {
+   Client client0(bucket_, "baz", 1);
+   Client client1(bucket_, "foo", 2);
+diff --git a/test/extensions/filters/http/bandwidth_share/filter_integration_test.cc b/test/extensions/filters/http/bandwidth_share/filter_integration_test.cc
+new file mode 100644
+index 000000000..57b50307a
+--- /dev/null
++++ b/test/extensions/filters/http/bandwidth_share/filter_integration_test.cc
+@@ -0,0 +1,581 @@
++#include <chrono>
++#include <string>
++
++#include "envoy/extensions/filters/http/bandwidth_share/v3/bandwidth_share.pb.h"
++#include "envoy/extensions/filters/network/http_connection_manager/v3/http_connection_manager.pb.h"
++
++#include "source/common/protobuf/utility.h"
++
++#include "test/integration/http_protocol_integration.h"
++#include "test/integration/utility.h"
++#include "test/mocks/http/mocks.h"
++#include "test/test_common/status_utility.h"
++#include "test/test_common/utility.h"
++
++#include "absl/status/status.h"
++#include "absl/strings/str_cat.h"
++#include "gmock/gmock.h"
++
++namespace Envoy {
++namespace {
++
++using ::testing::_;
++using ::testing::Contains;
++using ::testing::Eq;
++using ::testing::Ge;
++using ::testing::Lt;
++using ::testing::Not;
++using ::testing::Property;
++using ::testing::ResultOf;
++using ::testing::StartsWith;
++
++using BandwidthShareProto = envoy::extensions::filters::http::bandwidth_share::v3::BandwidthShare;
++using HttpConnectionManagerProto =
++    envoy::extensions::filters::network::http_connection_manager::v3::HttpConnectionManager;
++
++template <class NameMatcher> auto MetricNameMatches(NameMatcher name_matcher) {
++  return Property(&Stats::Metric::name, name_matcher);
++}
++
++template <class MetricMatcher> auto HasMetric(MetricMatcher metric_matcher) {
++  return Contains(
++      ResultOf([](const auto& metric) -> const Stats::Metric& { return *metric; }, metric_matcher));
++}
++
++class BandwidthShareIntegrationTest : public Event::TestUsingSimulatedTime,
++                                      public HttpIntegrationTest,
++                                      public testing::Test {
++public:
++  BandwidthShareIntegrationTest()
++      : HttpIntegrationTest(Http::CodecType::HTTP1, Network::Address::IpVersion::v4) {
++    // FairTokenBucket derives its initial fullness from elapsed monotonic time.
++    // Starting at zero makes newly-created buckets appear empty in integration tests.
++    simTime().setMonotonicTime(std::chrono::seconds(1));
++  }
++
++  void initializeFilter(const std::string& config) {
++    config_helper_.addConfigModifier([](envoy::config::bootstrap::v3::Bootstrap& bootstrap) {
++      auto* listener = bootstrap.mutable_static_resources()->mutable_listeners(0);
++      listener->mutable_per_connection_buffer_limit_bytes()->set_value(4096); // Set to 4KB
++    });
++    config_helper_.prependFilter(config);
++    initialize();
++  }
++
++  void initializeFilterWithRouteConfig(const std::string& filter_config,
++                                       const std::string& route_config) {
++    config_helper_.addConfigModifier([route_config](HttpConnectionManagerProto& hcm) {
++      BandwidthShareProto per_route_config;
++      TestUtility::loadFromYaml(route_config, per_route_config);
++      auto* typed_config = hcm.mutable_route_config()
++                               ->mutable_virtual_hosts(0)
++                               ->mutable_routes(0)
++                               ->mutable_typed_per_filter_config();
++      (*typed_config)["bwshare"].PackFrom(per_route_config);
++    });
++    initializeFilter(filter_config);
++  }
++
++  std::string disabledFilter() {
++    // If neither request_bucket_id nor response_bucket_id is set the filter is disabled.
++    return R"(
++    name: bwshare
++    typed_config:
++      "@type": type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare
++  )";
++  }
++  std::string twoWay1kFilter() {
++    return R"(
++    name: bwshare
++    typed_config:
++      "@type": type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare
++      request_limit: {bucket_id: "bucket1", kbps: {default_value: 1, runtime_key: "a"}}
++      response_limit: {bucket_id: "bucket2", kbps: {default_value: 1, runtime_key: "a"}}
++  )";
++  }
++  std::string runtimeControlledRequestFilter() {
++    return R"(
++    name: bwshare
++    typed_config:
++      "@type": type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare
++      request_limit:
++        bucket_id: "runtime_bucket"
++        kbps: {default_value: 1, runtime_key: "bandwidth_share.runtime_request_kbps"}
++  )";
++  }
++  std::string responseOnly1kFilter() {
++    return R"(
++    name: bwshare
++    typed_config:
++      "@type": type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare
++      response_limit: {bucket_id: "response_bucket", kbps: {default_value: 1, runtime_key: "response"}}
++  )";
++  }
++  std::string responseTrailersFilter() {
++    return R"(
++    name: bwshare
++    typed_config:
++      "@type": type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare
++      request_limit: {bucket_id: "trailer_request", kbps: {default_value: 1, runtime_key: "trailer_request"}}
++      response_limit: {bucket_id: "trailer_response", kbps: {default_value: 1, runtime_key: "trailer_response"}}
++      enable_response_trailers: true
++      response_trailer_prefix: x-test-
++  )";
++  }
++  std::string responseTrailersWithoutDelayFilter() {
++    return R"(
++    name: bwshare
++    typed_config:
++      "@type": type.googleapis.com/envoy.extensions.filters.http.bandwidth_share.v3.BandwidthShare
++      response_limit: {bucket_id: "trailer_response", kbps: {default_value: 1024}}
++      enable_response_trailers: true
++      response_trailer_prefix: x-test-
++  )";
++  }
++  std::string tenantTaggedRouteConfig() {
++    return R"(
++    request_limit: {bucket_id: "route_bucket", kbps: {default_value: 1, runtime_key: "route_request"}}
++    tenant_name_selector:
++      on_no_match:
++        action:
++          name: use_constant_string_as_tenant_name
++          typed_config:
++            "@type": type.googleapis.com/google.protobuf.StringValue
++            value: gold
++    tenant_configs:
++      "gold": {include_stats_tag: true}
++  )";
++  }
++  uint64_t counterValue(const std::string& name) {
++    const auto counter = test_server_->counter(name);
++    return counter != nullptr ? counter->value() : 0;
++  }
++
++  uint64_t gaugeValue(const std::string& name) {
++    const auto gauge = test_server_->gauge(name);
++    return gauge != nullptr ? gauge->value() : 0;
++  }
++
++  absl::Status setRuntimeInt(const std::string& key, uint32_t value) {
++    BufferingStreamDecoderPtr admin_response = IntegrationUtil::makeSingleRequest(
++        lookupPort("admin"), "POST", absl::StrCat("/runtime_modify?", key, "=", value), "",
++        Http::CodecType::HTTP1, version_);
++    if (!admin_response->complete()) {
++      return absl::InternalError("runtime_modify admin request did not complete");
++    }
++    if (admin_response->headers().getStatusValue() != "200") {
++      return absl::InternalError(absl::StrCat("runtime_modify admin request returned ",
++                                              admin_response->headers().getStatusValue()));
++    }
++    return absl::OkStatus();
++  }
++
++  void makeDownstreamConnection() {
++    codec_client_ = makeHttpConnection(makeClientConnection((lookupPort("http"))));
++  }
++
++  // Only for streams that are not expected to be bandwidth limited.
++  void sendRequestAndResponse() {
++    auto [request_encoder, response_decoder] = codec_client_->startRequest(request_headers_post_);
++    codec_client_->sendData(request_encoder, std::string(2048, 'a'), false);
++    codec_client_->sendTrailers(request_encoder, any_request_trailers_);
++    waitForNextUpstreamRequest();
++    ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
++    upstream_request_->encodeHeaders(response_headers_, false);
++    upstream_request_->encodeData(2048, false);
++    upstream_request_->encodeTrailers(any_response_trailers_);
++    ASSERT_TRUE(response_decoder->waitForEndStream());
++  }
++
++  Http::TestRequestHeaderMapImpl request_headers_post_{
++      {":method", "POST"}, {":scheme", "http"}, {":authority", "test"}, {":path", "/test"}};
++  Http::TestResponseHeaderMapImpl response_headers_{{":status", "200"}};
++
++  Http::TestRequestTrailerMapImpl any_request_trailers_{{"x-foo", "foo"}};
++  Http::TestResponseTrailerMapImpl any_response_trailers_{{"x-bar", "bar"}};
++};
++
++TEST_F(BandwidthShareIntegrationTest, DisabledJustPassesThrough) {
++  config_helper_.addConfigModifier(setEnableDownstreamTrailersHttp1());
++  config_helper_.addConfigModifier(setEnableUpstreamTrailersHttp1());
++  initializeFilter(disabledFilter());
++  makeDownstreamConnection();
++  auto [request_encoder, response_decoder] = codec_client_->startRequest(request_headers_post_);
++  codec_client_->sendData(request_encoder, std::string(2048, 'a'), false);
++  codec_client_->sendTrailers(request_encoder, any_request_trailers_);
++  waitForNextUpstreamRequest();
++  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
++  ASSERT_NE(nullptr, upstream_request_->trailers());
++  EXPECT_THAT(*upstream_request_->trailers(), ContainsHeader("x-foo", "foo"));
++  upstream_request_->encodeHeaders(response_headers_, false);
++  upstream_request_->encodeData(2048, false);
++  upstream_request_->encodeTrailers(any_response_trailers_);
++  ASSERT_TRUE(response_decoder->waitForEndStream());
++  ASSERT_NE(nullptr, response_decoder->trailers());
++  EXPECT_THAT(*response_decoder->trailers(), ContainsHeader("x-bar", "bar"));
++
++  EXPECT_THAT(test_server_->counters(),
++              Not(HasMetric(MetricNameMatches(StartsWith("bandwidth_share.")))));
++  EXPECT_THAT(test_server_->gauges(),
++              Not(HasMetric(MetricNameMatches(StartsWith("bandwidth_share.")))));
++}
++
++TEST_F(BandwidthShareIntegrationTest, LimitCausesPausesBothWays) {
++  initializeFilter(twoWay1kFilter());
++  const std::string request_bytes_pending =
++      "bandwidth_share.bytes_pending.bucket_id.bucket1.tenant..direction.request";
++  const std::string response_bytes_pending =
++      "bandwidth_share.bytes_pending.bucket_id.bucket2.tenant..direction.response";
++  const std::string request_streams_currently_limited =
++      "bandwidth_share.streams_currently_limited.bucket_id.bucket1.tenant..direction.request";
++  const std::string response_streams_currently_limited =
++      "bandwidth_share.streams_currently_limited.bucket_id.bucket2.tenant..direction.response";
++  makeDownstreamConnection();
++  auto [request_encoder, response_decoder] = codec_client_->startRequest(request_headers_post_);
++  codec_client_->sendData(request_encoder, std::string(2048, 'a'), false);
++  codec_client_->sendTrailers(request_encoder, any_request_trailers_);
++  ASSERT_TRUE(fake_upstreams_[0]->waitForHttpConnection(*dispatcher_, fake_upstream_connection_));
++  ASSERT_TRUE(fake_upstream_connection_->waitForNewStream(*dispatcher_, upstream_request_));
++  ASSERT_TRUE(upstream_request_->waitForHeadersComplete());
++  test_server_->waitForGauge(request_bytes_pending, Ge(1));
++  EXPECT_EQ(1, gaugeValue(request_streams_currently_limited));
++  test_server_->waitForGauge(request_bytes_pending, Eq(0));
++  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
++  upstream_request_->encodeHeaders(response_headers_, false);
++  response_decoder->waitForHeaders();
++  upstream_request_->encodeData(2048, false);
++  upstream_request_->encodeTrailers(any_response_trailers_);
++  test_server_->waitForGauge(response_bytes_pending, Ge(1));
++  EXPECT_EQ(1, gaugeValue(response_streams_currently_limited));
++  test_server_->waitForGauge(response_bytes_pending, Eq(0));
++  ASSERT_TRUE(response_decoder->waitForEndStream());
++
++  EXPECT_GT(
++      counterValue("bandwidth_share.bytes.bucket_id.bucket1.tenant..direction.request.handling."
++                   "limited"),
++      512);
++  EXPECT_GT(
++      counterValue("bandwidth_share.bytes.bucket_id.bucket2.tenant..direction.response.handling."
++                   "limited"),
++      512);
++  EXPECT_EQ(0, gaugeValue(request_streams_currently_limited));
++  EXPECT_EQ(0, gaugeValue(response_streams_currently_limited));
++  EXPECT_EQ(0, gaugeValue(request_bytes_pending));
++  EXPECT_EQ(0, gaugeValue(response_bytes_pending));
++}
++
++TEST_F(BandwidthShareIntegrationTest, ResetWhileRequestBytesBufferedCleansStats) {
++  setDownstreamProtocol(Http::CodecType::HTTP2);
++  setUpstreamProtocol(Http::CodecType::HTTP2);
++  initializeFilter(runtimeControlledRequestFilter());
++  const std::string request_bytes_pending =
++      "bandwidth_share.bytes_pending.bucket_id.runtime_bucket.tenant..direction.request";
++  const std::string request_streams_currently_limited =
++      "bandwidth_share.streams_currently_limited.bucket_id.runtime_bucket.tenant..direction."
++      "request";
++  makeDownstreamConnection();
++  auto [request_encoder, response_decoder] = codec_client_->startRequest(request_headers_post_);
++  codec_client_->sendData(request_encoder, std::string(2048, 'a'), false);
++  ASSERT_TRUE(fake_upstreams_[0]->waitForHttpConnection(*dispatcher_, fake_upstream_connection_));
++  ASSERT_TRUE(fake_upstream_connection_->waitForNewStream(*dispatcher_, upstream_request_));
++  ASSERT_TRUE(upstream_request_->waitForHeadersComplete());
++  test_server_->waitForGauge(request_bytes_pending, Ge(1));
++  EXPECT_EQ(1, gaugeValue(request_streams_currently_limited));
++
++  codec_client_->sendReset(request_encoder);
++  ASSERT_TRUE(response_decoder->waitForReset());
++  ASSERT_TRUE(upstream_request_->waitForReset(*dispatcher_));
++
++  test_server_->waitForGauge(request_bytes_pending, Eq(0));
++  EXPECT_EQ(0, gaugeValue(request_streams_currently_limited));
++}
++
++TEST_F(BandwidthShareIntegrationTest, ResetWhileResponseBytesBufferedCleansStats) {
++  setDownstreamProtocol(Http::CodecType::HTTP2);
++  setUpstreamProtocol(Http::CodecType::HTTP2);
++  initializeFilter(responseOnly1kFilter());
++  const std::string response_bytes_pending =
++      "bandwidth_share.bytes_pending.bucket_id.response_bucket.tenant..direction.response";
++  const std::string response_streams_currently_limited =
++      "bandwidth_share.streams_currently_limited.bucket_id.response_bucket.tenant..direction."
++      "response";
++  makeDownstreamConnection();
++  auto [request_encoder, response_decoder] = codec_client_->startRequest(request_headers_post_);
++  codec_client_->sendData(request_encoder, std::string(1, 'a'), true);
++  waitForNextUpstreamRequest();
++  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
++  upstream_request_->encodeHeaders(response_headers_, false);
++  response_decoder->waitForHeaders();
++  upstream_request_->encodeData(2048, false);
++  test_server_->waitForGauge(response_bytes_pending, Ge(1));
++  EXPECT_EQ(1, gaugeValue(response_streams_currently_limited));
++
++  upstream_request_->encodeResetStream();
++  ASSERT_TRUE(response_decoder->waitForReset());
++
++  test_server_->waitForGauge(response_bytes_pending, Eq(0));
++  EXPECT_EQ(0, gaugeValue(response_streams_currently_limited));
++}
++
++TEST_F(BandwidthShareIntegrationTest, RuntimeLimitChangesApplyToNewStreams) {
++  config_helper_.addRuntimeOverride("bandwidth_share.runtime_request_kbps", "0");
++  initializeFilter(runtimeControlledRequestFilter());
++  const std::string request_bytes_pending =
++      "bandwidth_share.bytes_pending.bucket_id.runtime_bucket.tenant..direction.request";
++  const std::string request_streams_currently_limited =
++      "bandwidth_share.streams_currently_limited.bucket_id.runtime_bucket.tenant..direction."
++      "request";
++  const std::string request_bytes_limited =
++      "bandwidth_share.bytes.bucket_id.runtime_bucket.tenant..direction.request.handling.limited";
++  makeDownstreamConnection();
++  sendRequestAndResponse();
++  EXPECT_THAT(test_server_->counters(),
++              Not(HasMetric(MetricNameMatches(StartsWith("bandwidth_share.")))));
++  EXPECT_THAT(test_server_->gauges(),
++              Not(HasMetric(MetricNameMatches(StartsWith("bandwidth_share.")))));
++
++  ASSERT_OK(setRuntimeInt("bandwidth_share.runtime_request_kbps", 1));
++
++  auto [request_encoder, response_decoder] = codec_client_->startRequest(request_headers_post_);
++  codec_client_->sendData(request_encoder, std::string(2048, 'a'), false);
++  codec_client_->sendTrailers(request_encoder, any_request_trailers_);
++  ASSERT_TRUE(fake_upstream_connection_->waitForNewStream(*dispatcher_, upstream_request_));
++  ASSERT_TRUE(upstream_request_->waitForHeadersComplete());
++  test_server_->waitForGauge(request_bytes_pending, Ge(1));
++  EXPECT_EQ(1, gaugeValue(request_streams_currently_limited));
++  test_server_->waitForGauge(request_bytes_pending, Eq(0));
++  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
++  upstream_request_->encodeHeaders(response_headers_, true);
++  ASSERT_TRUE(response_decoder->waitForEndStream());
++
++  const uint64_t limited_bytes = counterValue(request_bytes_limited);
++  EXPECT_GT(limited_bytes, 512);
++  EXPECT_EQ(0, gaugeValue(request_streams_currently_limited));
++  EXPECT_EQ(0, gaugeValue(request_bytes_pending));
++
++  ASSERT_OK(setRuntimeInt("bandwidth_share.runtime_request_kbps", 0));
++
++  sendRequestAndResponse();
++
++  EXPECT_EQ(limited_bytes, counterValue(request_bytes_limited));
++  EXPECT_EQ(0, gaugeValue(request_streams_currently_limited));
++  EXPECT_EQ(0, gaugeValue(request_bytes_pending));
++}
++
++TEST_F(BandwidthShareIntegrationTest, PendingResponseBytesDecreaseWhileStillBuffered) {
++  setDownstreamProtocol(Http::CodecType::HTTP2);
++  setUpstreamProtocol(Http::CodecType::HTTP2);
++  initializeFilter(responseOnly1kFilter());
++  const std::string response_bytes_pending =
++      "bandwidth_share.bytes_pending.bucket_id.response_bucket.tenant..direction.response";
++  makeDownstreamConnection();
++  auto [request_encoder, response_decoder] = codec_client_->startRequest(request_headers_post_);
++  codec_client_->sendData(request_encoder, std::string(1, 'a'), true);
++  waitForNextUpstreamRequest();
++  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
++  upstream_request_->encodeHeaders(response_headers_, false);
++  response_decoder->waitForHeaders();
++  upstream_request_->encodeData(4096, false);
++
++  test_server_->waitForGauge(response_bytes_pending, Ge(2048));
++  Event::TestTimeSystem::RealTimeBound bound(TestUtility::DefaultTimeout);
++  test_server_->waitForGauge(response_bytes_pending, Lt(1024));
++  EXPECT_GT(gaugeValue(response_bytes_pending), 0);
++
++  upstream_request_->encodeData(1, true);
++  test_server_->waitForGauge(response_bytes_pending, Eq(0));
++  ASSERT_TRUE(response_decoder->waitForEndStream());
++}
++
++TEST_F(BandwidthShareIntegrationTest, RouteConfigCanLimitAndTagTenantStats) {
++  initializeFilterWithRouteConfig(disabledFilter(), tenantTaggedRouteConfig());
++  const std::string request_bytes_pending =
++      "bandwidth_share.bytes_pending.bucket_id.route_bucket.tenant.gold.direction.request";
++  const std::string request_streams_currently_limited =
++      "bandwidth_share.streams_currently_limited.bucket_id.route_bucket.tenant.gold.direction."
++      "request";
++  makeDownstreamConnection();
++  auto [request_encoder, response_decoder] = codec_client_->startRequest(request_headers_post_);
++  codec_client_->sendData(request_encoder, std::string(2048, 'a'), false);
++  codec_client_->sendTrailers(request_encoder, any_request_trailers_);
++  ASSERT_TRUE(fake_upstreams_[0]->waitForHttpConnection(*dispatcher_, fake_upstream_connection_));
++  ASSERT_TRUE(fake_upstream_connection_->waitForNewStream(*dispatcher_, upstream_request_));
++  ASSERT_TRUE(upstream_request_->waitForHeadersComplete());
++  test_server_->waitForGauge(request_bytes_pending, Ge(1));
++  EXPECT_EQ(1, gaugeValue(request_streams_currently_limited));
++  test_server_->waitForGauge(request_bytes_pending, Eq(0));
++  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
++  upstream_request_->encodeHeaders(response_headers_, true);
++  ASSERT_TRUE(response_decoder->waitForEndStream());
++
++  EXPECT_GT(
++      counterValue("bandwidth_share.bytes.bucket_id.route_bucket.tenant.gold.direction.request."
++                   "handling.limited"),
++      512);
++  EXPECT_EQ(0, gaugeValue(request_streams_currently_limited));
++  EXPECT_EQ(0, gaugeValue(request_bytes_pending));
++}
++
++TEST_F(BandwidthShareIntegrationTest, DoesNotAddEmptyResponseTrailersWithoutDelay) {
++  setDownstreamProtocol(Http::CodecType::HTTP2);
++  initializeFilter(responseTrailersWithoutDelayFilter());
++  makeDownstreamConnection();
++  auto [request_encoder, response_decoder] = codec_client_->startRequest(request_headers_post_);
++  codec_client_->sendData(request_encoder, "a", true);
++  waitForNextUpstreamRequest();
++  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
++  upstream_request_->encodeHeaders(response_headers_, false);
++  response_decoder->waitForHeaders();
++  upstream_request_->encodeData(1, true);
++  simTime().advanceTimeWait(std::chrono::milliseconds(0));
++  ASSERT_TRUE(response_decoder->waitForEndStream());
++
++  EXPECT_EQ(nullptr, response_decoder->trailers());
++}
++
++TEST_F(BandwidthShareIntegrationTest, AddsResponseTrailersAfterLimitedResponse) {
++  setDownstreamProtocol(Http::CodecType::HTTP2);
++  initializeFilter(responseTrailersFilter());
++  const std::string request_bytes_pending =
++      "bandwidth_share.bytes_pending.bucket_id.trailer_request.tenant..direction.request";
++  const std::string response_bytes_pending =
++      "bandwidth_share.bytes_pending.bucket_id.trailer_response.tenant..direction.response";
++  makeDownstreamConnection();
++  auto [request_encoder, response_decoder] = codec_client_->startRequest(request_headers_post_);
++  codec_client_->sendData(request_encoder, std::string(2048, 'a'), false);
++  codec_client_->sendTrailers(request_encoder, any_request_trailers_);
++  ASSERT_TRUE(fake_upstreams_[0]->waitForHttpConnection(*dispatcher_, fake_upstream_connection_));
++  ASSERT_TRUE(fake_upstream_connection_->waitForNewStream(*dispatcher_, upstream_request_));
++  ASSERT_TRUE(upstream_request_->waitForHeadersComplete());
++  test_server_->waitForGauge(request_bytes_pending, Ge(1));
++  test_server_->waitForGauge(request_bytes_pending, Eq(0));
++  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
++  upstream_request_->encodeHeaders(response_headers_, false);
++  response_decoder->waitForHeaders();
++  upstream_request_->encodeData(2048, true);
++  test_server_->waitForGauge(response_bytes_pending, Ge(1));
++  test_server_->waitForGauge(response_bytes_pending, Eq(0));
++  ASSERT_TRUE(response_decoder->waitForEndStream());
++  ASSERT_NE(nullptr, response_decoder->trailers());
++
++  EXPECT_THAT(*response_decoder->trailers(),
++              ContainsHeader("x-test-bandwidth-request-delay-ms", _));
++  EXPECT_THAT(*response_decoder->trailers(),
++              ContainsHeader("x-test-bandwidth-response-delay-ms", _));
++  EXPECT_THAT(*response_decoder->trailers(),
++              ContainsHeader("x-test-bandwidth-request-duration-ms", _));
++  EXPECT_THAT(*response_decoder->trailers(),
++              ContainsHeader("x-test-bandwidth-response-duration-ms", _));
++}
++
++TEST_F(BandwidthShareIntegrationTest, AddsResponseTrailersToUpstreamTrailers) {
++  setDownstreamProtocol(Http::CodecType::HTTP2);
++  config_helper_.addConfigModifier(setEnableUpstreamTrailersHttp1());
++  initializeFilter(responseTrailersFilter());
++  const std::string request_bytes_pending =
++      "bandwidth_share.bytes_pending.bucket_id.trailer_request.tenant..direction.request";
++  const std::string response_bytes_pending =
++      "bandwidth_share.bytes_pending.bucket_id.trailer_response.tenant..direction.response";
++  makeDownstreamConnection();
++  auto [request_encoder, response_decoder] = codec_client_->startRequest(request_headers_post_);
++  codec_client_->sendData(request_encoder, std::string(2048, 'a'), false);
++  codec_client_->sendTrailers(request_encoder, any_request_trailers_);
++  ASSERT_TRUE(fake_upstreams_[0]->waitForHttpConnection(*dispatcher_, fake_upstream_connection_));
++  ASSERT_TRUE(fake_upstream_connection_->waitForNewStream(*dispatcher_, upstream_request_));
++  ASSERT_TRUE(upstream_request_->waitForHeadersComplete());
++  test_server_->waitForGauge(request_bytes_pending, Ge(1));
++  test_server_->waitForGauge(request_bytes_pending, Eq(0));
++  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
++  upstream_request_->encodeHeaders(response_headers_, false);
++  response_decoder->waitForHeaders();
++  upstream_request_->encodeData(2048, false);
++  test_server_->waitForGauge(response_bytes_pending, Ge(1));
++  test_server_->waitForGauge(response_bytes_pending, Eq(0));
++  upstream_request_->encodeTrailers(any_response_trailers_);
++  ASSERT_TRUE(response_decoder->waitForEndStream());
++  ASSERT_NE(nullptr, response_decoder->trailers());
++
++  EXPECT_THAT(*response_decoder->trailers(), ContainsHeader("x-bar", "bar"));
++  EXPECT_THAT(*response_decoder->trailers(),
++              ContainsHeader("x-test-bandwidth-request-delay-ms", _));
++  EXPECT_THAT(*response_decoder->trailers(),
++              ContainsHeader("x-test-bandwidth-response-delay-ms", _));
++  EXPECT_THAT(*response_decoder->trailers(),
++              ContainsHeader("x-test-bandwidth-request-duration-ms", _));
++  EXPECT_THAT(*response_decoder->trailers(),
++              ContainsHeader("x-test-bandwidth-response-duration-ms", _));
++}
++
++TEST_F(BandwidthShareIntegrationTest, PausesUpstreamTrailersBehindBufferedResponse) {
++  setDownstreamProtocol(Http::CodecType::HTTP2);
++  config_helper_.addConfigModifier(setEnableUpstreamTrailersHttp1());
++  initializeFilter(responseTrailersFilter());
++  const std::string request_bytes_pending =
++      "bandwidth_share.bytes_pending.bucket_id.trailer_request.tenant..direction.request";
++  const std::string response_bytes_pending =
++      "bandwidth_share.bytes_pending.bucket_id.trailer_response.tenant..direction.response";
++  makeDownstreamConnection();
++  auto [request_encoder, response_decoder] = codec_client_->startRequest(request_headers_post_);
++  codec_client_->sendData(request_encoder, std::string(2048, 'a'), false);
++  codec_client_->sendTrailers(request_encoder, any_request_trailers_);
++  ASSERT_TRUE(fake_upstreams_[0]->waitForHttpConnection(*dispatcher_, fake_upstream_connection_));
++  ASSERT_TRUE(fake_upstream_connection_->waitForNewStream(*dispatcher_, upstream_request_));
++  ASSERT_TRUE(upstream_request_->waitForHeadersComplete());
++  test_server_->waitForGauge(request_bytes_pending, Ge(1));
++  test_server_->waitForGauge(request_bytes_pending, Eq(0));
++  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
++  upstream_request_->encodeHeaders(response_headers_, false);
++  response_decoder->waitForHeaders();
++  upstream_request_->encodeData(2048, false);
++  test_server_->waitForGauge(response_bytes_pending, Ge(1));
++  upstream_request_->encodeTrailers(any_response_trailers_);
++  test_server_->waitForGauge(response_bytes_pending, Eq(0));
++  ASSERT_TRUE(response_decoder->waitForEndStream());
++  ASSERT_NE(nullptr, response_decoder->trailers());
++
++  EXPECT_THAT(*response_decoder->trailers(), ContainsHeader("x-bar", "bar"));
++  EXPECT_THAT(*response_decoder->trailers(),
++              ContainsHeader("x-test-bandwidth-request-delay-ms", _));
++  EXPECT_THAT(*response_decoder->trailers(),
++              ContainsHeader("x-test-bandwidth-response-delay-ms", _));
++  EXPECT_THAT(*response_decoder->trailers(),
++              ContainsHeader("x-test-bandwidth-request-duration-ms", _));
++  EXPECT_THAT(*response_decoder->trailers(),
++              ContainsHeader("x-test-bandwidth-response-duration-ms", _));
++}
++
++TEST_F(BandwidthShareIntegrationTest, AddsResponseTrailersWhenUpstreamTrailersDoNotPause) {
++  setDownstreamProtocol(Http::CodecType::HTTP2);
++  config_helper_.addConfigModifier(setEnableUpstreamTrailersHttp1());
++  initializeFilter(responseTrailersFilter());
++  const std::string request_bytes_pending =
++      "bandwidth_share.bytes_pending.bucket_id.trailer_request.tenant..direction.request";
++  makeDownstreamConnection();
++  auto [request_encoder, response_decoder] = codec_client_->startRequest(request_headers_post_);
++  codec_client_->sendData(request_encoder, std::string(2048, 'a'), false);
++  codec_client_->sendTrailers(request_encoder, any_request_trailers_);
++  ASSERT_TRUE(fake_upstreams_[0]->waitForHttpConnection(*dispatcher_, fake_upstream_connection_));
++  ASSERT_TRUE(fake_upstream_connection_->waitForNewStream(*dispatcher_, upstream_request_));
++  ASSERT_TRUE(upstream_request_->waitForHeadersComplete());
++  test_server_->waitForGauge(request_bytes_pending, Ge(1));
++  test_server_->waitForGauge(request_bytes_pending, Eq(0));
++  ASSERT_TRUE(upstream_request_->waitForEndStream(*dispatcher_));
++  upstream_request_->encodeHeaders(response_headers_, false);
++  response_decoder->waitForHeaders();
++  upstream_request_->encodeTrailers(any_response_trailers_);
++  ASSERT_TRUE(response_decoder->waitForEndStream());
++  ASSERT_NE(nullptr, response_decoder->trailers());
++
++  EXPECT_THAT(*response_decoder->trailers(), ContainsHeader("x-bar", "bar"));
++  EXPECT_THAT(*response_decoder->trailers(),
++              ContainsHeader("x-test-bandwidth-request-delay-ms", _));
++  EXPECT_THAT(*response_decoder->trailers(),
++              ContainsHeader("x-test-bandwidth-response-delay-ms", _));
++  EXPECT_THAT(*response_decoder->trailers(),
++              ContainsHeader("x-test-bandwidth-request-duration-ms", _));
++  EXPECT_THAT(*response_decoder->trailers(),
++              ContainsHeader("x-test-bandwidth-response-duration-ms", _));
++}
++
++} // namespace
++} // namespace Envoy
+diff --git a/test/extensions/filters/http/bandwidth_share/token_bucket_singleton_test.cc b/test/extensions/filters/http/bandwidth_share/token_bucket_singleton_test.cc
+new file mode 100644
+index 000000000..d74a0e0b7
+--- /dev/null
++++ b/test/extensions/filters/http/bandwidth_share/token_bucket_singleton_test.cc
+@@ -0,0 +1,121 @@
++#include <memory>
++#include <string>
++
++#include "envoy/config/core/v3/base.pb.h"
++
++#include "source/common/singleton/manager_impl.h"
++#include "source/common/stats/isolated_store_impl.h"
++#include "source/extensions/filters/http/bandwidth_share/token_bucket_singleton.h"
++
++#include "test/mocks/runtime/mocks.h"
++#include "test/mocks/thread_local/mocks.h"
++#include "test/test_common/simulated_time_system.h"
++
++#include "gmock/gmock.h"
++#include "gtest/gtest.h"
++
++namespace Envoy {
++namespace Extensions {
++namespace HttpFilters {
++namespace BandwidthShareFilter {
++namespace {
++
++using testing::_;
++using testing::NiceMock;
++
++envoy::config::core::v3::RuntimeUInt32 runtimeConfig(const std::string& runtime_key,
++                                                     uint32_t default_value) {
++  envoy::config::core::v3::RuntimeUInt32 config;
++  config.set_runtime_key(runtime_key);
++  config.set_default_value(default_value);
++  return config;
++}
++
++class TokenBucketSingletonTest : public testing::Test {
++protected:
++  Stats::Scope& scope() { return *store_.rootScope(); }
++
++  Runtime::UInt32 runtimeUInt32(uint32_t default_value = 1) {
++    return Runtime::UInt32(runtimeConfig("bandwidth.bucket.kbps", default_value), runtime_);
++  }
++
++  Event::SimulatedTimeSystem time_system_;
++  Stats::IsolatedStoreImpl store_;
++  NiceMock<ThreadLocal::MockInstance> tls_;
++  NiceMock<Runtime::MockLoader> runtime_;
++};
++
++TEST_F(TokenBucketSingletonTest, GetUsesSingletonManager) {
++  Singleton::ManagerImpl manager;
++
++  auto first = TokenBucketSingleton::get(manager, time_system_, scope(), tls_);
++  auto second = TokenBucketSingleton::get(manager, time_system_, scope(), tls_);
++
++  EXPECT_EQ(first, second);
++}
++
++TEST_F(TokenBucketSingletonTest, ReturnsCachedBucketUntilRuntimeValueChanges) {
++  uint64_t runtime_kbps = 1;
++  ON_CALL(runtime_.snapshot_, getInteger(_, _))
++      .WillByDefault([&runtime_kbps](absl::string_view, uint64_t) { return runtime_kbps; });
++  TokenBucketSingleton singleton(time_system_, scope(), tls_);
++
++  ASSERT_TRUE(
++      singleton.setBucket("shared", runtimeUInt32(), 1, std::chrono::milliseconds{25}).ok());
++  ASSERT_TRUE(
++      singleton.setBucket("shared", runtimeUInt32(), 1, std::chrono::milliseconds{25}).ok());
++
++  auto initial = singleton.getBucket("shared");
++  ASSERT_NE(nullptr, initial);
++  EXPECT_EQ(std::chrono::milliseconds{25}, initial->fillInterval());
++  EXPECT_EQ(initial, singleton.getBucket("shared"));
++
++  runtime_kbps = 2;
++  auto updated = singleton.getBucket("shared");
++  ASSERT_NE(nullptr, updated);
++  EXPECT_NE(initial, updated);
++  EXPECT_EQ(updated, singleton.getBucket("shared"));
++}
++
++TEST_F(TokenBucketSingletonTest, RuntimeValueChangeReleasesOldCachedBucket) {
++  uint64_t runtime_kbps = 1;
++  ON_CALL(runtime_.snapshot_, getInteger(_, _))
++      .WillByDefault([&runtime_kbps](absl::string_view, uint64_t) { return runtime_kbps; });
++  TokenBucketSingleton singleton(time_system_, scope(), tls_);
++
++  ASSERT_TRUE(
++      singleton.setBucket("shared", runtimeUInt32(), 1, std::chrono::milliseconds{25}).ok());
++
++  std::shared_ptr<FairTokenBucket::Bucket> initial = singleton.getBucket("shared");
++  std::weak_ptr<FairTokenBucket::Bucket> weak_initial = initial;
++  initial.reset();
++  ASSERT_FALSE(weak_initial.expired());
++
++  runtime_kbps = 2;
++  ASSERT_NE(nullptr, singleton.getBucket("shared"));
++  EXPECT_TRUE(weak_initial.expired());
++}
++
++TEST_F(TokenBucketSingletonTest, RuntimeValueZeroDisablesBucketAndCanReenable) {
++  uint64_t runtime_kbps = 0;
++  ON_CALL(runtime_.snapshot_, getInteger(_, _))
++      .WillByDefault([&runtime_kbps](absl::string_view, uint64_t) { return runtime_kbps; });
++  TokenBucketSingleton singleton(time_system_, scope(), tls_);
++
++  ASSERT_TRUE(
++      singleton.setBucket("maybe", runtimeUInt32(10), 10, std::chrono::milliseconds{50}).ok());
++  EXPECT_EQ(nullptr, singleton.getBucket("maybe"));
++
++  runtime_kbps = 3;
++  auto enabled = singleton.getBucket("maybe");
++  ASSERT_NE(nullptr, enabled);
++
++  runtime_kbps = 0;
++  EXPECT_EQ(nullptr, singleton.getBucket("maybe"));
++}
++
++} // namespace
++} // namespace BandwidthShareFilter
++} // namespace HttpFilters
++} // namespace Extensions
++} // namespace Envoy

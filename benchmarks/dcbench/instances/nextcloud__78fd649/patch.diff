@@ -1,0 +1,749 @@
+From 78fd649e47530bb29daeda086250202dbc14becc Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?C=C3=B4me=20Chilliet?= <come.chilliet@nextcloud.com>
+Date: Thu, 9 Apr 2026 17:30:55 +0200
+Subject: [PATCH] chore: Remove long deprecated methods from OCP
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+These have been deprecated from before 20
+
+Signed-off-by: Côme Chilliet <come.chilliet@nextcloud.com>
+---
+ lib/composer/composer/autoload_classmap.php   |  3 -
+ lib/composer/composer/autoload_static.php     |  3 -
+ .../Collaboration/Resources/Manager.php       |  5 --
+ .../Security/CSP/ContentSecurityPolicy.php    | 26 -------
+ .../Http/ContentSecurityPolicy.php            |  4 --
+ .../Http/EmptyContentSecurityPolicy.php       | 55 +--------------
+ .../Http/StrictContentSecurityPolicy.php      | 70 -------------------
+ .../Http/StrictEvalContentSecurityPolicy.php  | 33 ---------
+ .../StrictInlineContentSecurityPolicy.php     | 33 ---------
+ .../Collaboration/Resources/IManager.php      |  7 --
+ lib/public/Util.php                           | 25 -------
+ .../Http/ContentSecurityPolicyTest.php        | 57 ---------------
+ .../Http/EmptyContentSecurityPolicyTest.php   | 46 ------------
+ .../Collaboration/Resources/ManagerTest.php   | 46 ------------
+ .../CSP/ContentSecurityPolicyManagerTest.php  | 13 +---
+ tests/lib/UtilTest.php                        | 15 ----
+ 16 files changed, 3 insertions(+), 438 deletions(-)
+ delete mode 100644 lib/public/AppFramework/Http/StrictContentSecurityPolicy.php
+ delete mode 100644 lib/public/AppFramework/Http/StrictEvalContentSecurityPolicy.php
+ delete mode 100644 lib/public/AppFramework/Http/StrictInlineContentSecurityPolicy.php
+ delete mode 100644 tests/lib/Collaboration/Resources/ManagerTest.php
+
+diff --git a/lib/composer/composer/autoload_classmap.php b/lib/composer/composer/autoload_classmap.php
+index 35992e1683..7e74a62b50 100644
+--- a/lib/composer/composer/autoload_classmap.php
++++ b/lib/composer/composer/autoload_classmap.php
+@@ -126,9 +126,6 @@ return array(
+     'OCP\\AppFramework\\Http\\StandaloneTemplateResponse' => $baseDir . '/lib/public/AppFramework/Http/StandaloneTemplateResponse.php',
+     'OCP\\AppFramework\\Http\\StreamResponse' => $baseDir . '/lib/public/AppFramework/Http/StreamResponse.php',
+     'OCP\\AppFramework\\Http\\StreamTraversableResponse' => $baseDir . '/lib/public/AppFramework/Http/StreamTraversableResponse.php',
+-    'OCP\\AppFramework\\Http\\StrictContentSecurityPolicy' => $baseDir . '/lib/public/AppFramework/Http/StrictContentSecurityPolicy.php',
+-    'OCP\\AppFramework\\Http\\StrictEvalContentSecurityPolicy' => $baseDir . '/lib/public/AppFramework/Http/StrictEvalContentSecurityPolicy.php',
+-    'OCP\\AppFramework\\Http\\StrictInlineContentSecurityPolicy' => $baseDir . '/lib/public/AppFramework/Http/StrictInlineContentSecurityPolicy.php',
+     'OCP\\AppFramework\\Http\\TemplateResponse' => $baseDir . '/lib/public/AppFramework/Http/TemplateResponse.php',
+     'OCP\\AppFramework\\Http\\Template\\ExternalShareMenuAction' => $baseDir . '/lib/public/AppFramework/Http/Template/ExternalShareMenuAction.php',
+     'OCP\\AppFramework\\Http\\Template\\IMenuAction' => $baseDir . '/lib/public/AppFramework/Http/Template/IMenuAction.php',
+diff --git a/lib/composer/composer/autoload_static.php b/lib/composer/composer/autoload_static.php
+index 79c4de8f32..61332ab05a 100644
+--- a/lib/composer/composer/autoload_static.php
++++ b/lib/composer/composer/autoload_static.php
+@@ -167,9 +167,6 @@ class ComposerStaticInit749170dad3f5e7f9ca158f5a9f04f6a2
+         'OCP\\AppFramework\\Http\\StandaloneTemplateResponse' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Http/StandaloneTemplateResponse.php',
+         'OCP\\AppFramework\\Http\\StreamResponse' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Http/StreamResponse.php',
+         'OCP\\AppFramework\\Http\\StreamTraversableResponse' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Http/StreamTraversableResponse.php',
+-        'OCP\\AppFramework\\Http\\StrictContentSecurityPolicy' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Http/StrictContentSecurityPolicy.php',
+-        'OCP\\AppFramework\\Http\\StrictEvalContentSecurityPolicy' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Http/StrictEvalContentSecurityPolicy.php',
+-        'OCP\\AppFramework\\Http\\StrictInlineContentSecurityPolicy' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Http/StrictInlineContentSecurityPolicy.php',
+         'OCP\\AppFramework\\Http\\TemplateResponse' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Http/TemplateResponse.php',
+         'OCP\\AppFramework\\Http\\Template\\ExternalShareMenuAction' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Http/Template/ExternalShareMenuAction.php',
+         'OCP\\AppFramework\\Http\\Template\\IMenuAction' => __DIR__ . '/../../..' . '/lib/public/AppFramework/Http/Template/IMenuAction.php',
+diff --git a/lib/private/Collaboration/Resources/Manager.php b/lib/private/Collaboration/Resources/Manager.php
+index 943deb5060..7cf039c217 100644
+--- a/lib/private/Collaboration/Resources/Manager.php
++++ b/lib/private/Collaboration/Resources/Manager.php
+@@ -457,11 +457,6 @@ class Manager implements IManager {
+ 		$query->executeStatement();
+ 	}
+ 
+-	public function registerResourceProvider(string $provider): void {
+-		$this->logger->debug('\OC\Collaboration\Resources\Manager::registerResourceProvider is deprecated', ['provider' => $provider]);
+-		$this->providerManager->registerResourceProvider($provider);
+-	}
+-
+ 	/**
+ 	 * Get the resource type of the provider
+ 	 *
+diff --git a/lib/private/Security/CSP/ContentSecurityPolicy.php b/lib/private/Security/CSP/ContentSecurityPolicy.php
+index 890251db04..8dd87cf499 100644
+--- a/lib/private/Security/CSP/ContentSecurityPolicy.php
++++ b/lib/private/Security/CSP/ContentSecurityPolicy.php
+@@ -24,17 +24,6 @@ class ContentSecurityPolicy extends \OCP\AppFramework\Http\ContentSecurityPolicy
+ 		$this->inlineScriptAllowed = $inlineScriptAllowed;
+ 	}
+ 
+-	public function isEvalScriptAllowed(): bool {
+-		return $this->evalScriptAllowed;
+-	}
+-
+-	/**
+-	 * @deprecated 17.0.0 Unsafe eval should not be used anymore.
+-	 */
+-	public function setEvalScriptAllowed(bool $evalScriptAllowed): void {
+-		$this->evalScriptAllowed = $evalScriptAllowed;
+-	}
+-
+ 	public function isEvalWasmAllowed(): ?bool {
+ 		return $this->evalWasmAllowed;
+ 	}
+@@ -115,21 +104,6 @@ class ContentSecurityPolicy extends \OCP\AppFramework\Http\ContentSecurityPolicy
+ 		$this->allowedFontDomains = $allowedFontDomains;
+ 	}
+ 
+-	/**
+-	 * @deprecated 15.0.0 use FrameDomains and WorkerSrcDomains
+-	 */
+-	public function getAllowedChildSrcDomains(): array {
+-		return $this->allowedChildSrcDomains;
+-	}
+-
+-	/**
+-	 * @param array $allowedChildSrcDomains
+-	 * @deprecated 15.0.0 use FrameDomains and WorkerSrcDomains
+-	 */
+-	public function setAllowedChildSrcDomains($allowedChildSrcDomains): void {
+-		$this->allowedChildSrcDomains = $allowedChildSrcDomains;
+-	}
+-
+ 	public function getAllowedFrameAncestors(): array {
+ 		return $this->allowedFrameAncestors;
+ 	}
+diff --git a/lib/public/AppFramework/Http/ContentSecurityPolicy.php b/lib/public/AppFramework/Http/ContentSecurityPolicy.php
+index 11ec79bbdb..c5a2fdb34d 100644
+--- a/lib/public/AppFramework/Http/ContentSecurityPolicy.php
++++ b/lib/public/AppFramework/Http/ContentSecurityPolicy.php
+@@ -24,8 +24,6 @@ namespace OCP\AppFramework\Http;
+ class ContentSecurityPolicy extends EmptyContentSecurityPolicy {
+ 	/** @var bool Whether inline JS snippets are allowed */
+ 	protected $inlineScriptAllowed = false;
+-	/** @var bool Whether eval in JS scripts is allowed */
+-	protected $evalScriptAllowed = false;
+ 	/** @var bool Whether WebAssembly compilation is allowed */
+ 	protected ?bool $evalWasmAllowed = false;
+ 	/** @var bool Whether strict-dynamic should be set */
+@@ -69,8 +67,6 @@ class ContentSecurityPolicy extends EmptyContentSecurityPolicy {
+ 		'\'self\'',
+ 		'data:',
+ 	];
+-	/** @var array Domains from which web-workers and nested browsing content can load elements */
+-	protected $allowedChildSrcDomains = [];
+ 
+ 	/** @var array Domains which can embed this Nextcloud instance */
+ 	protected $allowedFrameAncestors = [
+diff --git a/lib/public/AppFramework/Http/EmptyContentSecurityPolicy.php b/lib/public/AppFramework/Http/EmptyContentSecurityPolicy.php
+index b8bbfdb7d6..322c8a09b8 100644
+--- a/lib/public/AppFramework/Http/EmptyContentSecurityPolicy.php
++++ b/lib/public/AppFramework/Http/EmptyContentSecurityPolicy.php
+@@ -24,12 +24,6 @@ class EmptyContentSecurityPolicy {
+ 	protected $strictDynamicAllowed = null;
+ 	/** @var bool Whether strict-dynamic should be used on script-src-elem */
+ 	protected $strictDynamicAllowedOnScripts = null;
+-	/**
+-	 * @var bool Whether eval in JS scripts is allowed
+-	 *           TODO: Disallow per default
+-	 * @link https://github.com/owncloud/core/issues/11925
+-	 */
+-	protected $evalScriptAllowed = null;
+ 	/** @var bool Whether WebAssembly compilation is allowed */
+ 	protected ?bool $evalWasmAllowed = null;
+ 	/** @var array Domains from which scripts can get loaded */
+@@ -54,8 +48,6 @@ class EmptyContentSecurityPolicy {
+ 	protected $allowedFrameDomains = null;
+ 	/** @var array Domains from which fonts can be loaded */
+ 	protected $allowedFontDomains = null;
+-	/** @var array Domains from which web-workers and nested browsing content can load elements */
+-	protected $allowedChildSrcDomains = null;
+ 	/** @var array Domains which can embed this Nextcloud instance */
+ 	protected $allowedFrameAncestors = null;
+ 	/** @var array Domains from which web-workers can be loaded */
+@@ -101,18 +93,6 @@ class EmptyContentSecurityPolicy {
+ 		return $this;
+ 	}
+ 
+-	/**
+-	 * Whether eval in JavaScript is allowed or forbidden
+-	 * @param bool $state
+-	 * @return $this
+-	 * @since 8.1.0
+-	 * @deprecated 17.0.0 Eval should not be used anymore. Please update your scripts. This function will stop functioning in a future version of Nextcloud.
+-	 */
+-	public function allowEvalScript($state = true) {
+-		$this->evalScriptAllowed = $state;
+-		return $this;
+-	}
+-
+ 	/**
+ 	 * Whether WebAssembly compilation is allowed or forbidden
+ 	 * @param bool $state
+@@ -323,31 +303,6 @@ class EmptyContentSecurityPolicy {
+ 		return $this;
+ 	}
+ 
+-	/**
+-	 * Domains from which web-workers and nested browsing content can load elements
+-	 * @param string $domain Domain to whitelist. Any passed value needs to be properly sanitized.
+-	 * @return $this
+-	 * @since 8.1.0
+-	 * @deprecated 15.0.0 use addAllowedWorkerSrcDomains or addAllowedFrameDomain
+-	 */
+-	public function addAllowedChildSrcDomain($domain) {
+-		$this->allowedChildSrcDomains[] = $domain;
+-		return $this;
+-	}
+-
+-	/**
+-	 * Remove the specified allowed child src domain from the allowed domains.
+-	 *
+-	 * @param string $domain
+-	 * @return $this
+-	 * @since 8.1.0
+-	 * @deprecated 15.0.0 use the WorkerSrcDomains or FrameDomain
+-	 */
+-	public function disallowChildSrcDomain($domain) {
+-		$this->allowedChildSrcDomains = array_diff($this->allowedChildSrcDomains, [$domain]);
+-		return $this;
+-	}
+-
+ 	/**
+ 	 * Domains which can embed an iFrame of the Nextcloud instance
+ 	 *
+@@ -441,7 +396,7 @@ class EmptyContentSecurityPolicy {
+ 		$policy .= "base-uri 'none';";
+ 		$policy .= "manifest-src 'self';";
+ 
+-		if (!empty($this->allowedScriptDomains) || $this->evalScriptAllowed || $this->evalWasmAllowed || is_string($this->jsNonce)) {
++		if (!empty($this->allowedScriptDomains) || $this->evalWasmAllowed || is_string($this->jsNonce)) {
+ 			$policy .= 'script-src ';
+ 			$scriptSrc = '';
+ 			if (is_string($this->jsNonce)) {
+@@ -459,9 +414,6 @@ class EmptyContentSecurityPolicy {
+ 			if (is_array($this->allowedScriptDomains)) {
+ 				$scriptSrc .= implode(' ', $this->allowedScriptDomains);
+ 			}
+-			if ($this->evalScriptAllowed) {
+-				$scriptSrc .= ' \'unsafe-eval\'';
+-			}
+ 			if ($this->evalWasmAllowed) {
+ 				$scriptSrc .= ' \'wasm-unsafe-eval\'';
+ 			}
+@@ -517,11 +469,6 @@ class EmptyContentSecurityPolicy {
+ 			$policy .= ';';
+ 		}
+ 
+-		if (!empty($this->allowedChildSrcDomains)) {
+-			$policy .= 'child-src ' . implode(' ', $this->allowedChildSrcDomains);
+-			$policy .= ';';
+-		}
+-
+ 		if (!empty($this->allowedFrameAncestors)) {
+ 			$policy .= 'frame-ancestors ' . implode(' ', $this->allowedFrameAncestors);
+ 			$policy .= ';';
+diff --git a/lib/public/AppFramework/Http/StrictContentSecurityPolicy.php b/lib/public/AppFramework/Http/StrictContentSecurityPolicy.php
+deleted file mode 100644
+index 4b074331fc..0000000000
+--- a/lib/public/AppFramework/Http/StrictContentSecurityPolicy.php
++++ /dev/null
+@@ -1,70 +0,0 @@
+-<?php
+-
+-declare(strict_types=1);
+-/**
+- * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+- * SPDX-License-Identifier: AGPL-3.0-or-later
+- */
+-namespace OCP\AppFramework\Http;
+-
+-/**
+- * Class StrictContentSecurityPolicy is a simple helper which allows applications to
+- * modify the Content-Security-Policy sent by Nextcloud. Per default only JavaScript,
+- * stylesheets, images, fonts, media and connections from the same domain
+- * ('self') are allowed.
+- *
+- * Even if a value gets modified above defaults will still get appended. Please
+- * note that Nextcloud ships already with sensible defaults and those policies
+- * should require no modification at all for most use-cases.
+- *
+- * This class represents out strictest defaults. They may get change from release
+- * to release if more strict CSP directives become available.
+- *
+- * @since 14.0.0
+- * @deprecated 17.0.0
+- */
+-class StrictContentSecurityPolicy extends EmptyContentSecurityPolicy {
+-	/** @var bool Whether inline JS snippets are allowed */
+-	protected $inlineScriptAllowed = false;
+-	/** @var bool Whether eval in JS scripts is allowed */
+-	protected $evalScriptAllowed = false;
+-	/** @var bool Whether WebAssembly compilation is allowed */
+-	protected ?bool $evalWasmAllowed = false;
+-	/** @var array Domains from which scripts can get loaded */
+-	protected $allowedScriptDomains = [
+-		'\'self\'',
+-	];
+-	/** @var bool Whether inline CSS is allowed */
+-	protected $inlineStyleAllowed = false;
+-	/** @var array Domains from which CSS can get loaded */
+-	protected $allowedStyleDomains = [
+-		'\'self\'',
+-	];
+-	/** @var array Domains from which images can get loaded */
+-	protected $allowedImageDomains = [
+-		'\'self\'',
+-		'data:',
+-		'blob:',
+-	];
+-	/** @var array Domains to which connections can be done */
+-	protected $allowedConnectDomains = [
+-		'\'self\'',
+-	];
+-	/** @var array Domains from which media elements can be loaded */
+-	protected $allowedMediaDomains = [
+-		'\'self\'',
+-	];
+-	/** @var array Domains from which object elements can be loaded */
+-	protected $allowedObjectDomains = [];
+-	/** @var array Domains from which iframes can be loaded */
+-	protected $allowedFrameDomains = [];
+-	/** @var array Domains from which fonts can be loaded */
+-	protected $allowedFontDomains = [
+-		'\'self\'',
+-	];
+-	/** @var array Domains from which web-workers and nested browsing content can load elements */
+-	protected $allowedChildSrcDomains = [];
+-
+-	/** @var array Domains which can embed this Nextcloud instance */
+-	protected $allowedFrameAncestors = [];
+-}
+diff --git a/lib/public/AppFramework/Http/StrictEvalContentSecurityPolicy.php b/lib/public/AppFramework/Http/StrictEvalContentSecurityPolicy.php
+deleted file mode 100644
+index b59dd0fcce..0000000000
+--- a/lib/public/AppFramework/Http/StrictEvalContentSecurityPolicy.php
++++ /dev/null
+@@ -1,33 +0,0 @@
+-<?php
+-
+-declare(strict_types=1);
+-/**
+- * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+- * SPDX-License-Identifier: AGPL-3.0-or-later
+- */
+-namespace OCP\AppFramework\Http;
+-
+-/**
+- * Class StrictEvalContentSecurityPolicy is a simple helper which allows applications to
+- * modify the Content-Security-Policy sent by Nextcloud. Per default only JavaScript,
+- * stylesheets, images, fonts, media and connections from the same domain
+- * ('self') are allowed.
+- *
+- * Even if a value gets modified above defaults will still get appended. Please
+- * note that Nextcloud ships already with sensible defaults and those policies
+- * should require no modification at all for most use-cases.
+- *
+- * This is a temp helper class from the default ContentSecurityPolicy to allow slow
+- * migration to a stricter CSP. This does not allow unsafe eval.
+- *
+- * @since 14.0.0
+- * @deprecated 17.0.0
+- */
+-class StrictEvalContentSecurityPolicy extends ContentSecurityPolicy {
+-	/**
+-	 * @since 14.0.0
+-	 */
+-	public function __construct() {
+-		$this->evalScriptAllowed = false;
+-	}
+-}
+diff --git a/lib/public/AppFramework/Http/StrictInlineContentSecurityPolicy.php b/lib/public/AppFramework/Http/StrictInlineContentSecurityPolicy.php
+deleted file mode 100644
+index e80d37c74c..0000000000
+--- a/lib/public/AppFramework/Http/StrictInlineContentSecurityPolicy.php
++++ /dev/null
+@@ -1,33 +0,0 @@
+-<?php
+-
+-declare(strict_types=1);
+-/**
+- * SPDX-FileCopyrightText: 2018 Nextcloud GmbH and Nextcloud contributors
+- * SPDX-License-Identifier: AGPL-3.0-or-later
+- */
+-namespace OCP\AppFramework\Http;
+-
+-/**
+- * Class StrictInlineContentSecurityPolicy is a simple helper which allows applications to
+- * modify the Content-Security-Policy sent by Nextcloud. Per default only JavaScript,
+- * stylesheets, images, fonts, media and connections from the same domain
+- * ('self') are allowed.
+- *
+- * Even if a value gets modified above defaults will still get appended. Please
+- * note that Nextcloud ships already with sensible defaults and those policies
+- * should require no modification at all for most use-cases.
+- *
+- * This is a temp helper class from the default ContentSecurityPolicy to allow slow
+- * migration to a stricter CSP. This does not allow inline styles.
+- *
+- * @since 14.0.0
+- * @deprecated 17.0.0
+- */
+-class StrictInlineContentSecurityPolicy extends ContentSecurityPolicy {
+-	/**
+-	 * @since 14.0.0
+-	 */
+-	public function __construct() {
+-		$this->inlineStyleAllowed = false;
+-	}
+-}
+diff --git a/lib/public/Collaboration/Resources/IManager.php b/lib/public/Collaboration/Resources/IManager.php
+index b3f4767678..f017f34824 100644
+--- a/lib/public/Collaboration/Resources/IManager.php
++++ b/lib/public/Collaboration/Resources/IManager.php
+@@ -97,11 +97,4 @@ interface IManager extends IProvider {
+ 	 * @since 16.0.0
+ 	 */
+ 	public function getResourceForUser(string $type, string $id, ?IUser $user): IResource;
+-
+-	/**
+-	 * @param string $provider
+-	 * @since 16.0.0
+-	 * @deprecated 18.0.0 Use IProviderManager::registerResourceProvider instead
+-	 */
+-	public function registerResourceProvider(string $provider): void;
+ }
+diff --git a/lib/public/Util.php b/lib/public/Util.php
+index 0ecfc95075..afc574c237 100644
+--- a/lib/public/Util.php
++++ b/lib/public/Util.php
+@@ -468,31 +468,6 @@ class Util {
+ 		return $ret;
+ 	}
+ 
+-	/**
+-	 * performs a search in a nested array
+-	 *
+-	 * @param array $haystack the array to be searched
+-	 * @param string $needle the search string
+-	 * @param mixed $index optional, only search this key name
+-	 * @return mixed the key of the matching field, otherwise false
+-	 * @since 4.5.0
+-	 * @deprecated 15.0.0
+-	 */
+-	public static function recursiveArraySearch($haystack, $needle, $index = null) {
+-		$aIt = new \RecursiveArrayIterator($haystack);
+-		$it = new \RecursiveIteratorIterator($aIt);
+-
+-		while ($it->valid()) {
+-			if (((isset($index) && ($it->key() == $index)) || !isset($index)) && ($it->current() == $needle)) {
+-				return $aIt->key();
+-			}
+-
+-			$it->next();
+-		}
+-
+-		return false;
+-	}
+-
+ 	/**
+ 	 * calculates the maximum upload size respecting system settings, free space and user quota
+ 	 *
+diff --git a/tests/lib/AppFramework/Http/ContentSecurityPolicyTest.php b/tests/lib/AppFramework/Http/ContentSecurityPolicyTest.php
+index b3aae708df..17e032d575 100644
+--- a/tests/lib/AppFramework/Http/ContentSecurityPolicyTest.php
++++ b/tests/lib/AppFramework/Http/ContentSecurityPolicyTest.php
+@@ -72,7 +72,6 @@ class ContentSecurityPolicyTest extends \Test\TestCase {
+ 	public function testGetPolicyScriptDisallowEval(): void {
+ 		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';script-src 'self';style-src 'self' 'unsafe-inline';img-src 'self' data: blob:;font-src 'self' data:;connect-src 'self';media-src 'self';frame-ancestors 'self';form-action 'self'";
+ 
+-		$this->contentSecurityPolicy->allowEvalScript(false);
+ 		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+ 	}
+ 
+@@ -370,47 +369,6 @@ class ContentSecurityPolicyTest extends \Test\TestCase {
+ 		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+ 	}
+ 
+-	public function testGetAllowedChildSrcDomain(): void {
+-		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';script-src 'self';style-src 'self' 'unsafe-inline';img-src 'self' data: blob:;font-src 'self' data:;connect-src 'self';media-src 'self';child-src child.nextcloud.com;frame-ancestors 'self';form-action 'self'";
+-
+-		$this->contentSecurityPolicy->addAllowedChildSrcDomain('child.nextcloud.com');
+-		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+-	}
+-
+-	public function testGetPolicyChildSrcValidMultiple(): void {
+-		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';script-src 'self';style-src 'self' 'unsafe-inline';img-src 'self' data: blob:;font-src 'self' data:;connect-src 'self';media-src 'self';child-src child.nextcloud.com child.nextcloud.org;frame-ancestors 'self';form-action 'self'";
+-
+-		$this->contentSecurityPolicy->addAllowedChildSrcDomain('child.nextcloud.com');
+-		$this->contentSecurityPolicy->addAllowedChildSrcDomain('child.nextcloud.org');
+-		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+-	}
+-
+-	public function testGetPolicyDisallowChildSrcDomain(): void {
+-		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';script-src 'self';style-src 'self' 'unsafe-inline';img-src 'self' data: blob:;font-src 'self' data:;connect-src 'self';media-src 'self';frame-ancestors 'self';form-action 'self'";
+-
+-		$this->contentSecurityPolicy->addAllowedChildSrcDomain('www.nextcloud.com');
+-		$this->contentSecurityPolicy->disallowChildSrcDomain('www.nextcloud.com');
+-		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+-	}
+-
+-	public function testGetPolicyDisallowChildSrcDomainMultiple(): void {
+-		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';script-src 'self';style-src 'self' 'unsafe-inline';img-src 'self' data: blob:;font-src 'self' data:;connect-src 'self';media-src 'self';child-src www.nextcloud.com;frame-ancestors 'self';form-action 'self'";
+-
+-		$this->contentSecurityPolicy->addAllowedChildSrcDomain('www.nextcloud.com');
+-		$this->contentSecurityPolicy->disallowChildSrcDomain('www.nextcloud.org');
+-		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+-	}
+-
+-	public function testGetPolicyDisallowChildSrcDomainMultipleStakes(): void {
+-		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';script-src 'self';style-src 'self' 'unsafe-inline';img-src 'self' data: blob:;font-src 'self' data:;connect-src 'self';media-src 'self';frame-ancestors 'self';form-action 'self'";
+-
+-		$this->contentSecurityPolicy->addAllowedChildSrcDomain('www.nextcloud.com');
+-		$this->contentSecurityPolicy->disallowChildSrcDomain('www.nextcloud.org')->disallowChildSrcDomain('www.nextcloud.com');
+-		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+-	}
+-
+-
+-
+ 	public function testGetAllowedFrameAncestorDomain(): void {
+ 		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';script-src 'self';style-src 'self' 'unsafe-inline';img-src 'self' data: blob:;font-src 'self' data:;connect-src 'self';media-src 'self';frame-ancestors 'self' sub.nextcloud.com;form-action 'self'";
+ 
+@@ -442,21 +400,6 @@ class ContentSecurityPolicyTest extends \Test\TestCase {
+ 		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+ 	}
+ 
+-	public function testGetPolicyDisallowFrameAncestorDomainMultipleStakes(): void {
+-		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';script-src 'self';style-src 'self' 'unsafe-inline';img-src 'self' data: blob:;font-src 'self' data:;connect-src 'self';media-src 'self';frame-ancestors 'self';form-action 'self'";
+-
+-		$this->contentSecurityPolicy->addAllowedChildSrcDomain('www.nextcloud.com');
+-		$this->contentSecurityPolicy->disallowChildSrcDomain('www.nextcloud.org')->disallowChildSrcDomain('www.nextcloud.com');
+-		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+-	}
+-
+-	public function testGetPolicyUnsafeEval(): void {
+-		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';script-src 'self' 'unsafe-eval';style-src 'self' 'unsafe-inline';img-src 'self' data: blob:;font-src 'self' data:;connect-src 'self';media-src 'self';frame-ancestors 'self';form-action 'self'";
+-
+-		$this->contentSecurityPolicy->allowEvalScript(true);
+-		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+-	}
+-
+ 	public function testGetPolicyUnsafeWasmEval(): void {
+ 		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';script-src 'self' 'wasm-unsafe-eval';style-src 'self' 'unsafe-inline';img-src 'self' data: blob:;font-src 'self' data:;connect-src 'self';media-src 'self';frame-ancestors 'self';form-action 'self'";
+ 
+diff --git a/tests/lib/AppFramework/Http/EmptyContentSecurityPolicyTest.php b/tests/lib/AppFramework/Http/EmptyContentSecurityPolicyTest.php
+index 66abce43cc..30b736517a 100644
+--- a/tests/lib/AppFramework/Http/EmptyContentSecurityPolicyTest.php
++++ b/tests/lib/AppFramework/Http/EmptyContentSecurityPolicyTest.php
+@@ -68,13 +68,6 @@ class EmptyContentSecurityPolicyTest extends \Test\TestCase {
+ 		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+ 	}
+ 
+-	public function testGetPolicyScriptAllowEval(): void {
+-		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';script-src  'unsafe-eval';frame-ancestors 'none'";
+-
+-		$this->contentSecurityPolicy->allowEvalScript(true);
+-		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+-	}
+-
+ 	public function testGetPolicyScriptAllowWasmEval(): void {
+ 		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';script-src  'wasm-unsafe-eval';frame-ancestors 'none'";
+ 
+@@ -377,45 +370,6 @@ class EmptyContentSecurityPolicyTest extends \Test\TestCase {
+ 		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+ 	}
+ 
+-	public function testGetAllowedChildSrcDomain(): void {
+-		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';child-src child.nextcloud.com;frame-ancestors 'none'";
+-
+-		$this->contentSecurityPolicy->addAllowedChildSrcDomain('child.nextcloud.com');
+-		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+-	}
+-
+-	public function testGetPolicyChildSrcValidMultiple(): void {
+-		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';child-src child.nextcloud.com child.nextcloud.org;frame-ancestors 'none'";
+-
+-		$this->contentSecurityPolicy->addAllowedChildSrcDomain('child.nextcloud.com');
+-		$this->contentSecurityPolicy->addAllowedChildSrcDomain('child.nextcloud.org');
+-		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+-	}
+-
+-	public function testGetPolicyDisallowChildSrcDomain(): void {
+-		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';frame-ancestors 'none'";
+-
+-		$this->contentSecurityPolicy->addAllowedChildSrcDomain('www.nextcloud.com');
+-		$this->contentSecurityPolicy->disallowChildSrcDomain('www.nextcloud.com');
+-		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+-	}
+-
+-	public function testGetPolicyDisallowChildSrcDomainMultiple(): void {
+-		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';child-src www.nextcloud.com;frame-ancestors 'none'";
+-
+-		$this->contentSecurityPolicy->addAllowedChildSrcDomain('www.nextcloud.com');
+-		$this->contentSecurityPolicy->disallowChildSrcDomain('www.nextcloud.org');
+-		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+-	}
+-
+-	public function testGetPolicyDisallowChildSrcDomainMultipleStakes(): void {
+-		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';frame-ancestors 'none'";
+-
+-		$this->contentSecurityPolicy->addAllowedChildSrcDomain('www.nextcloud.com');
+-		$this->contentSecurityPolicy->disallowChildSrcDomain('www.nextcloud.org')->disallowChildSrcDomain('www.nextcloud.com');
+-		$this->assertSame($expectedPolicy, $this->contentSecurityPolicy->buildPolicy());
+-	}
+-
+ 	public function testGetPolicyWithJsNonceAndScriptDomains(): void {
+ 		$nonce = base64_encode('MyJsNonce');
+ 		$expectedPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';script-src 'nonce-$nonce' www.nextcloud.com www.nextcloud.org;frame-ancestors 'none'";
+diff --git a/tests/lib/Collaboration/Resources/ManagerTest.php b/tests/lib/Collaboration/Resources/ManagerTest.php
+deleted file mode 100644
+index 0e4e42458e..0000000000
+--- a/tests/lib/Collaboration/Resources/ManagerTest.php
++++ /dev/null
+@@ -1,46 +0,0 @@
+-<?php
+-
+-declare(strict_types=1);
+-/**
+- * SPDX-FileCopyrightText: 2019 Nextcloud GmbH and Nextcloud contributors
+- * SPDX-License-Identifier: AGPL-3.0-or-later
+- */
+-
+-namespace Test\Collaboration\Resources;
+-
+-use OC\Collaboration\Resources\Manager;
+-use OCP\Collaboration\Resources\IManager;
+-use OCP\Collaboration\Resources\IProviderManager;
+-use OCP\IDBConnection;
+-use PHPUnit\Framework\MockObject\MockObject;
+-use Psr\Log\LoggerInterface;
+-use Test\TestCase;
+-
+-class ManagerTest extends TestCase {
+-
+-	protected LoggerInterface&MockObject $logger;
+-	protected IProviderManager&MockObject $providerManager;
+-	protected IManager $manager;
+-
+-	protected function setUp(): void {
+-		parent::setUp();
+-
+-		$this->logger = $this->createMock(LoggerInterface::class);
+-		$this->providerManager = $this->createMock(IProviderManager::class);
+-
+-		/** @var IDBConnection $connection */
+-		$connection = $this->createMock(IDBConnection::class);
+-		$this->manager = new Manager($connection, $this->providerManager, $this->logger);
+-	}
+-
+-	public function testRegisterResourceProvider(): void {
+-		$this->logger->expects($this->once())
+-			->method('debug')
+-			->with($this->equalTo('\OC\Collaboration\Resources\Manager::registerResourceProvider is deprecated'), $this->equalTo(['provider' => 'AwesomeResourceProvider']));
+-		$this->providerManager->expects($this->once())
+-			->method('registerResourceProvider')
+-			->with($this->equalTo('AwesomeResourceProvider'));
+-
+-		$this->manager->registerResourceProvider('AwesomeResourceProvider');
+-	}
+-}
+diff --git a/tests/lib/Security/CSP/ContentSecurityPolicyManagerTest.php b/tests/lib/Security/CSP/ContentSecurityPolicyManagerTest.php
+index a32a413228..669db4a2a2 100644
+--- a/tests/lib/Security/CSP/ContentSecurityPolicyManagerTest.php
++++ b/tests/lib/Security/CSP/ContentSecurityPolicyManagerTest.php
+@@ -44,24 +44,20 @@ class ContentSecurityPolicyManagerTest extends TestCase {
+ 		$policy = new ContentSecurityPolicy();
+ 		$policy->addAllowedFontDomain('example.com');
+ 		$policy->addAllowedImageDomain('example.org');
+-		$policy->allowEvalScript(true);
+ 		$this->contentSecurityPolicyManager->addDefaultPolicy($policy);
+ 		$policy = new EmptyContentSecurityPolicy();
+-		$policy->addAllowedChildSrcDomain('childdomain');
+ 		$policy->addAllowedFontDomain('anotherFontDomain');
+ 		$policy->addAllowedFormActionDomain('thirdDomain');
+ 		$this->contentSecurityPolicyManager->addDefaultPolicy($policy);
+ 
+ 		$expected = new \OC\Security\CSP\ContentSecurityPolicy();
+-		$expected->allowEvalScript(true);
+ 		$expected->addAllowedFontDomain('mydomain.com');
+ 		$expected->addAllowedFontDomain('example.com');
+ 		$expected->addAllowedFontDomain('anotherFontDomain');
+ 		$expected->addAllowedFormActionDomain('thirdDomain');
+ 		$expected->addAllowedImageDomain('anotherdomain.de');
+ 		$expected->addAllowedImageDomain('example.org');
+-		$expected->addAllowedChildSrcDomain('childdomain');
+-		$expectedStringPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';script-src 'self' 'unsafe-eval';style-src 'self' 'unsafe-inline';img-src 'self' data: blob: anotherdomain.de example.org;font-src 'self' data: mydomain.com example.com anotherFontDomain;connect-src 'self';media-src 'self';child-src childdomain;frame-ancestors 'self';form-action 'self' thirdDomain";
++		$expectedStringPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';script-src 'self';style-src 'self' 'unsafe-inline';img-src 'self' data: blob: anotherdomain.de example.org;font-src 'self' data: mydomain.com example.com anotherFontDomain;connect-src 'self';media-src 'self';frame-ancestors 'self';form-action 'self' thirdDomain";
+ 
+ 		$this->assertEquals($expected, $this->contentSecurityPolicyManager->getDefaultPolicy());
+ 		$this->assertSame($expectedStringPolicy, $this->contentSecurityPolicyManager->getDefaultPolicy()->buildPolicy());
+@@ -73,7 +69,6 @@ class ContentSecurityPolicyManagerTest extends TestCase {
+ 			$policy->addAllowedFontDomain('mydomain.com');
+ 			$policy->addAllowedImageDomain('anotherdomain.de');
+ 			$policy->useStrictDynamic(true);
+-			$policy->allowEvalScript(true);
+ 
+ 			$e->addPolicy($policy);
+ 		});
+@@ -82,29 +77,25 @@ class ContentSecurityPolicyManagerTest extends TestCase {
+ 			$policy = new ContentSecurityPolicy();
+ 			$policy->addAllowedFontDomain('example.com');
+ 			$policy->addAllowedImageDomain('example.org');
+-			$policy->allowEvalScript(false);
+ 			$e->addPolicy($policy);
+ 		});
+ 
+ 		$this->dispatcher->addListener(AddContentSecurityPolicyEvent::class, function (AddContentSecurityPolicyEvent $e): void {
+ 			$policy = new EmptyContentSecurityPolicy();
+-			$policy->addAllowedChildSrcDomain('childdomain');
+ 			$policy->addAllowedFontDomain('anotherFontDomain');
+ 			$policy->addAllowedFormActionDomain('thirdDomain');
+ 			$e->addPolicy($policy);
+ 		});
+ 
+ 		$expected = new \OC\Security\CSP\ContentSecurityPolicy();
+-		$expected->allowEvalScript(true);
+ 		$expected->addAllowedFontDomain('mydomain.com');
+ 		$expected->addAllowedFontDomain('example.com');
+ 		$expected->addAllowedFontDomain('anotherFontDomain');
+ 		$expected->addAllowedImageDomain('anotherdomain.de');
+ 		$expected->addAllowedImageDomain('example.org');
+-		$expected->addAllowedChildSrcDomain('childdomain');
+ 		$expected->addAllowedFormActionDomain('thirdDomain');
+ 		$expected->useStrictDynamic(true);
+-		$expectedStringPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';script-src 'self' 'unsafe-eval';style-src 'self' 'unsafe-inline';img-src 'self' data: blob: anotherdomain.de example.org;font-src 'self' data: mydomain.com example.com anotherFontDomain;connect-src 'self';media-src 'self';child-src childdomain;frame-ancestors 'self';form-action 'self' thirdDomain";
++		$expectedStringPolicy = "default-src 'none';base-uri 'none';manifest-src 'self';script-src 'self';style-src 'self' 'unsafe-inline';img-src 'self' data: blob: anotherdomain.de example.org;font-src 'self' data: mydomain.com example.com anotherFontDomain;connect-src 'self';media-src 'self';frame-ancestors 'self';form-action 'self' thirdDomain";
+ 
+ 		$this->assertEquals($expected, $this->contentSecurityPolicyManager->getDefaultPolicy());
+ 		$this->assertSame($expectedStringPolicy, $this->contentSecurityPolicyManager->getDefaultPolicy()->buildPolicy());
+diff --git a/tests/lib/UtilTest.php b/tests/lib/UtilTest.php
+index 6738cafdb1..d74129d868 100644
+--- a/tests/lib/UtilTest.php
++++ b/tests/lib/UtilTest.php
+@@ -401,19 +401,4 @@ class UtilTest extends \Test\TestCase {
+ 		$expected = $arrayResult;
+ 		$this->assertEquals($result, $expected);
+ 	}
+-
+-	public function testRecursiveArraySearch(): void {
+-		$haystack = [
+-			'Foo' => 'own',
+-			'Bar' => 'Cloud',
+-		];
+-
+-		$result = Util::recursiveArraySearch($haystack, 'own');
+-		$expected = 'Foo';
+-		$this->assertEquals($result, $expected);
+-
+-		$result = Util::recursiveArraySearch($haystack, 'NotFound');
+-		$this->assertFalse($result);
+-	}
+-
+ }

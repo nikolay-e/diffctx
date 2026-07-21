@@ -1,0 +1,779 @@
+From e4d20daaa5c2dc81abcd26081bcbf7da7fcd3f5e Mon Sep 17 00:00:00 2001
+From: Copilot <198982749+Copilot@users.noreply.github.com>
+Date: Thu, 3 Jul 2025 13:10:36 +0000
+Subject: [PATCH] [Blazor] Implement API review feedback: rename pause/resume
+ methods and PersistentState attribute (#62549)
+
+Fixes #62373
+Fixes #61138
+---
+ .gitignore                                    |  2 +
+ .../PersistentServicesRegistry.cs             |  4 +-
+ ...tribute.cs => PersistentStateAttribute.cs} |  2 +-
+ ...ateProviderServiceCollectionExtensions.cs} | 12 +--
+ ...der.cs => PersistentStateValueProvider.cs} |  6 +-
+ .../Components/src/PublicAPI.Unshipped.txt    |  8 +-
+ ...mponentStateServiceCollectionExtensions.cs |  4 +-
+ .../PersistentServicesRegistryTest.cs         | 12 +--
+ ...s => PersistentStateValueProviderTests.cs} | 74 +++++++++----------
+ .../Circuits/CircuitPersistenceManagerTest.cs |  4 +-
+ .../src/DefaultAntiforgeryStateProvider.cs    |  2 +-
+ .../Shared/src/ResourceCollectionProvider.cs  |  2 +-
+ .../Web.JS/src/Boot.Server.Common.ts          |  4 +-
+ src/Components/Web.JS/src/GlobalExports.ts    |  4 +-
+ .../Circuits/DefaultReconnectDisplay.ts       |  4 +-
+ .../Circuits/DefaultReconnectionHandler.ts    |  2 +-
+ .../ServerExecutionTests/ServerResumeTests.cs |  2 +-
+ .../Components/ReconnectModal.razor.js        |  4 +-
+ .../DeclarativePersistStateComponent.razor    |  2 +-
+ .../PersistentCounter.razor                   |  2 +-
+ .../Services/InteractiveAutoService.cs        |  2 +-
+ .../Services/InteractiveServerService.cs      |  2 +-
+ .../Services/InteractiveWebAssemblyService.cs |  2 +-
+ .../Components/Layout/ReconnectModal.razor.js |  4 +-
+ 24 files changed, 84 insertions(+), 82 deletions(-)
+ rename src/Components/Components/src/{SupplyParameterFromPersistentComponentStateAttribute.cs => PersistentStateAttribute.cs} (79%)
+ rename src/Components/Components/src/{SupplyParameterFromPersistentComponentStateProviderServiceCollectionExtensions.cs => PersistentStateProviderServiceCollectionExtensions.cs} (61%)
+ rename src/Components/Components/src/{SupplyParameterFromPersistentComponentStateValueProvider.cs => PersistentStateValueProvider.cs} (97%)
+ rename src/Components/Components/test/{SupplyParameterFromPersistentComponentStateValueProviderTests.cs => PersistentStateValueProviderTests.cs} (88%)
+
+diff --git a/.gitignore b/.gitignore
+index 29f59c3a3e..623c933f28 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -13,6 +13,7 @@ BenchmarkDotNet.Artifacts/
+ src/SignalR/clients/**/dist/
+ modules/
+ .ionide/
++TestResults/
+ 
+ # File extensions
+ *.aps
+@@ -33,6 +34,7 @@ modules/
+ *.suo
+ *.svclog
+ *.tlog
++*.trx
+ *.user
+ *.userprefs
+ *.vspx
+diff --git a/src/Components/Components/src/PersistentState/PersistentServicesRegistry.cs b/src/Components/Components/src/PersistentState/PersistentServicesRegistry.cs
+index 64936326e3..04310877e9 100644
+--- a/src/Components/Components/src/PersistentState/PersistentServicesRegistry.cs
++++ b/src/Components/Components/src/PersistentState/PersistentServicesRegistry.cs
+@@ -166,10 +166,10 @@ internal sealed class PersistentServicesRegistry
+             var keys = new List<(string, Type)>();
+             foreach (var propertyInfo in GetCandidateBindableProperties(targetType))
+             {
+-                SupplyParameterFromPersistentComponentStateAttribute? parameterAttribute = null;
++                PersistentStateAttribute? parameterAttribute = null;
+                 foreach (var attribute in propertyInfo.GetCustomAttributes())
+                 {
+-                    if (attribute is SupplyParameterFromPersistentComponentStateAttribute persistentStateAttribute)
++                    if (attribute is PersistentStateAttribute persistentStateAttribute)
+                     {
+                         parameterAttribute = persistentStateAttribute;
+                         break;
+diff --git a/src/Components/Components/src/SupplyParameterFromPersistentComponentStateAttribute.cs b/src/Components/Components/src/PersistentStateAttribute.cs
+similarity index 79%
+rename from src/Components/Components/src/SupplyParameterFromPersistentComponentStateAttribute.cs
+rename to src/Components/Components/src/PersistentStateAttribute.cs
+index 61a283fc46..79fd4f9ac8 100644
+--- a/src/Components/Components/src/SupplyParameterFromPersistentComponentStateAttribute.cs
++++ b/src/Components/Components/src/PersistentStateAttribute.cs
+@@ -8,6 +8,6 @@ namespace Microsoft.AspNetCore.Components;
+ /// previous render.
+ /// </summary>
+ [AttributeUsage(AttributeTargets.Property, AllowMultiple = false, Inherited = true)]
+-public sealed class SupplyParameterFromPersistentComponentStateAttribute : CascadingParameterAttributeBase
++public sealed class PersistentStateAttribute : CascadingParameterAttributeBase
+ {
+ }
+diff --git a/src/Components/Components/src/SupplyParameterFromPersistentComponentStateProviderServiceCollectionExtensions.cs b/src/Components/Components/src/PersistentStateProviderServiceCollectionExtensions.cs
+similarity index 61%
+rename from src/Components/Components/src/SupplyParameterFromPersistentComponentStateProviderServiceCollectionExtensions.cs
+rename to src/Components/Components/src/PersistentStateProviderServiceCollectionExtensions.cs
+index 6a34a69386..f806a7597a 100644
+--- a/src/Components/Components/src/SupplyParameterFromPersistentComponentStateProviderServiceCollectionExtensions.cs
++++ b/src/Components/Components/src/PersistentStateProviderServiceCollectionExtensions.cs
+@@ -1,24 +1,24 @@
+ // Licensed to the .NET Foundation under one or more agreements.
+ // The .NET Foundation licenses this file to you under the MIT license.
+ 
+-using Microsoft.AspNetCore.Components;
++using Microsoft.Extensions.DependencyInjection;
+ using Microsoft.Extensions.DependencyInjection.Extensions;
+ 
+-namespace Microsoft.Extensions.DependencyInjection;
++namespace Microsoft.AspNetCore.Components.Infrastructure;
+ 
+ /// <summary>
+-/// Enables component parameters to be supplied from <see cref="PersistentComponentState"/> with <see cref="SupplyParameterFromPersistentComponentStateAttribute"/>.
++/// Enables component parameters to be supplied from <see cref="PersistentComponentState"/> with <see cref="PersistentStateAttribute"/>.
+ /// </summary>
+-public static class SupplyParameterFromPersistentComponentStateProviderServiceCollectionExtensions
++public static class PersistentStateProviderServiceCollectionExtensions
+ {
+     /// <summary>
+-    /// Enables component parameters to be supplied from <see cref="PersistentComponentState"/> with <see cref="SupplyParameterFromPersistentComponentStateAttribute"/>..
++    /// Enables component parameters to be supplied from <see cref="PersistentComponentState"/> with <see cref="PersistentStateAttribute"/>.
+     /// </summary>
+     /// <param name="services">The <see cref="IServiceCollection"/>.</param>
+     /// <returns>The <see cref="IServiceCollection"/>.</returns>
+     public static IServiceCollection AddSupplyValueFromPersistentComponentStateProvider(this IServiceCollection services)
+     {
+-        services.TryAddEnumerable(ServiceDescriptor.Scoped<ICascadingValueSupplier, SupplyParameterFromPersistentComponentStateValueProvider>());
++        services.TryAddEnumerable(ServiceDescriptor.Scoped<ICascadingValueSupplier, PersistentStateValueProvider>());
+         return services;
+     }
+ }
+diff --git a/src/Components/Components/src/SupplyParameterFromPersistentComponentStateValueProvider.cs b/src/Components/Components/src/PersistentStateValueProvider.cs
+similarity index 97%
+rename from src/Components/Components/src/SupplyParameterFromPersistentComponentStateValueProvider.cs
+rename to src/Components/Components/src/PersistentStateValueProvider.cs
+index d157dfbd3b..0ebaa2a345 100644
+--- a/src/Components/Components/src/SupplyParameterFromPersistentComponentStateValueProvider.cs
++++ b/src/Components/Components/src/PersistentStateValueProvider.cs
+@@ -13,9 +13,9 @@ using Microsoft.AspNetCore.Components.Reflection;
+ using Microsoft.AspNetCore.Components.Rendering;
+ using Microsoft.AspNetCore.Internal;
+ 
+-namespace Microsoft.AspNetCore.Components;
++namespace Microsoft.AspNetCore.Components.Infrastructure;
+ 
+-internal sealed class SupplyParameterFromPersistentComponentStateValueProvider(PersistentComponentState state) : ICascadingValueSupplier
++internal sealed class PersistentStateValueProvider(PersistentComponentState state) : ICascadingValueSupplier
+ {
+     private static readonly ConcurrentDictionary<(string, string, string), byte[]> _keyCache = new();
+     private static readonly ConcurrentDictionary<(Type, string), PropertyGetter> _propertyGetterCache = new();
+@@ -27,7 +27,7 @@ internal sealed class SupplyParameterFromPersistentComponentStateValueProvider(P
+     internal Dictionary<ComponentState, PersistingComponentStateSubscription> Subscriptions => _subscriptions;
+ 
+     public bool CanSupplyValue(in CascadingParameterInfo parameterInfo)
+-        => parameterInfo.Attribute is SupplyParameterFromPersistentComponentStateAttribute;
++        => parameterInfo.Attribute is PersistentStateAttribute;
+ 
+     [UnconditionalSuppressMessage(
+         "ReflectionAnalysis",
+diff --git a/src/Components/Components/src/PublicAPI.Unshipped.txt b/src/Components/Components/src/PublicAPI.Unshipped.txt
+index 33bf7c2369..f116139467 100644
+--- a/src/Components/Components/src/PublicAPI.Unshipped.txt
++++ b/src/Components/Components/src/PublicAPI.Unshipped.txt
+@@ -13,11 +13,11 @@ Microsoft.AspNetCore.Components.Routing.NotFoundEventArgs.Path.get -> string!
+ Microsoft.AspNetCore.Components.Infrastructure.ComponentStatePersistenceManager.ComponentStatePersistenceManager(Microsoft.Extensions.Logging.ILogger<Microsoft.AspNetCore.Components.Infrastructure.ComponentStatePersistenceManager!>! logger, System.IServiceProvider! serviceProvider) -> void
+ Microsoft.AspNetCore.Components.Infrastructure.ComponentStatePersistenceManager.SetPlatformRenderMode(Microsoft.AspNetCore.Components.IComponentRenderMode! renderMode) -> void
+ Microsoft.AspNetCore.Components.Infrastructure.RegisterPersistentComponentStateServiceCollectionExtensions
+-Microsoft.AspNetCore.Components.SupplyParameterFromPersistentComponentStateAttribute
+-Microsoft.AspNetCore.Components.SupplyParameterFromPersistentComponentStateAttribute.SupplyParameterFromPersistentComponentStateAttribute() -> void
+-Microsoft.Extensions.DependencyInjection.SupplyParameterFromPersistentComponentStateProviderServiceCollectionExtensions
++Microsoft.AspNetCore.Components.PersistentStateAttribute
++Microsoft.AspNetCore.Components.PersistentStateAttribute.PersistentStateAttribute() -> void
++Microsoft.AspNetCore.Components.Infrastructure.PersistentStateProviderServiceCollectionExtensions
+ static Microsoft.AspNetCore.Components.Infrastructure.RegisterPersistentComponentStateServiceCollectionExtensions.AddPersistentServiceRegistration<TService>(Microsoft.Extensions.DependencyInjection.IServiceCollection! services, Microsoft.AspNetCore.Components.IComponentRenderMode! componentRenderMode) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+ static Microsoft.AspNetCore.Components.Infrastructure.ComponentsMetricsServiceCollectionExtensions.AddComponentsMetrics(Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+ static Microsoft.AspNetCore.Components.Infrastructure.ComponentsMetricsServiceCollectionExtensions.AddComponentsTracing(Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+-static Microsoft.Extensions.DependencyInjection.SupplyParameterFromPersistentComponentStateProviderServiceCollectionExtensions.AddSupplyValueFromPersistentComponentStateProvider(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
++static Microsoft.AspNetCore.Components.Infrastructure.PersistentStateProviderServiceCollectionExtensions.AddSupplyValueFromPersistentComponentStateProvider(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+ virtual Microsoft.AspNetCore.Components.Rendering.ComponentState.GetComponentKey() -> object?
+diff --git a/src/Components/Components/src/RegisterPersistentComponentStateServiceCollectionExtensions.cs b/src/Components/Components/src/RegisterPersistentComponentStateServiceCollectionExtensions.cs
+index d1182e4030..9e6d84edc4 100644
+--- a/src/Components/Components/src/RegisterPersistentComponentStateServiceCollectionExtensions.cs
++++ b/src/Components/Components/src/RegisterPersistentComponentStateServiceCollectionExtensions.cs
+@@ -17,7 +17,7 @@ public static class RegisterPersistentComponentStateServiceCollectionExtensions
+     /// Saves <typeparamref name="TService"/> state when the application is persisting state and restores it at the appropriate time automatically.
+     /// </summary>
+     /// <remarks>
+-    /// Only public properties annotated with <see cref="SupplyParameterFromPersistentComponentStateAttribute"/> are persisted and restored.
++    /// Only public properties annotated with <see cref="PersistentStateAttribute"/> are persisted and restored.
+     /// </remarks>
+     /// <typeparam name="TService">The service type to register for persistence.</typeparam>
+     /// <param name="services">The <see cref="IServiceCollection"/>.</param>
+@@ -34,7 +34,7 @@ public static class RegisterPersistentComponentStateServiceCollectionExtensions
+         // We look for the assembly in the current list of loaded assemblies.
+         // We look for the type inside the assembly.
+         // We resolve the service from the DI container.
+-        // We loop through the properties in the type and try to restore the properties that have SupplyParameterFromPersistentComponentState on them.
++        // We loop through the properties in the type and try to restore the properties that have PersistentState on them.
+         services.TryAddEnumerable(ServiceDescriptor.Singleton<IPersistentServiceRegistration>(new PersistentServiceRegistration<TService>(componentRenderMode)));
+         services.TryAddSingleton<RegisteredPersistentServiceRegistrationCollection>();
+ 
+diff --git a/src/Components/Components/test/PersistentState/PersistentServicesRegistryTest.cs b/src/Components/Components/test/PersistentState/PersistentServicesRegistryTest.cs
+index c368d81ca1..aa224adde0 100644
+--- a/src/Components/Components/test/PersistentState/PersistentServicesRegistryTest.cs
++++ b/src/Components/Components/test/PersistentState/PersistentServicesRegistryTest.cs
+@@ -391,13 +391,13 @@ public class PersistentServicesRegistryTest
+ 
+     private class AnotherTestService
+     {
+-        [SupplyParameterFromPersistentComponentState]
++        [PersistentState]
+         public string State { get; set; }
+     }
+ 
+     private class CustomerService
+     {
+-        [SupplyParameterFromPersistentComponentState]
++        [PersistentState]
+         public Customer Customer { get; set; }
+     }
+ 
+@@ -419,7 +419,7 @@ public class PersistentServicesRegistryTest
+ 
+     private class TestService
+     {
+-        [SupplyParameterFromPersistentComponentState]
++        [PersistentState]
+         public string State { get; set; }
+     }
+ 
+@@ -471,19 +471,19 @@ public class PersistentServicesRegistryTest
+ 
+     private class DerivedOne : BaseService
+     {
+-        [SupplyParameterFromPersistentComponentState]
++        [PersistentState]
+         public string State { get; set; }
+     }
+ 
+     private class DerivedTwo : BaseService
+     {
+-        [SupplyParameterFromPersistentComponentState]
++        [PersistentState]
+         public string State { get; set; }
+     }
+ 
+     private class BaseServiceWithProperty
+     {
+-        [SupplyParameterFromPersistentComponentState]
++        [PersistentState]
+         public string State { get; set; }
+     }
+ 
+diff --git a/src/Components/Components/test/SupplyParameterFromPersistentComponentStateValueProviderTests.cs b/src/Components/Components/test/PersistentStateValueProviderTests.cs
+similarity index 88%
+rename from src/Components/Components/test/SupplyParameterFromPersistentComponentStateValueProviderTests.cs
+rename to src/Components/Components/test/PersistentStateValueProviderTests.cs
+index d7356855ce..9ffd37eb81 100644
+--- a/src/Components/Components/test/SupplyParameterFromPersistentComponentStateValueProviderTests.cs
++++ b/src/Components/Components/test/PersistentStateValueProviderTests.cs
+@@ -15,7 +15,7 @@ using Microsoft.Extensions.Logging.Abstractions;
+ using Microsoft.Extensions.Logging.Testing;
+ 
+ namespace Microsoft.AspNetCore.Components;
+-public class SupplyParameterFromPersistentComponentStateValueProviderTests
++public class PersistentStateValueProviderTests
+ {
+     [Fact]
+     public void CanRestoreState_ForComponentWithProperties()
+@@ -25,7 +25,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+             new Dictionary<string, byte[]>(),
+             []);
+ 
+-        var provider = new SupplyParameterFromPersistentComponentStateValueProvider(state);
++        var provider = new PersistentStateValueProvider(state);
+         var renderer = new TestRenderer();
+         var component = new TestComponent();
+         // Update the method call to match the correct signature
+@@ -53,7 +53,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var state = new PersistentComponentState(
+             new Dictionary<string, byte[]>(),
+             []);
+-        var provider = new SupplyParameterFromPersistentComponentStateValueProvider(state);
++        var provider = new PersistentStateValueProvider(state);
+         var renderer = new TestRenderer();
+         var component = new TestComponent();
+         var componentStates = CreateComponentState(renderer, [(component, null)], null);
+@@ -75,7 +75,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var state = new PersistentComponentState(
+             new Dictionary<string, byte[]>(),
+             []);
+-        var provider = new SupplyParameterFromPersistentComponentStateValueProvider(state);
++        var provider = new PersistentStateValueProvider(state);
+         var renderer = new TestRenderer();
+         var component = new TestComponent();
+         var componentStates = CreateComponentState(renderer, [(component, null)], null);
+@@ -108,7 +108,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var componentState = componentStates.First();
+ 
+         // Create the provider and subscribe the component
+-        var provider = new SupplyParameterFromPersistentComponentStateValueProvider(persistenceManager.State);
++        var provider = new PersistentStateValueProvider(persistenceManager.State);
+         var cascadingParameterInfo = CreateCascadingParameterInfo(nameof(TestComponent.State), typeof(string));
+         provider.Subscribe(componentState, cascadingParameterInfo);
+ 
+@@ -124,8 +124,8 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var newState = new PersistentComponentState(new Dictionary<string, byte[]>(), []);
+         newState.InitializeExistingState(store.State);
+ 
+-        // The key used for storing the property value is computed by the SupplyParameterFromPersistentComponentStateValueProvider
+-        var key = SupplyParameterFromPersistentComponentStateValueProvider.ComputeKey(componentState, cascadingParameterInfo.PropertyName);
++        // The key used for storing the property value is computed by the PersistentStateValueProvider
++        var key = PersistentStateValueProvider.ComputeKey(componentState, cascadingParameterInfo.PropertyName);
+         Assert.True(newState.TryTakeFromJson<string>(key, out var retrievedValue));
+         Assert.Equal("testValue", retrievedValue);
+     }
+@@ -147,7 +147,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var componentState = componentStates.First();
+ 
+         // Create the provider and subscribe the component
+-        var provider = new SupplyParameterFromPersistentComponentStateValueProvider(persistenceManager.State);
++        var provider = new PersistentStateValueProvider(persistenceManager.State);
+         var cascadingParameterInfo = CreateCascadingParameterInfo(nameof(TestComponent.State), typeof(string));
+         provider.Subscribe(componentState, cascadingParameterInfo);
+ 
+@@ -162,8 +162,8 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var newState = new PersistentComponentState(new Dictionary<string, byte[]>(), []);
+         newState.InitializeExistingState(store.State);
+ 
+-        // The key used for storing the property value is computed by the SupplyParameterFromPersistentComponentStateValueProvider
+-        var key = SupplyParameterFromPersistentComponentStateValueProvider.ComputeKey(componentState, cascadingParameterInfo.PropertyName);
++        // The key used for storing the property value is computed by the PersistentStateValueProvider
++        var key = PersistentStateValueProvider.ComputeKey(componentState, cascadingParameterInfo.PropertyName);
+         Assert.True(newState.TryTakeFromJson<string>(key, out var retrievedValue));
+         Assert.Equal("testValue", retrievedValue);
+     }
+@@ -187,7 +187,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var componentState2 = componentStates.Last();
+ 
+         // Create the provider and subscribe the component
+-        var provider = new SupplyParameterFromPersistentComponentStateValueProvider(persistenceManager.State);
++        var provider = new PersistentStateValueProvider(persistenceManager.State);
+         var cascadingParameterInfo = CreateCascadingParameterInfo(nameof(TestComponent.State), typeof(string));
+         provider.Subscribe(componentState1, cascadingParameterInfo);
+         provider.Subscribe(componentState2, cascadingParameterInfo);
+@@ -203,12 +203,12 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var newState = new PersistentComponentState(new Dictionary<string, byte[]>(), []);
+         newState.InitializeExistingState(store.State);
+ 
+-        // The key used for storing the property value is computed by the SupplyParameterFromPersistentComponentStateValueProvider
+-        var key1 = SupplyParameterFromPersistentComponentStateValueProvider.ComputeKey(componentState1, cascadingParameterInfo.PropertyName);
++        // The key used for storing the property value is computed by the PersistentStateValueProvider
++        var key1 = PersistentStateValueProvider.ComputeKey(componentState1, cascadingParameterInfo.PropertyName);
+         Assert.True(newState.TryTakeFromJson<string>(key1, out var retrievedValue));
+         Assert.Equal("testValue1", retrievedValue);
+ 
+-        var key2 = SupplyParameterFromPersistentComponentStateValueProvider.ComputeKey(componentState2, cascadingParameterInfo.PropertyName);
++        var key2 = PersistentStateValueProvider.ComputeKey(componentState2, cascadingParameterInfo.PropertyName);
+         Assert.True(newState.TryTakeFromJson<string>(key2, out retrievedValue));
+         Assert.Equal("testValue2", retrievedValue);
+     }
+@@ -260,7 +260,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var componentState2 = componentStates.Last();
+ 
+         // Create the provider and subscribe the component
+-        var provider = new SupplyParameterFromPersistentComponentStateValueProvider(persistenceManager.State);
++        var provider = new PersistentStateValueProvider(persistenceManager.State);
+         var cascadingParameterInfo = CreateCascadingParameterInfo(nameof(TestComponent.State), typeof(string));
+         provider.Subscribe(componentState1, cascadingParameterInfo);
+         provider.Subscribe(componentState2, cascadingParameterInfo);
+@@ -276,12 +276,12 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var newState = new PersistentComponentState(new Dictionary<string, byte[]>(), []);
+         newState.InitializeExistingState(store.State);
+ 
+-        // The key used for storing the property value is computed by the SupplyParameterFromPersistentComponentStateValueProvider
+-        var key1 = SupplyParameterFromPersistentComponentStateValueProvider.ComputeKey(componentState1, cascadingParameterInfo.PropertyName);
++        // The key used for storing the property value is computed by the PersistentStateValueProvider
++        var key1 = PersistentStateValueProvider.ComputeKey(componentState1, cascadingParameterInfo.PropertyName);
+         Assert.True(newState.TryTakeFromJson<string>(key1, out var retrievedValue));
+         Assert.Equal("testValue1", retrievedValue);
+ 
+-        var key2 = SupplyParameterFromPersistentComponentStateValueProvider.ComputeKey(componentState2, cascadingParameterInfo.PropertyName);
++        var key2 = PersistentStateValueProvider.ComputeKey(componentState2, cascadingParameterInfo.PropertyName);
+         Assert.True(newState.TryTakeFromJson<string>(key2, out retrievedValue));
+         Assert.Equal("testValue2", retrievedValue);
+     }
+@@ -305,7 +305,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var componentState2 = componentStates.Last();
+ 
+         // Create the provider and subscribe the components
+-        var provider = new SupplyParameterFromPersistentComponentStateValueProvider(persistenceManager.State);
++        var provider = new PersistentStateValueProvider(persistenceManager.State);
+         var cascadingParameterInfo = CreateCascadingParameterInfo(nameof(TestComponent.State), typeof(string));
+         provider.Subscribe(componentState1, cascadingParameterInfo);
+         provider.Subscribe(componentState2, cascadingParameterInfo);
+@@ -346,7 +346,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var componentState2 = componentStates.Last();
+ 
+         // Create the provider and subscribe the components
+-        var provider = new SupplyParameterFromPersistentComponentStateValueProvider(persistenceManager.State);
++        var provider = new PersistentStateValueProvider(persistenceManager.State);
+         var cascadingParameterInfo = CreateCascadingParameterInfo(nameof(TestComponent.State), typeof(string));
+         provider.Subscribe(componentState1, cascadingParameterInfo);
+         provider.Subscribe(componentState2, cascadingParameterInfo);
+@@ -379,7 +379,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var componentState2 = componentStates.Last();
+ 
+         // Create the provider and subscribe the components
+-        var provider = new SupplyParameterFromPersistentComponentStateValueProvider(persistenceManager.State);
++        var provider = new PersistentStateValueProvider(persistenceManager.State);
+         var cascadingParameterInfo = CreateCascadingParameterInfo(nameof(TestComponent.State), typeof(string));
+         provider.Subscribe(componentState1, cascadingParameterInfo);
+         provider.Subscribe(componentState2, cascadingParameterInfo);
+@@ -419,7 +419,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var componentState2 = componentStates.Last();
+ 
+         // Create the provider and subscribe the components
+-        var provider = new SupplyParameterFromPersistentComponentStateValueProvider(persistenceManager.State);
++        var provider = new PersistentStateValueProvider(persistenceManager.State);
+         var cascadingParameterInfo = CreateCascadingParameterInfo(nameof(TestComponent.State), typeof(string));
+         provider.Subscribe(componentState1, cascadingParameterInfo);
+         provider.Subscribe(componentState2, cascadingParameterInfo);
+@@ -448,7 +448,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var componentState = componentStates.First();
+ 
+         // Create the provider and subscribe the component
+-        var provider = new SupplyParameterFromPersistentComponentStateValueProvider(persistenceManager.State);
++        var provider = new PersistentStateValueProvider(persistenceManager.State);
+         var cascadingParameterInfo = CreateCascadingParameterInfo(nameof(ValueTypeTestComponent.IntValue), typeof(int));
+         provider.Subscribe(componentState, cascadingParameterInfo);
+ 
+@@ -462,7 +462,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var newState = new PersistentComponentState(new Dictionary<string, byte[]>(), []);
+         newState.InitializeExistingState(store.State);
+ 
+-        var key = SupplyParameterFromPersistentComponentStateValueProvider.ComputeKey(componentState, cascadingParameterInfo.PropertyName);
++        var key = PersistentStateValueProvider.ComputeKey(componentState, cascadingParameterInfo.PropertyName);
+         Assert.True(newState.TryTakeFromJson<int>(key, out var retrievedValue));
+         Assert.Equal(42, retrievedValue);
+     }
+@@ -483,7 +483,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var componentState = componentStates.First();
+ 
+         // Create the provider and subscribe the component
+-        var provider = new SupplyParameterFromPersistentComponentStateValueProvider(persistenceManager.State);
++        var provider = new PersistentStateValueProvider(persistenceManager.State);
+         var cascadingParameterInfo = CreateCascadingParameterInfo(nameof(ValueTypeTestComponent.NullableIntValue), typeof(int?));
+         provider.Subscribe(componentState, cascadingParameterInfo);
+ 
+@@ -497,7 +497,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var newState = new PersistentComponentState(new Dictionary<string, byte[]>(), []);
+         newState.InitializeExistingState(store.State);
+ 
+-        var key = SupplyParameterFromPersistentComponentStateValueProvider.ComputeKey(componentState, cascadingParameterInfo.PropertyName);
++        var key = PersistentStateValueProvider.ComputeKey(componentState, cascadingParameterInfo.PropertyName);
+         Assert.True(newState.TryTakeFromJson<int?>(key, out var retrievedValue));
+         Assert.Equal(123, retrievedValue);
+     }
+@@ -518,7 +518,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var componentState = componentStates.First();
+ 
+         // Create the provider and subscribe the component
+-        var provider = new SupplyParameterFromPersistentComponentStateValueProvider(persistenceManager.State);
++        var provider = new PersistentStateValueProvider(persistenceManager.State);
+         var cascadingParameterInfo = CreateCascadingParameterInfo(nameof(ValueTypeTestComponent.TupleValue), typeof((string, int)));
+         provider.Subscribe(componentState, cascadingParameterInfo);
+ 
+@@ -532,7 +532,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var newState = new PersistentComponentState(new Dictionary<string, byte[]>(), []);
+         newState.InitializeExistingState(store.State);
+ 
+-        var key = SupplyParameterFromPersistentComponentStateValueProvider.ComputeKey(componentState, cascadingParameterInfo.PropertyName);
++        var key = PersistentStateValueProvider.ComputeKey(componentState, cascadingParameterInfo.PropertyName);
+         Assert.True(newState.TryTakeFromJson<(string, int)>(key, out var retrievedValue));
+         Assert.Equal(("test", 456), retrievedValue);
+     }
+@@ -553,7 +553,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var componentState = componentStates.First();
+ 
+         // Create the provider and subscribe the component
+-        var provider = new SupplyParameterFromPersistentComponentStateValueProvider(persistenceManager.State);
++        var provider = new PersistentStateValueProvider(persistenceManager.State);
+         var cascadingParameterInfo = CreateCascadingParameterInfo(nameof(ValueTypeTestComponent.NullableTupleValue), typeof((string, int)?));
+         provider.Subscribe(componentState, cascadingParameterInfo);
+ 
+@@ -567,7 +567,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var newState = new PersistentComponentState(new Dictionary<string, byte[]>(), []);
+         newState.InitializeExistingState(store.State);
+ 
+-        var key = SupplyParameterFromPersistentComponentStateValueProvider.ComputeKey(componentState, cascadingParameterInfo.PropertyName);
++        var key = PersistentStateValueProvider.ComputeKey(componentState, cascadingParameterInfo.PropertyName);
+         Assert.True(newState.TryTakeFromJson<(string, int)?>(key, out var retrievedValue));
+         Assert.Equal(("test2", 789), retrievedValue);
+     }
+@@ -577,7 +577,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+         var dictionary = new Dictionary<string, byte[]>();
+         foreach (var item in items)
+         {
+-            var key = SupplyParameterFromPersistentComponentStateValueProvider.ComputeKey(item.componentState, item.propertyName);
++            var key = PersistentStateValueProvider.ComputeKey(item.componentState, item.propertyName);
+             dictionary[key] = JsonSerializer.SerializeToUtf8Bytes(item.value, JsonSerializerOptions.Web);
+         }
+         state.InitializeExistingState(dictionary);
+@@ -586,7 +586,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+     private static CascadingParameterInfo CreateCascadingParameterInfo(string propertyName, Type propertyType)
+     {
+         return new CascadingParameterInfo(
+-            new SupplyParameterFromPersistentComponentStateAttribute(),
++            new PersistentStateAttribute(),
+             propertyName,
+             propertyType);
+     }
+@@ -644,7 +644,7 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+ 
+     private class TestComponent : IComponent
+     {
+-        [SupplyParameterFromPersistentComponentState]
++        [PersistentState]
+         public string State { get; set; }
+ 
+         public void Attach(RenderHandle renderHandle) => throw new NotImplementedException();
+@@ -653,16 +653,16 @@ public class SupplyParameterFromPersistentComponentStateValueProviderTests
+ 
+     private class ValueTypeTestComponent : IComponent
+     {
+-        [SupplyParameterFromPersistentComponentState]
++        [PersistentState]
+         public int IntValue { get; set; }
+ 
+-        [SupplyParameterFromPersistentComponentState]
++        [PersistentState]
+         public int? NullableIntValue { get; set; }
+ 
+-        [SupplyParameterFromPersistentComponentState]
++        [PersistentState]
+         public (string, int) TupleValue { get; set; }
+ 
+-        [SupplyParameterFromPersistentComponentState]
++        [PersistentState]
+         public (string, int)? NullableTupleValue { get; set; }
+ 
+         public void Attach(RenderHandle renderHandle) => throw new NotImplementedException();
+diff --git a/src/Components/Server/test/Circuits/CircuitPersistenceManagerTest.cs b/src/Components/Server/test/Circuits/CircuitPersistenceManagerTest.cs
+index 2547d9d8cd..8f75e9d521 100644
+--- a/src/Components/Server/test/Circuits/CircuitPersistenceManagerTest.cs
++++ b/src/Components/Server/test/Circuits/CircuitPersistenceManagerTest.cs
+@@ -586,7 +586,7 @@ public class CircuitPersistenceManagerTest
+             _renderHandle = renderHandle;
+         }
+ 
+-        [SupplyParameterFromPersistentComponentState]
++        [PersistentState]
+         public string Persisted { get; set; }
+ 
+         [Parameter]
+@@ -617,7 +617,7 @@ public class CircuitPersistenceManagerTest
+             _renderHandle = renderHandle;
+         }
+ 
+-        [SupplyParameterFromPersistentComponentState]
++        [PersistentState]
+         public string Persisted { get; set; }
+ 
+         [Parameter]
+diff --git a/src/Components/Shared/src/DefaultAntiforgeryStateProvider.cs b/src/Components/Shared/src/DefaultAntiforgeryStateProvider.cs
+index 75dec5721d..b1cd18e8ce 100644
+--- a/src/Components/Shared/src/DefaultAntiforgeryStateProvider.cs
++++ b/src/Components/Shared/src/DefaultAntiforgeryStateProvider.cs
+@@ -7,7 +7,7 @@ internal class DefaultAntiforgeryStateProvider : AntiforgeryStateProvider
+ {
+     protected AntiforgeryRequestToken? _currentToken;
+ 
+-    [SupplyParameterFromPersistentComponentState]
++    [PersistentState]
+     public AntiforgeryRequestToken? CurrentToken
+     {
+         get => _currentToken ??= GetAntiforgeryToken();
+diff --git a/src/Components/Shared/src/ResourceCollectionProvider.cs b/src/Components/Shared/src/ResourceCollectionProvider.cs
+index 030d4b0e68..2084abdb3e 100644
+--- a/src/Components/Shared/src/ResourceCollectionProvider.cs
++++ b/src/Components/Shared/src/ResourceCollectionProvider.cs
+@@ -13,7 +13,7 @@ internal class ResourceCollectionProvider
+ {
+     private string? _url;
+ 
+-    [SupplyParameterFromPersistentComponentState]
++    [PersistentState]
+     public string? ResourceCollectionUrl
+     {
+         get => _url;
+diff --git a/src/Components/Web.JS/src/Boot.Server.Common.ts b/src/Components/Web.JS/src/Boot.Server.Common.ts
+index 18c9903c4a..447ab44944 100644
+--- a/src/Components/Web.JS/src/Boot.Server.Common.ts
++++ b/src/Components/Web.JS/src/Boot.Server.Common.ts
+@@ -67,7 +67,7 @@ async function startServerCore(components: RootComponentManager<ServerComponentD
+     return true;
+   };
+ 
+-  Blazor.pause = async () => {
++  Blazor.pauseCircuit = async () => {
+     if (circuit.didRenderingFail()) {
+       // We can't pause after a failure, so exit early.
+       return false;
+@@ -81,7 +81,7 @@ async function startServerCore(components: RootComponentManager<ServerComponentD
+     return true;
+   };
+ 
+-  Blazor.resume = async () => {
++  Blazor.resumeCircuit = async () => {
+     if (circuit.didRenderingFail()) {
+       // We can't resume after a failure, so exit early.
+       return false;
+diff --git a/src/Components/Web.JS/src/GlobalExports.ts b/src/Components/Web.JS/src/GlobalExports.ts
+index 3129ecc424..ad868dcb58 100644
+--- a/src/Components/Web.JS/src/GlobalExports.ts
++++ b/src/Components/Web.JS/src/GlobalExports.ts
+@@ -38,8 +38,8 @@ export interface IBlazor {
+   removeEventListener?: typeof JSEventRegistry.prototype.removeEventListener;
+   disconnect?: () => void;
+   reconnect?: (existingConnection?: HubConnection) => Promise<boolean>;
+-  pause?: () => Promise<boolean>;
+-  resume?: () => Promise<boolean>;
++  pauseCircuit?: () => Promise<boolean>;
++  resumeCircuit?: () => Promise<boolean>;
+   defaultReconnectionHandler?: DefaultReconnectionHandler;
+   start?: ((userOptions?: Partial<CircuitStartOptions>) => Promise<void>) | ((options?: Partial<WebAssemblyStartOptions>) => Promise<void>) | ((options?: Partial<WebStartOptions>) => Promise<void>);
+   platform?: Platform;
+diff --git a/src/Components/Web.JS/src/Platform/Circuits/DefaultReconnectDisplay.ts b/src/Components/Web.JS/src/Platform/Circuits/DefaultReconnectDisplay.ts
+index 644507d6ef..a14aa03363 100644
+--- a/src/Components/Web.JS/src/Platform/Circuits/DefaultReconnectDisplay.ts
++++ b/src/Components/Web.JS/src/Platform/Circuits/DefaultReconnectDisplay.ts
+@@ -158,7 +158,7 @@ export class DefaultReconnectDisplay implements ReconnectDisplay {
+       if (!successful) {
+         // Try to resume the circuit if the reconnect failed
+         this.update({ type: 'pause', remote: this.remote });
+-        const resumeSuccessful = await Blazor.resume!();
++        const resumeSuccessful = await Blazor.resumeCircuit!();
+         if (!resumeSuccessful) {
+           this.rejected();
+         }
+@@ -176,7 +176,7 @@ export class DefaultReconnectDisplay implements ReconnectDisplay {
+       // - true to mean success
+       // - false to mean we reached the server, but it rejected the connection (e.g., unknown circuit ID)
+       // - exception to mean we didn't reach the server (this can be sync or async)
+-      const successful = await Blazor.resume!();
++      const successful = await Blazor.resumeCircuit!();
+       if (!successful) {
+         this.failed();
+       }
+diff --git a/src/Components/Web.JS/src/Platform/Circuits/DefaultReconnectionHandler.ts b/src/Components/Web.JS/src/Platform/Circuits/DefaultReconnectionHandler.ts
+index 953d6253a1..31528e850a 100644
+--- a/src/Components/Web.JS/src/Platform/Circuits/DefaultReconnectionHandler.ts
++++ b/src/Components/Web.JS/src/Platform/Circuits/DefaultReconnectionHandler.ts
+@@ -23,7 +23,7 @@ export class DefaultReconnectionHandler implements ReconnectionHandler {
+     this._logger = logger;
+     this._reconnectionDisplay = overrideDisplay;
+     this._reconnectCallback = reconnectCallback || Blazor.reconnect!;
+-    this._resumeCallback = resumeCallback || Blazor.resume!;
++    this._resumeCallback = resumeCallback || Blazor.resumeCircuit!;
+   }
+ 
+   onConnectionDown(options: ReconnectionOptions, _error?: Error, isClientPause?: boolean, remotePause?: boolean): void {
+diff --git a/src/Components/test/E2ETest/ServerExecutionTests/ServerResumeTests.cs b/src/Components/test/E2ETest/ServerExecutionTests/ServerResumeTests.cs
+index f79d5064c8..a095b6bafc 100644
+--- a/src/Components/test/E2ETest/ServerExecutionTests/ServerResumeTests.cs
++++ b/src/Components/test/E2ETest/ServerExecutionTests/ServerResumeTests.cs
+@@ -146,7 +146,7 @@ public class ServerResumeTests : ServerTestBase<BasicTestAppServerSiteFixture<Ra
+     private void TriggerClientPauseAndInteract(IJavaScriptExecutor javascript)
+     {
+         var previousText = Browser.Exists(By.Id("persistent-counter-render")).Text;
+-        javascript.ExecuteScript("Blazor.pause()");
++        javascript.ExecuteScript("Blazor.pauseCircuit()");
+         Browser.Equal("block", () => Browser.Exists(By.Id("components-reconnect-modal")).GetCssValue("display"));
+ 
+         // Retry button should be hidden
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponents/Components/ReconnectModal.razor.js b/src/Components/test/testassets/Components.TestServer/RazorComponents/Components/ReconnectModal.razor.js
+index f58438240a..e52a190bac 100644
+--- a/src/Components/test/testassets/Components.TestServer/RazorComponents/Components/ReconnectModal.razor.js
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponents/Components/ReconnectModal.razor.js
+@@ -32,7 +32,7 @@ async function retry() {
+         if (!successful) {
+             // We have been able to reach the server, but the circuit is no longer available.
+             // We'll reload the page so the user can continue using the app as quickly as possible.
+-            const resumeSuccessful = await Blazor.resume();
++            const resumeSuccessful = await Blazor.resumeCircuit();
+             if (!resumeSuccessful) {
+                 location.reload();
+             } else {
+@@ -47,7 +47,7 @@ async function retry() {
+ 
+ async function resume() {
+     try {
+-        const successful = await Blazor.resume();
++        const successful = await Blazor.resumeCircuit();
+         if (!successful) {
+             location.reload();
+         }
+diff --git a/src/Components/test/testassets/TestContentPackage/DeclarativePersistStateComponent.razor b/src/Components/test/testassets/TestContentPackage/DeclarativePersistStateComponent.razor
+index bbdbcc43dc..07cec64a27 100644
+--- a/src/Components/test/testassets/TestContentPackage/DeclarativePersistStateComponent.razor
++++ b/src/Components/test/testassets/TestContentPackage/DeclarativePersistStateComponent.razor
+@@ -8,7 +8,7 @@
+     [Parameter, EditorRequired]
+     public string KeyName { get; set; } = "";
+ 
+-    [SupplyParameterFromPersistentComponentState]
++    [PersistentState]
+     public string Value { get; set; }
+ 
+     private string _renderMode = "SSR";
+diff --git a/src/Components/test/testassets/TestContentPackage/PersistentCounter.razor b/src/Components/test/testassets/TestContentPackage/PersistentCounter.razor
+index fef4f1ecaa..49f840e487 100644
+--- a/src/Components/test/testassets/TestContentPackage/PersistentCounter.razor
++++ b/src/Components/test/testassets/TestContentPackage/PersistentCounter.razor
+@@ -14,7 +14,7 @@
+ 
+ @code {
+ 
+-    [SupplyParameterFromPersistentComponentState] public CounterState State { get; set; }
++    [PersistentState] public CounterState State { get; set; }
+ 
+     public class CounterState
+     {
+diff --git a/src/Components/test/testassets/TestContentPackage/Services/InteractiveAutoService.cs b/src/Components/test/testassets/TestContentPackage/Services/InteractiveAutoService.cs
+index 467aa41650..00be5ba227 100644
+--- a/src/Components/test/testassets/TestContentPackage/Services/InteractiveAutoService.cs
++++ b/src/Components/test/testassets/TestContentPackage/Services/InteractiveAutoService.cs
+@@ -10,6 +10,6 @@ namespace TestContentPackage.Services;
+ 
+ public class InteractiveAutoService
+ {
+-    [SupplyParameterFromPersistentComponentState]
++    [PersistentState]
+     public string State { get; set; }
+ }
+diff --git a/src/Components/test/testassets/TestContentPackage/Services/InteractiveServerService.cs b/src/Components/test/testassets/TestContentPackage/Services/InteractiveServerService.cs
+index 906eb84d5f..c3405d2580 100644
+--- a/src/Components/test/testassets/TestContentPackage/Services/InteractiveServerService.cs
++++ b/src/Components/test/testassets/TestContentPackage/Services/InteractiveServerService.cs
+@@ -9,6 +9,6 @@ using Microsoft.AspNetCore.Components;
+ namespace TestContentPackage.Services;
+ public class InteractiveServerService
+ {
+-    [SupplyParameterFromPersistentComponentState]
++    [PersistentState]
+     public string State { get; set; }
+ }
+diff --git a/src/Components/test/testassets/TestContentPackage/Services/InteractiveWebAssemblyService.cs b/src/Components/test/testassets/TestContentPackage/Services/InteractiveWebAssemblyService.cs
+index f73d03e2db..2909b4bdd9 100644
+--- a/src/Components/test/testassets/TestContentPackage/Services/InteractiveWebAssemblyService.cs
++++ b/src/Components/test/testassets/TestContentPackage/Services/InteractiveWebAssemblyService.cs
+@@ -10,6 +10,6 @@ namespace TestContentPackage.Services;
+ 
+ public class InteractiveWebAssemblyService
+ {
+-    [SupplyParameterFromPersistentComponentState]
++    [PersistentState]
+     public string State { get; set; }
+ }
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/BlazorWeb-CSharp/Components/Layout/ReconnectModal.razor.js b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/BlazorWeb-CSharp/Components/Layout/ReconnectModal.razor.js
+index f58438240a..e52a190bac 100644
+--- a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/BlazorWeb-CSharp/Components/Layout/ReconnectModal.razor.js
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/BlazorWeb-CSharp/Components/Layout/ReconnectModal.razor.js
+@@ -32,7 +32,7 @@ async function retry() {
+         if (!successful) {
+             // We have been able to reach the server, but the circuit is no longer available.
+             // We'll reload the page so the user can continue using the app as quickly as possible.
+-            const resumeSuccessful = await Blazor.resume();
++            const resumeSuccessful = await Blazor.resumeCircuit();
+             if (!resumeSuccessful) {
+                 location.reload();
+             } else {
+@@ -47,7 +47,7 @@ async function retry() {
+ 
+ async function resume() {
+     try {
+-        const successful = await Blazor.resume();
++        const successful = await Blazor.resumeCircuit();
+         if (!successful) {
+             location.reload();
+         }

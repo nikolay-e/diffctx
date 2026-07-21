@@ -1,0 +1,1807 @@
+From e46d4bf4da3ee207043c85524df238475e47d650 Mon Sep 17 00:00:00 2001
+From: Nick Thomas <nick@gitlab.com>
+Date: Thu, 28 Mar 2019 14:59:24 +0000
+Subject: [PATCH] Extract a Git::{Base,Tag,Branch}HooksService
+
+---
+ app/models/gpg_signature.rb                   |   9 +
+ app/services/after_branch_delete_service.rb   |  20 --
+ app/services/delete_branch_service.rb         |  10 -
+ app/services/git/base_hooks_service.rb        |  94 +++++
+ app/services/git/branch_hooks_service.rb      | 144 ++++++++
+ app/services/git/branch_push_service.rb       | 215 ++---------
+ app/services/git/tag_hooks_service.rb         |  36 ++
+ app/services/git/tag_push_service.rb          |  50 +--
+ .../after_branch_delete_service_spec.rb       |  15 -
+ .../services/git/branch_hooks_service_spec.rb | 339 ++++++++++++++++++
+ spec/services/git/branch_push_service_spec.rb | 258 +++----------
+ spec/services/git/tag_hooks_service_spec.rb   | 144 ++++++++
+ spec/services/git/tag_push_service_spec.rb    | 179 +--------
+ spec/workers/post_receive_spec.rb             |  25 +-
+ 14 files changed, 879 insertions(+), 659 deletions(-)
+ delete mode 100644 app/services/after_branch_delete_service.rb
+ create mode 100644 app/services/git/base_hooks_service.rb
+ create mode 100644 app/services/git/branch_hooks_service.rb
+ create mode 100644 app/services/git/tag_hooks_service.rb
+ delete mode 100644 spec/services/after_branch_delete_service_spec.rb
+ create mode 100644 spec/services/git/branch_hooks_service_spec.rb
+ create mode 100644 spec/services/git/tag_hooks_service_spec.rb
+
+diff --git a/app/models/gpg_signature.rb b/app/models/gpg_signature.rb
+index 7f9ff7bbda..46cac1d41b 100644
+--- a/app/models/gpg_signature.rb
++++ b/app/models/gpg_signature.rb
+@@ -38,6 +38,15 @@ def self.safe_create!(attributes)
+       .safe_find_or_create_by!(commit_sha: attributes[:commit_sha])
+   end
+ 
++  # Find commits that are lacking a signature in the database at present
++  def self.unsigned_commit_shas(commit_shas)
++    return [] if commit_shas.empty?
++
++    signed = GpgSignature.where(commit_sha: commit_shas).pluck(:commit_sha)
++
++    commit_shas - signed
++  end
++
+   def gpg_key=(model)
+     case model
+     when GpgKey
+diff --git a/app/services/after_branch_delete_service.rb b/app/services/after_branch_delete_service.rb
+deleted file mode 100644
+index ece9fbbef4..0000000000
+--- a/app/services/after_branch_delete_service.rb
++++ /dev/null
+@@ -1,20 +0,0 @@
+-# frozen_string_literal: true
+-
+-# Branch can be deleted either by DeleteBranchService or by Git::BranchPushService.
+-class AfterBranchDeleteService < BaseService
+-  attr_reader :branch_name
+-
+-  def execute(branch_name)
+-    @branch_name = branch_name
+-
+-    stop_environments
+-  end
+-
+-  private
+-
+-  def stop_environments
+-    Ci::StopEnvironmentsService
+-      .new(project, current_user)
+-      .execute(branch_name)
+-  end
+-end
+diff --git a/app/services/delete_branch_service.rb b/app/services/delete_branch_service.rb
+index 8322a3d74f..4c3ac19f75 100644
+--- a/app/services/delete_branch_service.rb
++++ b/app/services/delete_branch_service.rb
+@@ -29,14 +29,4 @@ def error(message, return_code = 400)
+   def success(message)
+     super().merge(message: message)
+   end
+-
+-  def build_push_data(branch)
+-    Gitlab::DataBuilder::Push.build(
+-      project,
+-      current_user,
+-      branch.dereferenced_target.sha,
+-      Gitlab::Git::BLANK_SHA,
+-      "#{Gitlab::Git::BRANCH_REF_PREFIX}#{branch.name}",
+-      [])
+-  end
+ end
+diff --git a/app/services/git/base_hooks_service.rb b/app/services/git/base_hooks_service.rb
+new file mode 100644
+index 0000000000..e0dccb8716
+--- /dev/null
++++ b/app/services/git/base_hooks_service.rb
+@@ -0,0 +1,94 @@
++# frozen_string_literal: true
++
++module Git
++  class BaseHooksService < ::BaseService
++    include Gitlab::Utils::StrongMemoize
++
++    # The N most recent commits to process in a single push payload.
++    PROCESS_COMMIT_LIMIT = 100
++
++    def execute
++      project.repository.after_create if project.empty_repo?
++
++      create_events
++      create_pipelines
++      execute_project_hooks
++
++      # Not a hook, but it needs access to the list of changed commits
++      enqueue_invalidate_cache
++
++      push_data
++    end
++
++    private
++
++    def hook_name
++      raise NotImplementedError, "Please implement #{self.class}##{__method__}"
++    end
++
++    def commits
++      raise NotImplementedError, "Please implement #{self.class}##{__method__}"
++    end
++
++    def limited_commits
++      commits.last(PROCESS_COMMIT_LIMIT)
++    end
++
++    def commits_count
++      commits.count
++    end
++
++    def event_message
++      nil
++    end
++
++    def invalidated_file_types
++      []
++    end
++
++    def create_events
++      EventCreateService.new.push(project, current_user, push_data)
++    end
++
++    def create_pipelines
++      Ci::CreatePipelineService
++        .new(project, current_user, push_data)
++        .execute(:push, pipeline_options)
++    end
++
++    def execute_project_hooks
++      project.execute_hooks(push_data, hook_name)
++      project.execute_services(push_data, hook_name)
++    end
++
++    def enqueue_invalidate_cache
++      ProjectCacheWorker.perform_async(
++        project.id,
++        invalidated_file_types,
++        [:commit_count, :repository_size]
++      )
++    end
++
++    def push_data
++      @push_data ||= Gitlab::DataBuilder::Push.build(
++        project,
++        current_user,
++        params[:oldrev],
++        params[:newrev],
++        params[:ref],
++        limited_commits,
++        event_message,
++        commits_count: commits_count,
++        push_options: params[:push_options] || []
++      )
++
++      # Dependent code may modify the push data, so return a duplicate each time
++      @push_data.dup
++    end
++
++    # to be overridden in EE
++    def pipeline_options
++      {}
++    end
++  end
++end
+diff --git a/app/services/git/branch_hooks_service.rb b/app/services/git/branch_hooks_service.rb
+new file mode 100644
+index 0000000000..d21a6bb1b9
+--- /dev/null
++++ b/app/services/git/branch_hooks_service.rb
+@@ -0,0 +1,144 @@
++# frozen_string_literal: true
++
++module Git
++  class BranchHooksService < ::Git::BaseHooksService
++    def execute
++      execute_branch_hooks
++
++      super.tap do
++        enqueue_update_gpg_signatures
++      end
++    end
++
++    private
++
++    def hook_name
++      :push_hooks
++    end
++
++    def commits
++      strong_memoize(:commits) do
++        if creating_default_branch?
++          # The most recent PROCESS_COMMIT_LIMIT commits in the default branch
++          offset = [count_commits_in_branch - PROCESS_COMMIT_LIMIT, 0].max
++          project.repository.commits(params[:newrev], offset: offset, limit: PROCESS_COMMIT_LIMIT)
++        elsif creating_branch?
++          # Use the pushed commits that aren't reachable by the default branch
++          # as a heuristic. This may include more commits than are actually
++          # pushed, but that shouldn't matter because we check for existing
++          # cross-references later.
++          project.repository.commits_between(project.default_branch, params[:newrev])
++        elsif updating_branch?
++          project.repository.commits_between(params[:oldrev], params[:newrev])
++        else # removing branch
++          []
++        end
++      end
++    end
++
++    def commits_count
++      return count_commits_in_branch if creating_default_branch?
++
++      super
++    end
++
++    def invalidated_file_types
++      return super unless default_branch? && !creating_branch?
++
++      paths = limited_commits.each_with_object(Set.new) do |commit, set|
++        commit.raw_deltas.each do |diff|
++          set << diff.new_path
++        end
++      end
++
++      Gitlab::FileDetector.types_in_paths(paths)
++    end
++
++    def execute_branch_hooks
++      project.repository.after_push_commit(branch_name)
++
++      branch_create_hooks if creating_branch?
++      branch_update_hooks if updating_branch?
++      branch_change_hooks if creating_branch? || updating_branch?
++      branch_remove_hooks if removing_branch?
++    end
++
++    def branch_create_hooks
++      project.repository.after_create_branch
++      project.after_create_default_branch if default_branch?
++    end
++
++    def branch_update_hooks
++      # Update the bare repositories info/attributes file using the contents of
++      # the default branch's .gitattributes file
++      project.repository.copy_gitattributes(params[:ref]) if default_branch?
++    end
++
++    def branch_change_hooks
++      enqueue_process_commit_messages
++    end
++
++    def branch_remove_hooks
++      project.repository.after_remove_branch
++    end
++
++    # Schedules processing of commit messages
++    def enqueue_process_commit_messages
++      # don't process commits for the initial push to the default branch
++      return if creating_default_branch?
++
++      limited_commits.each do |commit|
++        next unless commit.matches_cross_reference_regex?
++
++        ProcessCommitWorker.perform_async(
++          project.id,
++          current_user.id,
++          commit.to_hash,
++          default_branch?
++        )
++      end
++    end
++
++    def enqueue_update_gpg_signatures
++      unsigned = GpgSignature.unsigned_commit_shas(limited_commits.map(&:sha))
++      return if unsigned.empty?
++
++      signable = Gitlab::Git::Commit.shas_with_signatures(project.repository, unsigned)
++      return if signable.empty?
++
++      CreateGpgSignatureWorker.perform_async(signable, project.id)
++    end
++
++    def creating_branch?
++      Gitlab::Git.blank_ref?(params[:oldrev])
++    end
++
++    def updating_branch?
++      !creating_branch? && !removing_branch?
++    end
++
++    def removing_branch?
++      Gitlab::Git.blank_ref?(params[:newrev])
++    end
++
++    def creating_default_branch?
++      creating_branch? && default_branch?
++    end
++
++    def count_commits_in_branch
++      strong_memoize(:count_commits_in_branch) do
++        project.repository.commit_count_for_ref(params[:ref])
++      end
++    end
++
++    def default_branch?
++      strong_memoize(:default_branch) do
++        [nil, branch_name].include?(project.default_branch)
++      end
++    end
++
++    def branch_name
++      strong_memoize(:branch_name) { Gitlab::Git.ref_name(params[:ref]) }
++    end
++  end
++end
+diff --git a/app/services/git/branch_push_service.rb b/app/services/git/branch_push_service.rb
+index b55aeb5f2b..da053ce80c 100644
+--- a/app/services/git/branch_push_service.rb
++++ b/app/services/git/branch_push_service.rb
+@@ -1,14 +1,10 @@
+ # frozen_string_literal: true
+ 
+ module Git
+-  class BranchPushService < BaseService
+-    attr_accessor :push_data, :push_commits
++  class BranchPushService < ::BaseService
+     include Gitlab::Access
+     include Gitlab::Utils::StrongMemoize
+ 
+-    # The N most recent commits to process in a single push payload.
+-    PROCESS_COMMIT_LIMIT = 100
+-
+     # This method will be called after each git update
+     # and only if the provided user and project are present in GitLab.
+     #
+@@ -23,108 +19,43 @@ class BranchPushService < BaseService
+     #  6. Checks if the project's main language has changed
+     #
+     def execute
+-      update_commits
++      return unless Gitlab::Git.branch_ref?(params[:ref])
++
++      enqueue_update_mrs
++      enqueue_detect_repository_languages
++
+       execute_related_hooks
+       perform_housekeeping
+ 
+       update_remote_mirrors
+-      update_caches
++      stop_environments
+ 
+-      update_signatures
++      true
+     end
+ 
+-    def update_commits
+-      project.repository.after_create if project.empty_repo?
+-      project.repository.after_push_commit(branch_name)
+-
+-      if push_remove_branch?
+-        project.repository.after_remove_branch
+-        @push_commits = []
+-      elsif push_to_new_branch?
+-        project.repository.after_create_branch
+-
+-        # Re-find the pushed commits.
+-        if default_branch?
+-          # Initial push to the default branch. Take the full history of that branch as "newly pushed".
+-          process_default_branch
+-        else
+-          # Use the pushed commits that aren't reachable by the default branch
+-          # as a heuristic. This may include more commits than are actually pushed, but
+-          # that shouldn't matter because we check for existing cross-references later.
+-          @push_commits = project.repository.commits_between(project.default_branch, params[:newrev])
+-
+-          # don't process commits for the initial push to the default branch
+-          process_commit_messages
+-        end
+-      elsif push_to_existing_branch?
+-        # Collect data for this git push
+-        @push_commits = project.repository.commits_between(params[:oldrev], params[:newrev])
+-
+-        process_commit_messages
+-
+-        # Update the bare repositories info/attributes file using the contents of the default branches
+-        # .gitattributes file
+-        update_gitattributes if default_branch?
+-      end
+-    end
+-
+-    def update_gitattributes
+-      project.repository.copy_gitattributes(params[:ref])
+-    end
+-
+-    def update_caches
+-      if default_branch?
+-        if push_to_new_branch?
+-          # If this is the initial push into the default branch, the file type caches
+-          # will already be reset as a result of `Project#change_head`.
+-          types = []
+-        else
+-          paths = Set.new
+-
+-          last_pushed_commits.each do |commit|
+-            commit.raw_deltas.each do |diff|
+-              paths << diff.new_path
+-            end
+-          end
+-
+-          types = Gitlab::FileDetector.types_in_paths(paths.to_a)
+-        end
+-
+-        DetectRepositoryLanguagesWorker.perform_async(@project.id, current_user.id)
+-      else
+-        types = []
+-      end
+-
+-      ProjectCacheWorker.perform_async(project.id, types, [:commit_count, :repository_size])
++    # Update merge requests that may be affected by this push. A new branch
++    # could cause the last commit of a merge request to change.
++    def enqueue_update_mrs
++      UpdateMergeRequestsWorker.perform_async(
++        project.id,
++        current_user.id,
++        params[:oldrev],
++        params[:newrev],
++        params[:ref]
++      )
+     end
+ 
+-    # rubocop: disable CodeReuse/ActiveRecord
+-    def update_signatures
+-      commit_shas = last_pushed_commits.map(&:sha)
++    def enqueue_detect_repository_languages
++      return unless default_branch?
+ 
+-      return if commit_shas.empty?
+-
+-      shas_with_cached_signatures = GpgSignature.where(commit_sha: commit_shas).pluck(:commit_sha)
+-      commit_shas -= shas_with_cached_signatures
+-
+-      return if commit_shas.empty?
+-
+-      commit_shas = Gitlab::Git::Commit.shas_with_signatures(project.repository, commit_shas)
+-
+-      CreateGpgSignatureWorker.perform_async(commit_shas, project.id)
++      DetectRepositoryLanguagesWorker.perform_async(project.id, current_user.id)
+     end
+-    # rubocop: enable CodeReuse/ActiveRecord
+ 
+-    # Schedules processing of commit messages.
+-    def process_commit_messages
+-      default = default_branch?
++    # Only stop environments if the ref is a branch that is being deleted
++    def stop_environments
++      return unless removing_branch?
+ 
+-      last_pushed_commits.each do |commit|
+-        if commit.matches_cross_reference_regex?
+-          ProcessCommitWorker
+-            .perform_async(project.id, current_user.id, commit.to_hash, default)
+-        end
+-      end
++      Ci::StopEnvironmentsService.new(project, current_user).execute(branch_name)
+     end
+ 
+     def update_remote_mirrors
+@@ -135,23 +66,7 @@ def update_remote_mirrors
+     end
+ 
+     def execute_related_hooks
+-      # Update merge requests that may be affected by this push. A new branch
+-      # could cause the last commit of a merge request to change.
+-      #
+-      UpdateMergeRequestsWorker
+-        .perform_async(project.id, current_user.id, params[:oldrev], params[:newrev], params[:ref])
+-
+-      EventCreateService.new.push(project, current_user, build_push_data)
+-      Ci::CreatePipelineService.new(project, current_user, build_push_data).execute(:push, pipeline_options)
+-
+-      project.execute_hooks(build_push_data.dup, :push_hooks)
+-      project.execute_services(build_push_data.dup, :push_hooks)
+-
+-      if push_remove_branch?
+-        AfterBranchDeleteService
+-          .new(project, current_user)
+-          .execute(branch_name)
+-      end
++      BranchHooksService.new(project, current_user, params).execute
+     end
+ 
+     def perform_housekeeping
+@@ -161,84 +76,18 @@ def perform_housekeeping
+     rescue Projects::HousekeepingService::LeaseTaken
+     end
+ 
+-    def process_default_branch
+-      offset = [push_commits_count_for_ref - PROCESS_COMMIT_LIMIT, 0].max
+-      @push_commits = project.repository.commits(params[:newrev], offset: offset, limit: PROCESS_COMMIT_LIMIT)
+-
+-      project.after_create_default_branch
+-    end
+-
+-    def build_push_data
+-      @push_data ||= Gitlab::DataBuilder::Push.build(
+-        project,
+-        current_user,
+-        params[:oldrev],
+-        params[:newrev],
+-        params[:ref],
+-        @push_commits,
+-        commits_count: commits_count,
+-        push_options: params[:push_options] || []
+-      )
+-    end
+-
+-    def push_to_existing_branch?
+-      # Return if this is not a push to a branch (e.g. new commits)
+-      branch_ref? && !Gitlab::Git.blank_ref?(params[:oldrev])
+-    end
+-
+-    def push_to_new_branch?
+-      strong_memoize(:push_to_new_branch) do
+-        branch_ref? && Gitlab::Git.blank_ref?(params[:oldrev])
+-      end
+-    end
+-
+-    def push_remove_branch?
+-      strong_memoize(:push_remove_branch) do
+-        branch_ref? && Gitlab::Git.blank_ref?(params[:newrev])
+-      end
+-    end
+-
+-    def default_branch?
+-      branch_ref? &&
+-        (branch_name == project.default_branch || project.default_branch.nil?)
+-    end
+-
+-    def commit_user(commit)
+-      commit.author || current_user
++    def removing_branch?
++      Gitlab::Git.blank_ref?(params[:newrev])
+     end
+ 
+     def branch_name
+-      strong_memoize(:branch_name) do
+-        Gitlab::Git.ref_name(params[:ref])
+-      end
++      strong_memoize(:branch_name) { Gitlab::Git.ref_name(params[:ref]) }
+     end
+ 
+-    def branch_ref?
+-      strong_memoize(:branch_ref) do
+-        Gitlab::Git.branch_ref?(params[:ref])
+-      end
+-    end
+-
+-    def commits_count
+-      return push_commits_count_for_ref if default_branch? && push_to_new_branch?
+-
+-      Array(@push_commits).size
+-    end
+-
+-    def push_commits_count_for_ref
+-      strong_memoize(:push_commits_count_for_ref) do
+-        project.repository.commit_count_for_ref(params[:ref])
++    def default_branch?
++      strong_memoize(:default_branch) do
++        [nil, branch_name].include?(project.default_branch)
+       end
+     end
+-
+-    def last_pushed_commits
+-      @last_pushed_commits ||= @push_commits.last(PROCESS_COMMIT_LIMIT)
+-    end
+-
+-    private
+-
+-    def pipeline_options
+-      {} # to be overridden in EE
+-    end
+   end
+ end
+diff --git a/app/services/git/tag_hooks_service.rb b/app/services/git/tag_hooks_service.rb
+new file mode 100644
+index 0000000000..18eb780579
+--- /dev/null
++++ b/app/services/git/tag_hooks_service.rb
+@@ -0,0 +1,36 @@
++# frozen_string_literal: true
++
++module Git
++  class TagHooksService < ::Git::BaseHooksService
++    private
++
++    def hook_name
++      :tag_push_hooks
++    end
++
++    def commits
++      [tag_commit].compact
++    end
++
++    def event_message
++      tag&.message
++    end
++
++    def tag
++      strong_memoize(:tag) do
++        next if Gitlab::Git.blank_ref?(params[:newrev])
++
++        tag_name = Gitlab::Git.ref_name(params[:ref])
++        tag = project.repository.find_tag(tag_name)
++
++        tag if tag && tag.target == params[:newrev]
++      end
++    end
++
++    def tag_commit
++      strong_memoize(:tag_commit) do
++        project.commit(tag.dereferenced_target) if tag
++      end
++    end
++  end
++end
+diff --git a/app/services/git/tag_push_service.rb b/app/services/git/tag_push_service.rb
+index 9ce0fbdb20..ee4166dccd 100644
+--- a/app/services/git/tag_push_service.rb
++++ b/app/services/git/tag_push_service.rb
+@@ -1,56 +1,14 @@
+ # frozen_string_literal: true
+ 
+ module Git
+-  class TagPushService < BaseService
+-    attr_accessor :push_data
+-
++  class TagPushService < ::BaseService
+     def execute
+-      project.repository.after_create if project.empty_repo?
+-      project.repository.before_push_tag
+-
+-      @push_data = build_push_data
+-
+-      EventCreateService.new.push(project, current_user, push_data)
+-      Ci::CreatePipelineService.new(project, current_user, push_data).execute(:push, pipeline_options)
++      return unless Gitlab::Git.tag_ref?(params[:ref])
+ 
+-      project.execute_hooks(push_data.dup, :tag_push_hooks)
+-      project.execute_services(push_data.dup, :tag_push_hooks)
+-
+-      ProjectCacheWorker.perform_async(project.id, [], [:commit_count, :repository_size])
++      project.repository.before_push_tag
++      TagHooksService.new(project, current_user, params).execute
+ 
+       true
+     end
+-
+-    private
+-
+-    def build_push_data
+-      commits = []
+-      message = nil
+-
+-      unless Gitlab::Git.blank_ref?(params[:newrev])
+-        tag_name = Gitlab::Git.ref_name(params[:ref])
+-        tag = project.repository.find_tag(tag_name)
+-
+-        if tag && tag.target == params[:newrev]
+-          commit = project.commit(tag.dereferenced_target)
+-          commits = [commit].compact
+-          message = tag.message
+-        end
+-      end
+-
+-      Gitlab::DataBuilder::Push.build(
+-        project,
+-        current_user,
+-        params[:oldrev],
+-        params[:newrev],
+-        params[:ref],
+-        commits,
+-        message,
+-        push_options: params[:push_options] || [])
+-    end
+-
+-    def pipeline_options
+-      {} # to be overridden in EE
+-    end
+   end
+ end
+diff --git a/spec/services/after_branch_delete_service_spec.rb b/spec/services/after_branch_delete_service_spec.rb
+deleted file mode 100644
+index bc9747d141..0000000000
+--- a/spec/services/after_branch_delete_service_spec.rb
++++ /dev/null
+@@ -1,15 +0,0 @@
+-require 'spec_helper'
+-
+-describe AfterBranchDeleteService do
+-  let(:project) { create(:project, :repository) }
+-  let(:user) { create(:user) }
+-  let(:service) { described_class.new(project, user) }
+-
+-  describe '#execute' do
+-    it 'stops environments attached to branch' do
+-      expect(service).to receive(:stop_environments)
+-
+-      service.execute('feature')
+-    end
+-  end
+-end
+diff --git a/spec/services/git/branch_hooks_service_spec.rb b/spec/services/git/branch_hooks_service_spec.rb
+new file mode 100644
+index 0000000000..bb87267db7
+--- /dev/null
++++ b/spec/services/git/branch_hooks_service_spec.rb
+@@ -0,0 +1,339 @@
++require 'spec_helper'
++
++describe Git::BranchHooksService do
++  include RepoHelpers
++
++  let(:project) { create(:project, :repository) }
++  let(:user) { project.creator }
++
++  let(:branch) { project.default_branch }
++  let(:ref) { "refs/heads/#{branch}" }
++  let(:commit) { project.commit(sample_commit.id) }
++  let(:oldrev) { commit.parent_id }
++  let(:newrev) { commit.id }
++
++  let(:service) do
++    described_class.new(project, user, oldrev: oldrev, newrev: newrev, ref: ref)
++  end
++
++  describe "Git Push Data" do
++    subject(:push_data) { service.execute }
++
++    it 'has expected push data attributes' do
++      is_expected.to match a_hash_including(
++        object_kind: 'push',
++        before: oldrev,
++        after: newrev,
++        ref: ref,
++        user_id: user.id,
++        user_name: user.name,
++        project_id: project.id
++      )
++    end
++
++    context "with repository data" do
++      subject { push_data[:repository] }
++
++      it 'has expected attributes' do
++        is_expected.to match a_hash_including(
++          name: project.name,
++          url: project.url_to_repo,
++          description: project.description,
++          homepage: project.web_url
++        )
++      end
++    end
++
++    context "with commits" do
++      subject { push_data[:commits] }
++
++      it { is_expected.to be_an(Array) }
++
++      it 'has 1 element' do
++        expect(subject.size).to eq(1)
++      end
++
++      context "the commit" do
++        subject { push_data[:commits].first }
++
++        it { expect(subject[:timestamp].in_time_zone).to eq(commit.date.in_time_zone) }
++
++        it 'includes expected commit data' do
++          is_expected.to match a_hash_including(
++            id: commit.id,
++            message: commit.safe_message,
++            url: [
++              Gitlab.config.gitlab.url,
++              project.namespace.to_param,
++              project.to_param,
++              'commit',
++              commit.id
++            ].join('/')
++          )
++        end
++
++        context "with a author" do
++          subject { push_data[:commits].first[:author] }
++
++          it 'includes expected author data' do
++            is_expected.to match a_hash_including(
++              name: commit.author_name,
++              email: commit.author_email
++            )
++          end
++        end
++      end
++    end
++  end
++
++  describe 'Push Event' do
++    let(:event) { Event.find_by_action(Event::PUSHED) }
++
++    before do
++      service.execute
++    end
++
++    context "with an existing branch" do
++      it 'generates a push event with one commit' do
++        expect(event).to be_an_instance_of(PushEvent)
++        expect(event.project).to eq(project)
++        expect(event.action).to eq(Event::PUSHED)
++        expect(event.push_event_payload).to be_an_instance_of(PushEventPayload)
++        expect(event.push_event_payload.commit_from).to eq(oldrev)
++        expect(event.push_event_payload.commit_to).to eq(newrev)
++        expect(event.push_event_payload.ref).to eq('master')
++        expect(event.push_event_payload.commit_count).to eq(1)
++      end
++    end
++
++    context "with a new branch" do
++      let(:oldrev) { Gitlab::Git::BLANK_SHA }
++
++      it 'generates a push event with more than one commit' do
++        expect(event).to be_an_instance_of(PushEvent)
++        expect(event.project).to eq(project)
++        expect(event.action).to eq(Event::PUSHED)
++        expect(event.push_event_payload).to be_an_instance_of(PushEventPayload)
++        expect(event.push_event_payload.commit_from).to be_nil
++        expect(event.push_event_payload.commit_to).to eq(newrev)
++        expect(event.push_event_payload.ref).to eq('master')
++        expect(event.push_event_payload.commit_count).to be > 1
++      end
++    end
++
++    context 'removing a branch' do
++      let(:newrev) { Gitlab::Git::BLANK_SHA }
++
++      it 'generates a push event with no commits' do
++        expect(event).to be_an_instance_of(PushEvent)
++        expect(event.project).to eq(project)
++        expect(event.action).to eq(Event::PUSHED)
++        expect(event.push_event_payload).to be_an_instance_of(PushEventPayload)
++        expect(event.push_event_payload.commit_from).to eq(oldrev)
++        expect(event.push_event_payload.commit_to).to be_nil
++        expect(event.push_event_payload.ref).to eq('master')
++        expect(event.push_event_payload.commit_count).to eq(0)
++      end
++    end
++  end
++
++  describe 'Invalidating project cache' do
++    let(:commit_id) do
++      project.repository.update_file(
++        user, 'README.md', '', message: 'Update', branch_name: branch
++      )
++    end
++
++    let(:commit) { project.repository.commit(commit_id) }
++    let(:blank_sha) { Gitlab::Git::BLANK_SHA }
++
++    def clears_cache(extended: [])
++      expect(ProjectCacheWorker)
++        .to receive(:perform_async)
++        .with(project.id, extended, %i[commit_count repository_size])
++
++      service.execute
++    end
++
++    def clears_extended_cache
++      clears_cache(extended: %i[readme])
++    end
++
++    context 'on default branch' do
++      context 'create' do
++        # FIXME: When creating the default branch,the cache worker runs twice
++        before do
++          allow(ProjectCacheWorker).to receive(:perform_async)
++        end
++
++        let(:oldrev) { blank_sha }
++
++        it { clears_cache }
++      end
++
++      context 'update' do
++        it { clears_extended_cache }
++      end
++
++      context 'remove' do
++        let(:newrev) { blank_sha }
++
++        # TODO: this case should pass, but we only take account of added files
++        it { clears_cache }
++      end
++    end
++
++    context 'on ordinary branch' do
++      let(:branch) { 'fix' }
++
++      context 'create' do
++        let(:oldrev) { blank_sha }
++
++        it { clears_cache }
++      end
++
++      context 'update' do
++        it { clears_cache }
++      end
++
++      context 'remove' do
++        let(:newrev) { blank_sha }
++
++        it { clears_cache }
++      end
++    end
++  end
++
++  describe 'GPG signatures' do
++    context 'when the commit has a signature' do
++      context 'when the signature is already cached' do
++        before do
++          create(:gpg_signature, commit_sha: commit.id)
++        end
++
++        it 'does not queue a CreateGpgSignatureWorker' do
++          expect(CreateGpgSignatureWorker).not_to receive(:perform_async)
++
++          service.execute
++        end
++      end
++
++      context 'when the signature is not yet cached' do
++        it 'queues a CreateGpgSignatureWorker' do
++          expect(CreateGpgSignatureWorker).to receive(:perform_async).with([commit.id], project.id)
++
++          service.execute
++        end
++
++        it 'can queue several commits to create the gpg signature' do
++          allow(Gitlab::Git::Commit)
++            .to receive(:shas_with_signatures)
++            .and_return([sample_commit.id, another_sample_commit.id])
++
++          expect(CreateGpgSignatureWorker)
++            .to receive(:perform_async)
++            .with([sample_commit.id, another_sample_commit.id], project.id)
++
++          service.execute
++        end
++      end
++    end
++
++    context 'when the commit does not have a signature' do
++      before do
++        allow(Gitlab::Git::Commit)
++          .to receive(:shas_with_signatures)
++          .with(project.repository, [sample_commit.id])
++          .and_return([])
++      end
++
++      it 'does not queue a CreateGpgSignatureWorker' do
++        expect(CreateGpgSignatureWorker)
++          .not_to receive(:perform_async)
++          .with(sample_commit.id, project.id)
++
++        service.execute
++      end
++    end
++  end
++
++  describe 'Processing commit messages' do
++    # Create 4 commits, 2 of which have references. Limiting to 2 commits, we
++    # expect to see one commit message processor enqueued.
++    let(:commit_ids) do
++      Array.new(4) do |i|
++        message = "Issue #{'#' if i.even?}#{i}"
++        project.repository.update_file(
++          user, 'README.md', '', message: message, branch_name: branch
++        )
++      end
++    end
++
++    let(:oldrev) { commit_ids.first }
++    let(:newrev) { commit_ids.last }
++
++    before do
++      stub_const("::Git::BaseHooksService::PROCESS_COMMIT_LIMIT", 2)
++    end
++
++    context 'creating the default branch' do
++      let(:oldrev) { Gitlab::Git::BLANK_SHA }
++
++      it 'does not process commit messages' do
++        expect(ProcessCommitWorker).not_to receive(:perform_async)
++
++        service.execute
++      end
++    end
++
++    context 'updating the default branch' do
++      it 'processes a limited number of commit messages' do
++        expect(ProcessCommitWorker).to receive(:perform_async).once
++
++        service.execute
++      end
++    end
++
++    context 'removing the default branch' do
++      let(:newrev) { Gitlab::Git::BLANK_SHA }
++
++      it 'does not process commit messages' do
++        expect(ProcessCommitWorker).not_to receive(:perform_async)
++
++        service.execute
++      end
++    end
++
++    context 'creating a normal branch' do
++      let(:branch) { 'fix' }
++      let(:oldrev) { Gitlab::Git::BLANK_SHA }
++
++      it 'processes a limited number of commit messages' do
++        expect(ProcessCommitWorker).to receive(:perform_async).once
++
++        service.execute
++      end
++    end
++
++    context 'updating a normal branch' do
++      let(:branch) { 'fix' }
++
++      it 'processes a limited number of commit messages' do
++        expect(ProcessCommitWorker).to receive(:perform_async).once
++
++        service.execute
++      end
++    end
++
++    context 'removing a normal branch' do
++      let(:branch) { 'fix' }
++      let(:newrev) { Gitlab::Git::BLANK_SHA }
++
++      it 'does not process commit messages' do
++        expect(ProcessCommitWorker).not_to receive(:perform_async)
++
++        service.execute
++      end
++    end
++  end
++end
+diff --git a/spec/services/git/branch_push_service_spec.rb b/spec/services/git/branch_push_service_spec.rb
+index d0e2169b4a..322e40a811 100644
+--- a/spec/services/git/branch_push_service_spec.rb
++++ b/spec/services/git/branch_push_service_spec.rb
+@@ -8,7 +8,8 @@
+   let(:blankrev) { Gitlab::Git::BLANK_SHA }
+   let(:oldrev)   { sample_commit.parent_id }
+   let(:newrev)   { sample_commit.id }
+-  let(:ref)      { 'refs/heads/master' }
++  let(:branch)   { 'master' }
++  let(:ref)      { "refs/heads/#{branch}" }
+ 
+   before do
+     project.add_maintainer(user)
+@@ -132,64 +133,6 @@
+     end
+   end
+ 
+-  describe "Git Push Data" do
+-    let(:commit) { project.commit(newrev) }
+-
+-    subject { push_data_from_service(project, user, oldrev, newrev, ref) }
+-
+-    it { is_expected.to include(object_kind: 'push') }
+-    it { is_expected.to include(before: oldrev) }
+-    it { is_expected.to include(after: newrev) }
+-    it { is_expected.to include(ref: ref) }
+-    it { is_expected.to include(user_id: user.id) }
+-    it { is_expected.to include(user_name: user.name) }
+-    it { is_expected.to include(project_id: project.id) }
+-
+-    context "with repository data" do
+-      subject { push_data_from_service(project, user, oldrev, newrev, ref)[:repository] }
+-
+-      it { is_expected.to include(name: project.name) }
+-      it { is_expected.to include(url: project.url_to_repo) }
+-      it { is_expected.to include(description: project.description) }
+-      it { is_expected.to include(homepage: project.web_url) }
+-    end
+-
+-    context "with commits" do
+-      subject { push_data_from_service(project, user, oldrev, newrev, ref)[:commits] }
+-
+-      it { is_expected.to be_an(Array) }
+-      it 'has 1 element' do
+-        expect(subject.size).to eq(1)
+-      end
+-
+-      context "the commit" do
+-        subject { push_data_from_service(project, user, oldrev, newrev, ref)[:commits].first }
+-
+-        it { is_expected.to include(id: commit.id) }
+-        it { is_expected.to include(message: commit.safe_message) }
+-        it { expect(subject[:timestamp].in_time_zone).to eq(commit.date.in_time_zone) }
+-        it do
+-          is_expected.to include(
+-            url: [
+-              Gitlab.config.gitlab.url,
+-              project.namespace.to_param,
+-              project.to_param,
+-              'commit',
+-              commit.id
+-            ].join('/')
+-          )
+-        end
+-
+-        context "with a author" do
+-          subject { push_data_from_service(project, user, oldrev, newrev, ref)[:commits].first[:author] }
+-
+-          it { is_expected.to include(name: commit.author_name) }
+-          it { is_expected.to include(email: commit.author_email) }
+-        end
+-      end
+-    end
+-  end
+-
+   describe "Pipelines" do
+     subject { execute_service(project, user, oldrev, newrev, ref) }
+ 
+@@ -203,59 +146,13 @@
+     end
+   end
+ 
+-  describe "Push Event" do
+-    context "with an existing branch" do
+-      let!(:push_data) { push_data_from_service(project, user, oldrev, newrev, ref) }
+-      let(:event) { Event.find_by_action(Event::PUSHED) }
+-
+-      it 'generates a push event with one commit' do
+-        expect(event).to be_an_instance_of(PushEvent)
+-        expect(event.project).to eq(project)
+-        expect(event.action).to eq(Event::PUSHED)
+-        expect(event.push_event_payload).to be_an_instance_of(PushEventPayload)
+-        expect(event.push_event_payload.commit_from).to eq(oldrev)
+-        expect(event.push_event_payload.commit_to).to eq(newrev)
+-        expect(event.push_event_payload.ref).to eq('master')
+-        expect(event.push_event_payload.commit_count).to eq(1)
+-      end
+-    end
+-
+-    context "with a new branch" do
+-      let!(:new_branch_data) { push_data_from_service(project, user, Gitlab::Git::BLANK_SHA, newrev, ref) }
+-      let(:event) { Event.find_by_action(Event::PUSHED) }
+-
+-      it 'generates a push event with more than one commit' do
+-        expect(event).to be_an_instance_of(PushEvent)
+-        expect(event.project).to eq(project)
+-        expect(event.action).to eq(Event::PUSHED)
+-        expect(event.push_event_payload).to be_an_instance_of(PushEventPayload)
+-        expect(event.push_event_payload.commit_from).to be_nil
+-        expect(event.push_event_payload.commit_to).to eq(newrev)
+-        expect(event.push_event_payload.ref).to eq('master')
+-        expect(event.push_event_payload.commit_count).to be > 1
+-      end
+-    end
+-
+-    context "Updates merge requests" do
+-      it "when pushing a new branch for the first time" do
+-        expect(UpdateMergeRequestsWorker).to receive(:perform_async)
+-                                                .with(project.id, user.id, blankrev, 'newrev', ref)
+-        execute_service(project, user, blankrev, 'newrev', ref )
+-      end
+-    end
+-
+-    describe 'system hooks' do
+-      let!(:push_data) { push_data_from_service(project, user, oldrev, newrev, ref) }
+-      let!(:system_hooks_service) { SystemHooksService.new }
++  describe "Updates merge requests" do
++    it "when pushing a new branch for the first time" do
++      expect(UpdateMergeRequestsWorker)
++        .to receive(:perform_async)
++        .with(project.id, user.id, blankrev, 'newrev', ref)
+ 
+-      it "sends a system hook after pushing a branch" do
+-        allow(SystemHooksService).to receive(:new).and_return(system_hooks_service)
+-        allow(system_hooks_service).to receive(:execute_hooks)
+-
+-        execute_service(project, user, oldrev, newrev, ref)
+-
+-        expect(system_hooks_service).to have_received(:execute_hooks).with(push_data, :push_hooks)
+-      end
++      execute_service(project, user, blankrev, 'newrev', ref )
+     end
+   end
+ 
+@@ -700,125 +597,64 @@
+     end
+   end
+ 
+-  describe '#update_caches' do
+-    let(:service) do
+-      described_class.new(project,
+-                          user,
+-                          oldrev: oldrev,
+-                          newrev: newrev,
+-                          ref: ref)
+-    end
+-
+-    context 'on the default branch' do
+-      before do
+-        allow(service).to receive(:default_branch?).and_return(true)
+-      end
+-
+-      it 'flushes the caches of any special files that have been changed' do
+-        commit = double(:commit)
+-        diff = double(:diff, new_path: 'README.md')
+-
+-        expect(commit).to receive(:raw_deltas)
+-          .and_return([diff])
+-
+-        service.push_commits = [commit]
++  describe "CI environments" do
++    context 'create branch' do
++      let(:oldrev) { blankrev }
+ 
+-        expect(ProjectCacheWorker).to receive(:perform_async)
+-          .with(project.id, %i(readme), %i(commit_count repository_size))
++      it 'does nothing' do
++        expect(::Ci::StopEnvironmentsService).not_to receive(:new)
+ 
+-        service.update_caches
++        execute_service(project, user, oldrev, newrev, ref)
+       end
+     end
+ 
+-    context 'on a non-default branch' do
+-      before do
+-        allow(service).to receive(:default_branch?).and_return(false)
+-      end
+-
+-      it 'does not flush any conditional caches' do
+-        expect(ProjectCacheWorker).to receive(:perform_async)
+-          .with(project.id, [], %i(commit_count repository_size))
+-          .and_call_original
++    context 'update branch' do
++      it 'does nothing' do
++        expect(::Ci::StopEnvironmentsService).not_to receive(:new)
+ 
+-        service.update_caches
++        execute_service(project, user, oldrev, newrev, ref)
+       end
+     end
+-  end
+-
+-  describe '#process_commit_messages' do
+-    let(:service) do
+-      described_class.new(project,
+-                          user,
+-                          oldrev: oldrev,
+-                          newrev: newrev,
+-                          ref: ref)
+-    end
+ 
+-    it 'only schedules a limited number of commits' do
+-      service.push_commits = Array.new(1000, double(:commit, to_hash: {}, matches_cross_reference_regex?: true))
+-
+-      expect(ProcessCommitWorker).to receive(:perform_async).exactly(100).times
+-
+-      service.process_commit_messages
+-    end
+-
+-    it "skips commits which don't include cross-references" do
+-      service.push_commits = [double(:commit, to_hash: {}, matches_cross_reference_regex?: false)]
+-
+-      expect(ProcessCommitWorker).not_to receive(:perform_async)
+-
+-      service.process_commit_messages
+-    end
+-  end
+-
+-  describe '#update_signatures' do
+-    let(:service) do
+-      described_class.new(
+-        project,
+-        user,
+-        oldrev: oldrev,
+-        newrev: newrev,
+-        ref: 'refs/heads/master'
+-      )
+-    end
++    context 'delete branch' do
++      let(:newrev) { blankrev }
+ 
+-    context 'when the commit has a signature' do
+-      context 'when the signature is already cached' do
+-        before do
+-          create(:gpg_signature, commit_sha: sample_commit.id)
++      it 'stops environments' do
++        expect_next_instance_of(::Ci::StopEnvironmentsService) do |stop_service|
++          expect(stop_service.project).to eq(project)
++          expect(stop_service.current_user).to eq(user)
++          expect(stop_service).to receive(:execute).with(branch)
+         end
+ 
+-        it 'does not queue a CreateGpgSignatureWorker' do
+-          expect(CreateGpgSignatureWorker).not_to receive(:perform_async)
+-
+-          execute_service(project, user, oldrev, newrev, ref)
+-        end
++        execute_service(project, user, oldrev, newrev, ref)
+       end
++    end
++  end
+ 
+-      context 'when the signature is not yet cached' do
+-        it 'queues a CreateGpgSignatureWorker' do
+-          expect(CreateGpgSignatureWorker).to receive(:perform_async).with([sample_commit.id], project.id)
++  describe 'Hooks' do
++    context 'run on a branch' do
++      it 'delegates to Git::BranchHooksService' do
++        expect_next_instance_of(::Git::BranchHooksService) do |hooks_service|
++          expect(hooks_service.project).to eq(project)
++          expect(hooks_service.current_user).to eq(user)
++          expect(hooks_service.params).to include(
++            oldrev: oldrev,
++            newrev: newrev,
++            ref: ref
++          )
+ 
+-          execute_service(project, user, oldrev, newrev, ref)
++          expect(hooks_service).to receive(:execute)
+         end
+ 
+-        it 'can queue several commits to create the gpg signature' do
+-          allow(Gitlab::Git::Commit).to receive(:shas_with_signatures).and_return([sample_commit.id, another_sample_commit.id])
+-
+-          expect(CreateGpgSignatureWorker).to receive(:perform_async).with([sample_commit.id, another_sample_commit.id], project.id)
+-
+-          execute_service(project, user, oldrev, newrev, ref)
+-        end
++        execute_service(project, user, oldrev, newrev, ref)
+       end
+     end
+ 
+-    context 'when the commit does not have a signature' do
+-      before do
+-        allow(Gitlab::Git::Commit).to receive(:shas_with_signatures).with(project.repository, [sample_commit.id]).and_return([])
+-      end
++    context 'run on a tag' do
++      let(:ref) { 'refs/tags/v1.1.0' }
+ 
+-      it 'does not queue a CreateGpgSignatureWorker' do
+-        expect(CreateGpgSignatureWorker).not_to receive(:perform_async).with(sample_commit.id, project.id)
++      it 'does nothing' do
++        expect(::Git::BranchHooksService).not_to receive(:new)
+ 
+         execute_service(project, user, oldrev, newrev, ref)
+       end
+@@ -830,8 +666,4 @@ def execute_service(project, user, oldrev, newrev, ref)
+     service.execute
+     service
+   end
+-
+-  def push_data_from_service(project, user, oldrev, newrev, ref)
+-    execute_service(project, user, oldrev, newrev, ref).push_data
+-  end
+ end
+diff --git a/spec/services/git/tag_hooks_service_spec.rb b/spec/services/git/tag_hooks_service_spec.rb
+new file mode 100644
+index 0000000000..8f91ce3b4c
+--- /dev/null
++++ b/spec/services/git/tag_hooks_service_spec.rb
+@@ -0,0 +1,144 @@
++require 'spec_helper'
++
++describe Git::TagHooksService, :service do
++  let(:user) { create(:user) }
++  let(:project) { create(:project, :repository) }
++
++  let(:oldrev) { Gitlab::Git::BLANK_SHA }
++  let(:newrev) { "8a2a6eb295bb170b34c24c76c49ed0e9b2eaf34b" } # gitlab-test: git rev-parse refs/tags/v1.1.0
++  let(:ref) { "refs/tags/#{tag_name}" }
++  let(:tag_name) { 'v1.1.0' }
++
++  let(:tag) { project.repository.find_tag(tag_name) }
++  let(:commit) { tag.dereferenced_target }
++
++  let(:service) do
++    described_class.new(project, user, oldrev: oldrev, newrev: newrev, ref: ref)
++  end
++
++  describe 'System hooks' do
++    it 'Executes system hooks' do
++      push_data = service.execute
++
++      expect_next_instance_of(SystemHooksService) do |system_hooks_service|
++        expect(system_hooks_service)
++          .to receive(:execute_hooks)
++          .with(push_data, :tag_push_hooks)
++      end
++
++      service.execute
++    end
++  end
++
++  describe "Webhooks" do
++    it "executes hooks on the project" do
++      expect(project).to receive(:execute_hooks)
++
++      service.execute
++    end
++  end
++
++  describe "Pipelines" do
++    before do
++      stub_ci_pipeline_to_return_yaml_file
++      project.add_developer(user)
++    end
++
++    it "creates a new pipeline" do
++      expect { service.execute }.to change { Ci::Pipeline.count }
++
++      expect(Ci::Pipeline.last).to be_push
++    end
++  end
++
++  describe 'Push data' do
++    shared_examples_for 'tag push data expectations' do
++      subject(:push_data) { service.execute }
++      it 'has expected push data attributes' do
++        is_expected.to match a_hash_including(
++          object_kind: 'tag_push',
++          ref: ref,
++          before: oldrev,
++          after: newrev,
++          message: tag.message,
++          user_id: user.id,
++          user_name: user.name,
++          project_id: project.id
++        )
++      end
++
++      context "with repository data" do
++        subject { push_data[:repository] }
++
++        it 'has expected repository attributes' do
++          is_expected.to match a_hash_including(
++            name: project.name,
++            url: project.url_to_repo,
++            description: project.description,
++            homepage: project.web_url
++          )
++        end
++      end
++
++      context "with commits" do
++        subject { push_data[:commits] }
++
++        it { is_expected.to be_an(Array) }
++
++        it 'has 1 element' do
++          expect(subject.size).to eq(1)
++        end
++
++        context "the commit" do
++          subject { push_data[:commits].first }
++
++          it { is_expected.to include(timestamp: commit.date.xmlschema) }
++
++          it 'has expected commit attributes' do
++            is_expected.to match a_hash_including(
++              id: commit.id,
++              message: commit.safe_message,
++              url: [
++               Gitlab.config.gitlab.url,
++               project.namespace.to_param,
++               project.to_param,
++               'commit',
++               commit.id
++              ].join('/')
++            )
++          end
++
++          context "with an author" do
++            subject { push_data[:commits].first[:author] }
++
++            it 'has expected author attributes' do
++              is_expected.to match a_hash_including(
++                name: commit.author_name,
++                email: commit.author_email
++              )
++            end
++          end
++        end
++      end
++    end
++
++    context 'annotated tag' do
++      include_examples 'tag push data expectations'
++    end
++
++    context 'lightweight tag' do
++      let(:tag_name) { 'light-tag' }
++      let(:newrev) { '5937ac0a7beb003549fc5fd26fc247adbce4a52e' }
++
++      before do
++        # Create the lightweight tag
++        rugged_repo(project.repository).tags.create(tag_name, newrev)
++
++        # Clear tag list cache
++        project.repository.expire_tags_cache
++      end
++
++      include_examples 'tag push data expectations'
++    end
++  end
++end
+diff --git a/spec/services/git/tag_push_service_spec.rb b/spec/services/git/tag_push_service_spec.rb
+index 2d960fc9f0..5e89a91206 100644
+--- a/spec/services/git/tag_push_service_spec.rb
++++ b/spec/services/git/tag_push_service_spec.rb
+@@ -31,178 +31,27 @@
+     end
+   end
+ 
+-  describe 'System Hooks' do
+-    let!(:push_data) { service.tap(&:execute).push_data }
+-
+-    it "executes system hooks after pushing a tag" do
+-      expect_next_instance_of(SystemHooksService) do |system_hooks_service|
+-        expect(system_hooks_service)
+-          .to receive(:execute_hooks)
+-          .with(push_data, :tag_push_hooks)
+-      end
+-
+-      service.execute
+-    end
+-  end
+-
+-  describe "Pipelines" do
+-    subject { service.execute }
+-
+-    before do
+-      stub_ci_pipeline_to_return_yaml_file
+-      project.add_developer(user)
+-    end
+-
+-    it "creates a new pipeline" do
+-      expect { subject }.to change { Ci::Pipeline.count }
+-      expect(Ci::Pipeline.last).to be_push
+-    end
+-  end
+-
+-  describe "Git Tag Push Data" do
+-    subject { @push_data }
+-    let(:tag) { project.repository.find_tag(tag_name) }
+-    let(:commit) { tag.dereferenced_target }
+-
+-    context 'annotated tag' do
+-      let(:tag_name) { Gitlab::Git.ref_name(ref) }
+-
+-      before do
+-        service.execute
+-        @push_data = service.push_data
+-      end
+-
+-      it { is_expected.to include(object_kind: 'tag_push') }
+-      it { is_expected.to include(ref: ref) }
+-      it { is_expected.to include(before: oldrev) }
+-      it { is_expected.to include(after: newrev) }
+-      it { is_expected.to include(message: tag.message) }
+-      it { is_expected.to include(user_id: user.id) }
+-      it { is_expected.to include(user_name: user.name) }
+-      it { is_expected.to include(project_id: project.id) }
+-
+-      context "with repository data" do
+-        subject { @push_data[:repository] }
+-
+-        it { is_expected.to include(name: project.name) }
+-        it { is_expected.to include(url: project.url_to_repo) }
+-        it { is_expected.to include(description: project.description) }
+-        it { is_expected.to include(homepage: project.web_url) }
+-      end
+-
+-      context "with commits" do
+-        subject { @push_data[:commits] }
+-
+-        it { is_expected.to be_an(Array) }
+-        it 'has 1 element' do
+-          expect(subject.size).to eq(1)
+-        end
+-
+-        context "the commit" do
+-          subject { @push_data[:commits].first }
+-
+-          it { is_expected.to include(id: commit.id) }
+-          it { is_expected.to include(message: commit.safe_message) }
+-          it { is_expected.to include(timestamp: commit.date.xmlschema) }
+-          it do
+-            is_expected.to include(
+-              url: [
+-               Gitlab.config.gitlab.url,
+-               project.namespace.to_param,
+-               project.to_param,
+-               'commit',
+-               commit.id
+-              ].join('/')
+-            )
+-          end
+-
+-          context "with a author" do
+-            subject { @push_data[:commits].first[:author] }
+-
+-            it { is_expected.to include(name: commit.author_name) }
+-            it { is_expected.to include(email: commit.author_email) }
+-          end
++  describe 'Hooks' do
++    context 'run on a tag' do
++      it 'delegates to Git::TagHooksService' do
++        expect_next_instance_of(::Git::TagHooksService) do |hooks_service|
++          expect(hooks_service.project).to eq(service.project)
++          expect(hooks_service.current_user).to eq(service.current_user)
++          expect(hooks_service.params).to eq(service.params)
++
++          expect(hooks_service).to receive(:execute)
+         end
+-      end
+-    end
+-
+-    context 'lightweight tag' do
+-      let(:tag_name) { 'light-tag' }
+-      let(:newrev) { '5937ac0a7beb003549fc5fd26fc247adbce4a52e' }
+-      let(:ref) { "refs/tags/light-tag" }
+-
+-      before do
+-        # Create the lightweight tag
+-        rugged_repo(project.repository).tags.create(tag_name, newrev)
+-
+-        # Clear tag list cache
+-        project.repository.expire_tags_cache
+ 
+         service.execute
+-        @push_data = service.push_data
+-      end
+-
+-      it { is_expected.to include(object_kind: 'tag_push') }
+-      it { is_expected.to include(ref: ref) }
+-      it { is_expected.to include(before: oldrev) }
+-      it { is_expected.to include(after: newrev) }
+-      it { is_expected.to include(message: tag.message) }
+-      it { is_expected.to include(user_id: user.id) }
+-      it { is_expected.to include(user_name: user.name) }
+-      it { is_expected.to include(project_id: project.id) }
+-
+-      context "with repository data" do
+-        subject { @push_data[:repository] }
+-
+-        it { is_expected.to include(name: project.name) }
+-        it { is_expected.to include(url: project.url_to_repo) }
+-        it { is_expected.to include(description: project.description) }
+-        it { is_expected.to include(homepage: project.web_url) }
+-      end
+-
+-      context "with commits" do
+-        subject { @push_data[:commits] }
+-
+-        it { is_expected.to be_an(Array) }
+-        it 'has 1 element' do
+-          expect(subject.size).to eq(1)
+-        end
+-
+-        context "the commit" do
+-          subject { @push_data[:commits].first }
+-
+-          it { is_expected.to include(id: commit.id) }
+-          it { is_expected.to include(message: commit.safe_message) }
+-          it { is_expected.to include(timestamp: commit.date.xmlschema) }
+-          it do
+-            is_expected.to include(
+-              url: [
+-               Gitlab.config.gitlab.url,
+-               project.namespace.to_param,
+-               project.to_param,
+-               'commit',
+-               commit.id
+-              ].join('/')
+-            )
+-          end
+-
+-          context "with a author" do
+-            subject { @push_data[:commits].first[:author] }
+-
+-            it { is_expected.to include(name: commit.author_name) }
+-            it { is_expected.to include(email: commit.author_email) }
+-          end
+-        end
+       end
+     end
+-  end
+ 
+-  describe "Webhooks" do
+-    context "execute webhooks" do
+-      let(:service) { described_class.new(project, user, oldrev: 'oldrev', newrev: 'newrev', ref: 'refs/tags/v1.0.0') }
++    context 'run on a branch' do
++      let(:ref) { 'refs/heads/master' }
++
++      it 'does nothing' do
++        expect(::Git::BranchHooksService).not_to receive(:new)
+ 
+-      it "when pushing tags" do
+-        expect(project).to receive(:execute_hooks)
+         service.execute
+       end
+     end
+diff --git a/spec/workers/post_receive_spec.rb b/spec/workers/post_receive_spec.rb
+index 66958a4c11..a3fe8fa450 100644
+--- a/spec/workers/post_receive_spec.rb
++++ b/spec/workers/post_receive_spec.rb
+@@ -63,8 +63,12 @@
+         let(:changes) { "123456 789012 refs/heads/tést" }
+ 
+         it "calls Git::BranchPushService" do
+-          expect_any_instance_of(Git::BranchPushService).to receive(:execute).and_return(true)
+-          expect_any_instance_of(Git::TagPushService).not_to receive(:execute)
++          expect_next_instance_of(Git::BranchPushService) do |service|
++            expect(service).to receive(:execute).and_return(true)
++          end
++
++          expect(Git::TagPushService).not_to receive(:new)
++
+           described_class.new.perform(gl_repository, key_id, base64_changes)
+         end
+       end
+@@ -73,8 +77,12 @@
+         let(:changes) { "123456 789012 refs/tags/tag" }
+ 
+         it "calls Git::TagPushService" do
+-          expect_any_instance_of(Git::BranchPushService).not_to receive(:execute)
+-          expect_any_instance_of(Git::TagPushService).to receive(:execute).and_return(true)
++          expect(Git::BranchPushService).not_to receive(:execute)
++
++          expect_next_instance_of(Git::TagPushService) do |service|
++            expect(service).to receive(:execute).and_return(true)
++          end
++
+           described_class.new.perform(gl_repository, key_id, base64_changes)
+         end
+       end
+@@ -83,8 +91,9 @@
+         let(:changes) { "123456 789012 refs/merge-requests/123" }
+ 
+         it "does not call any of the services" do
+-          expect_any_instance_of(Git::BranchPushService).not_to receive(:execute)
+-          expect_any_instance_of(Git::TagPushService).not_to receive(:execute)
++          expect(Git::BranchPushService).not_to receive(:new)
++          expect(Git::TagPushService).not_to receive(:new)
++
+           described_class.new.perform(gl_repository, key_id, base64_changes)
+         end
+       end
+@@ -127,7 +136,9 @@
+           allow_any_instance_of(Gitlab::DataBuilder::Repository).to receive(:update).and_return(fake_hook_data)
+           # silence hooks so we can isolate
+           allow_any_instance_of(Key).to receive(:post_create_hook).and_return(true)
+-          allow_any_instance_of(Git::BranchPushService).to receive(:execute).and_return(true)
++          expect_next_instance_of(Git::BranchPushService) do |service|
++            expect(service).to receive(:execute).and_return(true)
++          end
+         end
+ 
+         it 'calls SystemHooksService' do

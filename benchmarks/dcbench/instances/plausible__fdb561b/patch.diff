@@ -1,0 +1,1061 @@
+From fdb561bcb32c80a7155fc2541f2938a665321558 Mon Sep 17 00:00:00 2001
+From: Adrian Gruntkowski <adrian.gruntkowski@gmail.com>
+Date: Wed, 16 Apr 2025 13:55:01 +0200
+Subject: [PATCH] Move invitations related logic under Teams context (#5337)
+
+---
+ .../api/external_sites_controller.ex          |   2 +-
+ lib/plausible/site/admin.ex                   |   8 +-
+ lib/plausible/site/memberships.ex             |  22 ----
+ .../invitations/accept.ex}                    |   2 +-
+ .../invitations/invite_to_site.ex}            |   2 +-
+ .../invitations/reject.ex}                    |   2 +-
+ .../invitations/remove_from_site.ex}          |   2 +-
+ .../{remove.ex => remove_from_team.ex}        |   2 +-
+ .../teams/management/layout/entry.ex          |   2 +-
+ .../controllers/invitation_controller.ex      |  10 +-
+ .../controllers/site/membership_controller.ex |  31 ++++--
+ .../invitations/accept_test.exs}              | 102 +++++++++---------
+ .../invitations/invite_to_site_test.exs}      |  41 +++----
+ .../invitations/reject_test.exs}              |  14 +--
+ .../invitations/remove_from_site_test.exs}    |  10 +-
+ 15 files changed, 122 insertions(+), 130 deletions(-)
+ delete mode 100644 lib/plausible/site/memberships.ex
+ rename lib/plausible/{site/memberships/accept_invitation.ex => teams/invitations/accept.ex} (98%)
+ rename lib/plausible/{site/memberships/create_invitation.ex => teams/invitations/invite_to_site.ex} (98%)
+ rename lib/plausible/{site/memberships/reject_invitation.ex => teams/invitations/reject.ex} (96%)
+ rename lib/plausible/{site/memberships/remove_invitation.ex => teams/invitations/remove_from_site.ex} (93%)
+ rename lib/plausible/teams/invitations/{remove.ex => remove_from_team.ex} (93%)
+ rename test/plausible/{site/memberships/accept_invitation_test.exs => teams/invitations/accept_test.exs} (87%)
+ rename test/plausible/{site/memberships/create_invitation_test.exs => teams/invitations/invite_to_site_test.exs} (81%)
+ rename test/plausible/{site/memberships/reject_invitation_test.exs => teams/invitations/reject_test.exs} (81%)
+ rename test/plausible/{site/memberships/remove_invitation_test.exs => teams/invitations/remove_from_site_test.exs} (71%)
+
+diff --git a/extra/lib/plausible_web/controllers/api/external_sites_controller.ex b/extra/lib/plausible_web/controllers/api/external_sites_controller.ex
+index a1c0fa094..7e53288b9 100644
+--- a/extra/lib/plausible_web/controllers/api/external_sites_controller.ex
++++ b/extra/lib/plausible_web/controllers/api/external_sites_controller.ex
+@@ -215,7 +215,7 @@ defmodule PlausibleWeb.Api.ExternalSitesController do
+           status: existing.status
+         })
+       else
+-        case Plausible.Site.Memberships.CreateInvitation.create_invitation(
++        case Teams.Invitations.InviteToSite.create_invitation(
+                site,
+                conn.assigns.current_user,
+                email,
+diff --git a/lib/plausible/site/admin.ex b/lib/plausible/site/admin.ex
+index 87221d0e9..b565bd66a 100644
+--- a/lib/plausible/site/admin.ex
++++ b/lib/plausible/site/admin.ex
+@@ -3,6 +3,8 @@ defmodule Plausible.SiteAdmin do
+ 
+   import Ecto.Query
+ 
++  alias Plausible.Teams
++
+   def ordering(_schema) do
+     [desc: :inserted_at]
+   end
+@@ -133,7 +135,7 @@ defmodule Plausible.SiteAdmin do
+ 
+     with {:ok, new_owner} <- Plausible.Auth.get_user_by(email: email),
+          {:ok, _} <-
+-           Plausible.Site.Memberships.bulk_create_invitation(
++           Teams.Invitations.InviteToSite.bulk_create_invitation(
+              sites,
+              inviter,
+              new_owner.email,
+@@ -158,7 +160,7 @@ defmodule Plausible.SiteAdmin do
+     with {:ok, new_owner} <- Plausible.Auth.get_user_by(email: email),
+          {:ok, team} <- get_team_by_id(params["team_id"]),
+          {:ok, _} <-
+-           Plausible.Site.Memberships.bulk_transfer_ownership_direct(
++           Teams.Invitations.Accept.bulk_transfer_ownership_direct(
+              sites,
+              new_owner,
+              team
+@@ -191,7 +193,7 @@ defmodule Plausible.SiteAdmin do
+   defp get_team_by_id(id) when is_binary(id) and byte_size(id) > 0 do
+     case Ecto.UUID.cast(id) do
+       {:ok, team_id} ->
+-        {:ok, Plausible.Teams.get(team_id)}
++        {:ok, Teams.get(team_id)}
+ 
+       :error ->
+         {:error, :invalid_team_id}
+diff --git a/lib/plausible/site/memberships.ex b/lib/plausible/site/memberships.ex
+deleted file mode 100644
+index 96981acbe..000000000
+--- a/lib/plausible/site/memberships.ex
++++ /dev/null
+@@ -1,22 +0,0 @@
+-defmodule Plausible.Site.Memberships do
+-  @moduledoc """
+-  API for site memberships and invitations
+-  """
+-
+-  alias Plausible.Site.Memberships
+-
+-  defdelegate accept_invitation(invitation_id, user, team \\ nil),
+-    to: Memberships.AcceptInvitation
+-
+-  defdelegate reject_invitation(invitation_id, user), to: Memberships.RejectInvitation
+-  defdelegate remove_invitation(invitation_id, site), to: Memberships.RemoveInvitation
+-
+-  defdelegate create_invitation(site, inviter, invitee_email, role),
+-    to: Memberships.CreateInvitation
+-
+-  defdelegate bulk_create_invitation(sites, inviter, invitee_email, role, opts),
+-    to: Memberships.CreateInvitation
+-
+-  defdelegate bulk_transfer_ownership_direct(sites, new_owner, team \\ nil),
+-    to: Memberships.AcceptInvitation
+-end
+diff --git a/lib/plausible/site/memberships/accept_invitation.ex b/lib/plausible/teams/invitations/accept.ex
+similarity index 98%
+rename from lib/plausible/site/memberships/accept_invitation.ex
+rename to lib/plausible/teams/invitations/accept.ex
+index a1bdbabd8..03c67fee1 100644
+--- a/lib/plausible/site/memberships/accept_invitation.ex
++++ b/lib/plausible/teams/invitations/accept.ex
+@@ -1,4 +1,4 @@
+-defmodule Plausible.Site.Memberships.AcceptInvitation do
++defmodule Plausible.Teams.Invitations.Accept do
+   use Plausible
+ 
+   @moduledoc """
+diff --git a/lib/plausible/site/memberships/create_invitation.ex b/lib/plausible/teams/invitations/invite_to_site.ex
+similarity index 98%
+rename from lib/plausible/site/memberships/create_invitation.ex
+rename to lib/plausible/teams/invitations/invite_to_site.ex
+index a8bd61269..67ab24112 100644
+--- a/lib/plausible/site/memberships/create_invitation.ex
++++ b/lib/plausible/teams/invitations/invite_to_site.ex
+@@ -1,4 +1,4 @@
+-defmodule Plausible.Site.Memberships.CreateInvitation do
++defmodule Plausible.Teams.Invitations.InviteToSite do
+   @moduledoc """
+   Service for inviting new or existing users to a sites, including ownershhip
+   transfers.
+diff --git a/lib/plausible/site/memberships/reject_invitation.ex b/lib/plausible/teams/invitations/reject.ex
+similarity index 96%
+rename from lib/plausible/site/memberships/reject_invitation.ex
+rename to lib/plausible/teams/invitations/reject.ex
+index 2ecff342a..67c50cb28 100644
+--- a/lib/plausible/site/memberships/reject_invitation.ex
++++ b/lib/plausible/teams/invitations/reject.ex
+@@ -1,4 +1,4 @@
+-defmodule Plausible.Site.Memberships.RejectInvitation do
++defmodule Plausible.Teams.Invitations.Reject do
+   @moduledoc """
+   Service for rejecting invitations.
+   """
+diff --git a/lib/plausible/site/memberships/remove_invitation.ex b/lib/plausible/teams/invitations/remove_from_site.ex
+similarity index 93%
+rename from lib/plausible/site/memberships/remove_invitation.ex
+rename to lib/plausible/teams/invitations/remove_from_site.ex
+index 97f23ffd7..fb1ffb17e 100644
+--- a/lib/plausible/site/memberships/remove_invitation.ex
++++ b/lib/plausible/teams/invitations/remove_from_site.ex
+@@ -1,4 +1,4 @@
+-defmodule Plausible.Site.Memberships.RemoveInvitation do
++defmodule Plausible.Teams.Invitations.RemoveFromSite do
+   @moduledoc """
+   Service for removing invitations.
+   """
+diff --git a/lib/plausible/teams/invitations/remove.ex b/lib/plausible/teams/invitations/remove_from_team.ex
+similarity index 93%
+rename from lib/plausible/teams/invitations/remove.ex
+rename to lib/plausible/teams/invitations/remove_from_team.ex
+index e6b8aec55..e575e3d88 100644
+--- a/lib/plausible/teams/invitations/remove.ex
++++ b/lib/plausible/teams/invitations/remove_from_team.ex
+@@ -1,4 +1,4 @@
+-defmodule Plausible.Teams.Invitations.Remove do
++defmodule Plausible.Teams.Invitations.RemoveFromTeam do
+   @moduledoc """
+   Service for removing a team invitation.
+   """
+diff --git a/lib/plausible/teams/management/layout/entry.ex b/lib/plausible/teams/management/layout/entry.ex
+index 2f0a2227d..af6335ba1 100644
+--- a/lib/plausible/teams/management/layout/entry.ex
++++ b/lib/plausible/teams/management/layout/entry.ex
+@@ -87,7 +87,7 @@ defmodule Plausible.Teams.Management.Layout.Entry do
+         %__MODULE__{type: :invitation_sent, queued_op: :delete, meta: meta},
+         context
+       ) do
+-    Plausible.Teams.Invitations.Remove.remove(
++    Plausible.Teams.Invitations.RemoveFromTeam.remove(
+       context.current_team,
+       meta.invitation_id,
+       context.current_user
+diff --git a/lib/plausible_web/controllers/invitation_controller.ex b/lib/plausible_web/controllers/invitation_controller.ex
+index 81d8c35b5..81b6efbdb 100644
+--- a/lib/plausible_web/controllers/invitation_controller.ex
++++ b/lib/plausible_web/controllers/invitation_controller.ex
+@@ -1,6 +1,8 @@
+ defmodule PlausibleWeb.InvitationController do
+   use PlausibleWeb, :controller
+ 
++  alias Plausible.Teams
++
+   plug PlausibleWeb.RequireAccountPlug
+ 
+   plug PlausibleWeb.Plugs.AuthorizeSiteAccess,
+@@ -10,7 +12,7 @@ defmodule PlausibleWeb.InvitationController do
+     current_user = conn.assigns.current_user
+     team = conn.assigns.current_team
+ 
+-    case Plausible.Site.Memberships.accept_invitation(invitation_id, current_user, team) do
++    case Teams.Invitations.Accept.accept_invitation(invitation_id, current_user, team) do
+       {:ok, result} ->
+         team = result.team
+ 
+@@ -72,7 +74,7 @@ defmodule PlausibleWeb.InvitationController do
+   end
+ 
+   def reject_invitation(conn, %{"invitation_id" => invitation_id}) do
+-    case Plausible.Site.Memberships.reject_invitation(invitation_id, conn.assigns.current_user) do
++    case Teams.Invitations.Reject.reject_invitation(invitation_id, conn.assigns.current_user) do
+       {:ok, _invitation} ->
+         conn
+         |> put_flash(:success, "You have rejected the invitation")
+@@ -86,7 +88,7 @@ defmodule PlausibleWeb.InvitationController do
+   end
+ 
+   def remove_invitation(conn, %{"invitation_id" => invitation_id}) do
+-    case Plausible.Site.Memberships.remove_invitation(invitation_id, conn.assigns.site) do
++    case Teams.Invitations.RemoveFromSite.remove_invitation(invitation_id, conn.assigns.site) do
+       {:ok, invitation_or_transfer} ->
+         {site, email} =
+           case invitation_or_transfer do
+@@ -111,7 +113,7 @@ defmodule PlausibleWeb.InvitationController do
+   def remove_team_invitation(conn, %{"invitation_id" => invitation_id}) do
+     %{current_team: team, current_user: current_user} = conn.assigns
+ 
+-    case Plausible.Teams.Invitations.Remove.remove(team, invitation_id, current_user) do
++    case Teams.Invitations.RemoveFromTeam.remove(team, invitation_id, current_user) do
+       {:ok, invitation} ->
+         conn
+         |> put_flash(:success, "You have removed the invitation for #{invitation.email}")
+diff --git a/lib/plausible_web/controllers/site/membership_controller.ex b/lib/plausible_web/controllers/site/membership_controller.ex
+index 03b2d6385..afc8f63a6 100644
+--- a/lib/plausible_web/controllers/site/membership_controller.ex
++++ b/lib/plausible_web/controllers/site/membership_controller.ex
+@@ -12,7 +12,8 @@ defmodule PlausibleWeb.Site.MembershipController do
+   use PlausibleWeb, :controller
+   use Plausible.Repo
+   use Plausible
+-  alias Plausible.Site.Memberships
++
++  alias Plausible.Teams
+ 
+   plug PlausibleWeb.RequireAccountPlug
+ 
+@@ -24,8 +25,8 @@ defmodule PlausibleWeb.Site.MembershipController do
+       |> Plausible.Sites.get_for_user!(conn.assigns.site.domain)
+       |> Plausible.Repo.preload(:owners)
+ 
+-    limit = Plausible.Teams.Billing.team_member_limit(site.team)
+-    usage = Plausible.Teams.Billing.team_member_usage(site.team)
++    limit = Teams.Billing.team_member_limit(site.team)
++    usage = Teams.Billing.team_member_usage(site.team)
+     below_limit? = Plausible.Billing.Quota.below_limit?(usage, limit)
+ 
+     render(
+@@ -45,7 +46,12 @@ defmodule PlausibleWeb.Site.MembershipController do
+       Plausible.Sites.get_for_user!(conn.assigns.current_user, site_domain)
+       |> Plausible.Repo.preload(:owners)
+ 
+-    case Memberships.create_invitation(site, conn.assigns.current_user, email, role) do
++    case Teams.Invitations.InviteToSite.create_invitation(
++           site,
++           conn.assigns.current_user,
++           email,
++           role
++         ) do
+       {:ok, invitation} ->
+         conn
+         |> put_flash(
+@@ -107,7 +113,12 @@ defmodule PlausibleWeb.Site.MembershipController do
+     site =
+       Plausible.Sites.get_for_user!(conn.assigns.current_user, site_domain)
+ 
+-    case Memberships.create_invitation(site, conn.assigns.current_user, email, :owner) do
++    case Teams.Invitations.InviteToSite.create_invitation(
++           site,
++           conn.assigns.current_user,
++           email,
++           :owner
++         ) do
+       {:ok, _invitation} ->
+         conn
+         |> put_flash(:success, "Site transfer request has been sent to #{email}")
+@@ -165,11 +176,9 @@ defmodule PlausibleWeb.Site.MembershipController do
+       Plausible.Sites.get_for_user!(user, site_domain)
+ 
+     destination_team =
+-      Repo.one!(
+-        Plausible.Teams.Users.teams_query(user, roles: [:admin, :owner], identifier: identifier)
+-      )
++      Repo.one!(Teams.Users.teams_query(user, roles: [:admin, :owner], identifier: identifier))
+ 
+-    case Memberships.AcceptInvitation.change_team(
++    case Teams.Invitations.Accept.change_team(
+            site,
+            conn.assigns.current_user,
+            destination_team
+@@ -213,7 +222,7 @@ defmodule PlausibleWeb.Site.MembershipController do
+   def update_role_by_user(conn, %{"id" => user_id, "new_role" => new_role_str}) do
+     %{site: site, current_user: current_user, site_role: site_role} = conn.assigns
+ 
+-    case Plausible.Teams.Memberships.update_role(
++    case Teams.Memberships.update_role(
+            site,
+            user_id,
+            new_role_str,
+@@ -247,7 +256,7 @@ defmodule PlausibleWeb.Site.MembershipController do
+     site = conn.assigns.site
+ 
+     if user = Repo.get(Plausible.Auth.User, user_id) do
+-      Plausible.Teams.Memberships.remove(site, user)
++      Teams.Memberships.remove(site, user)
+ 
+       redirect_target =
+         if user_id == conn.assigns[:current_user].id do
+diff --git a/test/plausible/site/memberships/accept_invitation_test.exs b/test/plausible/teams/invitations/accept_test.exs
+similarity index 87%
+rename from test/plausible/site/memberships/accept_invitation_test.exs
+rename to test/plausible/teams/invitations/accept_test.exs
+index 90c47084b..899d56908 100644
+--- a/test/plausible/site/memberships/accept_invitation_test.exs
++++ b/test/plausible/teams/invitations/accept_test.exs
+@@ -1,11 +1,11 @@
+-defmodule Plausible.Site.Memberships.AcceptInvitationTest do
++defmodule Plausible.Teams.Invitations.AcceptTest do
+   use Plausible
+   require Plausible.Billing.Subscription.Status
+   use Plausible.DataCase, async: true
+   use Bamboo.Test
+   use Plausible.Teams.Test
+ 
+-  alias Plausible.Site.Memberships.AcceptInvitation
++  alias Plausible.Teams.Invitations.Accept
+ 
+   @subject_prefix if ee?(), do: "[Plausible Analytics] ", else: "[Plausible CE] "
+ 
+@@ -22,7 +22,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+ 
+       add_member(team2, user: user, role: :owner)
+ 
+-      assert :ok = AcceptInvitation.change_team(site, user, team2)
++      assert :ok = Accept.change_team(site, user, team2)
+     end
+ 
+     @tag :ee_only
+@@ -37,11 +37,11 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+ 
+       add_member(team2, user: user, role: :owner)
+ 
+-      assert {:error, :no_plan} = AcceptInvitation.change_team(site, user, team2)
++      assert {:error, :no_plan} = Accept.change_team(site, user, team2)
+ 
+       subscribe_to_growth_plan(another)
+ 
+-      assert :ok = AcceptInvitation.change_team(site, user, team2)
++      assert :ok = Accept.change_team(site, user, team2)
+       assert Repo.reload!(site).team_id == team2.id
+       assert_team_membership(user, team2, :owner)
+ 
+@@ -72,7 +72,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+ 
+       add_member(team2, user: user, role: :admin)
+ 
+-      assert :ok = AcceptInvitation.change_team(site, user, team2)
++      assert :ok = Accept.change_team(site, user, team2)
+       assert Repo.reload!(site).team_id == team2.id
+       assert_team_membership(user, team2, :admin)
+ 
+@@ -97,7 +97,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+ 
+         add_member(team2, user: user, role: unquote(role))
+ 
+-        assert {:error, :permission_denied} = AcceptInvitation.change_team(site, user, team2)
++        assert {:error, :permission_denied} = Accept.change_team(site, user, team2)
+         refute Repo.reload!(site).team_id == team2.id
+       end
+     end
+@@ -111,7 +111,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       site2 = new_site(owner: current_owner)
+ 
+       assert {:ok, _} =
+-               AcceptInvitation.bulk_transfer_ownership_direct(
++               Accept.bulk_transfer_ownership_direct(
+                  [site1, site2],
+                  new_owner
+                )
+@@ -131,7 +131,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       site2 = new_site(owner: new_owner)
+ 
+       assert {:error, :transfer_to_self} =
+-               AcceptInvitation.bulk_transfer_ownership_direct(
++               Accept.bulk_transfer_ownership_direct(
+                  [site1, site2],
+                  new_owner
+                )
+@@ -153,7 +153,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       site2 = new_site(owner: current_owner)
+ 
+       assert {:error, :multiple_teams} =
+-               AcceptInvitation.bulk_transfer_ownership_direct(
++               Accept.bulk_transfer_ownership_direct(
+                  [site1, site2],
+                  new_owner
+                )
+@@ -170,7 +170,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       add_member(new_team, user: current_owner, role: :owner)
+ 
+       assert {:ok, _} =
+-               AcceptInvitation.bulk_transfer_ownership_direct(
++               Accept.bulk_transfer_ownership_direct(
+                  [site1, site2],
+                  current_owner,
+                  new_team
+@@ -188,7 +188,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       site2 = new_site(owner: current_owner)
+ 
+       assert {:error, :permission_denied} =
+-               AcceptInvitation.bulk_transfer_ownership_direct(
++               Accept.bulk_transfer_ownership_direct(
+                  [site1, site2],
+                  new_owner,
+                  other_team
+@@ -206,7 +206,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       site2 = new_site(owner: current_owner)
+ 
+       assert {:ok, _} =
+-               AcceptInvitation.bulk_transfer_ownership_direct(
++               Accept.bulk_transfer_ownership_direct(
+                  [site1, site2],
+                  new_owner,
+                  other_team
+@@ -226,7 +226,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       for _ <- 1..3, do: add_guest(site, role: :editor)
+ 
+       assert {:error, {:over_plan_limits, [:team_member_limit]}} =
+-               AcceptInvitation.bulk_transfer_ownership_direct([site], new_owner)
++               Accept.bulk_transfer_ownership_direct([site], new_owner)
+     end
+ 
+     @tag :ee_only
+@@ -238,7 +238,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       for _ <- 1..2, do: add_guest(site, role: :editor)
+ 
+       assert {:ok, _} =
+-               AcceptInvitation.bulk_transfer_ownership_direct([site], new_owner)
++               Accept.bulk_transfer_ownership_direct([site], new_owner)
+     end
+ 
+     @tag :ee_only
+@@ -251,7 +251,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       site = new_site(owner: old_owner)
+ 
+       assert {:error, {:over_plan_limits, [:site_limit]}} =
+-               AcceptInvitation.bulk_transfer_ownership_direct([site], new_owner)
++               Accept.bulk_transfer_ownership_direct([site], new_owner)
+     end
+ 
+     @tag :ee_only
+@@ -271,7 +271,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       for _ <- 1..3, do: add_guest(site, role: :editor)
+ 
+       assert {:error, {:over_plan_limits, [:team_member_limit, :site_limit]}} =
+-               AcceptInvitation.bulk_transfer_ownership_direct([site], new_owner)
++               Accept.bulk_transfer_ownership_direct([site], new_owner)
+     end
+   end
+ 
+@@ -288,7 +288,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+         invitation = invite_member(team, invitee, inviter: inviter, role: unquote(role))
+ 
+         assert {:ok, _} =
+-                 AcceptInvitation.accept_invitation(invitation.invitation_id, invitee)
++                 Accept.accept_invitation(invitation.invitation_id, invitee)
+ 
+         assert_team_membership(invitee, team, unquote(role))
+ 
+@@ -321,7 +321,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+         invitation = invite_member(team, member, inviter: user, role: unquote(new_role))
+ 
+         assert {:ok, %{team_membership: new_team_membership, guest_memberships: []}} =
+-                 AcceptInvitation.accept_invitation(invitation.invitation_id, member)
++                 Accept.accept_invitation(invitation.invitation_id, member)
+ 
+         new_team_membership = Repo.reload!(new_team_membership)
+         assert existing_team_membership.id == new_team_membership.id
+@@ -342,7 +342,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+         invitation = invite_member(team, member, inviter: user, role: unquote(role))
+ 
+         assert {:ok, _} =
+-                 AcceptInvitation.accept_invitation(invitation.invitation_id, member)
++                 Accept.accept_invitation(invitation.invitation_id, member)
+       end
+     end
+ 
+@@ -363,7 +363,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       invitation = invite_member(team, member, inviter: user, role: :editor)
+ 
+       assert {:ok, %{team_membership: new_team_membership, guest_memberships: []}} =
+-               AcceptInvitation.accept_invitation(invitation.invitation_id, member)
++               Accept.accept_invitation(invitation.invitation_id, member)
+ 
+       new_team_membership = Repo.reload!(new_team_membership)
+       assert existing_team_membership.id == new_team_membership.id
+@@ -383,7 +383,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       invitation = invite_guest(site, invitee, inviter: inviter, role: :editor)
+ 
+       assert {:ok, _} =
+-               AcceptInvitation.accept_invitation(invitation.invitation_id, invitee)
++               Accept.accept_invitation(invitation.invitation_id, invitee)
+ 
+       assert_guest_membership(site.team, site, invitee, :editor)
+ 
+@@ -400,7 +400,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       invitation = invite_guest(site, user, inviter: user, role: :editor)
+ 
+       assert {:ok, _} =
+-               AcceptInvitation.accept_invitation(invitation.invitation_id, user)
++               Accept.accept_invitation(invitation.invitation_id, user)
+ 
+       assert_team_membership(user, site.team, :owner)
+     end
+@@ -421,7 +421,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+ 
+       assert {:ok,
+               %{team_membership: new_team_membership, guest_memberships: [new_guest_membership]}} =
+-               AcceptInvitation.accept_invitation(invitation.invitation_id, invitee)
++               Accept.accept_invitation(invitation.invitation_id, invitee)
+ 
+       new_team_membership = Repo.reload!(new_team_membership)
+       new_guest_membership = Repo.reload!(new_guest_membership)
+@@ -438,7 +438,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       invitee = insert(:user)
+ 
+       assert {:error, :invitation_not_found} =
+-               AcceptInvitation.accept_invitation("does_not_exist", invitee)
++               Accept.accept_invitation("does_not_exist", invitee)
+     end
+   end
+ 
+@@ -453,7 +453,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer = invite_transfer(site, new_owner, inviter: existing_owner)
+ 
+       assert {:ok, _new_membership} =
+-               AcceptInvitation.accept_invitation(
++               Accept.accept_invitation(
+                  transfer.transfer_id,
+                  new_owner
+                )
+@@ -483,7 +483,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+         invite_transfer(site, new_owner, inviter: existing_owner)
+ 
+       assert {:ok, _new_membership} =
+-               AcceptInvitation.accept_invitation(site_transfer.transfer_id, new_owner)
++               Accept.accept_invitation(site_transfer.transfer_id, new_owner)
+ 
+       assert_guest_invitation(new_team, site, "some@example.com", :viewer)
+       assert_team_attached(site, new_team.id)
+@@ -502,7 +502,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer = invite_transfer(site, new_owner, inviter: existing_owner)
+ 
+       assert {:ok, _new_membership} =
+-               AcceptInvitation.accept_invitation(
++               Accept.accept_invitation(
+                  transfer.transfer_id,
+                  new_owner
+                )
+@@ -525,7 +525,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+           invite_transfer(site, new_owner, inviter: existing_owner)
+ 
+         assert {:ok, _} =
+-                 AcceptInvitation.accept_invitation(transfer.transfer_id, new_owner)
++                 Accept.accept_invitation(transfer.transfer_id, new_owner)
+ 
+         assert_guest_membership(new_team, site, existing_owner, :editor)
+ 
+@@ -548,7 +548,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer = invite_transfer(site, new_owner, inviter: old_owner)
+ 
+       assert {:error, :multiple_teams} =
+-               AcceptInvitation.accept_invitation(transfer.transfer_id, new_owner)
++               Accept.accept_invitation(transfer.transfer_id, new_owner)
+     end
+ 
+     test "does not allow transferring ownership to a team where user has no permission" do
+@@ -563,7 +563,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer = invite_transfer(site, new_owner, inviter: old_owner)
+ 
+       assert {:error, :permission_denied} =
+-               AcceptInvitation.accept_invitation(transfer.transfer_id, new_owner, another_team)
++               Accept.accept_invitation(transfer.transfer_id, new_owner, another_team)
+     end
+ 
+     test "allows transferring ownership to a team where user has permission" do
+@@ -579,7 +579,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer = invite_transfer(site, new_owner, inviter: old_owner)
+ 
+       assert {:ok, _} =
+-               AcceptInvitation.accept_invitation(transfer.transfer_id, new_owner, another_team)
++               Accept.accept_invitation(transfer.transfer_id, new_owner, another_team)
+ 
+       assert_guest_membership(another_team, site, old_owner, :editor)
+       assert Repo.reload(site).team_id == another_team.id
+@@ -596,7 +596,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer = invite_transfer(site, new_owner, inviter: old_owner)
+ 
+       assert {:error, {:over_plan_limits, [:team_member_limit]}} =
+-               AcceptInvitation.accept_invitation(
++               Accept.accept_invitation(
+                  transfer.transfer_id,
+                  new_owner
+                )
+@@ -615,7 +615,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer = invite_transfer(site, new_owner, inviter: old_owner)
+ 
+       assert {:ok, _} =
+-               AcceptInvitation.accept_invitation(
++               Accept.accept_invitation(
+                  transfer.transfer_id,
+                  new_owner
+                )
+@@ -633,7 +633,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer = invite_transfer(site, new_owner, inviter: old_owner)
+ 
+       assert {:error, {:over_plan_limits, [:site_limit]}} =
+-               AcceptInvitation.accept_invitation(
++               Accept.accept_invitation(
+                  transfer.transfer_id,
+                  new_owner
+                )
+@@ -659,7 +659,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer = invite_transfer(old_owner_site, new_owner, inviter: old_owner)
+ 
+       assert {:error, {:over_plan_limits, [:monthly_pageview_limit]}} =
+-               AcceptInvitation.accept_invitation(transfer.transfer_id, new_owner)
++               Accept.accept_invitation(transfer.transfer_id, new_owner)
+     end
+ 
+     @tag :ee_only
+@@ -684,7 +684,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer_id = invite_transfer(old_owner_site, new_owner, inviter: old_owner).transfer_id
+ 
+       assert {:error, {:over_plan_limits, [:monthly_pageview_limit]}} =
+-               AcceptInvitation.accept_invitation(transfer_id, new_owner)
++               Accept.accept_invitation(transfer_id, new_owner)
+     end
+ 
+     @tag :ee_only
+@@ -706,7 +706,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer = invite_transfer(site, new_owner, inviter: old_owner)
+ 
+       assert {:error, {:over_plan_limits, [:team_member_limit, :site_limit]}} =
+-               AcceptInvitation.accept_invitation(transfer.transfer_id, new_owner)
++               Accept.accept_invitation(transfer.transfer_id, new_owner)
+     end
+ 
+     @tag :ee_only
+@@ -732,28 +732,28 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer = invite_transfer(site, trial_user, inviter: current_owner)
+ 
+       assert {:error, :no_plan} =
+-               AcceptInvitation.accept_invitation(transfer.transfer_id, trial_user)
++               Accept.accept_invitation(transfer.transfer_id, trial_user)
+ 
+       Repo.delete!(transfer)
+ 
+       transfer = invite_transfer(site, invited_user, inviter: current_owner)
+ 
+       assert {:error, :no_plan} =
+-               AcceptInvitation.accept_invitation(transfer.transfer_id, invited_user)
++               Accept.accept_invitation(transfer.transfer_id, invited_user)
+ 
+       Repo.delete!(transfer)
+ 
+       transfer = invite_transfer(site, user_on_free_10k, inviter: current_owner)
+ 
+       assert {:error, :no_plan} =
+-               AcceptInvitation.accept_invitation(transfer.transfer_id, user_on_free_10k)
++               Accept.accept_invitation(transfer.transfer_id, user_on_free_10k)
+ 
+       Repo.delete!(transfer)
+ 
+       transfer = invite_transfer(site, user_on_expired_subscription, inviter: current_owner)
+ 
+       assert {:error, :no_plan} =
+-               AcceptInvitation.accept_invitation(
++               Accept.accept_invitation(
+                  transfer.transfer_id,
+                  user_on_expired_subscription
+                )
+@@ -763,7 +763,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer = invite_transfer(site, user_on_paused_subscription, inviter: current_owner)
+ 
+       assert {:error, :no_plan} =
+-               AcceptInvitation.accept_invitation(
++               Accept.accept_invitation(
+                  transfer.transfer_id,
+                  user_on_paused_subscription
+                )
+@@ -778,7 +778,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer = invite_transfer(site, current_owner, inviter: current_owner)
+ 
+       assert {:error, :transfer_to_self} =
+-               AcceptInvitation.accept_invitation(transfer.transfer_id, current_owner)
++               Accept.accept_invitation(transfer.transfer_id, current_owner)
+     end
+ 
+     test "allows transferring between different teams of the same owner" do
+@@ -792,7 +792,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer = invite_transfer(site, current_owner, inviter: current_owner)
+ 
+       assert {:ok, _} =
+-               AcceptInvitation.accept_invitation(transfer.transfer_id, current_owner, new_team)
++               Accept.accept_invitation(transfer.transfer_id, current_owner, new_team)
+     end
+ 
+     @tag :ee_only
+@@ -807,7 +807,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer = invite_transfer(site, new_owner, inviter: current_owner)
+ 
+       assert {:error, {:over_plan_limits, [:site_limit]}} =
+-               AcceptInvitation.accept_invitation(transfer.transfer_id, new_owner)
++               Accept.accept_invitation(transfer.transfer_id, new_owner)
+     end
+ 
+     @tag :ce_build_only
+@@ -833,22 +833,22 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer = invite_transfer(site, trial_user, inviter: current_owner)
+ 
+       assert {:ok, _} =
+-               AcceptInvitation.accept_invitation(transfer.transfer_id, trial_user)
++               Accept.accept_invitation(transfer.transfer_id, trial_user)
+ 
+       transfer = invite_transfer(site, invited_user, inviter: current_owner)
+ 
+       assert {:ok, _} =
+-               AcceptInvitation.accept_invitation(transfer.transfer_id, invited_user)
++               Accept.accept_invitation(transfer.transfer_id, invited_user)
+ 
+       transfer = invite_transfer(site, user_on_free_10k, inviter: current_owner)
+ 
+       assert {:ok, _} =
+-               AcceptInvitation.accept_invitation(transfer.transfer_id, user_on_free_10k)
++               Accept.accept_invitation(transfer.transfer_id, user_on_free_10k)
+ 
+       transfer = invite_transfer(site, user_on_expired_subscription, inviter: current_owner)
+ 
+       assert {:ok, _} =
+-               AcceptInvitation.accept_invitation(
++               Accept.accept_invitation(
+                  transfer.transfer_id,
+                  user_on_expired_subscription
+                )
+@@ -856,7 +856,7 @@ defmodule Plausible.Site.Memberships.AcceptInvitationTest do
+       transfer = invite_transfer(site, user_on_paused_subscription, inviter: current_owner)
+ 
+       assert {:ok, _} =
+-               AcceptInvitation.accept_invitation(
++               Accept.accept_invitation(
+                  transfer.transfer_id,
+                  user_on_paused_subscription
+                )
+diff --git a/test/plausible/site/memberships/create_invitation_test.exs b/test/plausible/teams/invitations/invite_to_site_test.exs
+similarity index 81%
+rename from test/plausible/site/memberships/create_invitation_test.exs
+rename to test/plausible/teams/invitations/invite_to_site_test.exs
+index 2aa9fc568..482e6ade4 100644
+--- a/test/plausible/site/memberships/create_invitation_test.exs
++++ b/test/plausible/teams/invitations/invite_to_site_test.exs
+@@ -1,10 +1,11 @@
+-defmodule Plausible.Site.Memberships.CreateInvitationTest do
+-  alias Plausible.Site.Memberships.CreateInvitation
++defmodule Plausible.Teams.Invitations.InviteToSiteTest do
+   use Plausible
+   use Plausible.DataCase
+   use Bamboo.Test
+   use Plausible.Teams.Test
+ 
++  alias Plausible.Teams.Invitations.InviteToSite
++
+   @subject_prefix if ee?(), do: "[Plausible Analytics] ", else: "[Plausible CE] "
+ 
+   describe "create_invitation/4" do
+@@ -14,14 +15,14 @@ defmodule Plausible.Site.Memberships.CreateInvitationTest do
+       site = new_site(owner: inviter)
+ 
+       assert {:ok, %Plausible.Teams.GuestInvitation{}} =
+-               CreateInvitation.create_invitation(site, inviter, invitee.email, :viewer)
++               InviteToSite.create_invitation(site, inviter, invitee.email, :viewer)
+     end
+ 
+     test "returns validation errors" do
+       inviter = new_user()
+       site = new_site(owner: inviter)
+ 
+-      assert {:error, changeset} = CreateInvitation.create_invitation(site, inviter, "", :viewer)
++      assert {:error, changeset} = InviteToSite.create_invitation(site, inviter, "", :viewer)
+       assert {"can't be blank", _} = changeset.errors[:email]
+     end
+ 
+@@ -32,10 +33,10 @@ defmodule Plausible.Site.Memberships.CreateInvitationTest do
+       add_guest(site, user: invitee, role: :viewer)
+ 
+       assert {:error, :already_a_member} =
+-               CreateInvitation.create_invitation(site, inviter, invitee.email, :viewer)
++               InviteToSite.create_invitation(site, inviter, invitee.email, :viewer)
+ 
+       assert {:error, :already_a_member} =
+-               CreateInvitation.create_invitation(site, inviter, inviter.email, :viewer)
++               InviteToSite.create_invitation(site, inviter, inviter.email, :viewer)
+     end
+ 
+     test "sends invitation email for existing users" do
+@@ -43,7 +44,7 @@ defmodule Plausible.Site.Memberships.CreateInvitationTest do
+       site = new_site(owner: inviter)
+ 
+       assert {:ok, %Plausible.Teams.GuestInvitation{}} =
+-               CreateInvitation.create_invitation(site, inviter, invitee.email, :viewer)
++               InviteToSite.create_invitation(site, inviter, invitee.email, :viewer)
+ 
+       assert_email_delivered_with(
+         to: [nil: invitee.email],
+@@ -56,7 +57,7 @@ defmodule Plausible.Site.Memberships.CreateInvitationTest do
+       site = new_site(owner: inviter)
+ 
+       assert {:ok, %Plausible.Teams.GuestInvitation{invitation_id: invitation_id}} =
+-               CreateInvitation.create_invitation(site, inviter, "vini@plausible.test", :viewer)
++               InviteToSite.create_invitation(site, inviter, "vini@plausible.test", :viewer)
+ 
+       assert_email_delivered_with(
+         to: [nil: "vini@plausible.test"],
+@@ -74,7 +75,7 @@ defmodule Plausible.Site.Memberships.CreateInvitationTest do
+       for _ <- 1..4, do: add_guest(site, role: :viewer)
+ 
+       assert {:error, {:over_limit, 3}} =
+-               CreateInvitation.create_invitation(site, inviter, invitee.email, :viewer)
++               InviteToSite.create_invitation(site, inviter, invitee.email, :viewer)
+     end
+ 
+     @tag :ee_only
+@@ -83,7 +84,7 @@ defmodule Plausible.Site.Memberships.CreateInvitationTest do
+       site = new_site(owner: owner)
+ 
+       invite = fn site, email ->
+-        CreateInvitation.create_invitation(site, owner, email, :viewer)
++        InviteToSite.create_invitation(site, owner, email, :viewer)
+       end
+ 
+       assert {:ok, _} = invite.(site, "i1@example.com")
+@@ -109,7 +110,7 @@ defmodule Plausible.Site.Memberships.CreateInvitationTest do
+       add_guest(site2, user: u3, role: :viewer)
+ 
+       invite = fn site, email ->
+-        CreateInvitation.create_invitation(site, u1, email, :viewer)
++        InviteToSite.create_invitation(site, u1, email, :viewer)
+       end
+ 
+       assert {:error, {:over_limit, 3}} = invite.(site, "another@example.com")
+@@ -122,7 +123,7 @@ defmodule Plausible.Site.Memberships.CreateInvitationTest do
+       site = new_site(owner: inviter)
+ 
+       assert {:ok, %Plausible.Teams.SiteTransfer{}} =
+-               CreateInvitation.create_invitation(site, inviter, "vini@plausible.test", :owner)
++               InviteToSite.create_invitation(site, inviter, "vini@plausible.test", :owner)
+ 
+       assert_email_delivered_with(
+         to: [nil: "vini@plausible.test"],
+@@ -136,7 +137,7 @@ defmodule Plausible.Site.Memberships.CreateInvitationTest do
+       add_member(site.team, user: inviter, role: :admin)
+ 
+       assert {:ok, %Plausible.Teams.SiteTransfer{}} =
+-               CreateInvitation.create_invitation(site, inviter, "vini@plausible.test", :owner)
++               InviteToSite.create_invitation(site, inviter, "vini@plausible.test", :owner)
+ 
+       assert_email_delivered_with(
+         to: [nil: "vini@plausible.test"],
+@@ -151,7 +152,7 @@ defmodule Plausible.Site.Memberships.CreateInvitationTest do
+       add_guest(site, user: inviter, role: :editor)
+ 
+       assert {:error, :permission_denied} =
+-               CreateInvitation.create_invitation(site, inviter, "vini@plausible.test", :owner)
++               InviteToSite.create_invitation(site, inviter, "vini@plausible.test", :owner)
+     end
+ 
+     test "allows ownership transfer to existing site members" do
+@@ -161,7 +162,7 @@ defmodule Plausible.Site.Memberships.CreateInvitationTest do
+       add_guest(site, user: invitee, role: :viewer)
+ 
+       assert {:ok, %Plausible.Teams.SiteTransfer{}} =
+-               CreateInvitation.create_invitation(site, inviter, invitee.email, :owner)
++               InviteToSite.create_invitation(site, inviter, invitee.email, :owner)
+     end
+ 
+     test "allows creating an ownership transfer even when at team member limit" do
+@@ -170,7 +171,7 @@ defmodule Plausible.Site.Memberships.CreateInvitationTest do
+       for _ <- 1..3, do: add_guest(site, role: :viewer)
+ 
+       assert {:ok, _invitation} =
+-               CreateInvitation.create_invitation(
++               InviteToSite.create_invitation(
+                  site,
+                  inviter,
+                  "newowner@plausible.test",
+@@ -185,7 +186,7 @@ defmodule Plausible.Site.Memberships.CreateInvitationTest do
+       add_member(site.team, user: inviter, role: :viewer)
+ 
+       assert {:error, :permission_denied} =
+-               CreateInvitation.create_invitation(site, inviter, "vini@plausible.test", :viewer)
++               InviteToSite.create_invitation(site, inviter, "vini@plausible.test", :viewer)
+     end
+ 
+     test "allows admins to invite editors" do
+@@ -194,7 +195,7 @@ defmodule Plausible.Site.Memberships.CreateInvitationTest do
+       add_member(site.team, user: inviter, role: :admin)
+ 
+       assert {:ok, %Plausible.Teams.GuestInvitation{}} =
+-               CreateInvitation.create_invitation(site, inviter, "vini@plausible.test", :editor)
++               InviteToSite.create_invitation(site, inviter, "vini@plausible.test", :editor)
+     end
+   end
+ 
+@@ -207,7 +208,7 @@ defmodule Plausible.Site.Memberships.CreateInvitationTest do
+       site2 = new_site(owner: admin_user)
+ 
+       assert {:ok, _} =
+-               CreateInvitation.bulk_create_invitation(
++               InviteToSite.bulk_create_invitation(
+                  [site1, site2],
+                  admin_user,
+                  new_owner.email,
+@@ -237,7 +238,7 @@ defmodule Plausible.Site.Memberships.CreateInvitationTest do
+       site2 = new_site()
+ 
+       assert {:ok, _} =
+-               CreateInvitation.bulk_create_invitation(
++               InviteToSite.bulk_create_invitation(
+                  [site1, site2],
+                  superadmin_user,
+                  new_owner.email,
+diff --git a/test/plausible/site/memberships/reject_invitation_test.exs b/test/plausible/teams/invitations/reject_test.exs
+similarity index 81%
+rename from test/plausible/site/memberships/reject_invitation_test.exs
+rename to test/plausible/teams/invitations/reject_test.exs
+index 3d17da6ea..99202dcfc 100644
+--- a/test/plausible/site/memberships/reject_invitation_test.exs
++++ b/test/plausible/teams/invitations/reject_test.exs
+@@ -1,4 +1,4 @@
+-defmodule Plausible.Site.Memberships.RejectInvitationTest do
++defmodule Plausible.Teams.Invitations.RejectTest do
+   use Plausible
+   use Plausible.Teams.Test
+   use Plausible.DataCase, async: true
+@@ -6,7 +6,7 @@ defmodule Plausible.Site.Memberships.RejectInvitationTest do
+ 
+   @subject_prefix if ee?(), do: "[Plausible Analytics] ", else: "[Plausible CE] "
+ 
+-  alias Plausible.Site.Memberships.RejectInvitation
++  alias Plausible.Teams.Invitations.Reject
+ 
+   test "rejects guest invitation and sends email to inviter" do
+     inviter = new_user()
+@@ -16,7 +16,7 @@ defmodule Plausible.Site.Memberships.RejectInvitationTest do
+     invitation = invite_guest(site, invitee, inviter: inviter, role: :editor)
+ 
+     assert {:ok, rejected_invitation} =
+-             RejectInvitation.reject_invitation(invitation.invitation_id, invitee)
++             Reject.reject_invitation(invitation.invitation_id, invitee)
+ 
+     assert rejected_invitation.id == invitation.id
+     refute Repo.reload(rejected_invitation)
+@@ -36,7 +36,7 @@ defmodule Plausible.Site.Memberships.RejectInvitationTest do
+     invitation = invite_member(team, invitee, inviter: inviter, role: :editor)
+ 
+     assert {:ok, rejected_invitation} =
+-             RejectInvitation.reject_invitation(invitation.invitation_id, invitee)
++             Reject.reject_invitation(invitation.invitation_id, invitee)
+ 
+     assert rejected_invitation.id == invitation.id
+     refute Repo.reload(rejected_invitation)
+@@ -56,7 +56,7 @@ defmodule Plausible.Site.Memberships.RejectInvitationTest do
+     site_transfer = invite_transfer(site, invitee, inviter: inviter)
+ 
+     assert {:ok, rejected_transfer} =
+-             RejectInvitation.reject_invitation(site_transfer.transfer_id, invitee)
++             Reject.reject_invitation(site_transfer.transfer_id, invitee)
+ 
+     assert rejected_transfer.id == site_transfer.id
+     refute Repo.reload(rejected_transfer)
+@@ -72,7 +72,7 @@ defmodule Plausible.Site.Memberships.RejectInvitationTest do
+     invitee = new_user()
+ 
+     assert {:error, :invitation_not_found} =
+-             RejectInvitation.reject_invitation("does_not_exist", invitee)
++             Reject.reject_invitation("does_not_exist", invitee)
+   end
+ 
+   test "does not allow rejecting invitation by anyone other than invitee" do
+@@ -83,7 +83,7 @@ defmodule Plausible.Site.Memberships.RejectInvitationTest do
+     invitation = invite_guest(site, invitee, role: :editor, inviter: inviter)
+ 
+     assert {:error, :invitation_not_found} =
+-             RejectInvitation.reject_invitation(invitation.invitation_id, other_user)
++             Reject.reject_invitation(invitation.invitation_id, other_user)
+ 
+     assert Repo.reload(invitation)
+   end
+diff --git a/test/plausible/site/memberships/remove_invitation_test.exs b/test/plausible/teams/invitations/remove_from_site_test.exs
+similarity index 71%
+rename from test/plausible/site/memberships/remove_invitation_test.exs
+rename to test/plausible/teams/invitations/remove_from_site_test.exs
+index 416a643bf..0e4a06515 100644
+--- a/test/plausible/site/memberships/remove_invitation_test.exs
++++ b/test/plausible/teams/invitations/remove_from_site_test.exs
+@@ -1,8 +1,8 @@
+-defmodule Plausible.Site.Memberships.RemoveInvitationTest do
++defmodule Plausible.Teams.Invitations.RemoveFromSiteTest do
+   use Plausible.DataCase, async: true
+   use Plausible.Teams.Test
+ 
+-  alias Plausible.Site.Memberships.RemoveInvitation
++  alias Plausible.Teams.Invitations.RemoveFromSite
+ 
+   test "removes invitation" do
+     inviter = new_user()
+@@ -13,7 +13,7 @@ defmodule Plausible.Site.Memberships.RemoveInvitationTest do
+       invite_guest(site, invitee, inviter: inviter, role: :editor)
+ 
+     assert {:ok, removed_invitation} =
+-             RemoveInvitation.remove_invitation(invitation.invitation_id, site)
++             RemoveFromSite.remove_invitation(invitation.invitation_id, site)
+ 
+     assert removed_invitation.id == invitation.id
+     refute Repo.reload(removed_invitation)
+@@ -23,7 +23,7 @@ defmodule Plausible.Site.Memberships.RemoveInvitationTest do
+     site = new_site()
+ 
+     assert {:error, :invitation_not_found} =
+-             RemoveInvitation.remove_invitation("does_not_exist", site)
++             RemoveFromSite.remove_invitation("does_not_exist", site)
+   end
+ 
+   test "does not allow removing invitation from another site" do
+@@ -34,7 +34,7 @@ defmodule Plausible.Site.Memberships.RemoveInvitationTest do
+     invitation = invite_guest(site, invitee, role: :editor, inviter: inviter)
+ 
+     assert {:error, :invitation_not_found} =
+-             RemoveInvitation.remove_invitation(invitation.invitation_id, other_site)
++             RemoveFromSite.remove_invitation(invitation.invitation_id, other_site)
+ 
+     assert Repo.reload(invitation)
+   end

@@ -1,0 +1,2149 @@
+From 5b2e38c422de9dc27a56efae195082e0776cf9a9 Mon Sep 17 00:00:00 2001
+From: Javier Calvarro Nelson <jacalvar@microsoft.com>
+Date: Sun, 12 Apr 2026 10:03:46 +0200
+Subject: [PATCH] [Blazor] Add Blazor WebAssembly Service Defaults template
+ (#64807)
+
+* Add Blazor WebAssembly Service Defaults template
+
+Add a new project template 'blazor-wasm-servicedefaults' for creating
+service defaults libraries for Blazor WebAssembly applications with
+.NET Aspire integration.
+
+Features:
+- OpenTelemetry support (logging, metrics, and tracing)
+- Service discovery integration
+- HTTP resilience with standard resilience handler
+- Uses standard OpenTelemetry OTLP exporter
+
+New files:
+- BlazorWasmServiceDefaults-CSharp template content
+- Template configuration and localization files (14 languages)
+- Template test and baseline configuration
+- Package version definitions for OpenTelemetry and Extensions packages
+
+* Add --hosted flag to Blazor WebAssembly service defaults template
+
+- Add 'hosted' boolean parameter to template.json for hosted vs standalone scenarios
+- In hosted mode: config flows via BrowserConfiguration DOM comment (no JS initializer needed)
+- In standalone mode: adds BlazorClientServerExtensions placeholder for config endpoint
+- Remove commented-out component metrics/tracing (clean up template output)
+- Add BlazorWasmServiceDefaultsTemplate_HostedAsync test for --hosted variant
+
+* Fix blazor-wasm-servicedefaults template for test infrastructure
+
+- Add dotnetcli.host.json to map skipRestore -> --no-restore (required by test infra)
+- Add ide.host.json for IDE support
+- Update template.json TFM from net10.0 to net11.0 (post-rebase fix)
+- Update localized strings for net11.0 and hosted parameter
+- Add #pragma warning disable xUnit1041 to test file (matches other template tests)
+
+* Update blazor-wasm-servicedefaults template with OTLP exporters and telemetry
+
+- Add WebAssembly-compatible OTLP exporters for traces, metrics, and logs
+- Add protobuf serializers for OTLP wire format
+- Add TaskBasedBatchExportProcessor for async-safe batching in WASM
+- Use OTEL_SERVICE_NAME from configuration with project name fallback
+- Add HTTP instrumentation filter to prevent OTLP feedback loops
+- Add resilience handler and runtime instrumentation
+- Create direct HttpClient instances to avoid IHttpClientFactory reentrancy
+- Add JS initializer for standalone WASM config fetch
+- Exclude wwwroot/ when hosted (framework handles DOM config)
+- Update template-baselines.json with new files
+
+* Add BrowserConfiguration for server-to-browser config via DOM comment
+
+Introduces a BrowserConfiguration model that flows serializable options
+from the server to the Blazor client via a <!--Blazor-Configuration:{}-->
+HTML comment. This replaces the WebAssemblySettingsEmitter with a unified
+mechanism that works across all render modes (Server, WebAssembly, Auto).
+
+- BrowserConfiguration, ServerBrowserOptions, SsrBrowserOptions,
+  WebAssemblyBrowserOptions model classes
+- WithBrowserConfiguration() endpoint convention builder extension
+- ConfigureBrowser component and HttpContext extensions
+- EmitBrowserConfigurationOnce in EndpointHtmlRenderer
+- TypeScript: discoverBrowserConfiguration() and Boot.Web.ts integration
+  that applies config to logLevel, circuit, SSR, and WebAssembly options
+---
+ eng/Versions.props                            |   8 ++
+ .../BrowserConfiguration.cs                   |  26 ++++
+ .../ServerBrowserOptions.cs                   |  31 +++++
+ .../BrowserConfiguration/SsrBrowserOptions.cs |  22 +++
+ .../WebAssemblyBrowserOptions.cs              |  30 ++++
+ .../Components/src/PublicAPI.Unshipped.txt    |  32 +++++
+ ...owserConfigurationHttpContextExtensions.cs |  34 +++++
+ .../BrowserConfiguration/ConfigureBrowser.cs  |  69 ++++++++++
+ ...entsEndpointConventionBuilderExtensions.cs |  25 ++++
+ ...orComponentsServiceCollectionExtensions.cs |   1 -
+ .../WebAssemblySettingsEmitter.cs             |  53 -------
+ .../Endpoints/src/PublicAPI.Unshipped.txt     |   9 ++
+ .../BrowserConfigurationJsonContext.cs        |  14 ++
+ .../EndpointHtmlRenderer.Streaming.cs         |  47 ++++++-
+ .../test/EndpointHtmlRendererTest.cs          |  44 +++---
+ src/Components/Web.JS/src/Boot.Web.ts         |  46 +++++++
+ .../src/Rendering/DomMerging/DomSync.ts       |   2 +-
+ .../Services/ComponentDescriptorDiscovery.ts  |  31 ++++-
+ .../E2ETest/Tests/BrowserConfigurationTest.cs |  32 +++++
+ .../BasicTestApp/BasicTestApp.csproj          |   6 +-
+ .../RazorComponentEndpointsStartup.cs         |   7 +-
+ .../Pages/BrowserConfigurationEnvVars.razor   |  37 +++++
+ ...BlazorWasmServiceDefaults-CSharp.csproj.in |  24 ++++
+ ...crosoft.DotNet.Web.ProjectTemplates.csproj |   7 +
+ .../.template.config/dotnetcli.host.json      |  19 +++
+ .../.template.config/ide.host.json            |   4 +
+ .../localize/templatestrings.cs.json          |  10 ++
+ .../localize/templatestrings.de.json          |  10 ++
+ .../localize/templatestrings.en.json          |  10 ++
+ .../localize/templatestrings.es.json          |  10 ++
+ .../localize/templatestrings.fr.json          |  10 ++
+ .../localize/templatestrings.it.json          |  10 ++
+ .../localize/templatestrings.ja.json          |  10 ++
+ .../localize/templatestrings.ko.json          |  10 ++
+ .../localize/templatestrings.pl.json          |  10 ++
+ .../localize/templatestrings.pt-BR.json       |  10 ++
+ .../localize/templatestrings.ru.json          |  10 ++
+ .../localize/templatestrings.tr.json          |  10 ++
+ .../localize/templatestrings.zh-Hans.json     |  10 ++
+ .../localize/templatestrings.zh-Hant.json     |  10 ++
+ .../.template.config/template.json            |  82 +++++++++++
+ .../BackgroundExportHandler.cs                | 129 ++++++++++++++++++
+ .../Extensions.cs                             | 101 ++++++++++++++
+ .../BlazorWasm.ServiceDefaults1.lib.module.js |  22 +++
+ .../BlazorWasmServiceDefaultsTemplateTest.cs  |  60 ++++++++
+ .../Templates.Tests/template-baselines.json   |  13 +-
+ .../BrowserAssertFailedException.cs           |  18 ++-
+ src/Shared/E2ETesting/BrowserFixture.cs       |   4 +
+ .../CaptureSeleniumLogsAttribute.cs           |   6 +-
+ src/Shared/E2ETesting/WaitAssert.cs           |  82 +++++++++--
+ 50 files changed, 1222 insertions(+), 95 deletions(-)
+ create mode 100644 src/Components/Components/src/BrowserConfiguration/BrowserConfiguration.cs
+ create mode 100644 src/Components/Components/src/BrowserConfiguration/ServerBrowserOptions.cs
+ create mode 100644 src/Components/Components/src/BrowserConfiguration/SsrBrowserOptions.cs
+ create mode 100644 src/Components/Components/src/BrowserConfiguration/WebAssemblyBrowserOptions.cs
+ create mode 100644 src/Components/Endpoints/src/BrowserConfiguration/BrowserConfigurationHttpContextExtensions.cs
+ create mode 100644 src/Components/Endpoints/src/BrowserConfiguration/ConfigureBrowser.cs
+ delete mode 100644 src/Components/Endpoints/src/DependencyInjection/WebAssemblySettingsEmitter.cs
+ create mode 100644 src/Components/Endpoints/src/Rendering/BrowserConfigurationJsonContext.cs
+ create mode 100644 src/Components/test/E2ETest/Tests/BrowserConfigurationTest.cs
+ create mode 100644 src/Components/test/testassets/Components.WasmMinimal/Pages/BrowserConfigurationEnvVars.razor
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/BlazorWasmServiceDefaults-CSharp.csproj.in
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/dotnetcli.host.json
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/ide.host.json
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.cs.json
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.de.json
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.en.json
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.es.json
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.fr.json
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.it.json
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.ja.json
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.ko.json
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.pl.json
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.pt-BR.json
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.ru.json
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.tr.json
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.zh-Hans.json
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.zh-Hant.json
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/template.json
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/BackgroundExportHandler.cs
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/Extensions.cs
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/wwwroot/BlazorWasm.ServiceDefaults1.lib.module.js
+ create mode 100644 src/ProjectTemplates/test/Templates.Tests/BlazorWasmServiceDefaultsTemplateTest.cs
+
+diff --git a/eng/Versions.props b/eng/Versions.props
+index 7b5b990dbd..abc26234b5 100644
+--- a/eng/Versions.props
++++ b/eng/Versions.props
+@@ -149,6 +149,9 @@
+     <GrpcNetClientVersion>2.64.0</GrpcNetClientVersion>
+     <GrpcToolsVersion>2.64.0</GrpcToolsVersion>
+     <MessagePackVersion>2.5.187</MessagePackVersion>
++    <!-- Extensions packages for Blazor WASM Service Defaults -->
++    <MicrosoftExtensionsHttpResilienceVersion>10.0.0</MicrosoftExtensionsHttpResilienceVersion>
++    <MicrosoftExtensionsServiceDiscoveryVersion>10.0.0</MicrosoftExtensionsServiceDiscoveryVersion>
+     <MicrosoftIdentityWebVersion>3.14.1</MicrosoftIdentityWebVersion>
+     <MicrosoftIdentityWebGraphServiceClientVersion>3.14.1</MicrosoftIdentityWebGraphServiceClientVersion>
+     <MicrosoftIdentityWebUIVersion>3.14.1</MicrosoftIdentityWebUIVersion>
+@@ -161,6 +164,11 @@
+     <NewtonsoftJsonBsonVersion>1.0.2</NewtonsoftJsonBsonVersion>
+     <NewtonsoftJsonVersion>13.0.3</NewtonsoftJsonVersion>
+     <NSwagApiDescriptionClientVersion>13.0.4</NSwagApiDescriptionClientVersion>
++    <!-- OpenTelemetry packages for Blazor WASM Service Defaults -->
++    <OpenTelemetryExporterOpenTelemetryProtocolVersion>1.10.0</OpenTelemetryExporterOpenTelemetryProtocolVersion>
++    <OpenTelemetryExtensionsHostingVersion>1.10.0</OpenTelemetryExtensionsHostingVersion>
++    <OpenTelemetryInstrumentationHttpVersion>1.10.0</OpenTelemetryInstrumentationHttpVersion>
++    <OpenTelemetryInstrumentationRuntimeVersion>1.10.0</OpenTelemetryInstrumentationRuntimeVersion>
+     <PhotinoNETVersion>2.5.2</PhotinoNETVersion>
+     <MicrosoftPlaywrightVersion>1.58.0</MicrosoftPlaywrightVersion>
+     <PollyExtensionsHttpVersion>3.0.0</PollyExtensionsHttpVersion>
+diff --git a/src/Components/Components/src/BrowserConfiguration/BrowserConfiguration.cs b/src/Components/Components/src/BrowserConfiguration/BrowserConfiguration.cs
+new file mode 100644
+index 0000000000..8883f20237
+--- /dev/null
++++ b/src/Components/Components/src/BrowserConfiguration/BrowserConfiguration.cs
+@@ -0,0 +1,26 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++namespace Microsoft.AspNetCore.Components;
++
++/// <summary>
++/// Configuration that flows from the server to the Blazor client in the browser
++/// via a DOM comment. Only serializable options; callbacks stay with JS initializers.
++/// </summary>
++public sealed class BrowserConfiguration
++{
++    /// <summary>
++    /// The log level for the Blazor JS runtime. Applies to all render modes.
++    /// Maps to <c>WebStartOptions.logLevel</c>.
++    /// </summary>
++    public int? LogLevel { get; set; }
++
++    /// <summary>WebAssembly-specific options.</summary>
++    public WebAssemblyBrowserOptions WebAssembly { get; set; } = new();
++
++    /// <summary>Server/Circuit-specific options.</summary>
++    public ServerBrowserOptions Server { get; set; } = new();
++
++    /// <summary>SSR-specific options.</summary>
++    public SsrBrowserOptions Ssr { get; set; } = new();
++}
+diff --git a/src/Components/Components/src/BrowserConfiguration/ServerBrowserOptions.cs b/src/Components/Components/src/BrowserConfiguration/ServerBrowserOptions.cs
+new file mode 100644
+index 0000000000..b8aee08f95
+--- /dev/null
++++ b/src/Components/Components/src/BrowserConfiguration/ServerBrowserOptions.cs
+@@ -0,0 +1,31 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++namespace Microsoft.AspNetCore.Components;
++
++/// <summary>
++/// Serializable subset of <c>CircuitStartOptions</c>.
++/// Non-serializable options (<c>configureSignalR</c>, <c>reconnectionHandler</c>,
++/// <c>circuitHandlers</c>) must use <c>Blazor.start()</c> or JS initializers.
++/// </summary>
++public sealed class ServerBrowserOptions
++{
++    /// <summary>
++    /// Maximum reconnection attempts before giving up.
++    /// Maps to <c>CircuitStartOptions.reconnectionOptions.maxRetries</c>.
++    /// </summary>
++    public int? ReconnectionMaxRetries { get; set; }
++
++    /// <summary>
++    /// Base interval in milliseconds between reconnection attempts (scalar form).
++    /// The function form <c>(retryCount, currentMs) => number</c> requires JS.
++    /// Maps to <c>CircuitStartOptions.reconnectionOptions.retryIntervalMilliseconds</c>.
++    /// </summary>
++    public int? ReconnectionRetryIntervalMilliseconds { get; set; }
++
++    /// <summary>
++    /// CSS ID of the reconnection dialog element.
++    /// Maps to <c>CircuitStartOptions.reconnectionOptions.dialogId</c>.
++    /// </summary>
++    public string? ReconnectionDialogId { get; set; }
++}
+diff --git a/src/Components/Components/src/BrowserConfiguration/SsrBrowserOptions.cs b/src/Components/Components/src/BrowserConfiguration/SsrBrowserOptions.cs
+new file mode 100644
+index 0000000000..dfd78a0b0a
+--- /dev/null
++++ b/src/Components/Components/src/BrowserConfiguration/SsrBrowserOptions.cs
+@@ -0,0 +1,22 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++namespace Microsoft.AspNetCore.Components;
++
++/// <summary>
++/// Serializable subset of <c>SsrStartOptions</c>.
++/// </summary>
++public sealed class SsrBrowserOptions
++{
++    /// <summary>
++    /// When true, disables DOM preservation during enhanced navigation.
++    /// Maps to <c>SsrStartOptions.disableDomPreservation</c>.
++    /// </summary>
++    public bool? DisableDomPreservation { get; set; }
++
++    /// <summary>
++    /// Timeout in milliseconds before an inactive circuit is disposed.
++    /// Maps to <c>SsrStartOptions.circuitInactivityTimeoutMs</c>.
++    /// </summary>
++    public int? CircuitInactivityTimeoutMs { get; set; }
++}
+diff --git a/src/Components/Components/src/BrowserConfiguration/WebAssemblyBrowserOptions.cs b/src/Components/Components/src/BrowserConfiguration/WebAssemblyBrowserOptions.cs
+new file mode 100644
+index 0000000000..6eeccd428b
+--- /dev/null
++++ b/src/Components/Components/src/BrowserConfiguration/WebAssemblyBrowserOptions.cs
+@@ -0,0 +1,30 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++namespace Microsoft.AspNetCore.Components;
++
++/// <summary>
++/// Serializable subset of <c>WebAssemblyStartOptions</c>.
++/// Non-serializable options (<c>loadBootResource</c>, <c>configureRuntime</c>,
++/// <c>initializers</c>) must use <c>Blazor.start()</c> or JS initializers.
++/// </summary>
++public sealed class WebAssemblyBrowserOptions
++{
++    /// <summary>
++    /// Hosting environment name (e.g., "Development", "Production").
++    /// Maps to <c>WebAssemblyStartOptions.environment</c>.
++    /// </summary>
++    public string? EnvironmentName { get; set; }
++
++    /// <summary>
++    /// Application culture in BCP 47 format (e.g., "en-US").
++    /// Maps to <c>WebAssemblyStartOptions.applicationCulture</c>.
++    /// </summary>
++    public string? ApplicationCulture { get; set; }
++
++    /// <summary>
++    /// Environment variables for the .NET WebAssembly runtime.
++    /// Use for OTEL endpoints, service URLs, etc.
++    /// </summary>
++    public Dictionary<string, string> EnvironmentVariables { get; set; } = new();
++}
+diff --git a/src/Components/Components/src/PublicAPI.Unshipped.txt b/src/Components/Components/src/PublicAPI.Unshipped.txt
+index 680bed59de..8007247b6b 100644
+--- a/src/Components/Components/src/PublicAPI.Unshipped.txt
++++ b/src/Components/Components/src/PublicAPI.Unshipped.txt
+@@ -7,3 +7,35 @@ Microsoft.AspNetCore.Components.IComponentPropertyActivator.GetActivator(System.
+ *REMOVED*Microsoft.AspNetCore.Components.ResourceAsset.ResourceAsset(string! url, System.Collections.Generic.IReadOnlyList<Microsoft.AspNetCore.Components.ResourceAssetProperty!>? properties) -> void
+ *REMOVED*Microsoft.AspNetCore.Components.Routing.Router.PreferExactMatches.get -> bool
+ *REMOVED*Microsoft.AspNetCore.Components.Routing.Router.PreferExactMatches.set -> void
++Microsoft.AspNetCore.Components.BrowserConfiguration
++Microsoft.AspNetCore.Components.BrowserConfiguration.BrowserConfiguration() -> void
++Microsoft.AspNetCore.Components.BrowserConfiguration.LogLevel.get -> int?
++Microsoft.AspNetCore.Components.BrowserConfiguration.LogLevel.set -> void
++Microsoft.AspNetCore.Components.BrowserConfiguration.Server.get -> Microsoft.AspNetCore.Components.ServerBrowserOptions!
++Microsoft.AspNetCore.Components.BrowserConfiguration.Server.set -> void
++Microsoft.AspNetCore.Components.BrowserConfiguration.Ssr.get -> Microsoft.AspNetCore.Components.SsrBrowserOptions!
++Microsoft.AspNetCore.Components.BrowserConfiguration.Ssr.set -> void
++Microsoft.AspNetCore.Components.BrowserConfiguration.WebAssembly.get -> Microsoft.AspNetCore.Components.WebAssemblyBrowserOptions!
++Microsoft.AspNetCore.Components.BrowserConfiguration.WebAssembly.set -> void
++Microsoft.AspNetCore.Components.ServerBrowserOptions
++Microsoft.AspNetCore.Components.ServerBrowserOptions.ServerBrowserOptions() -> void
++Microsoft.AspNetCore.Components.ServerBrowserOptions.ReconnectionDialogId.get -> string?
++Microsoft.AspNetCore.Components.ServerBrowserOptions.ReconnectionDialogId.set -> void
++Microsoft.AspNetCore.Components.ServerBrowserOptions.ReconnectionMaxRetries.get -> int?
++Microsoft.AspNetCore.Components.ServerBrowserOptions.ReconnectionMaxRetries.set -> void
++Microsoft.AspNetCore.Components.ServerBrowserOptions.ReconnectionRetryIntervalMilliseconds.get -> int?
++Microsoft.AspNetCore.Components.ServerBrowserOptions.ReconnectionRetryIntervalMilliseconds.set -> void
++Microsoft.AspNetCore.Components.SsrBrowserOptions
++Microsoft.AspNetCore.Components.SsrBrowserOptions.SsrBrowserOptions() -> void
++Microsoft.AspNetCore.Components.SsrBrowserOptions.CircuitInactivityTimeoutMs.get -> int?
++Microsoft.AspNetCore.Components.SsrBrowserOptions.CircuitInactivityTimeoutMs.set -> void
++Microsoft.AspNetCore.Components.SsrBrowserOptions.DisableDomPreservation.get -> bool?
++Microsoft.AspNetCore.Components.SsrBrowserOptions.DisableDomPreservation.set -> void
++Microsoft.AspNetCore.Components.WebAssemblyBrowserOptions
++Microsoft.AspNetCore.Components.WebAssemblyBrowserOptions.WebAssemblyBrowserOptions() -> void
++Microsoft.AspNetCore.Components.WebAssemblyBrowserOptions.ApplicationCulture.get -> string?
++Microsoft.AspNetCore.Components.WebAssemblyBrowserOptions.ApplicationCulture.set -> void
++Microsoft.AspNetCore.Components.WebAssemblyBrowserOptions.EnvironmentName.get -> string?
++Microsoft.AspNetCore.Components.WebAssemblyBrowserOptions.EnvironmentName.set -> void
++Microsoft.AspNetCore.Components.WebAssemblyBrowserOptions.EnvironmentVariables.get -> System.Collections.Generic.Dictionary<string!, string!>!
++Microsoft.AspNetCore.Components.WebAssemblyBrowserOptions.EnvironmentVariables.set -> void
+diff --git a/src/Components/Endpoints/src/BrowserConfiguration/BrowserConfigurationHttpContextExtensions.cs b/src/Components/Endpoints/src/BrowserConfiguration/BrowserConfigurationHttpContextExtensions.cs
+new file mode 100644
+index 0000000000..a5d1dc07a1
+--- /dev/null
++++ b/src/Components/Endpoints/src/BrowserConfiguration/BrowserConfigurationHttpContextExtensions.cs
+@@ -0,0 +1,34 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.AspNetCore.Components;
++
++namespace Microsoft.AspNetCore.Http;
++
++/// <summary>
++/// Extension methods on <see cref="HttpContext"/> for accessing <see cref="BrowserConfiguration"/>.
++/// </summary>
++public static class BrowserConfigurationHttpContextExtensions
++{
++    private static readonly object Key = new();
++
++    /// <summary>
++    /// Gets the <see cref="BrowserConfiguration"/> for the current request.
++    /// If not already set, seeds from endpoint metadata or creates a new instance.
++    /// </summary>
++    /// <param name="context">The <see cref="HttpContext"/>.</param>
++    /// <returns>The <see cref="BrowserConfiguration"/> for the current request.</returns>
++    public static BrowserConfiguration GetBrowserConfiguration(this HttpContext context)
++    {
++        if (!context.Items.TryGetValue(Key, out var result))
++        {
++            // Seed from endpoint metadata if available
++            var metadataConfig = context.GetEndpoint()?.Metadata.GetMetadata<BrowserConfiguration>();
++            var config = metadataConfig ?? new BrowserConfiguration();
++            context.Items[Key] = config;
++            return config;
++        }
++
++        return (BrowserConfiguration)result!;
++    }
++}
+diff --git a/src/Components/Endpoints/src/BrowserConfiguration/ConfigureBrowser.cs b/src/Components/Endpoints/src/BrowserConfiguration/ConfigureBrowser.cs
+new file mode 100644
+index 0000000000..5d8fac5c1c
+--- /dev/null
++++ b/src/Components/Endpoints/src/BrowserConfiguration/ConfigureBrowser.cs
+@@ -0,0 +1,69 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.AspNetCore.Http;
++
++namespace Microsoft.AspNetCore.Components;
++
++/// <summary>
++/// A component that configures the Blazor browser runtime by merging
++/// configuration into the <see cref="BrowserConfiguration"/> on the current
++/// <see cref="HttpContext"/>. The merged configuration is emitted as
++/// a <c>&lt;!--Blazor-Configuration:{...}--&gt;</c> DOM comment by the renderer.
++/// </summary>
++public sealed class ConfigureBrowser : IComponent
++{
++    private RenderHandle _renderHandle;
++
++    /// <summary>
++    /// Gets or sets the <see cref="BrowserConfiguration"/> to merge.
++    /// </summary>
++    [Parameter, EditorRequired]
++    public BrowserConfiguration Configuration { get; set; } = default!;
++
++    /// <summary>
++    /// Gets or sets the <see cref="HttpContext"/> for the current request.
++    /// </summary>
++    [CascadingParameter]
++    public HttpContext? HttpContext { get; set; }
++
++    void IComponent.Attach(RenderHandle renderHandle)
++    {
++        _renderHandle = renderHandle;
++    }
++
++    Task IComponent.SetParametersAsync(ParameterView parameters)
++    {
++        parameters.SetParameterProperties(this);
++
++        if (HttpContext is not null)
++        {
++            var existing = HttpContext.GetBrowserConfiguration();
++            MergeInto(existing, Configuration);
++        }
++
++        return Task.CompletedTask;
++    }
++
++    internal static void MergeInto(BrowserConfiguration target, BrowserConfiguration source)
++    {
++        target.LogLevel = source.LogLevel ?? target.LogLevel;
++
++        // WebAssembly
++        target.WebAssembly.EnvironmentName = source.WebAssembly.EnvironmentName ?? target.WebAssembly.EnvironmentName;
++        target.WebAssembly.ApplicationCulture = source.WebAssembly.ApplicationCulture ?? target.WebAssembly.ApplicationCulture;
++        foreach (var kvp in source.WebAssembly.EnvironmentVariables)
++        {
++            target.WebAssembly.EnvironmentVariables[kvp.Key] = kvp.Value;
++        }
++
++        // Server
++        target.Server.ReconnectionMaxRetries = source.Server.ReconnectionMaxRetries ?? target.Server.ReconnectionMaxRetries;
++        target.Server.ReconnectionRetryIntervalMilliseconds = source.Server.ReconnectionRetryIntervalMilliseconds ?? target.Server.ReconnectionRetryIntervalMilliseconds;
++        target.Server.ReconnectionDialogId = source.Server.ReconnectionDialogId ?? target.Server.ReconnectionDialogId;
++
++        // SSR
++        target.Ssr.DisableDomPreservation = source.Ssr.DisableDomPreservation ?? target.Ssr.DisableDomPreservation;
++        target.Ssr.CircuitInactivityTimeoutMs = source.Ssr.CircuitInactivityTimeoutMs ?? target.Ssr.CircuitInactivityTimeoutMs;
++    }
++}
+diff --git a/src/Components/Endpoints/src/Builder/RazorComponentsEndpointConventionBuilderExtensions.cs b/src/Components/Endpoints/src/Builder/RazorComponentsEndpointConventionBuilderExtensions.cs
+index 7cc4fa4dc7..754663d2cd 100644
+--- a/src/Components/Endpoints/src/Builder/RazorComponentsEndpointConventionBuilderExtensions.cs
++++ b/src/Components/Endpoints/src/Builder/RazorComponentsEndpointConventionBuilderExtensions.cs
+@@ -63,4 +63,29 @@ public static class RazorComponentsEndpointConventionBuilderExtensions
+ 
+         return builder;
+     }
++
++    /// <summary>
++    /// Configures a <see cref="BrowserConfiguration"/> that will be emitted as a DOM comment
++    /// to the browser for all Razor component endpoints.
++    /// </summary>
++    /// <param name="builder">The <see cref="RazorComponentsEndpointConventionBuilder"/>.</param>
++    /// <param name="configure">An action to configure the <see cref="BrowserConfiguration"/>.</param>
++    /// <returns>The <see cref="RazorComponentsEndpointConventionBuilder"/>.</returns>
++    public static RazorComponentsEndpointConventionBuilder WithBrowserConfiguration(
++        this RazorComponentsEndpointConventionBuilder builder,
++        Action<BrowserConfiguration> configure)
++    {
++        ArgumentNullException.ThrowIfNull(builder);
++        ArgumentNullException.ThrowIfNull(configure);
++
++        var config = new BrowserConfiguration();
++        configure(config);
++
++        builder.Add(endpointBuilder =>
++        {
++            endpointBuilder.Metadata.Add(config);
++        });
++
++        return builder;
++    }
+ }
+diff --git a/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs b/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs
+index df998d59c7..6a6a418db0 100644
+--- a/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs
++++ b/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs
+@@ -72,7 +72,6 @@ public static class RazorComponentsServiceCollectionExtensions
+         services.AddSupplyValueFromQueryProvider();
+         services.AddSupplyValueFromPersistentComponentStateProvider();
+         services.TryAddCascadingValue(sp => sp.GetRequiredService<EndpointHtmlRenderer>().HttpContext);
+-        services.TryAddScoped<WebAssemblySettingsEmitter>();
+         services.TryAddScoped<ResourcePreloadService>();
+         services.AddTempData();
+ 
+diff --git a/src/Components/Endpoints/src/DependencyInjection/WebAssemblySettingsEmitter.cs b/src/Components/Endpoints/src/DependencyInjection/WebAssemblySettingsEmitter.cs
+deleted file mode 100644
+index 87ae37d74f..0000000000
+--- a/src/Components/Endpoints/src/DependencyInjection/WebAssemblySettingsEmitter.cs
++++ /dev/null
+@@ -1,53 +0,0 @@
+-// Licensed to the .NET Foundation under one or more agreements.
+-// The .NET Foundation licenses this file to you under the MIT license.
+-
+-using System.Diagnostics.CodeAnalysis;
+-using Microsoft.Extensions.Hosting;
+-
+-namespace Microsoft.AspNetCore.Components.Endpoints;
+-
+-internal record WebAssemblySettings(string EnvironmentName, Dictionary<string, string> EnvironmentVariables);
+-
+-internal class WebAssemblySettingsEmitter(IHostEnvironment hostEnvironment)
+-{
+-    private bool wasEmittedAlready;
+-
+-    private const string dotnetModifiableAssembliesName = "DOTNET_MODIFIABLE_ASSEMBLIES";
+-    private const string aspnetcoreBrowserToolsName = "__ASPNETCORE_BROWSER_TOOLS";
+-
+-    private static readonly string? s_dotnetModifiableAssemblies = GetNonEmptyEnvironmentVariableValue(dotnetModifiableAssembliesName);
+-    private static readonly string? s_aspnetcoreBrowserTools = GetNonEmptyEnvironmentVariableValue(aspnetcoreBrowserToolsName);
+-
+-    private static string? GetNonEmptyEnvironmentVariableValue(string name)
+-        => Environment.GetEnvironmentVariable(name) is { Length: > 0 } value ? value : null;
+-
+-    public bool TryGetSettingsOnce([NotNullWhen(true)] out WebAssemblySettings? settings)
+-    {
+-        if (wasEmittedAlready)
+-        {
+-            settings = default;
+-            return false;
+-        }
+-
+-        var environmentVariables = new Dictionary<string, string>();
+-
+-        // DOTNET_MODIFIABLE_ASSEMBLIES is used by the runtime to initialize hot-reload specific environment variables and is configured
+-        // by the launching process (dotnet-watch / Visual Studio).
+-        // Always add the header if the environment variable is set, regardless of the kind of environment.
+-        if (s_dotnetModifiableAssemblies != null)
+-        {
+-            environmentVariables[dotnetModifiableAssembliesName] = s_dotnetModifiableAssemblies;
+-        }
+-
+-        // See https://github.com/dotnet/aspnetcore/issues/37357#issuecomment-941237000
+-        // Translate the _ASPNETCORE_BROWSER_TOOLS environment configured by the browser tools agent in to a HTTP response header.
+-        if (s_aspnetcoreBrowserTools != null)
+-        {
+-            environmentVariables[aspnetcoreBrowserToolsName] = s_aspnetcoreBrowserTools;
+-        }
+-
+-        wasEmittedAlready = true;
+-        settings = new (hostEnvironment.EnvironmentName, environmentVariables);
+-        return true;
+-    }
+-}
+diff --git a/src/Components/Endpoints/src/PublicAPI.Unshipped.txt b/src/Components/Endpoints/src/PublicAPI.Unshipped.txt
+index 2ebef8b695..e26fbfcce5 100644
+--- a/src/Components/Endpoints/src/PublicAPI.Unshipped.txt
++++ b/src/Components/Endpoints/src/PublicAPI.Unshipped.txt
+@@ -13,3 +13,12 @@ Microsoft.AspNetCore.Components.ITempData.Get(string! key) -> object?
+ Microsoft.AspNetCore.Components.ITempData.Keep() -> void
+ Microsoft.AspNetCore.Components.ITempData.Keep(string! key) -> void
+ Microsoft.AspNetCore.Components.ITempData.Peek(string! key) -> object?
++Microsoft.AspNetCore.Components.ConfigureBrowser
++Microsoft.AspNetCore.Components.ConfigureBrowser.ConfigureBrowser() -> void
++Microsoft.AspNetCore.Components.ConfigureBrowser.Configuration.get -> Microsoft.AspNetCore.Components.BrowserConfiguration!
++Microsoft.AspNetCore.Components.ConfigureBrowser.Configuration.set -> void
++Microsoft.AspNetCore.Components.ConfigureBrowser.HttpContext.get -> Microsoft.AspNetCore.Http.HttpContext?
++Microsoft.AspNetCore.Components.ConfigureBrowser.HttpContext.set -> void
++Microsoft.AspNetCore.Http.BrowserConfigurationHttpContextExtensions
++static Microsoft.AspNetCore.Http.BrowserConfigurationHttpContextExtensions.GetBrowserConfiguration(this Microsoft.AspNetCore.Http.HttpContext! context) -> Microsoft.AspNetCore.Components.BrowserConfiguration!
++static Microsoft.AspNetCore.Builder.RazorComponentsEndpointConventionBuilderExtensions.WithBrowserConfiguration(this Microsoft.AspNetCore.Builder.RazorComponentsEndpointConventionBuilder! builder, System.Action<Microsoft.AspNetCore.Components.BrowserConfiguration!>! configure) -> Microsoft.AspNetCore.Builder.RazorComponentsEndpointConventionBuilder!
+diff --git a/src/Components/Endpoints/src/Rendering/BrowserConfigurationJsonContext.cs b/src/Components/Endpoints/src/Rendering/BrowserConfigurationJsonContext.cs
+new file mode 100644
+index 0000000000..ace7473c19
+--- /dev/null
++++ b/src/Components/Endpoints/src/Rendering/BrowserConfigurationJsonContext.cs
+@@ -0,0 +1,14 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using System.Text.Json.Serialization;
++
++namespace Microsoft.AspNetCore.Components;
++
++[JsonSourceGenerationOptions(
++    PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
++    DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull)]
++[JsonSerializable(typeof(BrowserConfiguration))]
++internal partial class BrowserConfigurationJsonContext : JsonSerializerContext
++{
++}
+diff --git a/src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.Streaming.cs b/src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.Streaming.cs
+index 50728a8c32..2890acec70 100644
+--- a/src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.Streaming.cs
++++ b/src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.Streaming.cs
+@@ -23,6 +23,7 @@ internal partial class EndpointHtmlRenderer
+     private string? _ssrFramingCommentMarkup;
+     private bool _isHandlingErrors;
+     private bool _isReExecuted;
++    private bool _browserConfigurationEmitted;
+ 
+     public void InitializeStreamingRenderingFraming(HttpContext httpContext, bool isErrorHandler, bool isReExecuted)
+     {
+@@ -284,13 +285,10 @@ internal partial class EndpointHtmlRenderer
+                 _httpContext.Response.Headers.CacheControl = "no-cache, no-store, max-age=0";
+             }
+ 
+-            if (marker.Type is ComponentMarker.WebAssemblyMarkerType or ComponentMarker.AutoMarkerType)
++            if (marker.Type is ComponentMarker.WebAssemblyMarkerType or ComponentMarker.AutoMarkerType
++                or ComponentMarker.ServerMarkerType)
+             {
+-                if (_httpContext.RequestServices.GetRequiredService<WebAssemblySettingsEmitter>().TryGetSettingsOnce(out var settings))
+-                {
+-                    var settingsJson = JsonSerializer.Serialize(settings, ServerComponentSerializationSettings.JsonSerializationOptions);
+-                    output.Write($"<!--Blazor-WebAssembly:{settingsJson}-->");
+-                }
++                EmitBrowserConfigurationOnce(output);
+             }
+ 
+             var serializedStartRecord = JsonSerializer.Serialize(marker, ServerComponentSerializationSettings.JsonSerializationOptions);
+@@ -331,6 +329,43 @@ internal partial class EndpointHtmlRenderer
+         return accept.Count == 1 && string.Equals(accept[0]!, "text/html; blazor-enhanced-nav=on", StringComparison.Ordinal);
+     }
+ 
++    private static readonly string? s_dotnetModifiableAssemblies =
++        Environment.GetEnvironmentVariable("DOTNET_MODIFIABLE_ASSEMBLIES") is { Length: > 0 } v1 ? v1 : null;
++
++    private static readonly string? s_aspnetcoreBrowserTools =
++        Environment.GetEnvironmentVariable("__ASPNETCORE_BROWSER_TOOLS") is { Length: > 0 } v2 ? v2 : null;
++
++    private void EmitBrowserConfigurationOnce(TextWriter output)
++    {
++        if (_browserConfigurationEmitted)
++        {
++            return;
++        }
++
++        _browserConfigurationEmitted = true;
++
++        var config = _httpContext.GetBrowserConfiguration();
++
++        // Apply framework defaults: environment name and tooling env vars
++        var hostEnvironment = _httpContext.RequestServices.GetRequiredService<IHostEnvironment>();
++        config.WebAssembly.EnvironmentName ??= hostEnvironment.EnvironmentName;
++
++        if (s_dotnetModifiableAssemblies != null)
++        {
++            config.WebAssembly.EnvironmentVariables.TryAdd("DOTNET_MODIFIABLE_ASSEMBLIES", s_dotnetModifiableAssemblies);
++        }
++
++        if (s_aspnetcoreBrowserTools != null)
++        {
++            config.WebAssembly.EnvironmentVariables.TryAdd("__ASPNETCORE_BROWSER_TOOLS", s_aspnetcoreBrowserTools);
++        }
++
++        var configJson = JsonSerializer.Serialize(config, BrowserConfigurationJsonContext.Default.BrowserConfiguration);
++        var configBase64 = Convert.ToBase64String(Encoding.UTF8.GetBytes(configJson));
++        output.Write("<!--Blazor-Configuration:");
++        output.Write(configBase64);
++        output.Write("-->");
++    }
+     private readonly struct ComponentIdAndDepth
+     {
+         public int ComponentId { get; }
+diff --git a/src/Components/Endpoints/test/EndpointHtmlRendererTest.cs b/src/Components/Endpoints/test/EndpointHtmlRendererTest.cs
+index 62151e6bdb..6b5bc359d4 100644
+--- a/src/Components/Endpoints/test/EndpointHtmlRendererTest.cs
++++ b/src/Components/Endpoints/test/EndpointHtmlRendererTest.cs
+@@ -37,7 +37,7 @@ public class EndpointHtmlRendererTest
+ {
+     private const string MarkerPrefix = "<!--Blazor:";
+     private const string PrerenderedComponentPattern = "^<!--Blazor:(?<preamble>.*?)-->(?<content>.+?)<!--Blazor:(?<epilogue>.*?)-->$";
+-    private const string WebAssemblyOptionsPattern = "^<!--Blazor-WebAssembly:(.*?)-->";
++    private const string BrowserConfigurationPattern = "^<!--Blazor-Configuration:(.*?)-->";
+     private const string ComponentPattern = "^<!--Blazor:(.*?)-->$";
+ 
+     private static readonly IDataProtectionProvider _dataprotectorProvider = new EphemeralDataProtectionProvider();
+@@ -81,7 +81,7 @@ public class EndpointHtmlRendererTest
+         var result = await renderer.PrerenderComponentAsync(httpContext, typeof(SimpleComponent), new InteractiveWebAssemblyRenderMode(prerender: false), ParameterView.Empty);
+         await renderer.Dispatcher.InvokeAsync(() => result.WriteTo(writer, HtmlEncoder.Default));
+         var content = writer.ToString();
+-        content = AssertAndStripWebAssemblyOptions(content);
++        content = AssertAndStripBrowserConfiguration(content);
+         var match = Regex.Match(content, ComponentPattern);
+ 
+         // Assert
+@@ -91,7 +91,7 @@ public class EndpointHtmlRendererTest
+         Assert.Equal("webassembly", marker.Type);
+         Assert.Equal(typeof(SimpleComponent).Assembly.GetName().Name, marker.Assembly);
+         Assert.Equal(typeof(SimpleComponent).FullName, marker.TypeName);
+-        Assert.Empty(httpContext.Items);
++        Assert.DoesNotContain(httpContext.Items.Values, value => value is InvokedRenderModes);
+     }
+ 
+     [Fact]
+@@ -171,7 +171,7 @@ public class EndpointHtmlRendererTest
+         var result = await renderer.PrerenderComponentAsync(httpContext, typeof(SimpleComponent), RenderMode.InteractiveWebAssembly, ParameterView.Empty);
+         await renderer.Dispatcher.InvokeAsync(() => result.WriteTo(writer, HtmlEncoder.Default));
+         var content = writer.ToString();
+-        content = AssertAndStripWebAssemblyOptions(content);
++        content = AssertAndStripBrowserConfiguration(content);
+         var match = Regex.Match(content, PrerenderedComponentPattern, RegexOptions.Multiline);
+ 
+         // Assert
+@@ -194,7 +194,7 @@ public class EndpointHtmlRendererTest
+         Assert.Null(epilogueMarker.Type);
+         Assert.Null(epilogueMarker.ParameterDefinitions);
+         Assert.Null(epilogueMarker.ParameterValues);
+-        var (_, mode) = Assert.Single(httpContext.Items);
++        var (_, mode) = Assert.Single(httpContext.Items, (kvp) => kvp.Value is InvokedRenderModes);
+         var invoked = Assert.IsType<InvokedRenderModes>(mode);
+         Assert.Equal(InvokedRenderModes.Mode.WebAssembly, invoked.Value);
+     }
+@@ -215,7 +215,7 @@ public class EndpointHtmlRendererTest
+             }));
+         await renderer.Dispatcher.InvokeAsync(() => result.WriteTo(writer, HtmlEncoder.Default));
+         var content = writer.ToString();
+-        content = AssertAndStripWebAssemblyOptions(content);
++        content = AssertAndStripBrowserConfiguration(content);
+         var match = Regex.Match(content, ComponentPattern);
+ 
+         // Assert
+@@ -253,7 +253,7 @@ public class EndpointHtmlRendererTest
+             }));
+         await renderer.Dispatcher.InvokeAsync(() => result.WriteTo(writer, HtmlEncoder.Default));
+         var content = writer.ToString();
+-        content = AssertAndStripWebAssemblyOptions(content);
++        content = AssertAndStripBrowserConfiguration(content);
+         var match = Regex.Match(content, ComponentPattern);
+ 
+         // Assert
+@@ -289,7 +289,7 @@ public class EndpointHtmlRendererTest
+             }));
+         await renderer.Dispatcher.InvokeAsync(() => result.WriteTo(writer, HtmlEncoder.Default));
+         var content = writer.ToString();
+-        content = AssertAndStripWebAssemblyOptions(content);
++        content = AssertAndStripBrowserConfiguration(content);
+         var match = Regex.Match(content, PrerenderedComponentPattern, RegexOptions.Multiline);
+ 
+         // Assert
+@@ -339,7 +339,7 @@ public class EndpointHtmlRendererTest
+             }));
+         await renderer.Dispatcher.InvokeAsync(() => result.WriteTo(writer, HtmlEncoder.Default));
+         var content = writer.ToString();
+-        content = AssertAndStripWebAssemblyOptions(content);
++        content = AssertAndStripBrowserConfiguration(content);
+         var match = Regex.Match(content, PrerenderedComponentPattern, RegexOptions.Multiline);
+ 
+         // Assert
+@@ -399,6 +399,7 @@ public class EndpointHtmlRendererTest
+         // Act
+         var result = await renderer.PrerenderComponentAsync(httpContext, typeof(SimpleComponent), new InteractiveServerRenderMode(false), ParameterView.Empty);
+         var content = await renderer.Dispatcher.InvokeAsync(() => HtmlContentToString(result));
++        content = AssertAndStripBrowserConfiguration(content);
+         var match = Regex.Match(content, ComponentPattern);
+ 
+         // Assert
+@@ -431,6 +432,7 @@ public class EndpointHtmlRendererTest
+         // Act
+         var result = await renderer.PrerenderComponentAsync(httpContext, typeof(SimpleComponent), RenderMode.InteractiveServer, ParameterView.Empty);
+         var content = await renderer.Dispatcher.InvokeAsync(() => HtmlContentToString(result));
++        content = AssertAndStripBrowserConfiguration(content);
+         var match = Regex.Match(content, PrerenderedComponentPattern, RegexOptions.Multiline);
+ 
+         // Assert
+@@ -492,6 +494,7 @@ public class EndpointHtmlRendererTest
+         // Act
+         var firstResult = await renderer.PrerenderComponentAsync(httpContext, typeof(SimpleComponent), new InteractiveServerRenderMode(true), ParameterView.Empty);
+         var firstComponent = await renderer.Dispatcher.InvokeAsync(() => HtmlContentToString(firstResult));
++        firstComponent = AssertAndStripBrowserConfiguration(firstComponent);
+         var firstMatch = Regex.Match(firstComponent, PrerenderedComponentPattern, RegexOptions.Multiline);
+ 
+         var secondResult = await renderer.PrerenderComponentAsync(httpContext, typeof(SimpleComponent), new InteractiveServerRenderMode(false), ParameterView.Empty);
+@@ -550,6 +553,7 @@ public class EndpointHtmlRendererTest
+         var parameters = ParameterView.FromDictionary(new Dictionary<string, object> { { "Name", "SomeName" } });
+         var result = await renderer.PrerenderComponentAsync(httpContext, typeof(GreetingComponent), new InteractiveServerRenderMode(false), parameters);
+         var content = await renderer.Dispatcher.InvokeAsync(() => HtmlContentToString(result));
++        content = AssertAndStripBrowserConfiguration(content);
+         var match = Regex.Match(content, ComponentPattern);
+ 
+         // Assert
+@@ -589,6 +593,7 @@ public class EndpointHtmlRendererTest
+         var parameters = ParameterView.FromDictionary(new Dictionary<string, object> { { "Name", null } });
+         var result = await renderer.PrerenderComponentAsync(httpContext, typeof(GreetingComponent), new InteractiveServerRenderMode(false), parameters);
+         var content = await renderer.Dispatcher.InvokeAsync(() => HtmlContentToString(result));
++        content = AssertAndStripBrowserConfiguration(content);
+         var match = Regex.Match(content, ComponentPattern);
+ 
+         // Assert
+@@ -628,6 +633,7 @@ public class EndpointHtmlRendererTest
+         var parameters = ParameterView.FromDictionary(new Dictionary<string, object> { { "Name", "SomeName" } });
+         var result = await renderer.PrerenderComponentAsync(httpContext, typeof(GreetingComponent), RenderMode.InteractiveServer, parameters);
+         var content = await renderer.Dispatcher.InvokeAsync(() => HtmlContentToString(result));
++        content = AssertAndStripBrowserConfiguration(content);
+         var match = Regex.Match(content, PrerenderedComponentPattern, RegexOptions.Multiline);
+ 
+         // Assert
+@@ -679,6 +685,7 @@ public class EndpointHtmlRendererTest
+         var parameters = ParameterView.FromDictionary(new Dictionary<string, object> { { "Name", null } });
+         var result = await renderer.PrerenderComponentAsync(httpContext, typeof(GreetingComponent), RenderMode.InteractiveServer, parameters);
+         var content = await renderer.Dispatcher.InvokeAsync(() => HtmlContentToString(result));
++        content = AssertAndStripBrowserConfiguration(content);
+         var match = Regex.Match(content, PrerenderedComponentPattern, RegexOptions.Multiline);
+ 
+         // Assert
+@@ -747,6 +754,7 @@ public class EndpointHtmlRendererTest
+         var parameters = ParameterView.FromDictionary(new Dictionary<string, object> { { "Value", "TestString" } });
+         var result = await renderer.PrerenderComponentAsync(httpContext, typeof(GenericComponent<string>), new InteractiveServerRenderMode(false), parameters);
+         var content = await renderer.Dispatcher.InvokeAsync(() => HtmlContentToString(result));
++        content = AssertAndStripBrowserConfiguration(content);
+         var match = Regex.Match(content, ComponentPattern);
+ 
+         // Assert
+@@ -786,6 +794,7 @@ public class EndpointHtmlRendererTest
+         var parameters = ParameterView.FromDictionary(new Dictionary<string, object> { { "Value", 123 } });
+         var result = await renderer.PrerenderComponentAsync(httpContext, typeof(GenericComponent<int>), RenderMode.InteractiveServer, parameters);
+         var content = await renderer.Dispatcher.InvokeAsync(() => HtmlContentToString(result));
++        content = AssertAndStripBrowserConfiguration(content);
+         var match = Regex.Match(content, PrerenderedComponentPattern, RegexOptions.Multiline);
+ 
+         // Assert
+@@ -825,7 +834,7 @@ public class EndpointHtmlRendererTest
+         var result = await renderer.PrerenderComponentAsync(httpContext, typeof(GenericComponent<int>), RenderMode.InteractiveWebAssembly, parameters);
+         await renderer.Dispatcher.InvokeAsync(() => result.WriteTo(writer, HtmlEncoder.Default));
+         var content = writer.ToString();
+-        content = AssertAndStripWebAssemblyOptions(content);
++        content = AssertAndStripBrowserConfiguration(content);
+         var match = Regex.Match(content, PrerenderedComponentPattern, RegexOptions.Multiline);
+ 
+         // Assert
+@@ -1331,9 +1340,10 @@ public class EndpointHtmlRendererTest
+ 
+         // Assert
+         var lines = content.Replace("\r\n", "\n").Split('\n');
++        lines[0] = AssertAndStripBrowserConfiguration(lines[0]);
+         var serverMarkerMatch = Regex.Match(lines[0], PrerenderedComponentPattern);
+         var serverNonPrerenderedMarkerMatch = Regex.Match(lines[1], ComponentPattern);
+-        lines[2] = AssertAndStripWebAssemblyOptions(lines[2]);
++        
+         var webAssemblyMarkerMatch = Regex.Match(lines[2], PrerenderedComponentPattern);
+         var webAssemblyNonPrerenderedMarkerMatch = Regex.Match(lines[3], ComponentPattern);
+ 
+@@ -1438,7 +1448,7 @@ public class EndpointHtmlRendererTest
+         var numMarkers = Regex.Matches(content, MarkerPrefix).Count;
+         Assert.Equal(2, numMarkers); // A start and an end marker
+ 
+-        content = AssertAndStripWebAssemblyOptions(content);
++        content = AssertAndStripBrowserConfiguration(content);
+ 
+         var match = Regex.Match(content, PrerenderedComponentPattern, RegexOptions.Singleline);
+         Assert.True(match.Success);
+@@ -1771,9 +1781,9 @@ public class EndpointHtmlRendererTest
+         }
+     }
+ 
+-    private string AssertAndStripWebAssemblyOptions(string content)
++    private string AssertAndStripBrowserConfiguration(string content)
+     {
+-        var wasmOptionsMatch = Regex.Match(content, WebAssemblyOptionsPattern);
++        var wasmOptionsMatch = Regex.Match(content, BrowserConfigurationPattern);
+         Assert.True(wasmOptionsMatch.Success);
+         content = content.Substring(wasmOptionsMatch.Groups[0].Length);
+         return content;
+@@ -1986,7 +1996,7 @@ public class EndpointHtmlRendererTest
+         services.AddSingleton<ICascadingValueSupplier>(_ => new SupplyParameterFromFormValueProvider(null, ""));
+         services.AddScoped<ResourceCollectionProvider>();
+         services.AddScoped<ResourcePreloadService>();
+-        services.AddSingleton(new WebAssemblySettingsEmitter(new TestEnvironment(Environments.Development)));
++        services.AddSingleton<IHostEnvironment>(new TestEnvironment(Environments.Development));
+         return services;
+     }
+ 
+@@ -2077,8 +2087,8 @@ public class EndpointHtmlRendererTest
+     private class TestEnvironment(string environmentName) : IHostEnvironment
+     {
+         public string EnvironmentName { get => environmentName; set => throw new NotImplementedException(); }
+-        public string ApplicationName { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
+-        public string ContentRootPath { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
++        public string ApplicationName { get => "TestApp"; set => throw new NotImplementedException(); }
++        public string ContentRootPath { get => AppContext.BaseDirectory; set => throw new NotImplementedException(); }
+         public IFileProvider ContentRootFileProvider { get => throw new NotImplementedException(); set => throw new NotImplementedException(); }
+     }
+ }
+diff --git a/src/Components/Web.JS/src/Boot.Web.ts b/src/Components/Web.JS/src/Boot.Web.ts
+index 82ab6352e8..784f849ae7 100644
+--- a/src/Components/Web.JS/src/Boot.Web.ts
++++ b/src/Components/Web.JS/src/Boot.Web.ts
+@@ -20,6 +20,7 @@ import { NavigationEnhancementCallbacks, attachProgressivelyEnhancedNavigationLi
+ import { WebRootComponentManager } from './Services/WebRootComponentManager';
+ import { hasProgrammaticEnhancedNavigationHandler, performProgrammaticEnhancedNavigation } from './Services/NavigationUtils';
+ import { attachComponentDescriptorHandler, registerAllComponentDescriptors } from './Rendering/DomMerging/DomSync';
++import { discoverBrowserConfiguration } from './Services/ComponentDescriptorDiscovery';
+ import { JSEventRegistry } from './Services/JSEventRegistry';
+ import { fetchAndInvokeInitializers } from './JSInitializers/JSInitializers.Web';
+ import { ConsoleLogger } from './Platform/Logging/Loggers';
+@@ -90,6 +91,40 @@ function boot(options?: Partial<WebStartOptions>) : Promise<void> {
+ }
+ 
+ function onInitialDomContentLoaded(options: Partial<WebStartOptions>) {
++  // Discover server-emitted browser configuration and merge into options
++  const browserConfig = discoverBrowserConfiguration(document);
++  if (browserConfig) {
++    if (browserConfig.logLevel !== undefined) {
++      options.logLevel = browserConfig.logLevel;
++    }
++
++    // SSR options
++    if (browserConfig.ssr) {
++      options.ssr = options.ssr || {};
++      if (browserConfig.ssr.disableDomPreservation !== undefined) {
++        options.ssr.disableDomPreservation = browserConfig.ssr.disableDomPreservation;
++      }
++      if (browserConfig.ssr.circuitInactivityTimeoutMs !== undefined) {
++        options.ssr.circuitInactivityTimeoutMs = browserConfig.ssr.circuitInactivityTimeoutMs;
++      }
++    }
++
++    // Circuit/Server options
++    if (browserConfig.server) {
++      const circuitOpts = options.circuit = options.circuit || {} as any;
++      const reconnOpts = circuitOpts.reconnectionOptions = circuitOpts.reconnectionOptions || {} as any;
++      if (browserConfig.server.reconnectionMaxRetries !== undefined) {
++        reconnOpts.maxRetries = browserConfig.server.reconnectionMaxRetries;
++      }
++      if (browserConfig.server.reconnectionRetryIntervalMilliseconds !== undefined) {
++        reconnOpts.retryIntervalMilliseconds = browserConfig.server.reconnectionRetryIntervalMilliseconds;
++      }
++      if (browserConfig.server.reconnectionDialogId !== undefined) {
++        reconnOpts.dialogId = browserConfig.server.reconnectionDialogId;
++      }
++    }
++  }
++
+   // Retrieve and start invoking the initializers.
+   // Blazor server options get defaults that are configured before we invoke the initializers
+   // so we do the same here.
+@@ -101,7 +136,18 @@ function onInitialDomContentLoaded(options: Partial<WebStartOptions>) {
+   setCircuitOptions(resolveConfiguredOptions(initializersPromise, initialCircuitOptions));
+   setWebAssemblyOptions(resolveConfiguredOptions(initializersPromise, options.webAssembly));
+ 
++  // If BrowserConfiguration had WebAssembly server options, apply them
++  // before registering component descriptors, since registration triggers
++  // WebAssembly platform loading which captures these options.
++  if (browserConfig?.webAssembly) {
++    rootComponentManager.setWebAssemblyOptions({
++      environmentName: browserConfig.webAssembly.environmentName ?? '',
++      environmentVariables: browserConfig.webAssembly.environmentVariables ?? {},
++    });
++  }
++
+   registerAllComponentDescriptors(document);
++
+   rootComponentManager.onDocumentUpdated();
+ 
+   callAfterStartedCallbacks(initializersPromise);
+diff --git a/src/Components/Web.JS/src/Rendering/DomMerging/DomSync.ts b/src/Components/Web.JS/src/Rendering/DomMerging/DomSync.ts
+index 20d318d770..fa4b485ee8 100644
+--- a/src/Components/Web.JS/src/Rendering/DomMerging/DomSync.ts
++++ b/src/Components/Web.JS/src/Rendering/DomMerging/DomSync.ts
+@@ -23,7 +23,7 @@ export function attachComponentDescriptorHandler(handler: DescriptorHandler) {
+ export function registerAllComponentDescriptors(root: Node) {
+   const descriptors = upgradeComponentCommentsToLogicalRootComments(root);
+   const webAssemblyOptions = discoverWebAssemblyOptions(root);
+-  descriptorHandler?.setWebAssemblyOptions(webAssemblyOptions);
++  if (webAssemblyOptions) { descriptorHandler?.setWebAssemblyOptions(webAssemblyOptions); }
+ 
+   for (const descriptor of descriptors) {
+     descriptorHandler?.registerComponent(descriptor);
+diff --git a/src/Components/Web.JS/src/Services/ComponentDescriptorDiscovery.ts b/src/Components/Web.JS/src/Services/ComponentDescriptorDiscovery.ts
+index 7f478665c3..f4f04fcebf 100644
+--- a/src/Components/Web.JS/src/Services/ComponentDescriptorDiscovery.ts
++++ b/src/Components/Web.JS/src/Services/ComponentDescriptorDiscovery.ts
+@@ -11,7 +11,8 @@ export function isMetadataComment(node: Node): boolean {
+   return content.trim().startsWith('Blazor-Server-Component-State:') ||
+          content.trim().startsWith('Blazor-WebAssembly-Component-State:') ||
+          content.trim().startsWith('Blazor-Web-Initializers:') ||
+-         content.trim().startsWith('Blazor-WebAssembly:');
++         content.trim().startsWith('Blazor-WebAssembly:') ||
++         content.trim().startsWith('Blazor-Configuration:');
+ }
+ 
+ export function discoverComponents(root: Node, type: 'webassembly' | 'server' | 'auto'): ComponentDescriptor[] {
+@@ -29,6 +30,7 @@ const blazorServerStateCommentRegularExpression = /^\s*Blazor-Server-Component-S
+ const blazorWebAssemblyStateCommentRegularExpression = /^\s*Blazor-WebAssembly-Component-State:(?<state>[a-zA-Z0-9+/=]+)$/;
+ const blazorWebInitializerCommentRegularExpression = /^\s*Blazor-Web-Initializers:(?<initializers>[a-zA-Z0-9+/=]+)$/;
+ const blazorWebAssemblyOptionsCommentRegularExpression = /^\s*Blazor-WebAssembly:[^{]*(?<options>.*)$/;
++const blazorConfigurationCommentRegularExpression = /^\s*Blazor-Configuration:(?<options>[a-zA-Z0-9+/=]+)$/;
+ 
+ export function discoverWebAssemblyOptions(root: Node): WebAssemblyServerOptions | undefined {
+   const optionsJson = discoverBlazorComment(root, blazorWebAssemblyOptionsCommentRegularExpression, 'options');
+@@ -39,6 +41,15 @@ export function discoverWebAssemblyOptions(root: Node): WebAssemblyServerOptions
+   return options;
+ }
+ 
++export function discoverBrowserConfiguration(root: Node): BrowserConfigurationOptions | undefined {
++  const configBase64 = discoverBlazorComment(root, blazorConfigurationCommentRegularExpression, 'options');
++  if (!configBase64) {
++    return undefined;
++  }
++  const configJson = atob(configBase64);
++  return JSON.parse(configJson);
++}
++
+ export function discoverServerPersistedState(node: Node): string | null | undefined {
+   return discoverBlazorComment(node, blazorServerStateCommentRegularExpression);
+ }
+@@ -411,3 +422,21 @@ type WebAssemblyMarkerData = {
+   parameterDefinitions: string;
+   parameterValues: string;
+ } & CommonMarkerData;
++
++export type BrowserConfigurationOptions = {
++  logLevel?: number;
++  webAssembly?: {
++    environmentName?: string;
++    applicationCulture?: string;
++    environmentVariables?: { [key: string]: string };
++  };
++  server?: {
++    reconnectionMaxRetries?: number;
++    reconnectionRetryIntervalMilliseconds?: number;
++    reconnectionDialogId?: string;
++  };
++  ssr?: {
++    disableDomPreservation?: boolean;
++    circuitInactivityTimeoutMs?: number;
++  };
++};
+diff --git a/src/Components/test/E2ETest/Tests/BrowserConfigurationTest.cs b/src/Components/test/E2ETest/Tests/BrowserConfigurationTest.cs
+new file mode 100644
+index 0000000000..4744dd93dc
+--- /dev/null
++++ b/src/Components/test/E2ETest/Tests/BrowserConfigurationTest.cs
+@@ -0,0 +1,32 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Components.TestServer.RazorComponents;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure;
++using Microsoft.AspNetCore.Components.E2ETest.Infrastructure.ServerFixtures;
++using Microsoft.AspNetCore.E2ETesting;
++using OpenQA.Selenium;
++using TestServer;
++using Xunit.Abstractions;
++
++namespace Microsoft.AspNetCore.Components.E2ETests.Tests;
++
++public class BrowserConfigurationTest(
++    BrowserFixture browserFixture,
++    BasicTestAppServerSiteFixture<RazorComponentEndpointsStartup<GlobalInteractivityApp>> serverFixture,
++    ITestOutputHelper output)
++    : ServerTestBase<BasicTestAppServerSiteFixture<RazorComponentEndpointsStartup<GlobalInteractivityApp>>>(browserFixture, serverFixture, output)
++{
++    [Fact]
++    public void CanReceiveEnvironmentVariablesFromBrowserConfiguration()
++    {
++        Navigate($"{ServerPathBase}/browser-configuration-env-vars");
++
++        // Wait for WebAssembly to be interactive
++        Browser.Equal("webassembly", () => Browser.Exists(By.Id("execution-mode")).Text);
++
++        // Verify environment variables set via WithBrowserConfiguration are available
++        Browser.Equal("test-value-from-server", () => Browser.Exists(By.Id("my-test-var")).Text);
++        Browser.Equal("another-test-value", () => Browser.Exists(By.Id("another-test-var")).Text);
++    }
++}
+diff --git a/src/Components/test/testassets/BasicTestApp/BasicTestApp.csproj b/src/Components/test/testassets/BasicTestApp/BasicTestApp.csproj
+index 35dea697a6..55cb620345 100644
+--- a/src/Components/test/testassets/BasicTestApp/BasicTestApp.csproj
++++ b/src/Components/test/testassets/BasicTestApp/BasicTestApp.csproj
+@@ -21,8 +21,10 @@
+     <_BlazorBrotliCompressionLevel>NoCompression</_BlazorBrotliCompressionLevel>
+   </PropertyGroup>
+   <PropertyGroup Condition="'$(TestTrimmedOrMultithreadingApps)' != 'true'">
+-    <!-- Tests need hot reload support supported even -->
+-    <MetadataUpdaterSupport>true</MetadataUpdaterSupport>
++    <!-- Temporarily disabled to test hypothesis that MetadataUpdaterSupport=true (from PR #65903)
++         causes intermittent MIME type failures for _framework/dotnet.js in E2E tests.
++         See: https://github.com/dotnet/aspnetcore/pull/65903 -->
++    <MetadataUpdaterSupport>false</MetadataUpdaterSupport>
+   </PropertyGroup>
+ 
+ 
+diff --git a/src/Components/test/testassets/Components.TestServer/RazorComponentEndpointsStartup.cs b/src/Components/test/testassets/Components.TestServer/RazorComponentEndpointsStartup.cs
+index 0b8fdf3068..5494f89c49 100644
+--- a/src/Components/test/testassets/Components.TestServer/RazorComponentEndpointsStartup.cs
++++ b/src/Components/test/testassets/Components.TestServer/RazorComponentEndpointsStartup.cs
+@@ -189,7 +189,12 @@ public class RazorComponentEndpointsStartup<TRootComponent>
+ 
+                     options.ConfigureWebSocketAcceptContext = config.ConfigureWebSocketAcceptContext;
+                 })
+-                .AddInteractiveWebAssemblyRenderMode(options => options.PathPrefix = "/WasmMinimal");
++                .AddInteractiveWebAssemblyRenderMode(options => options.PathPrefix = "/WasmMinimal")
++                .WithBrowserConfiguration(config =>
++                {
++                    config.WebAssembly.EnvironmentVariables["MY_TEST_VAR"] = "test-value-from-server";
++                    config.WebAssembly.EnvironmentVariables["ANOTHER_TEST_VAR"] = "another-test-value";
++                });
+ 
+             NotEnabledStreamingRenderingComponent.MapEndpoints(endpoints);
+             StreamingRenderingForm.MapEndpoints(endpoints);
+diff --git a/src/Components/test/testassets/Components.WasmMinimal/Pages/BrowserConfigurationEnvVars.razor b/src/Components/test/testassets/Components.WasmMinimal/Pages/BrowserConfigurationEnvVars.razor
+new file mode 100644
+index 0000000000..1d1bf86288
+--- /dev/null
++++ b/src/Components/test/testassets/Components.WasmMinimal/Pages/BrowserConfigurationEnvVars.razor
+@@ -0,0 +1,37 @@
++﻿@page "/browser-configuration-env-vars"
++@using Microsoft.AspNetCore.Components.Web
++@rendermode RenderMode.InteractiveWebAssembly
++
++<h1>Browser Configuration Environment Variables</h1>
++
++<p>
++    Execution mode:
++    <strong id="execution-mode">@executionMode</strong>
++</p>
++
++<p>
++    MY_TEST_VAR:
++    <strong id="my-test-var">@myTestVar</strong>
++</p>
++
++<p>
++    ANOTHER_TEST_VAR:
++    <strong id="another-test-var">@anotherTestVar</strong>
++</p>
++
++@code {
++    string executionMode = "static";
++    string myTestVar = "";
++    string anotherTestVar = "";
++
++    protected override void OnAfterRender(bool firstRender)
++    {
++        if (firstRender)
++        {
++            executionMode = OperatingSystem.IsBrowser() ? "webassembly" : "server";
++            myTestVar = Environment.GetEnvironmentVariable("MY_TEST_VAR") ?? "(not set)";
++            anotherTestVar = Environment.GetEnvironmentVariable("ANOTHER_TEST_VAR") ?? "(not set)";
++            StateHasChanged();
++        }
++    }
++}
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/BlazorWasmServiceDefaults-CSharp.csproj.in b/src/ProjectTemplates/Web.ProjectTemplates/BlazorWasmServiceDefaults-CSharp.csproj.in
+new file mode 100644
+index 0000000000..b5293955d3
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/BlazorWasmServiceDefaults-CSharp.csproj.in
+@@ -0,0 +1,24 @@
++<Project Sdk="Microsoft.NET.Sdk.Razor">
++
++  <PropertyGroup>
++    <TargetFramework>${DefaultNetCoreTargetFramework}</TargetFramework>
++    <Nullable>enable</Nullable>
++    <ImplicitUsings>enable</ImplicitUsings>
++    <RootNamespace Condition="'$(name)' != '$(name{-VALUE-FORMS-}safe_namespace)'">BlazorWasm.ServiceDefaults1</RootNamespace>
++  </PropertyGroup>
++
++  <ItemGroup>
++    <SupportedPlatform Include="browser" />
++  </ItemGroup>
++
++  <ItemGroup>
++    <PackageReference Include="Microsoft.AspNetCore.Components.WebAssembly" Version="${MicrosoftAspNetCoreComponentsWebAssemblyVersion}" />
++    <PackageReference Include="Microsoft.Extensions.Http.Resilience" Version="${MicrosoftExtensionsHttpResilienceVersion}" />
++    <PackageReference Include="Microsoft.Extensions.ServiceDiscovery" Version="${MicrosoftExtensionsServiceDiscoveryVersion}" />
++    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="${OpenTelemetryExporterOpenTelemetryProtocolVersion}" />
++    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="${OpenTelemetryExtensionsHostingVersion}" />
++    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="${OpenTelemetryInstrumentationHttpVersion}" />
++    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="${OpenTelemetryInstrumentationRuntimeVersion}" />
++  </ItemGroup>
++
++</Project>
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/Microsoft.DotNet.Web.ProjectTemplates.csproj b/src/ProjectTemplates/Web.ProjectTemplates/Microsoft.DotNet.Web.ProjectTemplates.csproj
+index c3abeb6ed5..7b2830fda8 100644
+--- a/src/ProjectTemplates/Web.ProjectTemplates/Microsoft.DotNet.Web.ProjectTemplates.csproj
++++ b/src/ProjectTemplates/Web.ProjectTemplates/Microsoft.DotNet.Web.ProjectTemplates.csproj
+@@ -21,10 +21,16 @@
+       MicrosoftEntityFrameworkCoreToolsVersion=$(MicrosoftEntityFrameworkCoreToolsVersion);
+       MicrosoftExtensionsHostingVersion=$(MicrosoftExtensionsHostingVersion);
+       MicrosoftExtensionsHttpVersion=$(MicrosoftExtensionsHttpVersion);
++      MicrosoftExtensionsHttpResilienceVersion=$(MicrosoftExtensionsHttpResilienceVersion);
++      MicrosoftExtensionsServiceDiscoveryVersion=$(MicrosoftExtensionsServiceDiscoveryVersion);
+       MicrosoftIdentityWebVersion=$(MicrosoftIdentityWebVersion);
+       MicrosoftIdentityWebGraphServiceClientVersion=$(MicrosoftIdentityWebGraphServiceClientVersion);
+       MicrosoftIdentityWebUIVersion=$(MicrosoftIdentityWebUIVersion);
+       MicrosoftIdentityWebDownstreamApiVersion=$(MicrosoftIdentityWebDownstreamApiVersion);
++      OpenTelemetryExporterOpenTelemetryProtocolVersion=$(OpenTelemetryExporterOpenTelemetryProtocolVersion);
++      OpenTelemetryExtensionsHostingVersion=$(OpenTelemetryExtensionsHostingVersion);
++      OpenTelemetryInstrumentationHttpVersion=$(OpenTelemetryInstrumentationHttpVersion);
++      OpenTelemetryInstrumentationRuntimeVersion=$(OpenTelemetryInstrumentationRuntimeVersion);
+       SystemNetHttpJsonVersion=$(SystemNetHttpJsonVersion);
+       MicrosoftGraphVersion=$(MicrosoftGraphVersion);
+     </GeneratedContentProperties>
+@@ -64,6 +70,7 @@
+     <GeneratedContent Include="Worker-FSharp.fsproj.in" OutputPath="content/Worker-FSharp/Company.Application1.fsproj" />
+     <GeneratedContent Include="BlazorWebCSharp.csproj.in" OutputPath="content/BlazorWeb-CSharp/BlazorWebCSharp.1/BlazorWebCSharp.1.csproj" />
+     <GeneratedContent Include="BlazorWebCSharp.Client.csproj.in" OutputPath="content/BlazorWeb-CSharp/BlazorWebCSharp.1.Client/BlazorWebCSharp.1.Client.csproj" />
++    <GeneratedContent Include="BlazorWasmServiceDefaults-CSharp.csproj.in" OutputPath="content/BlazorWasmServiceDefaults-CSharp/BlazorWasm.ServiceDefaults1.csproj" />
+     <GeneratedContent Include="ComponentsWebAssembly-CSharp.csproj.in" OutputPath="content/ComponentsWebAssembly-CSharp/ComponentsWebAssembly-CSharp.csproj" />
+     <GeneratedContent Include="BlazorWebWorker-CSharp.csproj.in" OutputPath="content/BlazorWebWorker-CSharp/Company.WebWorker1.csproj" />
+   </ItemGroup>
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/dotnetcli.host.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/dotnetcli.host.json
+new file mode 100644
+index 0000000000..47651fb3b5
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/dotnetcli.host.json
+@@ -0,0 +1,19 @@
++{
++  "$schema": "https://json.schemastore.org/dotnetcli.host",
++  "symbolInfo": {
++    "Framework": {
++      "longName": "framework"
++    },
++    "skipRestore": {
++      "longName": "no-restore",
++      "shortName": ""
++    },
++    "hosted": {
++      "longName": "hosted",
++      "shortName": ""
++    }
++  },
++  "usageExamples": [
++    ""
++  ]
++}
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/ide.host.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/ide.host.json
+new file mode 100644
+index 0000000000..db55886957
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/ide.host.json
+@@ -0,0 +1,4 @@
++{
++  "$schema": "https://json.schemastore.org/ide.host",
++  "order": 650
++}
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.cs.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.cs.json
+new file mode 100644
+index 0000000000..0d497732b3
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.cs.json
+@@ -0,0 +1,10 @@
++{
++  "author": "Microsoft",
++  "name": "Blazor WebAssembly Service Defaults",
++  "description": "A project template for creating a service defaults library for Blazor WebAssembly applications. Includes OpenTelemetry, service discovery, and resilience support for Aspire integration.",
++  "symbols/Framework/description": "The target framework for the project.",
++  "symbols/hosted/description": "Configure for a hosted Blazor Web scenario where configuration flows from the server via a DOM comment. When false (default), configures for a standalone scenario with a configuration endpoint and JS initializer.",
++  "symbols/skipRestore/description": "If specified, skips the automatic restore of the project on create.",
++  "postActions/restore/description": "Restore NuGet packages required by this project.",
++  "postActions/restore/manualInstructions/default/text": "Run 'dotnet restore'"
++}
+\ No newline at end of file
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.de.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.de.json
+new file mode 100644
+index 0000000000..0d497732b3
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.de.json
+@@ -0,0 +1,10 @@
++{
++  "author": "Microsoft",
++  "name": "Blazor WebAssembly Service Defaults",
++  "description": "A project template for creating a service defaults library for Blazor WebAssembly applications. Includes OpenTelemetry, service discovery, and resilience support for Aspire integration.",
++  "symbols/Framework/description": "The target framework for the project.",
++  "symbols/hosted/description": "Configure for a hosted Blazor Web scenario where configuration flows from the server via a DOM comment. When false (default), configures for a standalone scenario with a configuration endpoint and JS initializer.",
++  "symbols/skipRestore/description": "If specified, skips the automatic restore of the project on create.",
++  "postActions/restore/description": "Restore NuGet packages required by this project.",
++  "postActions/restore/manualInstructions/default/text": "Run 'dotnet restore'"
++}
+\ No newline at end of file
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.en.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.en.json
+new file mode 100644
+index 0000000000..0d497732b3
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.en.json
+@@ -0,0 +1,10 @@
++{
++  "author": "Microsoft",
++  "name": "Blazor WebAssembly Service Defaults",
++  "description": "A project template for creating a service defaults library for Blazor WebAssembly applications. Includes OpenTelemetry, service discovery, and resilience support for Aspire integration.",
++  "symbols/Framework/description": "The target framework for the project.",
++  "symbols/hosted/description": "Configure for a hosted Blazor Web scenario where configuration flows from the server via a DOM comment. When false (default), configures for a standalone scenario with a configuration endpoint and JS initializer.",
++  "symbols/skipRestore/description": "If specified, skips the automatic restore of the project on create.",
++  "postActions/restore/description": "Restore NuGet packages required by this project.",
++  "postActions/restore/manualInstructions/default/text": "Run 'dotnet restore'"
++}
+\ No newline at end of file
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.es.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.es.json
+new file mode 100644
+index 0000000000..0d497732b3
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.es.json
+@@ -0,0 +1,10 @@
++{
++  "author": "Microsoft",
++  "name": "Blazor WebAssembly Service Defaults",
++  "description": "A project template for creating a service defaults library for Blazor WebAssembly applications. Includes OpenTelemetry, service discovery, and resilience support for Aspire integration.",
++  "symbols/Framework/description": "The target framework for the project.",
++  "symbols/hosted/description": "Configure for a hosted Blazor Web scenario where configuration flows from the server via a DOM comment. When false (default), configures for a standalone scenario with a configuration endpoint and JS initializer.",
++  "symbols/skipRestore/description": "If specified, skips the automatic restore of the project on create.",
++  "postActions/restore/description": "Restore NuGet packages required by this project.",
++  "postActions/restore/manualInstructions/default/text": "Run 'dotnet restore'"
++}
+\ No newline at end of file
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.fr.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.fr.json
+new file mode 100644
+index 0000000000..0d497732b3
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.fr.json
+@@ -0,0 +1,10 @@
++{
++  "author": "Microsoft",
++  "name": "Blazor WebAssembly Service Defaults",
++  "description": "A project template for creating a service defaults library for Blazor WebAssembly applications. Includes OpenTelemetry, service discovery, and resilience support for Aspire integration.",
++  "symbols/Framework/description": "The target framework for the project.",
++  "symbols/hosted/description": "Configure for a hosted Blazor Web scenario where configuration flows from the server via a DOM comment. When false (default), configures for a standalone scenario with a configuration endpoint and JS initializer.",
++  "symbols/skipRestore/description": "If specified, skips the automatic restore of the project on create.",
++  "postActions/restore/description": "Restore NuGet packages required by this project.",
++  "postActions/restore/manualInstructions/default/text": "Run 'dotnet restore'"
++}
+\ No newline at end of file
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.it.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.it.json
+new file mode 100644
+index 0000000000..0d497732b3
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.it.json
+@@ -0,0 +1,10 @@
++{
++  "author": "Microsoft",
++  "name": "Blazor WebAssembly Service Defaults",
++  "description": "A project template for creating a service defaults library for Blazor WebAssembly applications. Includes OpenTelemetry, service discovery, and resilience support for Aspire integration.",
++  "symbols/Framework/description": "The target framework for the project.",
++  "symbols/hosted/description": "Configure for a hosted Blazor Web scenario where configuration flows from the server via a DOM comment. When false (default), configures for a standalone scenario with a configuration endpoint and JS initializer.",
++  "symbols/skipRestore/description": "If specified, skips the automatic restore of the project on create.",
++  "postActions/restore/description": "Restore NuGet packages required by this project.",
++  "postActions/restore/manualInstructions/default/text": "Run 'dotnet restore'"
++}
+\ No newline at end of file
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.ja.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.ja.json
+new file mode 100644
+index 0000000000..0d497732b3
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.ja.json
+@@ -0,0 +1,10 @@
++{
++  "author": "Microsoft",
++  "name": "Blazor WebAssembly Service Defaults",
++  "description": "A project template for creating a service defaults library for Blazor WebAssembly applications. Includes OpenTelemetry, service discovery, and resilience support for Aspire integration.",
++  "symbols/Framework/description": "The target framework for the project.",
++  "symbols/hosted/description": "Configure for a hosted Blazor Web scenario where configuration flows from the server via a DOM comment. When false (default), configures for a standalone scenario with a configuration endpoint and JS initializer.",
++  "symbols/skipRestore/description": "If specified, skips the automatic restore of the project on create.",
++  "postActions/restore/description": "Restore NuGet packages required by this project.",
++  "postActions/restore/manualInstructions/default/text": "Run 'dotnet restore'"
++}
+\ No newline at end of file
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.ko.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.ko.json
+new file mode 100644
+index 0000000000..0d497732b3
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.ko.json
+@@ -0,0 +1,10 @@
++{
++  "author": "Microsoft",
++  "name": "Blazor WebAssembly Service Defaults",
++  "description": "A project template for creating a service defaults library for Blazor WebAssembly applications. Includes OpenTelemetry, service discovery, and resilience support for Aspire integration.",
++  "symbols/Framework/description": "The target framework for the project.",
++  "symbols/hosted/description": "Configure for a hosted Blazor Web scenario where configuration flows from the server via a DOM comment. When false (default), configures for a standalone scenario with a configuration endpoint and JS initializer.",
++  "symbols/skipRestore/description": "If specified, skips the automatic restore of the project on create.",
++  "postActions/restore/description": "Restore NuGet packages required by this project.",
++  "postActions/restore/manualInstructions/default/text": "Run 'dotnet restore'"
++}
+\ No newline at end of file
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.pl.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.pl.json
+new file mode 100644
+index 0000000000..0d497732b3
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.pl.json
+@@ -0,0 +1,10 @@
++{
++  "author": "Microsoft",
++  "name": "Blazor WebAssembly Service Defaults",
++  "description": "A project template for creating a service defaults library for Blazor WebAssembly applications. Includes OpenTelemetry, service discovery, and resilience support for Aspire integration.",
++  "symbols/Framework/description": "The target framework for the project.",
++  "symbols/hosted/description": "Configure for a hosted Blazor Web scenario where configuration flows from the server via a DOM comment. When false (default), configures for a standalone scenario with a configuration endpoint and JS initializer.",
++  "symbols/skipRestore/description": "If specified, skips the automatic restore of the project on create.",
++  "postActions/restore/description": "Restore NuGet packages required by this project.",
++  "postActions/restore/manualInstructions/default/text": "Run 'dotnet restore'"
++}
+\ No newline at end of file
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.pt-BR.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.pt-BR.json
+new file mode 100644
+index 0000000000..0d497732b3
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.pt-BR.json
+@@ -0,0 +1,10 @@
++{
++  "author": "Microsoft",
++  "name": "Blazor WebAssembly Service Defaults",
++  "description": "A project template for creating a service defaults library for Blazor WebAssembly applications. Includes OpenTelemetry, service discovery, and resilience support for Aspire integration.",
++  "symbols/Framework/description": "The target framework for the project.",
++  "symbols/hosted/description": "Configure for a hosted Blazor Web scenario where configuration flows from the server via a DOM comment. When false (default), configures for a standalone scenario with a configuration endpoint and JS initializer.",
++  "symbols/skipRestore/description": "If specified, skips the automatic restore of the project on create.",
++  "postActions/restore/description": "Restore NuGet packages required by this project.",
++  "postActions/restore/manualInstructions/default/text": "Run 'dotnet restore'"
++}
+\ No newline at end of file
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.ru.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.ru.json
+new file mode 100644
+index 0000000000..0d497732b3
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.ru.json
+@@ -0,0 +1,10 @@
++{
++  "author": "Microsoft",
++  "name": "Blazor WebAssembly Service Defaults",
++  "description": "A project template for creating a service defaults library for Blazor WebAssembly applications. Includes OpenTelemetry, service discovery, and resilience support for Aspire integration.",
++  "symbols/Framework/description": "The target framework for the project.",
++  "symbols/hosted/description": "Configure for a hosted Blazor Web scenario where configuration flows from the server via a DOM comment. When false (default), configures for a standalone scenario with a configuration endpoint and JS initializer.",
++  "symbols/skipRestore/description": "If specified, skips the automatic restore of the project on create.",
++  "postActions/restore/description": "Restore NuGet packages required by this project.",
++  "postActions/restore/manualInstructions/default/text": "Run 'dotnet restore'"
++}
+\ No newline at end of file
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.tr.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.tr.json
+new file mode 100644
+index 0000000000..0d497732b3
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.tr.json
+@@ -0,0 +1,10 @@
++{
++  "author": "Microsoft",
++  "name": "Blazor WebAssembly Service Defaults",
++  "description": "A project template for creating a service defaults library for Blazor WebAssembly applications. Includes OpenTelemetry, service discovery, and resilience support for Aspire integration.",
++  "symbols/Framework/description": "The target framework for the project.",
++  "symbols/hosted/description": "Configure for a hosted Blazor Web scenario where configuration flows from the server via a DOM comment. When false (default), configures for a standalone scenario with a configuration endpoint and JS initializer.",
++  "symbols/skipRestore/description": "If specified, skips the automatic restore of the project on create.",
++  "postActions/restore/description": "Restore NuGet packages required by this project.",
++  "postActions/restore/manualInstructions/default/text": "Run 'dotnet restore'"
++}
+\ No newline at end of file
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.zh-Hans.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.zh-Hans.json
+new file mode 100644
+index 0000000000..0d497732b3
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.zh-Hans.json
+@@ -0,0 +1,10 @@
++{
++  "author": "Microsoft",
++  "name": "Blazor WebAssembly Service Defaults",
++  "description": "A project template for creating a service defaults library for Blazor WebAssembly applications. Includes OpenTelemetry, service discovery, and resilience support for Aspire integration.",
++  "symbols/Framework/description": "The target framework for the project.",
++  "symbols/hosted/description": "Configure for a hosted Blazor Web scenario where configuration flows from the server via a DOM comment. When false (default), configures for a standalone scenario with a configuration endpoint and JS initializer.",
++  "symbols/skipRestore/description": "If specified, skips the automatic restore of the project on create.",
++  "postActions/restore/description": "Restore NuGet packages required by this project.",
++  "postActions/restore/manualInstructions/default/text": "Run 'dotnet restore'"
++}
+\ No newline at end of file
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.zh-Hant.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.zh-Hant.json
+new file mode 100644
+index 0000000000..0d497732b3
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/localize/templatestrings.zh-Hant.json
+@@ -0,0 +1,10 @@
++{
++  "author": "Microsoft",
++  "name": "Blazor WebAssembly Service Defaults",
++  "description": "A project template for creating a service defaults library for Blazor WebAssembly applications. Includes OpenTelemetry, service discovery, and resilience support for Aspire integration.",
++  "symbols/Framework/description": "The target framework for the project.",
++  "symbols/hosted/description": "Configure for a hosted Blazor Web scenario where configuration flows from the server via a DOM comment. When false (default), configures for a standalone scenario with a configuration endpoint and JS initializer.",
++  "symbols/skipRestore/description": "If specified, skips the automatic restore of the project on create.",
++  "postActions/restore/description": "Restore NuGet packages required by this project.",
++  "postActions/restore/manualInstructions/default/text": "Run 'dotnet restore'"
++}
+\ No newline at end of file
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/template.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/template.json
+new file mode 100644
+index 0000000000..dfb622b8c4
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/template.json
+@@ -0,0 +1,82 @@
++{
++  "$schema": "https://json.schemastore.org/template",
++  "author": "Microsoft",
++  "classifications": [
++    "Blazor",
++    "WebAssembly",
++    "Library",
++    "OpenTelemetry"
++  ],
++  "name": "Blazor WebAssembly Service Defaults",
++  "generatorVersions": "[1.0.0.0-*)",
++  "description": "A project template for creating a service defaults library for Blazor WebAssembly applications. Includes OpenTelemetry, service discovery, and resilience support for Aspire integration.",
++  "groupIdentity": "Microsoft.Web.Blazor.Wasm.ServiceDefaults",
++  "precedence": "10000",
++  "identity": "Microsoft.Web.Blazor.Wasm.ServiceDefaults.CSharp.11.0",
++  "shortName": "blazor-wasm-servicedefaults",
++  "thirdPartyNotices": "https://aka.ms/aspnetcore/11.0-third-party-notices",
++  "tags": {
++    "language": "C#",
++    "type": "project"
++  },
++  "sourceName": "BlazorWasm.ServiceDefaults1",
++  "preferNameDirectory": true,
++  "symbols": {
++    "Framework": {
++      "type": "parameter",
++      "description": "The target framework for the project.",
++      "datatype": "choice",
++      "choices": [
++        {
++          "choice": "net11.0"
++        }
++      ],
++      "replaces": "net11.0",
++      "defaultValue": "net11.0"
++    },
++    "hosted": {
++      "type": "parameter",
++      "datatype": "bool",
++      "description": "Configure for a hosted Blazor Web scenario where configuration flows from the server via a DOM comment. When false (default), configures for a standalone scenario with a configuration endpoint and JS initializer.",
++      "defaultValue": "false"
++    },
++    "skipRestore": {
++      "type": "parameter",
++      "datatype": "bool",
++      "description": "If specified, skips the automatic restore of the project on create.",
++      "defaultValue": "false"
++    }
++  },
++  "sources": [
++    {
++      "modifiers": [
++        {
++          "condition": "(hosted)",
++          "exclude": [
++            "wwwroot/**"
++          ]
++        }
++      ]
++    }
++  ],
++  "primaryOutputs": [
++    {
++      "path": "BlazorWasm.ServiceDefaults1.csproj"
++    }
++  ],
++  "defaultName": "BlazorWasm.ServiceDefaults",
++  "postActions": [
++    {
++      "id": "restore",
++      "condition": "(!skipRestore)",
++      "description": "Restore NuGet packages required by this project.",
++      "manualInstructions": [
++        {
++          "text": "Run 'dotnet restore'"
++        }
++      ],
++      "actionId": "210D431B-A78B-4D2F-B762-4ED3E3EA9025",
++      "continueOnError": true
++    }
++  ]
++}
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/BackgroundExportHandler.cs b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/BackgroundExportHandler.cs
+new file mode 100644
+index 0000000000..b5a35d92f6
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/BackgroundExportHandler.cs
+@@ -0,0 +1,129 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using System.Net;
++using System.Net.Http.Headers;
++using Microsoft.Extensions.Logging;
++using Polly;
++
++namespace BlazorWasm.ServiceDefaults1;
++
++/// <summary>
++/// A DelegatingHandler that works around the OTel SDK's sync-over-async
++/// deadlock on WASM. The SDK calls SendAsync().GetAwaiter().GetResult()
++/// in OtlpExportClient.SendHttpRequest(), which blocks the single WASM
++/// thread. This handler returns 200 immediately to unblock the SDK,
++/// then sends the real request with retries in the background.
++/// </summary>
++internal sealed class BackgroundExportHandler(
++    ResiliencePipeline<HttpResponseMessage> pipeline,
++    ILogger logger) : DelegatingHandler(new HttpClientHandler())
++{
++    protected override Task<HttpResponseMessage> SendAsync(
++        HttpRequestMessage request, CancellationToken cancellationToken)
++    {
++        // Capture request data before returning — the SDK disposes the
++        // HttpRequestMessage via 'using' after .GetResult() completes.
++        var snapshot = RequestSnapshot.Capture(request);
++
++        // Send the real request with retries in the background.
++        _ = SendWithRetryAsync(snapshot, cancellationToken);
++
++        // Return 200 immediately so the SDK's sync .GetResult() unblocks.
++        return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK));
++    }
++
++    private async Task SendWithRetryAsync(
++        RequestSnapshot snapshot, CancellationToken cancellationToken)
++    {
++        try
++        {
++            var response = await pipeline.ExecuteAsync(async token =>
++            {
++                using var clone = snapshot.CreateRequest();
++                return await base.SendAsync(clone, token).ConfigureAwait(false);
++            }, cancellationToken).ConfigureAwait(false);
++
++            if (!response.IsSuccessStatusCode)
++            {
++                logger.LogWarning(
++                    "OTLP export to {Uri} completed with status {StatusCode} after retries.",
++                    snapshot.RequestUri, response.StatusCode);
++            }
++
++            response.Dispose();
++        }
++        catch (Exception ex) when (ex is not OperationCanceledException)
++        {
++            logger.LogWarning(ex,
++                "OTLP export to {Uri} failed after retries.", snapshot.RequestUri);
++        }
++    }
++}
++
++/// <summary>
++/// Captures the essential parts of an HttpRequestMessage so it can be
++/// cloned for each retry attempt after the original request is disposed
++/// by the SDK. The OTLP SDK always sends ByteArrayContent (protobuf),
++/// so ReadAsByteArrayAsync completes synchronously.
++/// </summary>
++internal sealed class RequestSnapshot
++{
++    public HttpMethod Method { get; init; } = null!;
++    public Uri RequestUri { get; init; } = null!;
++    public List<KeyValuePair<string, IEnumerable<string>>> Headers { get; init; } = null!;
++    public byte[]? ContentBytes { get; init; }
++    public MediaTypeHeaderValue? ContentType { get; init; }
++
++    public static RequestSnapshot Capture(HttpRequestMessage request)
++    {
++        byte[]? contentBytes = null;
++        MediaTypeHeaderValue? contentType = null;
++
++        if (request.Content is not null)
++        {
++            // ByteArrayContent.ReadAsByteArrayAsync completes synchronously
++            // since the bytes are already in memory — safe to .GetResult().
++            contentBytes = request.Content.ReadAsByteArrayAsync()
++                .GetAwaiter().GetResult();
++            contentType = request.Content.Headers.ContentType;
++        }
++
++        // Copy headers since the original request will be disposed.
++        var headers = new List<KeyValuePair<string, IEnumerable<string>>>();
++        foreach (var header in request.Headers)
++        {
++            headers.Add(new(header.Key, header.Value.ToArray()));
++        }
++
++        return new RequestSnapshot
++        {
++            Method = request.Method,
++            RequestUri = request.RequestUri!,
++            Headers = headers,
++            ContentBytes = contentBytes,
++            ContentType = contentType,
++        };
++    }
++
++    public HttpRequestMessage CreateRequest()
++    {
++        var clone = new HttpRequestMessage(Method, RequestUri);
++
++        foreach (var header in Headers)
++        {
++            clone.Headers.TryAddWithoutValidation(header.Key, header.Value);
++        }
++
++        if (ContentBytes is not null)
++        {
++            clone.Content = new ByteArrayContent(ContentBytes);
++            if (ContentType is not null)
++            {
++                clone.Content.Headers.ContentType = ContentType;
++            }
++        }
++
++        return clone;
++    }
++}
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/Extensions.cs b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/Extensions.cs
+new file mode 100644
+index 0000000000..2fcab8abaf
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/Extensions.cs
+@@ -0,0 +1,101 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using BlazorWasm.ServiceDefaults1;
++using Microsoft.AspNetCore.Components.Infrastructure;
++using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Http.Resilience;
++using Microsoft.Extensions.Logging;
++using Microsoft.Extensions.Options;
++using OpenTelemetry;
++using OpenTelemetry.Exporter;
++using OpenTelemetry.Logs;
++using OpenTelemetry.Metrics;
++using OpenTelemetry.Resources;
++using OpenTelemetry.Trace;
++using Polly;
++using Polly.Retry;
++
++namespace Microsoft.Extensions.Hosting;
++
++public static class BlazorClientExtensions
++{
++    public static WebAssemblyHostBuilder AddBlazorClientServiceDefaults(this WebAssemblyHostBuilder builder)
++    {
++        ComponentsMetricsServiceCollectionExtensions.AddComponentsMetrics(builder.Services);
++        ComponentsMetricsServiceCollectionExtensions.AddComponentsTracing(builder.Services);
++
++        builder.ConfigureBlazorClientOpenTelemetry();
++
++        builder.Services.AddServiceDiscovery();
++
++        builder.Services.ConfigureHttpClientDefaults(http =>
++        {
++            http.AddServiceDiscovery();
++        });
++
++        return builder;
++    }
++
++    private static WebAssemblyHostBuilder ConfigureBlazorClientOpenTelemetry(this WebAssemblyHostBuilder builder)
++    {
++        // Read the service name from configuration (set by Aspire hosting via the gateway).
++        var serviceName = builder.Configuration["OTEL_SERVICE_NAME"] ?? "BlazorWasm.ServiceDefaults1";
++
++        // Build a resilience pipeline for OTLP export retries.
++        // The OTel SDK's built-in retry uses Thread.Sleep which would deadlock on WASM,
++        // so we handle retries ourselves with async-safe exponential backoff.
++        var pipeline = new ResiliencePipelineBuilder<HttpResponseMessage>()
++            .AddRetry(new HttpRetryStrategyOptions
++            {
++                Delay = TimeSpan.FromSeconds(1),
++                MaxDelay = TimeSpan.FromSeconds(5),
++                MaxRetryAttempts = 3,
++                BackoffType = DelayBackoffType.Exponential,
++                UseJitter = true,
++                ShouldRetryAfterHeader = true,
++            })
++            .Build();
++
++        // Wire HttpClientFactory for all OTLP exporter instances via IPostConfigureOptions.
++        // The fire-and-forget handler works around the OTel SDK's sync-over-async deadlock
++        // on WASM: OtlpExportClient.SendHttpRequest() calls SendAsync().GetAwaiter().GetResult()
++        // which blocks the single WASM thread. Our handler returns 200 immediately to unblock
++        // the SDK, then fires the real request with retries in the background.
++        builder.Services.AddSingleton<IPostConfigureOptions<OtlpExporterOptions>>(sp =>
++        {
++            var logger = sp.GetRequiredService<ILoggerFactory>().CreateLogger("Aspire.OtlpExport");
++            return new PostConfigureOptions<OtlpExporterOptions>(null, o =>
++            {
++                o.HttpClientFactory = () => new HttpClient(new BackgroundExportHandler(pipeline, logger));
++            });
++        });
++
++        builder.Logging.AddOpenTelemetry(logging =>
++        {
++            logging.IncludeFormattedMessage = true;
++            logging.IncludeScopes = true;
++            logging.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(serviceName));
++            logging.AddOtlpExporter();
++        });
++
++        builder.Services.AddOpenTelemetry()
++            .ConfigureResource(r => r.AddService(serviceName))
++            .WithMetrics(metrics =>
++            {
++                metrics.AddMeter("Microsoft.AspNetCore.Components");
++                metrics.AddMeter("Microsoft.AspNetCore.Components.Lifecycle");
++                metrics.AddHttpClientInstrumentation();
++                metrics.AddOtlpExporter();
++            })
++            .WithTracing(tracing =>
++            {
++                tracing.AddSource("Microsoft.AspNetCore.Components")
++                    .AddHttpClientInstrumentation();
++                tracing.AddOtlpExporter();
++            });
++
++        return builder;
++    }
++}
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/wwwroot/BlazorWasm.ServiceDefaults1.lib.module.js b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/wwwroot/BlazorWasm.ServiceDefaults1.lib.module.js
+new file mode 100644
+index 0000000000..aa7572cb58
+--- /dev/null
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/wwwroot/BlazorWasm.ServiceDefaults1.lib.module.js
+@@ -0,0 +1,22 @@
++// Standalone WASM: called by dotnet.js when the mono runtime config is loaded.
++// Fetches client configuration from the gateway's /_blazor/_configuration endpoint
++// and injects the values as environment variables on the MonoConfig.
++export async function onRuntimeConfigLoaded(config) {
++    try {
++        const configUrl = new URL('_blazor/_configuration', document.baseURI).href;
++        const response = await fetch(configUrl);
++        if (response.ok) {
++            const serverConfig = await response.json();
++
++            const envVars = serverConfig?.webAssembly?.environment;
++            if (envVars && Object.keys(envVars).length > 0) {
++                config.environmentVariables ??= {};
++
++                for (const [key, value] of Object.entries(envVars)) {
++                    config.environmentVariables[key] = value;
++                }
++            }
++        }
++    } catch (error) {
++    }
++}
+diff --git a/src/ProjectTemplates/test/Templates.Tests/BlazorWasmServiceDefaultsTemplateTest.cs b/src/ProjectTemplates/test/Templates.Tests/BlazorWasmServiceDefaultsTemplateTest.cs
+new file mode 100644
+index 0000000000..847486a23a
+--- /dev/null
++++ b/src/ProjectTemplates/test/Templates.Tests/BlazorWasmServiceDefaultsTemplateTest.cs
+@@ -0,0 +1,60 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.AspNetCore.InternalTesting;
++using Templates.Test.Helpers;
++using Xunit.Abstractions;
++
++namespace Templates.Test;
++
++#pragma warning disable xUnit1041 // Fixture arguments to test classes must have fixture sources
++
++public class BlazorWasmServiceDefaultsTemplateTest : LoggedTest
++{
++    public BlazorWasmServiceDefaultsTemplateTest(ProjectFactoryFixture projectFactory)
++    {
++        ProjectFactory = projectFactory;
++    }
++
++    public ProjectFactoryFixture ProjectFactory { get; }
++    private ITestOutputHelper _output;
++    public ITestOutputHelper Output
++    {
++        get
++        {
++            if (_output == null)
++            {
++                _output = new TestOutputLogger(Logger);
++            }
++            return _output;
++        }
++    }
++
++    [Fact]
++    public async Task BlazorWasmServiceDefaultsTemplateAsync()
++    {
++        var project = await ProjectFactory.CreateProject(Output);
++
++        await project.RunDotNetNewAsync("blazor-wasm-servicedefaults");
++
++        await project.RunDotNetPublishAsync();
++
++        // Run dotnet build after publish. The reason is that one uses Config = Debug and the other uses Config = Release
++        // The output from publish will go into bin/Release/netcoreappX.Y/publish and won't be affected by calling build
++        // later, while the opposite is not true.
++
++        await project.RunDotNetBuildAsync();
++    }
++
++    [Fact]
++    public async Task BlazorWasmServiceDefaultsTemplate_HostedAsync()
++    {
++        var project = await ProjectFactory.CreateProject(Output);
++
++        await project.RunDotNetNewAsync("blazor-wasm-servicedefaults", args: new[] { "--hosted" });
++
++        await project.RunDotNetPublishAsync();
++
++        await project.RunDotNetBuildAsync();
++    }
++}
+diff --git a/src/ProjectTemplates/test/Templates.Tests/template-baselines.json b/src/ProjectTemplates/test/Templates.Tests/template-baselines.json
+index 2fa9e72189..3e8d66e5af 100644
+--- a/src/ProjectTemplates/test/Templates.Tests/template-baselines.json
++++ b/src/ProjectTemplates/test/Templates.Tests/template-baselines.json
+@@ -3756,5 +3756,16 @@
+         "wwwroot/dotnet-web-worker-client.js"
+       ]
+     }
++  },
++  "blazor-wasm-servicedefaults": {
++    "Default": {
++      "Template": "blazor-wasm-servicedefaults",
++      "Arguments": "new blazor-wasm-servicedefaults",
++      "Files": [
++        "BackgroundExportHandler.cs",
++        "Extensions.cs",
++        "wwwroot/{ProjectName}.lib.module.js"
++      ]
++    }
+   }
+-}
+\ No newline at end of file
++}
+diff --git a/src/Shared/E2ETesting/BrowserAssertFailedException.cs b/src/Shared/E2ETesting/BrowserAssertFailedException.cs
+index f3ad9255a5..aa23717466 100644
+--- a/src/Shared/E2ETesting/BrowserAssertFailedException.cs
++++ b/src/Shared/E2ETesting/BrowserAssertFailedException.cs
+@@ -14,16 +14,21 @@ namespace OpenQA.Selenium;
+ // case.
+ public class BrowserAssertFailedException : XunitException
+ {
+-    public BrowserAssertFailedException(IReadOnlyCollection<string> logs, Exception innerException, string screenShotPath, string innerHTML)
+-        : base(BuildMessage(innerException, logs, screenShotPath, innerHTML), innerException)
++    public BrowserAssertFailedException(IReadOnlyCollection<string> logs, Exception innerException, string screenShotPath, string innerHTML, string url = null, IReadOnlyCollection<string> networkDetails = null)
++        : base(BuildMessage(innerException, logs, screenShotPath, innerHTML, url, networkDetails), innerException)
+     {
+     }
+ 
+-    private static string BuildMessage(Exception exception, IReadOnlyCollection<string> logs, string screenShotPath, string innerHTML)
++    private static string BuildMessage(Exception exception, IReadOnlyCollection<string> logs, string screenShotPath, string innerHTML, string url, IReadOnlyCollection<string> networkDetails)
+     {
+         var builder = new StringBuilder();
+         builder.AppendLine(exception.ToString());
+ 
++        if (!string.IsNullOrEmpty(url))
++        {
++            builder.AppendLine(FormattableString.Invariant($"Browser URL: {url}"));
++        }
++
+         if (File.Exists(screenShotPath))
+         {
+             builder.AppendLine(FormattableString.Invariant($"Screen shot captured at '{screenShotPath}'"));
+@@ -35,6 +40,13 @@ public class BrowserAssertFailedException : XunitException
+                 .AppendJoin(Environment.NewLine, logs);
+         }
+ 
++        if (networkDetails is not null && networkDetails.Count > 0)
++        {
++            builder.AppendLine()
++                .AppendLine("Network responses (_framework, _blazor, and errors):")
++                .AppendJoin(Environment.NewLine, networkDetails);
++        }
++
+         builder.AppendLine("Page content:")
+            .AppendLine(innerHTML);
+ 
+diff --git a/src/Shared/E2ETesting/BrowserFixture.cs b/src/Shared/E2ETesting/BrowserFixture.cs
+index 86af6f2acf..c60b10b525 100644
+--- a/src/Shared/E2ETesting/BrowserFixture.cs
++++ b/src/Shared/E2ETesting/BrowserFixture.cs
+@@ -174,6 +174,10 @@ public class BrowserFixture : IAsyncLifetime
+         opts.SetLoggingPreference(LogType.Browser, LogLevel.All);
+         opts.SetLoggingPreference(LogType.Driver, LogLevel.All);
+ 
++        // Enable performance logging to capture network request/response details (status codes, MIME types).
++        // This data is extracted on assertion failure in WaitAssert to diagnose issues like empty MIME types.
++        opts.SetLoggingPreference("performance", LogLevel.All);
++
+         // On Windows/Linux, we don't need to set opts.BinaryLocation
+         // But for Travis Mac builds we do
+         var binaryLocation = Environment.GetEnvironmentVariable("TEST_CHROME_BINARY");
+diff --git a/src/Shared/E2ETesting/CaptureSeleniumLogsAttribute.cs b/src/Shared/E2ETesting/CaptureSeleniumLogsAttribute.cs
+index 3f30108927..d1d7cdebdf 100644
+--- a/src/Shared/E2ETesting/CaptureSeleniumLogsAttribute.cs
++++ b/src/Shared/E2ETesting/CaptureSeleniumLogsAttribute.cs
+@@ -32,7 +32,11 @@ public class CaptureSeleniumLogsAttribute : BeforeAfterTestAttribute
+         {
+             // Put browser logs first, the test UI will truncate output after a certain length
+             // and the browser logs will include exceptions thrown by js in the browser.
+-            foreach (var kind in logs.AvailableLogTypes.OrderBy(k => k == LogType.Browser ? 0 : 1))
++            // Skip "performance" logs in routine output — they're very verbose and only useful on
++            // failure, where WaitAssert already extracts the relevant network details.
++            foreach (var kind in logs.AvailableLogTypes
++                .Where(k => k != "performance")
++                .OrderBy(k => k == LogType.Browser ? 0 : 1))
+             {
+                 output.WriteLine($"{kind} Logs from Selenium:");
+ 
+diff --git a/src/Shared/E2ETesting/WaitAssert.cs b/src/Shared/E2ETesting/WaitAssert.cs
+index a3bb53520f..7e7b26ba23 100644
+--- a/src/Shared/E2ETesting/WaitAssert.cs
++++ b/src/Shared/E2ETesting/WaitAssert.cs
+@@ -7,6 +7,8 @@ using System.Collections.Generic;
+ using System.IO;
+ using System.Linq;
+ using System.Runtime.ExceptionServices;
++using System.Text.Json;
++using System.Threading;
+ using OpenQA.Selenium;
+ using OpenQA.Selenium.DevTools;
+ using OpenQA.Selenium.Interactions;
+@@ -19,7 +21,7 @@ namespace Microsoft.AspNetCore.E2ETesting;
+ 
+ public static class WaitAssert
+ {
+-    private static bool TestRunFailed;
++    private static int _failureCount;
+     public static TimeSpan DefaultTimeout = TimeSpan.FromSeconds(E2ETestOptions.Instance.DefaultWaitTimeoutInSeconds);
+     public static TimeSpan FailureTimeout = TimeSpan.FromSeconds(E2ETestOptions.Instance.DefaultAfterFailureWaitTimeoutInSeconds);
+ 
+@@ -91,11 +93,29 @@ public static class WaitAssert
+         WaitAssertCore<object>(driver, () => { assertion(); return null; }, timeout);
+     }
+ 
++    // Number of failures before the timeout is halved.
++    private const int FailuresPerStep = 5;
++
++    private static TimeSpan GetAdjustedTimeout()
++    {
++        var failures = Volatile.Read(ref _failureCount);
++        if (failures <= 0)
++        {
++            return DefaultTimeout;
++        }
++
++        // Halve the timeout every FailuresPerStep failures:
++        // 0-4 failures: 120s, 5-9: 60s, 10-14: 30s, 15-19: 15s, 20-24: 7.5s, 25+: floor
++        var steps = failures / FailuresPerStep;
++        var seconds = DefaultTimeout.TotalSeconds / Math.Pow(2, steps);
++        return TimeSpan.FromSeconds(Math.Max(seconds, FailureTimeout.TotalSeconds));
++    }
++
+     private static TResult WaitAssertCore<TResult>(IWebDriver driver, Func<TResult> assertion, TimeSpan timeout = default)
+     {
+         if (timeout == default)
+         {
+-            timeout = !TestRunFailed ? DefaultTimeout : FailureTimeout;
++            timeout = GetAdjustedTimeout();
+         }
+ 
+         Exception lastException = null;
+@@ -118,23 +138,26 @@ public static class WaitAssert
+         }
+         catch (WebDriverTimeoutException)
+         {
+-            // At this point at least one test failed, so we mark the test as failed. Any assertions after this one
+-            // will fail faster. There's a small race condition here between checking the value for TestRunFailed
+-            // above and setting it here, but nothing bad can come out of it. Worst case scenario, one or more
+-            // tests running concurrently might use the DefaultTimeout in their current assertion, which is fine.
+-            TestRunFailed = true;
++            // Increment the failure count so subsequent assertions use progressively shorter timeouts.
++            // The timeout halves with each failure until it reaches the FailureTimeout floor.
++            Interlocked.Increment(ref _failureCount);
++
++            var currentUrl = string.Empty;
++            try { currentUrl = driver.Url; }
++            catch { /* Browser may be in a bad state */ }
+ 
+             var innerHtml = driver.FindElement(By.CssSelector(":first-child"))?.GetDomProperty("innerHTML");
+ 
+             var fileId = $"{Guid.NewGuid():N}.png";
+             var screenShotPath = Path.Combine(Path.GetFullPath(E2ETestOptions.Instance.ScreenShotsPath), fileId);
+             var errors = driver.GetBrowserLogs(LogLevel.All).Select(c => c.ToString()).ToList();
++            var networkDetails = GetNetworkResponseDetails(driver);
+ 
+             TakeScreenShot(driver, screenShotPath);
+             var exceptionInfo = lastException != null ? ExceptionDispatchInfo.Capture(lastException) :
+                 CaptureException(() => assertion());
+ 
+-            throw new BrowserAssertFailedException(errors, exceptionInfo.SourceException, screenShotPath, innerHtml);
++            throw new BrowserAssertFailedException(errors, exceptionInfo.SourceException, screenShotPath, innerHtml, currentUrl, networkDetails);
+         }
+ 
+         return result;
+@@ -170,4 +193,47 @@ public static class WaitAssert
+             }
+         }
+     }
++
++    private static List<string> GetNetworkResponseDetails(IWebDriver driver)
++    {
++        var details = new List<string>();
++        try
++        {
++            var performanceLogs = driver.Manage().Logs.GetLog("performance");
++            foreach (var entry in performanceLogs)
++            {
++                if (!entry.Message.Contains("Network.responseReceived"))
++                {
++                    continue;
++                }
++
++                try
++                {
++                    using var doc = JsonDocument.Parse(entry.Message);
++                    var message = doc.RootElement.GetProperty("message");
++                    var parameters = message.GetProperty("params");
++                    var response = parameters.GetProperty("response");
++                    var url = response.GetProperty("url").GetString();
++                    var status = response.GetProperty("status").GetInt32();
++                    var mimeType = response.TryGetProperty("mimeType", out var mt) ? mt.GetString() : "unknown";
++
++                    // Only include framework-related URLs and error responses to keep output manageable
++                    if (url is not null && (url.Contains("_framework") || url.Contains("_blazor") || status >= 400))
++                    {
++                        details.Add($"  [{status}] {mimeType} - {url}");
++                    }
++                }
++                catch
++                {
++                    // Skip entries we can't parse
++                }
++            }
++        }
++        catch
++        {
++            // Performance logs might not be available
++        }
++
++        return details;
++    }
+ }

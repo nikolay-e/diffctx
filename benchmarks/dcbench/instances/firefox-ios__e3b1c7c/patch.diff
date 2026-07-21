@@ -1,0 +1,1076 @@
+From e3b1c7cda2b4c3bd0a351134f38bf2bc6058b859 Mon Sep 17 00:00:00 2001
+From: "github-actions[bot]"
+ <41898282+github-actions[bot]@users.noreply.github.com>
+Date: Thu, 19 Feb 2026 10:04:43 -0500
+Subject: [PATCH] Add FXIOS [Localization] String import 2026-02-19 for v149
+ (#32173)
+
+Localize [v149] String import 2026-02-19
+
+Co-authored-by: github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>
+---
+ firefox-ios/Client.xcodeproj/project.pbxproj  |  2 +
+ .../lo.lproj/InfoPlist.strings                |  3 +
+ .../cs.lproj/Settings.strings                 |  4 +-
+ .../da.lproj/NativeErrorPage.strings          | 39 ++++++++
+ .../da.lproj/Onboarding.strings               |  6 ++
+ .../da.lproj/TermsOfUse.strings               | 12 +++
+ .../el.lproj/FirefoxHomepage.strings          |  3 +
+ .../el.lproj/NativeErrorPage.strings          | 15 +++
+ .../el.lproj/Onboarding.strings               | 15 +++
+ .../eo.lproj/NativeErrorPage.strings          | 39 ++++++++
+ .../eo.lproj/Onboarding.strings               |  3 +
+ .../eo.lproj/TermsOfUse.strings               | 12 +++
+ .../es-MX.lproj/ContextualHints.strings       |  6 ++
+ .../es-MX.lproj/FirefoxHomepage.strings       | 45 +++++++++
+ .../es-MX.lproj/LibraryPanel.strings          | 12 +++
+ .../es-MX.lproj/MainMenu.strings              | 75 +++++++++++++++
+ .../es-MX.lproj/NativeErrorPage.strings       |  3 +
+ .../es-MX.lproj/Onboarding.strings            | 96 +++++++++++++++++++
+ .../es-MX.lproj/Settings.strings              | 27 ++++++
+ .../es-MX.lproj/Summarizer.strings            | 18 ++++
+ .../es-MX.lproj/TabsTray.strings              |  3 +
+ .../hr.lproj/Onboarding.strings               |  3 +
+ .../ja.lproj/Onboarding.strings               |  3 +
+ .../lo.lproj/AppIconSelection.strings         |  9 ++
+ .../lo.lproj/FirefoxHomepage.strings          | 12 +++
+ .../lo.lproj/NativeErrorPage.strings          | 30 ++++++
+ .../lo.lproj/Onboarding.strings               | 36 +++++++
+ .../EnhancedTrackingProtection.strings        |  2 +-
+ .../uk.lproj/Onboarding.strings               |  3 +
+ .../zh-CN.lproj/Onboarding.strings            |  3 +
+ .../Shared/es-MX.lproj/HistoryPanel.strings   |  3 +
+ .../Shared/lo.lproj/3DTouchActions.strings    |  3 +
+ 32 files changed, 542 insertions(+), 3 deletions(-)
+ create mode 100644 firefox-ios/Extensions/ActionExtension/lo.lproj/InfoPlist.strings
+ create mode 100644 firefox-ios/Shared/Supporting Files/es-MX.lproj/Summarizer.strings
+
+diff --git a/firefox-ios/Client.xcodeproj/project.pbxproj b/firefox-ios/Client.xcodeproj/project.pbxproj
+index c09100f85..8dea03186 100644
+--- a/firefox-ios/Client.xcodeproj/project.pbxproj
++++ b/firefox-ios/Client.xcodeproj/project.pbxproj
+@@ -4776,6 +4776,7 @@
+ 		434341FA2A2DF9FB00D08DF6 /* fi */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = fi; path = fi.lproj/UpdateCard.strings; sourceTree = "<group>"; };
+ 		434369DC2BA85B630004271D /* ug */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ug; path = ug.lproj/BottomSheet.strings; sourceTree = "<group>"; };
+ 		434396F12DDB47C40017A18A /* ca */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ca; path = ca.lproj/Shopping.strings; sourceTree = "<group>"; };
++		43439A3B2F47298600CA0ADC /* es-MX */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "es-MX"; path = "es-MX.lproj/Summarizer.strings"; sourceTree = "<group>"; };
+ 		4343A5D32EE1A3E2002FE739 /* hr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = hr; path = hr.lproj/RelayMask.strings; sourceTree = "<group>"; };
+ 		4343A5D42EE1A3E2002FE739 /* hr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = hr; path = hr.lproj/SearchZero.strings; sourceTree = "<group>"; };
+ 		4343A5D52EE1A3E2002FE739 /* hr */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = hr; path = hr.lproj/Summarize.strings; sourceTree = "<group>"; };
+@@ -20691,6 +20692,7 @@
+ 				43B8964A2EB3818B00A77D8F /* sq */,
+ 				4343A5D62EE1A3E2002FE739 /* hr */,
+ 				4308BBE62F34B528000A13FD /* km */,
++				43439A3B2F47298600CA0ADC /* es-MX */,
+ 			);
+ 			name = Summarizer.strings;
+ 			sourceTree = "<group>";
+diff --git a/firefox-ios/Extensions/ActionExtension/lo.lproj/InfoPlist.strings b/firefox-ios/Extensions/ActionExtension/lo.lproj/InfoPlist.strings
+new file mode 100644
+index 000000000..28a5c83a3
+--- /dev/null
++++ b/firefox-ios/Extensions/ActionExtension/lo.lproj/InfoPlist.strings
+@@ -0,0 +1,3 @@
++/* Bundle display name */
++"CFBundleDisplayName" = "ເປີດໃນ Firefox";
++
+diff --git a/firefox-ios/Shared/Supporting Files/cs.lproj/Settings.strings b/firefox-ios/Shared/Supporting Files/cs.lproj/Settings.strings
+index 4ded4f798..31960237b 100644
+--- a/firefox-ios/Shared/Supporting Files/cs.lproj/Settings.strings	
++++ b/firefox-ios/Shared/Supporting Files/cs.lproj/Settings.strings	
+@@ -203,10 +203,10 @@
+ "Settings.Search.PageTitle.v121" = "Vyhledávání";
+ 
+ /* Description for `Show in Private Sessions` toggle, located in `Suggestions from Search Engines` section in the Search page in the Settings menu. */
+-"Settings.Search.PrivateSession.Description.v125" = "Zobrazovat návrhy z vyhledávačů v anonymním prohlížení";
++"Settings.Search.PrivateSession.Description.v125" = "Zobrazovat návrhy od vyhledávačů při anonymním prohlížení";
+ 
+ /* Label for toggle. Explains that in private browsing mode, the search suggestions which appears at the top of the search bar, can be toggled on or off. Located in `Suggestions from Search Engines` and `Address Bar - Firefox Suggest` sections in the Search page in the Settings menu. */
+-"Settings.Search.PrivateSession.Setting.v124" = "Zobrazovat v anonymním prohlížení";
++"Settings.Search.PrivateSession.Setting.v124" = "Zobrazovat při anonymním prohlížení";
+ 
+ /* Label for the `show search suggestions` setting, in the Search Settings page. */
+ "Settings.Search.ShowSuggestions.v121" = "Povolit našeptávání";
+diff --git a/firefox-ios/Shared/Supporting Files/da.lproj/NativeErrorPage.strings b/firefox-ios/Shared/Supporting Files/da.lproj/NativeErrorPage.strings
+index 9de0e60ff..415d89cb9 100644
+--- a/firefox-ios/Shared/Supporting Files/da.lproj/NativeErrorPage.strings	
++++ b/firefox-ios/Shared/Supporting Files/da.lproj/NativeErrorPage.strings	
+@@ -1,3 +1,39 @@
++/* On certificate error page, this is the text on a button that will show advanced information about the certificate error. */
++"NativeErrorPage.BadCertDomain.AdvancedButton.v149" = "Avanceret";
++
++/* On certificate error page, this is the advanced information explaining why the certificate is invalid. %1$@ is the app name (e.g. Firefox). %2$@ is the site URL. */
++"NativeErrorPage.BadCertDomain.AdvancedInfo.v149" = "%1$@ stoler ikke på dette websted, fordi det detekterede certifikat ikke er gyldigt for %2$@.";
++
++/* On certificate error page, this is the security information shown in the advanced section. */
++"NativeErrorPage.BadCertDomain.AdvancedSecurityInfo.v149" = "Dette websted tillader ikke forbindelser, som ikke er sikre.";
++
++/* On certificate error page, this is the first warning message in the advanced section suggesting possible solutions. */
++"NativeErrorPage.BadCertDomain.AdvancedWarning1.v149" = "Du behøver muligvis at logge ind på dit wi-fi-netværk eller kontrollere dine VPN-indstillinger.";
++
++/* On certificate error page, this is the second warning message in the advanced section for users on corporate networks. */
++"NativeErrorPage.BadCertDomain.AdvancedWarning2.v149" = "Hvis du befinder dig på et virksomheds-netværk, kan din IT-afdeling måske have flere oplysninger.";
++
++/* On certificate error page, this is the description explaining the security risk. */
++"NativeErrorPage.BadCertDomain.Description.v149" = "Nogen, som udgiver sig for at være webstedet, kan forsøge at stjæle dine personlige oplysninger. Dine forbindelsesindstillinger kan også være forkert sat op.";
++
++/* On certificate error page, this is the label prefix for the error code. %@ is the error code (e.g. SSL_ERROR_BAD_CERT_DOMAIN). */
++"NativeErrorPage.BadCertDomain.ErrorCodeLabel.v149" = "Fejlkode: %@";
++
++/* On certificate error page, this is the text on a button that will hide the advanced information section. */
++"NativeErrorPage.BadCertDomain.HideAdvancedButton.v149" = "Skjul avanceret";
++
++/* On certificate error page, this is a link to learn more about certificate errors. */
++"NativeErrorPage.BadCertDomain.LearnMoreLink.v149" = "Læs mere";
++
++/* On certificate error page, this is the text on a button that will proceed to the site despite the certificate error. %@ is the site URL. This is a risky action. */
++"NativeErrorPage.BadCertDomain.ProceedButton.v149" = "Fortsæt til %@ (Risikabelt)";
++
++/* On certificate error page, this is the title warning the user about a potential security issue. */
++"NativeErrorPage.BadCertDomain.TitleLabel.v149" = "Vær forsigtig. Noget ser ikke rigtigt ud.";
++
++/* On certificate error page, this is a link that will show the site’s certificate details. */
++"NativeErrorPage.BadCertDomain.ViewCertificateLink.v149" = "Vis webstedets certifikat";
++
+ /* On error page, this is the text on a button that will try to load the page again. */
+ "NativeErrorPage.ButtonLabel.v131" = "Genindlæs";
+ 
+@@ -7,6 +43,9 @@
+ /* On error page, this is the title for generic error. */
+ "NativeErrorPage.GenericError.TitleLabel.v131" = "Vær forsigtig. Noget ser ikke rigtigt ud.";
+ 
++/* On error page, this is the text on a button that will go back to the previous page. Recommended action. */
++"NativeErrorPage.GoBackButton.v149" = "Gå tilbage (anbefalet)";
++
+ /* On error page, this is the description for no internet connection. */
+ "NativeErrorPage.NoInternetConnection.Description.v131" = "Prøv at oprette forbindelse med en anden enhed. Kontroller dit modem eller din router. Afbryd wi-fi-forbindelsen og opret den igen.";
+ 
+diff --git a/firefox-ios/Shared/Supporting Files/da.lproj/Onboarding.strings b/firefox-ios/Shared/Supporting Files/da.lproj/Onboarding.strings
+index 22923d028..32d562a35 100644
+--- a/firefox-ios/Shared/Supporting Files/da.lproj/Onboarding.strings	
++++ b/firefox-ios/Shared/Supporting Files/da.lproj/Onboarding.strings	
+@@ -184,6 +184,12 @@
+ /* Title for the welcome card in the v148 brand refresh onboarding flow. */
+ "Onboarding.Modern.BrandRefresh.Welcome.Title.v148" = "Sig farvel til skumle sporings-mekanismer";
+ 
++/* Title for the welcome card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Welcome.Title.v148.v2" = "Åbn links med indbygget beskyttelse af dit privatliv";
++
++/* Title for the welcome card in the v149 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Welcome.TitleV3.v149" = "Åbn alle dine links med indbygget beskyttelse af dit privatliv";
++
+ /* Option for the automatic theme. */
+ "Onboarding.Modern.Customization.Theme.Automatic.v145" = "Automatisk";
+ 
+diff --git a/firefox-ios/Shared/Supporting Files/da.lproj/TermsOfUse.strings b/firefox-ios/Shared/Supporting Files/da.lproj/TermsOfUse.strings
+index dd4231151..f6ee13405 100644
+--- a/firefox-ios/Shared/Supporting Files/da.lproj/TermsOfUse.strings	
++++ b/firefox-ios/Shared/Supporting Files/da.lproj/TermsOfUse.strings	
+@@ -7,6 +7,12 @@
+ /* Introductory message in the Terms of Use sheet that mentions updated Terms of Use and Privacy Notice. %@ will be replaced with the app name (e.g., Firefox). */
+ "TermsOfUse.Description.v142" = "Vi har indført betingelser for brug af %@ og har opdateret vores privatlivserklæring.";
+ 
++/* Text shown in the Terms of Use bottom sheet for variants 1 and 2. %@ is replaced with the localized 'here' link text. */
++"TermsOfUse.LearnMoreHere.v147" = "Du kan læse mere %@.";
++
++/* Link text for 'here' in the phrase 'You can learn more here.' shown in the Terms of Use sheet for variants 1 and 2. */
++"TermsOfUse.Link.HereText.v147" = "her";
++
+ /* Link shown in the Terms of Use sheet to direct users to more details about the update. */
+ "TermsOfUse.Link.LearnMore.v142" = "Lær mere";
+ 
+@@ -28,3 +34,9 @@
+ /* Title shown at the top of the Terms of Use bottom sheet, indicating that there is an update to terms of use. */
+ "TermsOfUse.Title.v142" = "Vi har en opdatering";
+ 
++/* Title shown at the top of the Terms of Use bottom sheet for variant 1. */
++"TermsOfUse.TitleValue1.v147" = "Betingelser for brug";
++
++/* Title shown at the top of the Terms of Use bottom sheet for variant 2. %@ is replaced with the app name (e.g., Firefox). */
++"TermsOfUse.TitleValue2.v147" = "En besked fra %@";
++
+diff --git a/firefox-ios/Shared/Supporting Files/el.lproj/FirefoxHomepage.strings b/firefox-ios/Shared/Supporting Files/el.lproj/FirefoxHomepage.strings
+index b5f13ae02..4251d25a5 100644
+--- a/firefox-ios/Shared/Supporting Files/el.lproj/FirefoxHomepage.strings	
++++ b/firefox-ios/Shared/Supporting Files/el.lproj/FirefoxHomepage.strings	
+@@ -1,6 +1,9 @@
+ /* This is the title of the Pocket section on Firefox Homepage. */
+ "FirefoxHome.Pocket.SectionTitle.v140" = "Άρθρα";
+ 
++/* Body label for the Privacy Notice card showed at the top of the homepage notifying users that the Privacy Notice has been updated. The %1$@ placeholder is for the string “Privacy Notice” which will contain a link to the updated privacy notice. The %2$@ placeholder is for the app name (e.g. Firefox). The %3$@ placeholder is for the string “Learn More” which will contain a link to specifically what has changed in the updated Privacy Notice */
++"FirefoxHome.PrivacyNotice.Body.v148" = "Ενημερώσαμε τη %1$@ μας ώστε να περιέχει τις πιο πρόσφατες λειτουργίες του %2$@. %3$@";
++
+ /* Label for the “Learn More” link inserted into the second placeholder of the Privacy Notice body label. This text will appear as a tappable link directing users to detailed information about what has changed in the updated Privacy Notice. */
+ "FirefoxHome.PrivacyNotice.LearnMoreLink.v148" = "Μάθετε περισσότερα";
+ 
+diff --git a/firefox-ios/Shared/Supporting Files/el.lproj/NativeErrorPage.strings b/firefox-ios/Shared/Supporting Files/el.lproj/NativeErrorPage.strings
+index 114da0419..7512d3a20 100644
+--- a/firefox-ios/Shared/Supporting Files/el.lproj/NativeErrorPage.strings	
++++ b/firefox-ios/Shared/Supporting Files/el.lproj/NativeErrorPage.strings	
+@@ -1,12 +1,27 @@
++/* On certificate error page, this is the text on a button that will show advanced information about the certificate error. */
++"NativeErrorPage.BadCertDomain.AdvancedButton.v149" = "Σύνθετες επιλογές";
++
+ /* On certificate error page, this is the advanced information explaining why the certificate is invalid. %1$@ is the app name (e.g. Firefox). %2$@ is the site URL. */
+ "NativeErrorPage.BadCertDomain.AdvancedInfo.v149" = "Το %1$@ δεν εμπιστεύεται αυτόν τον ιστότοπο, επειδή το πιστοποιητικό που βρέθηκε δεν είναι έγκυρο για το %2$@.";
+ 
+ /* On certificate error page, this is the security information shown in the advanced section. */
+ "NativeErrorPage.BadCertDomain.AdvancedSecurityInfo.v149" = "Αυτός ο ιστότοπος δεν επιτρέπει επισφαλείς συνδέσεις.";
+ 
++/* On certificate error page, this is the first warning message in the advanced section suggesting possible solutions. */
++"NativeErrorPage.BadCertDomain.AdvancedWarning1.v149" = "Ίσως χρειαστεί να συνδεθείτε στο δίκτυο Wi-Fi σας ή να ελέγξετε τις ρυθμίσεις VPN σας.";
++
++/* On certificate error page, this is the second warning message in the advanced section for users on corporate networks. */
++"NativeErrorPage.BadCertDomain.AdvancedWarning2.v149" = "Εάν βρίσκεστε σε εταιρικό δίκτυο, η ομάδα υποστήριξής σας ενδέχεται να έχει περισσότερες πληροφορίες.";
++
++/* On certificate error page, this is the description explaining the security risk. */
++"NativeErrorPage.BadCertDomain.Description.v149" = "Κάποιος που προσποιείται ότι είναι ο ιστότοπος θα μπορούσε να υποκλέψει τα προσωπικά στοιχεία σας. Οι ρυθμίσεις σύνδεσής σας ενδέχεται επίσης να είναι εσφαλμένες.";
++
+ /* On certificate error page, this is the label prefix for the error code. %@ is the error code (e.g. SSL_ERROR_BAD_CERT_DOMAIN). */
+ "NativeErrorPage.BadCertDomain.ErrorCodeLabel.v149" = "Κωδικός σφάλματος: %@";
+ 
++/* On certificate error page, this is the text on a button that will hide the advanced information section. */
++"NativeErrorPage.BadCertDomain.HideAdvancedButton.v149" = "Απόκρυψη σύνθετων επιλογών";
++
+ /* On certificate error page, this is a link to learn more about certificate errors. */
+ "NativeErrorPage.BadCertDomain.LearnMoreLink.v149" = "Μάθετε περισσότερα";
+ 
+diff --git a/firefox-ios/Shared/Supporting Files/el.lproj/Onboarding.strings b/firefox-ios/Shared/Supporting Files/el.lproj/Onboarding.strings
+index 5100a3ef5..7a004e94e 100644
+--- a/firefox-ios/Shared/Supporting Files/el.lproj/Onboarding.strings	
++++ b/firefox-ios/Shared/Supporting Files/el.lproj/Onboarding.strings	
+@@ -130,6 +130,9 @@
+ /* Button to turn on notifications in the v148 brand refresh onboarding flow. */
+ "Onboarding.Modern.BrandRefresh.Notification.TurnOn.Action.v148" = "Ενεργοποίηση ειδοποιήσεων";
+ 
++/* Description for the sync card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Sync.Description.v148" = "Λάβετε αστραπιαία σελιδοδείκτες, κωδικούς πρόσβασης και πολλά άλλα σε οποιαδήποτε συσκευή. Τα προσωπικά σας δεδομένα παραμένουν ασφαλή με την κρυπτογράφηση.";
++
+ /* Button to start the sync setup process in the v148 brand refresh onboarding flow. */
+ "Onboarding.Modern.BrandRefresh.Sync.SignIn.Action.v148" = "Έναρξη συγχρονισμού";
+ 
+@@ -145,6 +148,9 @@
+ /* Button title for agreeing to Terms of Use in the v148 brand refresh onboarding flow. */
+ "Onboarding.Modern.BrandRefresh.TermsOfUse.AgreementButtonTitle.v148.v2" = "Συνέχεια";
+ 
++/* Description for the Terms of Use card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.TermsOfUse.Description.v148" = "Είναι γρήγορο, ασφαλές και δεν θα σας ξεπουλήσει. Η περιήγηση μόλις έγινε καλύτερη.";
++
+ /* The text for the manage settings link button in the v148 brand refresh onboarding flow. */
+ "Onboarding.Modern.BrandRefresh.TermsOfUse.ManageLink.v148" = "Διαχείριση ρυθμίσεων";
+ 
+@@ -163,9 +169,15 @@
+ /* The text for the Terms of Use link button in the v148 brand refresh onboarding flow. %@ is the app name (e.g. Firefox). */
+ "Onboarding.Modern.BrandRefresh.TermsOfUse.TermsOfUseLink.v148" = "Όρους χρήσης του %@";
+ 
++/* Title for the Terms of Use card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.TermsOfUse.Title.v148" = "Ετοιμαστείτε για ελεύθερη περιήγηση";
++
+ /* Action button to set the app as the default browser in the v148 brand refresh onboarding flow. */
+ "Onboarding.Modern.BrandRefresh.Welcome.ActionTreatmentA.v148" = "Ορισμός ως προεπιλογή";
+ 
++/* Description for the welcome card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Welcome.Description.v148" = "Προστατεύουμε τα δεδομένα σας και εμποδίζουμε αυτόματα τις εταιρείες από το να κατασκοπεύουν τα κλικ σας.";
++
+ /* Button to skip the welcome card in the v148 brand refresh onboarding flow. */
+ "Onboarding.Modern.BrandRefresh.Welcome.Skip.v148" = "Όχι τώρα";
+ 
+@@ -175,6 +187,9 @@
+ /* Title for the welcome card in the v148 brand refresh onboarding flow. */
+ "Onboarding.Modern.BrandRefresh.Welcome.Title.v148.v2" = "Ανοίξτε τους συνδέσμους σας με ενσωματωμένο απόρρητο";
+ 
++/* Title for the welcome card in the v149 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Welcome.TitleV3.v149" = "Ανοίξτε όλους τους συνδέσμους σας με ενσωματωμένο απόρρητο";
++
+ /* Option for the automatic theme. */
+ "Onboarding.Modern.Customization.Theme.Automatic.v145" = "Αυτόματο";
+ 
+diff --git a/firefox-ios/Shared/Supporting Files/eo.lproj/NativeErrorPage.strings b/firefox-ios/Shared/Supporting Files/eo.lproj/NativeErrorPage.strings
+index 45d626846..556b57d81 100644
+--- a/firefox-ios/Shared/Supporting Files/eo.lproj/NativeErrorPage.strings	
++++ b/firefox-ios/Shared/Supporting Files/eo.lproj/NativeErrorPage.strings	
+@@ -1,3 +1,39 @@
++/* On certificate error page, this is the text on a button that will show advanced information about the certificate error. */
++"NativeErrorPage.BadCertDomain.AdvancedButton.v149" = "Spertula";
++
++/* On certificate error page, this is the advanced information explaining why the certificate is invalid. %1$@ is the app name (e.g. Firefox). %2$@ is the site URL. */
++"NativeErrorPage.BadCertDomain.AdvancedInfo.v149" = "%1$@ ne fidas tiun ĉi retejon ĉar la provizita atestilo ne validas por %2$@.";
++
++/* On certificate error page, this is the security information shown in the advanced section. */
++"NativeErrorPage.BadCertDomain.AdvancedSecurityInfo.v149" = "Tiu ĉi retejo ne permesas nesekurajn konektojn.";
++
++/* On certificate error page, this is the first warning message in the advanced section suggesting possible solutions. */
++"NativeErrorPage.BadCertDomain.AdvancedWarning1.v149" = "Vi eble bezonas komenci seancon en via reto Wi-Fi aŭ kontroli viajn agordojn pri VPN.";
++
++/* On certificate error page, this is the second warning message in the advanced section for users on corporate networks. */
++"NativeErrorPage.BadCertDomain.AdvancedWarning2.v149" = "Se vi estas en entreprena reto, via helpa teamo povus havi pli da informo.";
++
++/* On certificate error page, this is the description explaining the security risk. */
++"NativeErrorPage.BadCertDomain.Description.v149" = "Iu, kiu pretas esti la retejo, povus klopodi ŝteli personajn informojn de vi. Ankaŭ povus esti ke viiaj agordoj pri konekto malĝustas.";
++
++/* On certificate error page, this is the label prefix for the error code. %@ is the error code (e.g. SSL_ERROR_BAD_CERT_DOMAIN). */
++"NativeErrorPage.BadCertDomain.ErrorCodeLabel.v149" = "Erarkodo: %@";
++
++/* On certificate error page, this is the text on a button that will hide the advanced information section. */
++"NativeErrorPage.BadCertDomain.HideAdvancedButton.v149" = "Kaŝi spertulajn elementojn";
++
++/* On certificate error page, this is a link to learn more about certificate errors. */
++"NativeErrorPage.BadCertDomain.LearnMoreLink.v149" = "Pli da informo";
++
++/* On certificate error page, this is the text on a button that will proceed to the site despite the certificate error. %@ is the site URL. This is a risky action. */
++"NativeErrorPage.BadCertDomain.ProceedButton.v149" = "Plu iri al %@ (Riske)";
++
++/* On certificate error page, this is the title warning the user about a potential security issue. */
++"NativeErrorPage.BadCertDomain.TitleLabel.v149" = "Estu singarda. Io ne ĝustas.";
++
++/* On certificate error page, this is a link that will show the site’s certificate details. */
++"NativeErrorPage.BadCertDomain.ViewCertificateLink.v149" = "Montri la atestilon de la retejo";
++
+ /* On error page, this is the text on a button that will try to load the page again. */
+ "NativeErrorPage.ButtonLabel.v131" = "Reŝargi";
+ 
+@@ -7,6 +43,9 @@
+ /* On error page, this is the title for generic error. */
+ "NativeErrorPage.GenericError.TitleLabel.v131" = "Estu singarda. Io ne ĝustas.";
+ 
++/* On error page, this is the text on a button that will go back to the previous page. Recommended action. */
++"NativeErrorPage.GoBackButton.v149" = "Reen (rekomendita)";
++
+ /* On error page, this is the description for no internet connection. */
+ "NativeErrorPage.NoInternetConnection.Description.v131" = "Provu konektiĝi el alia aparato. Kontrolu vian modemon aŭ retalirilon. Malkonektiĝu kaj rekonektiĝu al sendrata reto (Wi-Fi).";
+ 
+diff --git a/firefox-ios/Shared/Supporting Files/eo.lproj/Onboarding.strings b/firefox-ios/Shared/Supporting Files/eo.lproj/Onboarding.strings
+index 3bbf6509c..a9ba20f7b 100644
+--- a/firefox-ios/Shared/Supporting Files/eo.lproj/Onboarding.strings	
++++ b/firefox-ios/Shared/Supporting Files/eo.lproj/Onboarding.strings	
+@@ -187,6 +187,9 @@
+ /* Title for the welcome card in the v148 brand refresh onboarding flow. */
+ "Onboarding.Modern.BrandRefresh.Welcome.Title.v148.v2" = "Malfermi viajn ligilojn kun integrita privateco";
+ 
++/* Title for the welcome card in the v149 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Welcome.TitleV3.v149" = "Malfermi ĉiujn viajn ligilojn kun integrita privateco";
++
+ /* Option for the automatic theme. */
+ "Onboarding.Modern.Customization.Theme.Automatic.v145" = "Aŭtomate";
+ 
+diff --git a/firefox-ios/Shared/Supporting Files/eo.lproj/TermsOfUse.strings b/firefox-ios/Shared/Supporting Files/eo.lproj/TermsOfUse.strings
+index a3877751d..777f525d8 100644
+--- a/firefox-ios/Shared/Supporting Files/eo.lproj/TermsOfUse.strings	
++++ b/firefox-ios/Shared/Supporting Files/eo.lproj/TermsOfUse.strings	
+@@ -7,6 +7,12 @@
+ /* Introductory message in the Terms of Use sheet that mentions updated Terms of Use and Privacy Notice. %@ will be replaced with the app name (e.g., Firefox). */
+ "TermsOfUse.Description.v142" = "Ni aldonis kondiĉojn de uzo kaj ĝisdatigis nian rimarkon pri privateco por %@.";
+ 
++/* Text shown in the Terms of Use bottom sheet for variants 1 and 2. %@ is replaced with the localized 'here' link text. */
++"TermsOfUse.LearnMoreHere.v147" = "Pli da informo %@.";
++
++/* Link text for 'here' in the phrase 'You can learn more here.' shown in the Terms of Use sheet for variants 1 and 2. */
++"TermsOfUse.Link.HereText.v147" = "ĉi tie";
++
+ /* Link shown in the Terms of Use sheet to direct users to more details about the update. */
+ "TermsOfUse.Link.LearnMore.v142" = "Pli da informo";
+ 
+@@ -28,3 +34,9 @@
+ /* Title shown at the top of the Terms of Use bottom sheet, indicating that there is an update to terms of use. */
+ "TermsOfUse.Title.v142" = "Ni havas ĝisdatigon";
+ 
++/* Title shown at the top of the Terms of Use bottom sheet for variant 1. */
++"TermsOfUse.TitleValue1.v147" = "Kondiĉoj de uzo";
++
++/* Title shown at the top of the Terms of Use bottom sheet for variant 2. %@ is replaced with the app name (e.g., Firefox). */
++"TermsOfUse.TitleValue2.v147" = "Noto de %@";
++
+diff --git a/firefox-ios/Shared/Supporting Files/es-MX.lproj/ContextualHints.strings b/firefox-ios/Shared/Supporting Files/es-MX.lproj/ContextualHints.strings
+index 3cc631a75..32fd3a765 100644
+--- a/firefox-ios/Shared/Supporting Files/es-MX.lproj/ContextualHints.strings	
++++ b/firefox-ios/Shared/Supporting Files/es-MX.lproj/ContextualHints.strings	
+@@ -1,3 +1,9 @@
+ /* Contextual hints are little popups that appear for the users informing them of new features. This is a call to action for the popup that appears to educate users about what the fire button in the toolbar does, when in private mode. */
+ "ContextualHints.FeltDeletion.Body.v122" = "Toca aquí para iniciar una nueva sesión privada. Elimina tu historial, cookies — todo.";
+ 
++/* Contextual hints are little popups that appear for the users informing them of new features. This is the body description of one that points the user to the new translation icon on the toolbar. */
++"ContextualHints.Translations.Body.v145" = "Traducciones rápidas y privadas están listas cuando tu lo estés.";
++
++/* Contextual hints are little popups that appear for the users informing them of new features. This is the title of one that points the user to the new translation icon on the toolbar. %@ is the app name (e.g. Firefox). */
++"ContextualHints.Translations.Title.v145" = "%@ habla tu idioma";
++
+diff --git a/firefox-ios/Shared/Supporting Files/es-MX.lproj/FirefoxHomepage.strings b/firefox-ios/Shared/Supporting Files/es-MX.lproj/FirefoxHomepage.strings
+index c5d95cf46..ed582c1e3 100644
+--- a/firefox-ios/Shared/Supporting Files/es-MX.lproj/FirefoxHomepage.strings	
++++ b/firefox-ios/Shared/Supporting Files/es-MX.lproj/FirefoxHomepage.strings	
+@@ -1,3 +1,30 @@
++/* This is the title of the Pocket section on Firefox Homepage. */
++"FirefoxHome.Pocket.SectionTitle.v140" = "Historias";
++
++/* Body label for the Privacy Notice card showed at the top of the homepage notifying users that the Privacy Notice has been updated. The %1$@ placeholder is for the string “Privacy Notice” which will contain a link to the updated privacy notice. The %2$@ placeholder is for the app name (e.g. Firefox). The %3$@ placeholder is for the string “Learn More” which will contain a link to specifically what has changed in the updated Privacy Notice */
++"FirefoxHome.PrivacyNotice.Body.v148" = "Hemos actualizado nuestro %1$@ para reflejar las últimas características en %2$@. %3$@";
++
++/* Label for the “Learn More” link inserted into the second placeholder of the Privacy Notice body label. This text will appear as a tappable link directing users to detailed information about what has changed in the updated Privacy Notice. */
++"FirefoxHome.PrivacyNotice.LearnMoreLink.v148" = "Más información";
++
++/* Label for the “Privacy Notice” link inserted into the first placeholder of the Privacy Notice body label. This text will appear as a tappable link that opens the updated Firefox Privacy Notice. */
++"FirefoxHome.PrivacyNotice.PrivacyNoticeLink.v148" = "Aviso de privacidad";
++
++/* The title for the Firefox homepage, only used to denote the name of the destination screen in the system back navigation button long-press menu */
++"FirefoxHome.ScreenTitle.v144" = "Página de inicio";
++
++/* This is the title for the button next to the stories section title on Firefox Homepage that, when tapped, transitions you to the Top Stories view which displays a collection of trending news articles. */
++"FirefoxHome.Stories.AllStoriesButtonTitle.v145" = "Todas las historias";
++
++/* This is the title that appears in the navigation bar for the All Stories view, a screen that displays a collection of trending news articles */
++"FirefoxHome.Stories.AllStoriesViewTitle.v145" = "Todas las historias";
++
++/* This is the title of the stories section on Firefox Homepage, which displays a collection of trending news articles */
++"FirefoxHome.Stories.PopularTodaySectionTitle.v145" = "Popular hoy";
++
++/* This is the title of the Stories section on Firefox Homepage. */
++"FirefoxHome.Stories.SectionTitle.v140" = "Historias";
++
+ /* When the user ends their private session, they are returned to the private mode homepage, and a toastbar popups confirming that their data has been erased. This is the label for that toast. */
+ "FirefoxHomepage.FeltDeletion.Link.v122" = "Datos de navegación privada borrados";
+ 
+@@ -10,3 +37,21 @@
+ /* The title for the card that educates users about how private mode works. The card shows up on the homepage when in the new privacy mode. */
+ "FirefoxHomepage.FeltPrivacyUI.Title.v122" = "No dejes rastros en este dispositivo";
+ 
++/* Accessibility label for the page reload button in the navigation toolbar of the stories webview */
++"FirefoxHomepage.Pocket.StoriesWebview.ReloadPageAccessibilityLabel.v146" = "Recargar página";
++
++/* This is the placeholder text that is at the center of the search bar on the Firefox Homepage. */
++"FirefoxHomepage.SearchBar.PlaceholderTitle.v142" = "Buscar o ingresar dirección";
++
++/* This is the navigation title for the Shortcuts Library view */
++"FirefoxHomepage.Shortcuts.Library.Title.v143" = "Atajos";
++
++/* Accessibility label for shortcuts tile on the Firefox home page, indicating that the tile is a pinned tile. %@ is the title of the website. */
++"FirefoxHomepage.Shortcuts.Pinned.AccessibilityLabel.v139" = "Fijado: %@";
++
++/* This is the section title for the Shortcuts section on Firefox Homepage. */
++"FirefoxHomepage.Shortcuts.SectionTitle.v142" = "Atajos";
++
++/* On the homepage, in the Stories section, this is the accessibility hint for the position of the current story in the stories stack. The first placeholder, %1$@, is the current position; the second placeholder, %2$@, is the total story count. Example: '1 of 5' */
++"FirefoxHomepage.Stories.PositionAccessibilityHint.v143" = "%1$@ de %2$@";
++
+diff --git a/firefox-ios/Shared/Supporting Files/es-MX.lproj/LibraryPanel.strings b/firefox-ios/Shared/Supporting Files/es-MX.lproj/LibraryPanel.strings
+index e0b301a27..ce231180b 100644
+--- a/firefox-ios/Shared/Supporting Files/es-MX.lproj/LibraryPanel.strings	
++++ b/firefox-ios/Shared/Supporting Files/es-MX.lproj/LibraryPanel.strings	
+@@ -1,3 +1,15 @@
++/* This label is meant to signify the section containing a group of items that are older than thirty days. */
++"LibraryPanel.Section.Older" = "Antiguo";
++
++/* Section title that, when expanded, shows all web browsing history entries for the last 4 weeks beneath it (not including entries from the less inclusive sections) */
++"LibraryPanel.Sections.LastFourWeeks.v138" = "Últimas 4 semanas";
++
+ /* This label is meant to signify the section containing a group of items from the past hour. This is primarily used in the history library panel when grouping sites that have been visited in the last hour. */
+ "LibraryPanel.Sections.LastHour.v134" = "Última hora";
+ 
++/* Section title that, when expanded, shows all web browsing history entries for the last 7 days beneath it (not including entries from the less inclusve sections) */
++"LibraryPanel.Sections.LastSevenDays.v138" = "Los últimos 7 días";
++
++/* Section title that, when expanded, shows all web browsing history entries for the last 24 hours beneath it (not including entries from the less inclusive sections) */
++"LibraryPanel.Sections.LastTwentyFourHours.v138" = "Últimas 24 horas";
++
+diff --git a/firefox-ios/Shared/Supporting Files/es-MX.lproj/MainMenu.strings b/firefox-ios/Shared/Supporting Files/es-MX.lproj/MainMenu.strings
+index 4a6af11f4..82be58fc1 100644
+--- a/firefox-ios/Shared/Supporting Files/es-MX.lproj/MainMenu.strings	
++++ b/firefox-ios/Shared/Supporting Files/es-MX.lproj/MainMenu.strings	
+@@ -1,9 +1,24 @@
++/* Contextual hints are little popups that appear for the users informing them of new features. When a user opens the new menu design for the first time, this contextual hint appears. This is the body text for the hint. */
++"ContextualHints.MainMenu.MenuRedesign.Body.v142" = "Marcadores, historial y configuraciones — todo al alcance de tus dedos.";
++
++/* Contextual hints are little popups that appear for the users informing them of new features. When a user opens the new menu design for the first time, this contextual hint appears. This is the title for the hint. */
++"ContextualHints.MainMenu.MenuRedesign.Title.v142" = "Nuevo menú, sin complicaciones";
++
+ /* Contextual hints are little popups that appear for the users informing them of new features. When a user opens the new menu design for the first time, this contextual hint appears. This is the body text for the hint. */
+ "ContextualHints.MainMenu.NewMenu.Body.v132" = "Encuentra lo que necesitas más rápido, desde navegación privada hasta acciones para guardar contenido.";
+ 
+ /* Contextual hints are little popups that appear for the users informing them of new features. When a user opens the new menu design for the first time, this contextual hint appears. This is the title for the hint. */
+ "ContextualHints.MainMenu.NewMenu.Title.v132" = "Nuevo: menú simplificado";
+ 
++/* On the main menu, the accessibility label for the menu component that allows a user to save a bookmark for this particular page.. */
++"MainMenu.AccessibilityLabels.BookmarkPage.Title.v41" = "Agregar página a marcadores";
++
++/* The accessibility label for the close button in the Main menu. */
++"MainMenu.AccessibilityLabels.CloseButton.142" = "Cerrar menú";
++
++/* The accessibility label for the dismiss button, for header banner, on top of the menu. */
++"MainMenu.AccessibilityLabels.DismissBanner.142" = "Descartar banner";
++
+ /* On the main menu, the accessibility label hint for any action/option inside the menu, that is disabled. For example: 'Save to Reading List' option, from Menu, in some cases is disabled and the voice over should indicate that. 'Save To Reading List dimmed' */
+ "MainMenu.AccessibilityLabels.OptionDisabled.Hint.v133" = "Atenuado";
+ 
+@@ -13,12 +28,21 @@
+ /* The accessibility label for the close button in the Main menu. */
+ "MainMenu.Account.AccessibilityLabels.CloseButton.v132" = "Cerrar";
+ 
++/* The accessibility label for the close button of the header menu banner. */
++"MainMenu.Account.AccessibilityLabels.CloseButton.v142" = "Cerrar";
++
+ /* The accessibility label for the sign in button in the Main menu header view. */
+ "MainMenu.Account.AccessibilityLabels.MainButton.v132" = "Inicia sesión para sincronizar contraseñas, pestañas y más";
+ 
++/* On the main menu, when the user is signed in. */
++"MainMenu.Account.SignedIn.Description.v141" = "Administra lo que respaldas y sincronizas";
++
+ /* On the main menu, at the top, when the user is signed out. The description for the sign in action */
+ "MainMenu.Account.SignedOut.Description.v131" = "Sincronizar contraseñas, pestañas y más";
+ 
++/* On the main menu, when the user is signed out. The description for the sign in action */
++"MainMenu.Account.SignedOut.Description.v141" = "Sincronizar marcadores, contraseñas, pestañas y mucho más";
++
+ /* On the main menu, at the top, when the user is signed out. The title for the sign in action */
+ "MainMenu.Account.SignedOut.Title.v131" = "Iniciar sesión";
+ 
+@@ -28,6 +52,27 @@
+ /* On the main menu, at the top, when the user is signed in but there was an error syncing. The title for this state. */
+ "MainMenu.Account.SyncError.Title.v131" = "Vuelve a iniciar sesión para sincronizar";
+ 
++/* On the main menu,the title for the menu component that allows a user to save a bookmark for this particular page.. */
++"MainMenu.BookmarkPage.Title.v141" = "Agregar página a marcadores";
++
++/* On the main menu, a title for a label that indicate the Desktop Site option from menu, is OFF. */
++"MainMenu.DesktopSiteOff.Title.v142" = "Desactivar";
++
++/* On the main menu, a title for a label that indicate the Desktop Site option from menu, is ON. */
++"MainMenu.DesktopSiteOn.Title.v142" = "Activar";
++
++/* On the main menu, at the top, subtitle for the banner which suggest user can set Firefox as default browser. */
++"MainMenu.HeaderBanner.Subtitle.v142" = "Toma segundos. Cámbialo en cualquier momento.";
++
++/* On the main menu, at the top, title for the banner which suggest user can set Firefox as default browser. %@ is the app name */
++"MainMenu.HeaderBanner.Title.v142" = "Establece %@ como predeterminado";
++
++/* On the main menu, a title for a label that indicate the current option/action state is off. */
++"MainMenu.Off.Title.v141" = "Desactivar";
++
++/* On the main menu, a title for a label that indicate the current option/action state is on. */
++"MainMenu.On.Title.v141" = "Activar";
++
+ /* On the main menu, the accessibility label for the action that will take the user to the Bookmarks panel. */
+ "MainMenu.PanelLinkSection.AccessibilityLabels.Bookmarks.v132" = "Marcadores";
+ 
+@@ -76,6 +121,15 @@
+ /* On the main menu, the title for the action that will take the user to a What's New in Firefox popup. %@ is the app name (e.g. Firefox). */
+ "MainMenu.SettingsSection.WhatsNew.Title.v131" = "Nuevo en %@";
+ 
++/* On the main menu, at the top, title for a button that open site protection settings. State of the button indicate that the connection is not secure. */
++"MainMenu.SiteProtection.ConnectionNotSecure.Title.v141" = "La conexión no es segura";
++
++/* On the main menu, at the top, title for a button that open site protection settings. State of the button indicate that the protections are OFF. */
++"MainMenu.SiteProtection.ProtectionsOff.Title.v141" = "Las protecciones están desactivadas";
++
++/* On the main menu, at the top, title for a button that open site protection settings. State of the button indicate that the protections are ON. */
++"MainMenu.SiteProtection.ProtectionsOn.Title.v141" = "Las protecciones están activadas";
++
+ /* On the main menu, a string below the Save submenu accessibility label, indicating what kind of tools are available in that menu. This string is for the Add to Home screen tool for iOS Home screen. */
+ "MainMenu.Submenus.Save.AccessibilityLabels.AddToHomeScreen.Subtitle.v132" = "Inicio";
+ 
+@@ -190,6 +244,9 @@
+ /* On the main menu, the accessibility label for the action (Share with others) that will take the user/open (to) the Share submenu. */
+ "MainMenu.Submenus.Tools.AccessibilityLabels.Share.Title.v132" = "Compartir";
+ 
++/* On the main menu, the accessibility label for the action (Share with others) that will take the user/open (to) the Share submenu. */
++"MainMenu.Submenus.Tools.AccessibilityLabels.Share.Title.v144" = "Compartir";
++
+ /* On the main menu, a string below the Tool submenu accessibility label, indicating what kind of tools are available in that menu. This string is for the Zoom tool and is indicating that under the Tools submenu, a Zoom (apply zoom on a page) action is available. */
+ "MainMenu.Submenus.Tools.AccessibilityLabels.Zoom.Subtitle.v132" = "Zoom";
+ 
+@@ -205,6 +262,12 @@
+ /* On the main menu, a string below the Tool submenu tiitle, indicating what kind of tools are available in that menu. This string is for the Night Mode tool. */
+ "MainMenu.Submenus.Tools.NightMode.Subtitle.v131" = "Modo nocturno";
+ 
++/* On the main menu, in the tools submenu, the title for the menu component that indicates the current page zoom level. %@ is the current zoom level percentage. */
++"MainMenu.Submenus.Tools.PageZoom.Title.v140" = "Zoom de la página (%@)";
++
++/* On the main menu, in the tools submenu, the title for the menu component that indicates the current page zoom level. */
++"MainMenu.Submenus.Tools.PageZoomV2.Title.v141" = "Zoom de la página";
++
+ /* On the main menu, a string below the Tool submenu tiitle, indicating what kind of tools are available in that menu. This string is for the Report Print tool. */
+ "MainMenu.Submenus.Tools.Print.Subtitle.v131" = "Imprimir";
+ 
+@@ -238,6 +301,9 @@
+ /* On the main menu, the title for the action that will turn Website's Dark Mode on in the application. */
+ "MainMenu.Submenus.Tools.WebsiteDarkMode.On.Title.v137" = "Activar el modo oscuro del sitio web";
+ 
++/* On the main menu, the title for the action that indicate, website dark mode can be turned on or off. */
++"MainMenu.Submenus.Tools.WebsiteDarkMode.Title.v141" = "Modo oscuro del sitio web";
++
+ /* This string is for the Zoom tool, when Zoom value is negative. (-50%) */
+ "MainMenu.Submenus.Tools.Zoom.NegativeSymbol.v137" = "-";
+ 
+@@ -268,6 +334,12 @@
+ /* On the main menu, the accessibility label for the action that will bring up the Search menu, so the user can search for a word or a pharse on the current page. */
+ "MainMenu.ToolsSection.AccessibilityLabels.FindInPage.v132" = "Buscar en la página";
+ 
++/* On the main menu, the accessibility label for the action that will hide some menu options in the current section of the menu. */
++"MainMenu.ToolsSection.AccessibilityLabels.LessOptions.v141" = "Menos";
++
++/* On the main menu, the accessibility label for the action that will show more menu options in the current section of the menu. */
++"MainMenu.ToolsSection.AccessibilityLabels.MoreOptions.v141" = "Más";
++
+ /* On the main menu, the accessibility label for the action that will take the user to the Save submenu in the menu. In the main menu, there is an option called Save that is taking the user to the Save submenu where user can share, bookmark the page and so on. */
+ "MainMenu.ToolsSection.AccessibilityLabels.Save.v132" = "Guardar";
+ 
+@@ -289,6 +361,9 @@
+ /* On the main menu, the title for the action that will bring up the Search menu, so the user can search for a word or a pharse on the current page. */
+ "MainMenu.ToolsSection.FindInPage.Title.v131" = "Buscar en la página…";
+ 
++/* On the main menu, the title for the action that will hide some menu options in the current section of the menu. */
++"MainMenu.ToolsSection.LessOptions.Title.v141" = "Menos";
++
+ /* On the main menu, the title for the action that will take the user to the Save submenu in the menu. */
+ "MainMenu.ToolsSection.SaveSubmenu.Title.v131" = "Guardar";
+ 
+diff --git a/firefox-ios/Shared/Supporting Files/es-MX.lproj/NativeErrorPage.strings b/firefox-ios/Shared/Supporting Files/es-MX.lproj/NativeErrorPage.strings
+index 31dfe6be6..70911e71e 100644
+--- a/firefox-ios/Shared/Supporting Files/es-MX.lproj/NativeErrorPage.strings	
++++ b/firefox-ios/Shared/Supporting Files/es-MX.lproj/NativeErrorPage.strings	
+@@ -1,3 +1,6 @@
++/* On certificate error page, this is the text on a button that will show advanced information about the certificate error. */
++"NativeErrorPage.BadCertDomain.AdvancedButton.v149" = "Avanzado";
++
+ /* On error page, this is the text on a button that will try to load the page again. */
+ "NativeErrorPage.ButtonLabel.v131" = "Recargar";
+ 
+diff --git a/firefox-ios/Shared/Supporting Files/es-MX.lproj/Onboarding.strings b/firefox-ios/Shared/Supporting Files/es-MX.lproj/Onboarding.strings
+index e65b8dd45..dc7c2fe0c 100644
+--- a/firefox-ios/Shared/Supporting Files/es-MX.lproj/Onboarding.strings	
++++ b/firefox-ios/Shared/Supporting Files/es-MX.lproj/Onboarding.strings	
+@@ -76,6 +76,102 @@
+ /* Describes an action on some of the Onboarding screen, including the wallpaper onboarding screen. This string will be on a button so user can skip that onboarding page. */
+ "Onboarding.LaterAction.v115" = "Saltar";
+ 
++/* Continue button on the toolbar customization card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Customization.Toolbar.Continue.Action.v148" = "Continuar";
++
++/* Description for the toolbar customization card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Customization.Toolbar.Description.v148" = "Comienza a escribir para obtener sugerencias de búsqueda, tus sitios principales, marcadores, historial y motores de búsqueda – todo en un solo lugar.";
++
++/* Title for the toolbar customization card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Customization.Toolbar.Title.v148" = "Elige tu barra de direcciones";
++
++/* Description for the marketing data sharing card in the v148 brand refresh onboarding flow. %1$@ is the app name (e.g. Firefox), %2$@ is the company name (e.g. Mozilla). */
++"Onboarding.Modern.BrandRefresh.Marketing.Description.v148" = "Comparte con los socios de marketing de %1$@ cómo descubriste %2$@ y cómo lo usas. Estos datos nunca se venden.";
++
++/* Link text for learning more about how marketing data is used in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Marketing.LearnMoreLink.v148" = "Cómo utilizamos los datos";
++
++/* Button to skip the marketing data sharing card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Marketing.Skip.Action.v148" = "Ahora no";
++
++/* Agreement text for sending diagnostic and interaction data in the v148 brand refresh onboarding flow. %1$@ is the app name (e.g. Firefox), %2$@ is the company name (e.g. Mozilla), %3$@ is the manage settings link button that redirects the user to manage data collection preferences. */
++"Onboarding.Modern.BrandRefresh.TermsOfUse.ManagePreferenceAgreement.v148" = "Para ayudar a mejorar el navegador, %1$@ envía datos de diagnóstico e interacción a %2$@. %3$@";
++
++/* Agreement text for Privacy Notice in the v148 brand refresh onboarding flow. %1$@ is the app name (e.g. Firefox), %2$@ is the Privacy Notice link button that redirects the user to the Privacy Notice page. */
++"Onboarding.Modern.BrandRefresh.TermsOfUse.PrivacyNoticeAgreement.v148" = "%1$@ se preocupa por tu privacidad. Lee más en nuestro %2$@";
++
++/* The text for the Privacy Notice link button in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.TermsOfUse.PrivacyNoticeLink.v148" = "Política de privacidad";
++
++/* Agreement text for Terms of Use in the v148 brand refresh onboarding flow. %@ is the Terms of Use link button that redirects the user to the Terms of Use page. */
++"Onboarding.Modern.BrandRefresh.TermsOfUse.TermsOfUseAgreement.v148" = "Al continuar, aceptas los %@";
++
++/* The text for the Terms of Use link button in the v148 brand refresh onboarding flow. %@ is the app name (e.g. Firefox). */
++"Onboarding.Modern.BrandRefresh.TermsOfUse.TermsOfUseLink.v148" = "%@ Términos de uso";
++
++/* Title for the Terms of Use card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.TermsOfUse.Title.v148" = "Prepárate para correr con libertad";
++
++/* Action button to set the app as the default browser in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Welcome.ActionTreatmentA.v148" = "Establecer como navegador predeterminado";
++
++/* Description for the welcome card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Welcome.Description.v148" = "Protegemos tus datos y bloqueamos automáticamente a las empresas que espíen tus clics.";
++
++/* Button to skip the welcome card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Welcome.Skip.v148" = "Ahora no";
++
++/* Title for the welcome card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Welcome.Title.v148" = "Dile adiós a los rastreadores espeluznantes";
++
++/* Title for the welcome card in the v149 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Welcome.TitleV3.v149" = "Abre todos tus enlaces con privacidad incorporada";
++
++/* String used to describe the option to save the user setting and continue to the next onboarding in Firefox Onboarding screens. */
++"Onboarding.Modern.Customization.Theme.Continue.Action.v140" = "Continuar";
++
++/* Button to start the Sync setup process. */
++"Onboarding.Modern.Sync.SignIn.Action.v145" = "Empezar a sincronizar";
++
++/* Button to skip the Sync setup during onboarding. */
++"Onboarding.Modern.Sync.Skip.Action.v145" = "Ahora no";
++
++/* Subtitle for the Terms of Service screen in the onboarding process. The '\n' symbols denote empty lines separating the first link parameter from the rest of the text. */
++"Onboarding.Modern.TermsOfService.Subtitle.v140" = "Carga sitios web ultra rápido\nProtección automática contra rastreo\nSincronización en todos tus dispositivos";
++
++/* Agreement text for Terms of Service in the Terms of Service screen. %@ is the Terms of Service link button that redirect the user to the Terms of Service page. */
++"Onboarding.Modern.TermsOfService.TermsOfServiceAgreement.v140" = "Al continuar, aceptas los %@";
++
++/* Agreement text for Terms of Service. %@ is the placeholder for the Terms of Use link. */
++"Onboarding.Modern.TermsOfService.TermsOfServiceAgreement.v145" = "Al continuar, aceptas los %@";
++
++/* The text for the Terms of Use link button. %@ is the app name (e.g. Firefox). */
++"Onboarding.Modern.TermsOfService.TermsOfUseLink.v145" = "%@ Términos de uso.";
++
++/* Title for the Terms of Service screen in the onboarding process. */
++"Onboarding.Modern.TermsOfService.Title.v140" = "Mejora tu navegación";
++
++/* Title for the Terms of Use button link, in the Terms of Use screen for redirecting the user to the Terms of Use page. %@ is the app name (e.g. Firefox). */
++"Onboarding.Modern.TermsOfUse.TermsOfUseLink.v140" = "%@ Términos de uso.";
++
++/* Describes the action on the first onboarding page in our Onboarding screen. This indicates that the user will set their default browser to Firefox. */
++"Onboarding.Modern.Welcome.ActionTreatementA.v140" = "Establecer como navegador predeterminado";
++
++/* String used to describe Firefox on the welcome onboarding page for the current version of our onboarding screens. */
++"Onboarding.Modern.Welcome.Description.v140" = "Una sola opción te protege donde sea que navegues en la web. Siempre puedes cambiarla más tarde.";
++
++/* Describes the action on the first onboarding page in our Onboarding screen. This string will be on a button so user can skip this onboarding card. */
++"Onboarding.Modern.Welcome.Skip.v140" = "Ahora no";
++
++/* Button to skip the welcome card. */
++"Onboarding.Modern.Welcome.Skip.v145" = "Ahora no";
++
++/* String used to describes the title of what Firefox is on the welcome onboarding page for current version in our Onboarding screens. */
++"Onboarding.Modern.Welcome.Title.v140" = "Dile adiós a los anuncios espeluznantes";
++
++/* Title for the welcome card in the v2 onboarding flow. */
++"Onboarding.Modern.Welcome.Title.v145" = "Dile adiós a los rastreadores espeluznantes";
++
+ /* String used to describe the option to continue to ask for the notification permission in Firefox Onboarding screens. */
+ "Onboarding.Notification.Continue.Action.v114" = "Continuar";
+ 
+diff --git a/firefox-ios/Shared/Supporting Files/es-MX.lproj/Settings.strings b/firefox-ios/Shared/Supporting Files/es-MX.lproj/Settings.strings
+index 52d7b0b89..a31d7d71b 100644
+--- a/firefox-ios/Shared/Supporting Files/es-MX.lproj/Settings.strings	
++++ b/firefox-ios/Shared/Supporting Files/es-MX.lproj/Settings.strings	
+@@ -64,6 +64,15 @@
+ /* Label used as an item in Settings screen. When touched, it will take user to address autofill settings page to that will allow user to add or modify saved addresses to allow for autofill in a webpage. */
+ "Settings.AddressAutofill.Title.v126" = "Direcciones";
+ 
++/* Default section header title under page zoom settings. Indicates the default value for all websites */
++"Settings.Appearance.Zoom.Default.Title.v140" = "Predeterminado";
++
++/* Button to reset specific zoom site levels back to default */
++"Settings.Appearance.Zoom.Reset.Button.v140" = "Restablecer ajustes del sitio";
++
++/* Page zoom section header title in Appearance settings */
++"Settings.Appearance.Zoom.SectionHeader.v140" = "Ajustes de zoom";
++
+ /* Label used as an item in Settings screen. When touched, it will take user to credit card settings page to that will allows to add or modify saved credit cards to allow for autofill in a webpage. */
+ "Settings.AutofillCreditCard.Title.v122" = "Métodos de pago";
+ 
+@@ -142,6 +151,9 @@
+ /* Show Firefox Browser Privacy Notice page from the Privacy section in the settings. See https://www.mozilla.org/privacy/firefox/ */
+ "Settings.PrivacyNotice.Title.v137" = "Aviso de privacidad";
+ 
++/* In the settings menu, in the General section, this is the title for the option that allows user to disable the autohide feature of the tab and address bar. */
++"Settings.ScrollToHideTabAndAddressBar.Title.v138" = "Desplazar para ocultar la barra de pestañas y de direcciones";
++
+ /* Accessibility label for default search engine setting. */
+ "Settings.Search.Accessibility.DefaultSearchEngine.v121" = "Motor de búsqueda predeterminado";
+ 
+@@ -220,3 +232,18 @@
+ /* Terms of Use settings section title */
+ "Settings.TermsOfUse.Title.v137" = "Términos de uso";
+ 
++/* This is the section title text for the the Translation feature under the Translation settings section. */
++"Settings.Translation.SectionTitle.v145" = "Preferencias de traducción";
++
++/* In the settings menu, in the General section, this is the text to show next to the Translation setting title and indicates if the translation feature has been disabled. */
++"Settings.Translation.SettingOff.v145" = "Desactivar";
++
++/* In the settings menu, in the General section, this is the text to show next to the Translation setting title and indicates if the translation feature has been enabled. */
++"Settings.Translation.SettingOn.v145" = "Activar";
++
++/* In the settings menu, in the General section, this is the title for the Translation settings section. */
++"Settings.Translation.Title.v145" = "Traducción";
++
++/* This is the title for the setting that toggles the Translation feature that allows users to translate web pages under the Translation settings section. */
++"Settings.Translation.ToggleTitle.v145" = "Habilitar traducciones";
++
+diff --git a/firefox-ios/Shared/Supporting Files/es-MX.lproj/Summarizer.strings b/firefox-ios/Shared/Supporting Files/es-MX.lproj/Summarizer.strings
+new file mode 100644
+index 000000000..b95e5333a
+--- /dev/null
++++ b/firefox-ios/Shared/Supporting Files/es-MX.lproj/Summarizer.strings	
+@@ -0,0 +1,18 @@
++/* The label for the allow button on the Terms of Service alert. */
++"Summarizer.ToS.Alert.AllowButton.Label.v142" = "Permitir";
++
++/* The label for the cancel button on the Terms of Service alert for the summarizer. */
++"Summarizer.ToS.Alert.CancelButton.Label.v142" = "Cancelar";
++
++/* The label for the continue button on the Terms of Service alert. */
++"Summarizer.ToS.Alert.ContinueButton.Label.v144" = "Continuar";
++
++/* The label for the learn more link button on the Terms of Service alert for the summarizer. */
++"Summarizer.ToS.Alert.LearnMoreButton.Label.v142" = "Más información";
++
++/* The label for the learn more link button on the Terms of Service alert for the summarizer. */
++"Summarizer.ToS.InfoLabel.LearnMoreButton.Label.v143" = "Cómo funciona";
++
++/* The label for the accept button in the info panel in the summarizer when the user has not yet accepted the ToS. */
++"Summarizer.ToS.InfoPanel.ContinueButton.Label.v143" = "Continuar";
++
+diff --git a/firefox-ios/Shared/Supporting Files/es-MX.lproj/TabsTray.strings b/firefox-ios/Shared/Supporting Files/es-MX.lproj/TabsTray.strings
+index a84e8c6a9..3a8885719 100644
+--- a/firefox-ios/Shared/Supporting Files/es-MX.lproj/TabsTray.strings	
++++ b/firefox-ios/Shared/Supporting Files/es-MX.lproj/TabsTray.strings	
+@@ -16,3 +16,6 @@
+ /* Button label to sync tabs in your account */
+ "TabsTray.SyncTabs.SyncTabsButton.Title.v119" = "Sincronizar pestañas";
+ 
++/* The label for a button that closes tabs older than 1 week ago. Shown in a menu under the tabs tray. */
++"TabTrayOneWeekAgoTitle.v140" = "Hace 1 semana";
++
+diff --git a/firefox-ios/Shared/Supporting Files/hr.lproj/Onboarding.strings b/firefox-ios/Shared/Supporting Files/hr.lproj/Onboarding.strings
+index b417286f4..d9aaa0992 100644
+--- a/firefox-ios/Shared/Supporting Files/hr.lproj/Onboarding.strings	
++++ b/firefox-ios/Shared/Supporting Files/hr.lproj/Onboarding.strings	
+@@ -187,6 +187,9 @@
+ /* Title for the welcome card in the v148 brand refresh onboarding flow. */
+ "Onboarding.Modern.BrandRefresh.Welcome.Title.v148.v2" = "Otvori poveznice pomoću ugrađene privatnosti";
+ 
++/* Title for the welcome card in the v149 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Welcome.TitleV3.v149" = "Otvori sve svoje poveznice s ugrađenom privatnosti";
++
+ /* Option for the automatic theme. */
+ "Onboarding.Modern.Customization.Theme.Automatic.v145" = "Automatski";
+ 
+diff --git a/firefox-ios/Shared/Supporting Files/ja.lproj/Onboarding.strings b/firefox-ios/Shared/Supporting Files/ja.lproj/Onboarding.strings
+index a7970c027..fe61fd335 100644
+--- a/firefox-ios/Shared/Supporting Files/ja.lproj/Onboarding.strings	
++++ b/firefox-ios/Shared/Supporting Files/ja.lproj/Onboarding.strings	
+@@ -187,6 +187,9 @@
+ /* Title for the welcome card in the v148 brand refresh onboarding flow. */
+ "Onboarding.Modern.BrandRefresh.Welcome.Title.v148.v2" = "リンクを開く時もプライバシー保護";
+ 
++/* Title for the welcome card in the v149 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Welcome.TitleV3.v149" = "リンクを開く時もプライバシー保護";
++
+ /* Option for the automatic theme. */
+ "Onboarding.Modern.Customization.Theme.Automatic.v145" = "自動";
+ 
+diff --git a/firefox-ios/Shared/Supporting Files/lo.lproj/AppIconSelection.strings b/firefox-ios/Shared/Supporting Files/lo.lproj/AppIconSelection.strings
+index 8792d0fb3..6b90fe8e0 100644
+--- a/firefox-ios/Shared/Supporting Files/lo.lproj/AppIconSelection.strings	
++++ b/firefox-ios/Shared/Supporting Files/lo.lproj/AppIconSelection.strings	
+@@ -28,6 +28,15 @@
+ /* On the app icon customization screen where you can select an alternate icon for the app, this is the name of a hand-drawn version of the Firefox for iOS app icon of a cartoony fox resting on a globe. */
+ "Settings.AppIconSelection.AppIconNames.FromContributors.Momo.Title.v139" = "ໂມໂມ";
+ 
++/* On the app icon customization screen where you can select an alternate icon for the app, this is the name of the Firefox for iOS app icon of a fox outline with sunglasses. */
++"Settings.AppIconSelection.AppIconNames.Fun.Cool.Title.146" = "ເຢັນ";
++
++/* On the app icon customization screen where you can select an alternate icon for the app, this is the name of a hand-drawn version of the Firefox for iOS app icon of a fox cuddling a globe. */
++"Settings.AppIconSelection.AppIconNames.Fun.Cuddling.Title.146" = "ກອດກັນ";
++
++/* On the app icon customization screen where you can select an alternate icon for the app, this is the name of the Firefox for iOS app icon of a fox outline with flames. */
++"Settings.AppIconSelection.AppIconNames.Fun.Flaming.Title.146" = "ກຳລັງລຸກໄໝ້";
++
+ /* On the app icon customization screen where you can select an alternate icon for the app, this is the name of the Firefox for iOS app icon with a background gradient of yellow fading to orange. */
+ "Settings.AppIconSelection.AppIconNames.GoldenHour.Title.v137" = "ສີເຫຼືອງຍາມແລງ";
+ 
+diff --git a/firefox-ios/Shared/Supporting Files/lo.lproj/FirefoxHomepage.strings b/firefox-ios/Shared/Supporting Files/lo.lproj/FirefoxHomepage.strings
+index 74f7dd3de..97868265e 100644
+--- a/firefox-ios/Shared/Supporting Files/lo.lproj/FirefoxHomepage.strings	
++++ b/firefox-ios/Shared/Supporting Files/lo.lproj/FirefoxHomepage.strings	
+@@ -1,6 +1,15 @@
+ /* This is the title of the Pocket section on Firefox Homepage. */
+ "FirefoxHome.Pocket.SectionTitle.v140" = "ເລື່ອງລາວ";
+ 
++/* Body label for the Privacy Notice card showed at the top of the homepage notifying users that the Privacy Notice has been updated. The %1$@ placeholder is for the string “Privacy Notice” which will contain a link to the updated privacy notice. The %2$@ placeholder is for the app name (e.g. Firefox). The %3$@ placeholder is for the string “Learn More” which will contain a link to specifically what has changed in the updated Privacy Notice */
++"FirefoxHome.PrivacyNotice.Body.v148" = "ພວກເຮົາໄດ້ອັບເດດ %1$@ ຂອງພວກເຮົາເພື່ອສະທ້ອນຄຸນສົມບັດລ່າສຸດໃນ %2$@. %3$@";
++
++/* Label for the “Learn More” link inserted into the second placeholder of the Privacy Notice body label. This text will appear as a tappable link directing users to detailed information about what has changed in the updated Privacy Notice. */
++"FirefoxHome.PrivacyNotice.LearnMoreLink.v148" = "ຮຽນຮູ້ເພີ່ມເຕີມ";
++
++/* Label for the “Privacy Notice” link inserted into the first placeholder of the Privacy Notice body label. This text will appear as a tappable link that opens the updated Firefox Privacy Notice. */
++"FirefoxHome.PrivacyNotice.PrivacyNoticeLink.v148" = "ແຈ້ງການຄວາມເປັນສ່ວນຕົວ";
++
+ /* The title for the Firefox homepage, only used to denote the name of the destination screen in the system back navigation button long-press menu */
+ "FirefoxHome.ScreenTitle.v144" = "ຫນ້າທຳອິດ";
+ 
+@@ -28,6 +37,9 @@
+ /* The title for the card that educates users about how private mode works. The card shows up on the homepage when in the new privacy mode. */
+ "FirefoxHomepage.FeltPrivacyUI.Title.v122" = "ບໍ່​ໃຫ້​ມີ​ຮ່ອງ​ຮອຍໃດໆລົງເລືອ​ຢູ່​ໃນ​ອຸ​ປະ​ກອນ​ນີ້​";
+ 
++/* Accessibility label for the page reload button in the navigation toolbar of the stories webview */
++"FirefoxHomepage.Pocket.StoriesWebview.ReloadPageAccessibilityLabel.v146" = "ໂຫຼດໜ້າຄືນໃໝ່";
++
+ /* This is the placeholder text that is at the center of the search bar on the Firefox Homepage. */
+ "FirefoxHomepage.SearchBar.PlaceholderTitle.v142" = "ຄົ້ນຫາ ຫລື ປ້ອນທີ່ຢູ່ໃສ່";
+ 
+diff --git a/firefox-ios/Shared/Supporting Files/lo.lproj/NativeErrorPage.strings b/firefox-ios/Shared/Supporting Files/lo.lproj/NativeErrorPage.strings
+index 3e7159d74..5f40dfcd0 100644
+--- a/firefox-ios/Shared/Supporting Files/lo.lproj/NativeErrorPage.strings	
++++ b/firefox-ios/Shared/Supporting Files/lo.lproj/NativeErrorPage.strings	
+@@ -1,3 +1,30 @@
++/* On certificate error page, this is the text on a button that will show advanced information about the certificate error. */
++"NativeErrorPage.BadCertDomain.AdvancedButton.v149" = "ຂັ້ນສູງ";
++
++/* On certificate error page, this is the advanced information explaining why the certificate is invalid. %1$@ is the app name (e.g. Firefox). %2$@ is the site URL. */
++"NativeErrorPage.BadCertDomain.AdvancedInfo.v149" = "%1$@ ບໍ່ໄວ້ວາງໃຈເວັບໄຊນີ້ ເພາະວ່າໃບຢັ້ງຢືນທີ່ພົບນັ້ນບໍ່ຖືກຕ້ອງສຳລັບ %2$@.";
++
++/* On certificate error page, this is the security information shown in the advanced section. */
++"NativeErrorPage.BadCertDomain.AdvancedSecurityInfo.v149" = "ເວັບໄຊນີ້ບໍ່ອະນຸຍາດໃຫ້ມີການເຊື່ອມຕໍ່ທີ່ບໍ່ປອດໄພ.";
++
++/* On certificate error page, this is the first warning message in the advanced section suggesting possible solutions. */
++"NativeErrorPage.BadCertDomain.AdvancedWarning1.v149" = "ທ່ານອາດຈະຕ້ອງເຂົ້າສູ່ລະບົບເຄືອຂ່າຍ Wi-Fi ຂອງທ່ານ ຫຼື ກວດສອບການຕັ້ງຄ່າ VPN ຂອງທ່ານ.";
++
++/* On certificate error page, this is the text on a button that will hide the advanced information section. */
++"NativeErrorPage.BadCertDomain.HideAdvancedButton.v149" = "ເຊື່ອງຂັ້ນສູງ";
++
++/* On certificate error page, this is a link to learn more about certificate errors. */
++"NativeErrorPage.BadCertDomain.LearnMoreLink.v149" = "ຮຽນຮູ້ເພີ່ມເຕີມ";
++
++/* On certificate error page, this is the text on a button that will proceed to the site despite the certificate error. %@ is the site URL. This is a risky action. */
++"NativeErrorPage.BadCertDomain.ProceedButton.v149" = "ດຳເນີນການຕໍ່ໄປທີ່ %@ (ມີຄວາມສ່ຽງ)";
++
++/* On certificate error page, this is the title warning the user about a potential security issue. */
++"NativeErrorPage.BadCertDomain.TitleLabel.v149" = "ລະວັງ. ມີບາງຢ່າງເບິ່ງຄືວ່າບໍ່ຖືກຕ້ອງ.";
++
++/* On certificate error page, this is a link that will show the site’s certificate details. */
++"NativeErrorPage.BadCertDomain.ViewCertificateLink.v149" = "ເບິ່ງໃບຢັ້ງຢືນຂອງເວັບໄຊທ໌";
++
+ /* On error page, this is the text on a button that will try to load the page again. */
+ "NativeErrorPage.ButtonLabel.v131" = "ໂຫລດຄືນໃຫມ່";
+ 
+@@ -7,6 +34,9 @@
+ /* On error page, this is the title for generic error. */
+ "NativeErrorPage.GenericError.TitleLabel.v131" = "ລະມັດລະວັງ. ບາງສິ່ງບາງຢ່າງຜິດປົກະຕິ.";
+ 
++/* On error page, this is the text on a button that will go back to the previous page. Recommended action. */
++"NativeErrorPage.GoBackButton.v149" = "ກັບຄືນ (ແນະນຳ)";
++
+ /* On error page, this is the description for no internet connection. */
+ "NativeErrorPage.NoInternetConnection.Description.v131" = "ລອງເຊື່ອມຕໍ່ໃນອຸປະກອນອື່ນ. ກວດເບິ່ງໂມເດັມ ຫຼື ເຣົາເຕີຂອງທ່ານ. ຕັດການເຊື່ອມຕໍ່ ແລະ ເຊື່ອມຕໍ່ Wi-Fi ຄືນໃໝ່.";
+ 
+diff --git a/firefox-ios/Shared/Supporting Files/lo.lproj/Onboarding.strings b/firefox-ios/Shared/Supporting Files/lo.lproj/Onboarding.strings
+index 2095c9e74..849669da8 100644
+--- a/firefox-ios/Shared/Supporting Files/lo.lproj/Onboarding.strings	
++++ b/firefox-ios/Shared/Supporting Files/lo.lproj/Onboarding.strings	
+@@ -79,6 +79,33 @@
+ /* Describes an action on some of the Onboarding screen, including the wallpaper onboarding screen. This string will be on a button so user can skip that onboarding page. */
+ "Onboarding.LaterAction.v115" = "ຂ້າມ";
+ 
++/* Option for the automatic theme in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Customization.Theme.Automatic.v148" = "ອັດຕະໂນມັດ";
++
++/* Continue button on the theme selection card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Customization.Theme.Continue.Action.v148" = "ສືບຕໍ່";
++
++/* Option for the dark theme in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Customization.Theme.Dark.v148" = "ມືດ";
++
++/* Description for the theme selection card in the v148 brand refresh onboarding flow. %@ is the app name (e.g. Firefox). */
++"Onboarding.Modern.BrandRefresh.Customization.Theme.Description.v148" = "ເລືອກຮູບແບບທີ່ທ່ານມັກ ຫຼື ໃຫ້ %@ ຈັບຄູ່ກັບອຸປະກອນຂອງທ່ານ, ເຮັດໃຫ້ທ່ານຄວບຄຸມໄດ້.";
++
++/* Option for the light theme in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Customization.Theme.Light.v148" = "ແສງສະຫວ່າງ";
++
++/* Title for the theme selection card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Customization.Theme.Title.v148" = "ເລືອກຮູບແບບຂອງທ່ານ";
++
++/* Continue button on the toolbar customization card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Customization.Toolbar.Continue.Action.v148" = "ສືບຕໍ່";
++
++/* Description for the toolbar customization card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Customization.Toolbar.Description.v148" = "ເລີ່ມພິມເພື່ອຮັບຄຳແນະນຳການຄົ້ນຫາ, ເວັບໄຊທ໌ອັນດັບຕົ້ນໆ, ບຸກມາກ, ປະຫວັດ ແລະ ເຄື່ອງຈັກຊອກຫາຂອງທ່ານ - ທັງໝົດຢູ່ໃນບ່ອນດຽວ.";
++
++/* Title for the toolbar customization card in the v148 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Customization.Toolbar.Title.v148" = "ເລືອກແຖບທີ່ຢູ່ຂອງທ່ານ";
++
+ /* Option for the automatic theme. */
+ "Onboarding.Modern.Customization.Theme.Automatic.v145" = "ອັດຕະໂນມັດ";
+ 
+@@ -106,9 +133,15 @@
+ /* Continue button on the toolbar customization card. */
+ "Onboarding.Modern.Customization.Toolbar.Continue.Action.v145" = "ສືບຕໍ່";
+ 
++/* Description for the toolbar customization card. */
++"Onboarding.Modern.Customization.Toolbar.Description.v145" = "ເລີ່ມພິມເພື່ອຮັບຄຳແນະນຳໃນການຄົ້ນຫາ, ເວັບໄຊທ໌ອັນດັບຕົ້ນໆ, ບຸກມາກ, ປະຫວັດ ແລະ ເຄື່ອງຈັກຊອກຫາຂອງທ່ານ - ທັງໝົດຢູ່ໃນບ່ອນດຽວ.";
++
+ /* String used to describe the title of the toolbar customization onboarding page in our Onboarding screens. */
+ "Onboarding.Modern.Customization.Toolbar.Title.v140" = "ເລືອກບ່ອນທີ່ຈະໃສ່ແຖບທີ່ຢູ່ຂອງເຈົ້າ";
+ 
++/* Title for the toolbar customization card. */
++"Onboarding.Modern.Customization.Toolbar.Title.v145" = "ເລືອກແຖບທີ່ຢູ່ຂອງທ່ານ";
++
+ /* On the toolbar customization onboarding card, the string used to describe the option to set the toolbar at the top of the screen. */
+ "Onboarding.Modern.Customization.Toolbar.Top.Action.v140" = "ເທິງ";
+ 
+@@ -121,6 +154,9 @@
+ /* String used to describe Firefox on the Sync onboarding page for the current version of our onboarding screens. */
+ "Onboarding.Modern.Sync.Description.v140" = "ສາມາດເອົາບຸກມາກ, ປະຫວັດ, ແລະ ລະຫັດຜ່ານຂອງທ່ານຈາກອຸປະກອນໃດກໍໄດ້.";
+ 
++/* Description for the Sync card in the v2 onboarding flow. */
++"Onboarding.Modern.Sync.Description.v145" = "ບຸກມາກ, ລະຫັດຜ່ານ ແລະ ອື່ນໆຂອງທ່ານຈະຖືກຊິ້ງຂໍ້ມູນໃນອຸປະກອນໃດກໍໄດ້. ທຸກຢ່າງຖືກປົກປ້ອງດ້ວຍການເຂົ້າລະຫັດ, ສະນັ້ນມີແຕ່ທ່ານເທົ່ານັ້ນທີ່ສາມາດເຂົ້າເຖິງມັນໄດ້.";
++
+ /* String used to describes the option to skip the Sync sign in during onboarding for the current version in Firefox Onboarding screens. */
+ "Onboarding.Modern.Sync.SignIn.Action.v140" = "ເລີ່ມການຊິງຄ";
+ 
+diff --git a/firefox-ios/Shared/Supporting Files/tr.lproj/EnhancedTrackingProtection.strings b/firefox-ios/Shared/Supporting Files/tr.lproj/EnhancedTrackingProtection.strings
+index ba03c47dd..e81e89721 100644
+--- a/firefox-ios/Shared/Supporting Files/tr.lproj/EnhancedTrackingProtection.strings	
++++ b/firefox-ios/Shared/Supporting Files/tr.lproj/EnhancedTrackingProtection.strings	
+@@ -89,7 +89,7 @@
+ "Menu.EnhancedTrackingProtection.Details.ViewCertificatesTitle.v131" = "Sertifikayı göster";
+ 
+ /* Header for the enhanced tracking protection screen when the user has opted out of the feature. %@ is the app name (e.g. Firefox). */
+-"Menu.EnhancedTrackingProtection.Off.Header.v128" = "%@ kapalı. Korumaları yeniden açmanızı öneririz.";
++"Menu.EnhancedTrackingProtection.Off.Header.v128" = "%@ korumaları kapalı. Korumaları yeniden açmanızı öneririz.";
+ 
+ /* Title for the enhanced tracking protection screen when the user has opted out of the feature. */
+ "Menu.EnhancedTrackingProtection.Off.Title.v128" = "Korumaları kapattınız";
+diff --git a/firefox-ios/Shared/Supporting Files/uk.lproj/Onboarding.strings b/firefox-ios/Shared/Supporting Files/uk.lproj/Onboarding.strings
+index 46da90498..56e5441d7 100644
+--- a/firefox-ios/Shared/Supporting Files/uk.lproj/Onboarding.strings	
++++ b/firefox-ios/Shared/Supporting Files/uk.lproj/Onboarding.strings	
+@@ -187,6 +187,9 @@
+ /* Title for the welcome card in the v148 brand refresh onboarding flow. */
+ "Onboarding.Modern.BrandRefresh.Welcome.Title.v148.v2" = "Відкривайте посилання конфіденційно";
+ 
++/* Title for the welcome card in the v149 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Welcome.TitleV3.v149" = "Відкривайте всі посилання конфіденційно";
++
+ /* Option for the automatic theme. */
+ "Onboarding.Modern.Customization.Theme.Automatic.v145" = "Автоматично";
+ 
+diff --git a/firefox-ios/Shared/Supporting Files/zh-CN.lproj/Onboarding.strings b/firefox-ios/Shared/Supporting Files/zh-CN.lproj/Onboarding.strings
+index a7a7dd7e2..f7e6b4604 100644
+--- a/firefox-ios/Shared/Supporting Files/zh-CN.lproj/Onboarding.strings	
++++ b/firefox-ios/Shared/Supporting Files/zh-CN.lproj/Onboarding.strings	
+@@ -187,6 +187,9 @@
+ /* Title for the welcome card in the v148 brand refresh onboarding flow. */
+ "Onboarding.Modern.BrandRefresh.Welcome.Title.v148.v2" = "通过内置隐私保护的浏览器打开链接";
+ 
++/* Title for the welcome card in the v149 brand refresh onboarding flow. */
++"Onboarding.Modern.BrandRefresh.Welcome.TitleV3.v149" = "每次点开链接，都享内置隐私保护";
++
+ /* Option for the automatic theme. */
+ "Onboarding.Modern.Customization.Theme.Automatic.v145" = "自动";
+ 
+diff --git a/firefox-ios/Shared/es-MX.lproj/HistoryPanel.strings b/firefox-ios/Shared/es-MX.lproj/HistoryPanel.strings
+index b9032bff8..ccedbdb60 100644
+--- a/firefox-ios/Shared/es-MX.lproj/HistoryPanel.strings
++++ b/firefox-ios/Shared/es-MX.lproj/HistoryPanel.strings
+@@ -16,3 +16,6 @@
+ /* Destructive action button on the “Clear browsing history“ action sheet used to clear browsing history for the last 24 hours */
+ "LibraryPanel.History.LastTwentyFourHoursOption.v138" = "Últimas 24 horas";
+ 
++/* Title of the “Clear browsing history“ action sheet */
++"LibraryPanel.History.Title.v138" = "Elimina el historial (incluido el historial sincronizado de otros dispositivos), las cookies y otros datos de navegación.";
++
+diff --git a/firefox-ios/Shared/lo.lproj/3DTouchActions.strings b/firefox-ios/Shared/lo.lproj/3DTouchActions.strings
+index 7a2c09286..3503f64ff 100644
+--- a/firefox-ios/Shared/lo.lproj/3DTouchActions.strings
++++ b/firefox-ios/Shared/lo.lproj/3DTouchActions.strings
+@@ -16,3 +16,6 @@
+ /* Label for preview action on Tab Tray Tab to send the current tab to another device */
+ "Send to Device" = "ສົ່ງໄປຫາອຸປະກອນ";
+ 
++/* Label for preview action on Tab Tray Tab to remove current tab from Bookmarks */
++"TabPeek.RemoveBookmark.v146" = "ລຶບບຸກມາກອອກ";
++

@@ -1,0 +1,399 @@
+From 359438a89971487f3860845e75b194e0decc646c Mon Sep 17 00:00:00 2001
+From: Adrian Gruntkowski <adrian.gruntkowski@gmail.com>
+Date: Wed, 9 Jul 2025 14:41:59 +0200
+Subject: [PATCH] Implement ability to leave team (#5555)
+
+* Implement ability to leave team
+
+* Add changelog entry
+
+* Fix button copy
+
+* Alter "Delete my account" button label to "Delete My Account"
+---
+ CHANGELOG.md                                  |  2 +-
+ lib/plausible/teams/memberships/leave.ex      | 62 ++++++++++++
+ .../controllers/settings_controller.ex        | 21 +++-
+ lib/plausible_web/email.ex                    | 13 +++
+ lib/plausible_web/router.ex                   |  1 +
+ .../email/team_member_left.html.heex          |  3 +
+ .../templates/settings/danger_zone.html.heex  |  2 +-
+ .../templates/settings/team_general.html.heex | 12 +++
+ .../teams/memberships/leave_test.exs          | 98 +++++++++++++++++++
+ .../controllers/settings_controller_test.exs  | 29 +++++-
+ 10 files changed, 236 insertions(+), 7 deletions(-)
+ create mode 100644 lib/plausible/teams/memberships/leave.ex
+ create mode 100644 lib/plausible_web/templates/email/team_member_left.html.heex
+ create mode 100644 test/plausible/teams/memberships/leave_test.exs
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 959454cb5..ff6c5e4be 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,7 +6,7 @@ All notable changes to this project will be documented in this file.
+ ### Added
+ 
+ - Custom events can now be marked as non-interactive in events API and tracker script. Events marked as non-interactive are not counted towards bounce rate.
+-
++- Ability to leave team via Team Settings > Leave Team
+ 
+ ### Removed
+ 
+diff --git a/lib/plausible/teams/memberships/leave.ex b/lib/plausible/teams/memberships/leave.ex
+new file mode 100644
+index 000000000..c0b94fdb5
+--- /dev/null
++++ b/lib/plausible/teams/memberships/leave.ex
+@@ -0,0 +1,62 @@
++defmodule Plausible.Teams.Memberships.Leave do
++  @moduledoc """
++  Service for leaving a team by member.
++  """
++
++  alias Plausible.Repo
++  alias Plausible.Teams
++  alias Plausible.Teams.Memberships
++
++  @spec leave(Teams.Team.t(), Plausible.Auth.User.t(), Keyword.t()) ::
++          {:ok, Teams.Membership.t()} | {:error, :only_one_owner | :membership_not_found}
++  def leave(team, user, opts \\ []) do
++    with {:ok, team_membership} <- Memberships.get_team_membership(team, user.id),
++         :ok <- check_owner_can_leave(team, team_membership.role) do
++      team_membership = Repo.preload(team_membership, [:team, :user])
++
++      {:ok, _} =
++        Repo.transaction(fn ->
++          delete_membership!(team_membership)
++
++          Plausible.Segments.after_user_removed_from_team(
++            team_membership.team,
++            team_membership.user
++          )
++        end)
++
++      if Keyword.get(opts, :send_email?, true) do
++        send_team_member_left_email(team_membership)
++      end
++
++      {:ok, team_membership}
++    end
++  end
++
++  defp delete_membership!(team_membership) do
++    user = team_membership.user
++
++    Repo.delete!(team_membership)
++
++    if Plausible.Users.type(user) == :sso do
++      {:ok, :deleted} = Plausible.Auth.delete_user(user)
++    end
++
++    :ok
++  end
++
++  defp check_owner_can_leave(team, :owner) do
++    if Memberships.owners_count(team) > 1 do
++      :ok
++    else
++      {:error, :only_one_owner}
++    end
++  end
++
++  defp check_owner_can_leave(_team, _role), do: :ok
++
++  def send_team_member_left_email(team_membership) do
++    team_membership
++    |> PlausibleWeb.Email.team_member_left()
++    |> Plausible.Mailer.send()
++  end
++end
+diff --git a/lib/plausible_web/controllers/settings_controller.ex b/lib/plausible_web/controllers/settings_controller.ex
+index 102c24b95..2d077b80b 100644
+--- a/lib/plausible_web/controllers/settings_controller.ex
++++ b/lib/plausible_web/controllers/settings_controller.ex
+@@ -29,7 +29,7 @@ defmodule PlausibleWeb.SettingsController do
+   end
+ 
+   def update_team_name(conn, %{"team" => params}) do
+-    changeset = Plausible.Teams.Team.name_changeset(conn.assigns.current_team, params)
++    changeset = Teams.Team.name_changeset(conn.assigns.current_team, params)
+ 
+     case Repo.update(changeset) do
+       {:ok, _user} ->
+@@ -43,7 +43,7 @@ defmodule PlausibleWeb.SettingsController do
+   end
+ 
+   defp render_team_general(conn, opts \\ []) do
+-    if Plausible.Teams.setup?(conn.assigns.current_team) do
++    if Teams.setup?(conn.assigns.current_team) do
+       name_changeset =
+         Keyword.get(
+           opts,
+@@ -62,6 +62,23 @@ defmodule PlausibleWeb.SettingsController do
+     end
+   end
+ 
++  def leave_team(conn, _params) do
++    case Teams.Memberships.Leave.leave(conn.assigns.current_team, conn.assigns.current_user) do
++      {:ok, _} ->
++        conn
++        |> put_flash(:success, "You have left \"#{Teams.name(conn.assigns.current_team)}\"")
++        |> redirect(to: Routes.site_path(conn, :index, __team: "none"))
++
++      {:error, :only_one_owner} ->
++        conn
++        |> put_flash(:error, "You can't leave as you are the only Owner on the team")
++        |> redirect(to: Routes.settings_path(conn, :team_general))
++
++      {:error, :membership_not_found} ->
++        redirect(conn, to: Routes.site_path(conn, :index, __team: "none"))
++    end
++  end
++
+   def preferences(conn, _params) do
+     render_preferences(conn)
+   end
+diff --git a/lib/plausible_web/email.ex b/lib/plausible_web/email.ex
+index 28caada5e..8e49f56ff 100644
+--- a/lib/plausible_web/email.ex
++++ b/lib/plausible_web/email.ex
+@@ -435,6 +435,19 @@ defmodule PlausibleWeb.Email do
+     )
+   end
+ 
++  def team_member_left(team_membership) do
++    priority_email()
++    |> to(team_membership.user.email)
++    |> tag("team-member-left")
++    |> subject(
++      "[#{Plausible.product_name()}] You have left \"#{team_membership.team.name}\" team"
++    )
++    |> render("team_member_left.html",
++      user: team_membership.user,
++      team_membership: team_membership
++    )
++  end
++
+   def import_success(site_import, user) do
+     import_api = Plausible.Imported.ImportSources.by_name(site_import.source)
+     label = import_api.label()
+diff --git a/lib/plausible_web/router.ex b/lib/plausible_web/router.ex
+index e08517ca5..0cd93b23d 100644
+--- a/lib/plausible_web/router.ex
++++ b/lib/plausible_web/router.ex
+@@ -469,6 +469,7 @@ defmodule PlausibleWeb.Router do
+ 
+     get "/team/general", SettingsController, :team_general
+     post "/team/general/name", SettingsController, :update_team_name
++    post "/team/leave", SettingsController, :leave_team
+ 
+     on_ee do
+       get "/sso/general", SSOController, :sso_settings
+diff --git a/lib/plausible_web/templates/email/team_member_left.html.heex b/lib/plausible_web/templates/email/team_member_left.html.heex
+new file mode 100644
+index 000000000..e1a2a5cad
+--- /dev/null
++++ b/lib/plausible_web/templates/email/team_member_left.html.heex
+@@ -0,0 +1,3 @@
++You are no longer a member of "{@team_membership.team.name}" team. <br /><br />
++<a href={Routes.site_url(PlausibleWeb.Endpoint, :index) <> "?__team=none"}>Click here</a>
++to view your sites.
+diff --git a/lib/plausible_web/templates/settings/danger_zone.html.heex b/lib/plausible_web/templates/settings/danger_zone.html.heex
+index 1c6820b21..1d8e97917 100644
+--- a/lib/plausible_web/templates/settings/danger_zone.html.heex
++++ b/lib/plausible_web/templates/settings/danger_zone.html.heex
+@@ -32,7 +32,7 @@
+           method="delete"
+           theme="danger"
+         >
+-          Delete my account
++          Delete My Account
+         </.button_link>
+     <% end %>
+   </.tile>
+diff --git a/lib/plausible_web/templates/settings/team_general.html.heex b/lib/plausible_web/templates/settings/team_general.html.heex
+index e83fe523c..72b0680ed 100644
+--- a/lib/plausible_web/templates/settings/team_general.html.heex
++++ b/lib/plausible_web/templates/settings/team_general.html.heex
+@@ -42,4 +42,16 @@
+       session: %{"mode" => "team-management"}
+     )}
+   </.tile>
++  <.tile docs="users-roles#leaving-team">
++    <:title>Leave Team</:title>
++    <:subtitle>Leaving the team removes you from this team as a member.</:subtitle>
++    <.button_link
++      data-confirm="Are you sure you want to leave this team?"
++      href={Routes.settings_path(@conn, :leave_team)}
++      method="post"
++      theme="danger"
++    >
++      Leave Team
++    </.button_link>
++  </.tile>
+ </.settings_tiles>
+diff --git a/test/plausible/teams/memberships/leave_test.exs b/test/plausible/teams/memberships/leave_test.exs
+new file mode 100644
+index 000000000..517dd4f85
+--- /dev/null
++++ b/test/plausible/teams/memberships/leave_test.exs
+@@ -0,0 +1,98 @@
++defmodule Plausible.Teams.Memberships.LeaveTest do
++  use Plausible.DataCase, async: true
++  use Plausible
++  use Plausible.Repo
++  use Plausible.Teams.Test
++  use Bamboo.Test
++
++  alias Plausible.Teams.Memberships.Leave
++
++  @subject_prefix if ee?(), do: "[Plausible Analytics] ", else: "[Plausible CE] "
++
++  test "removes a member from a team" do
++    user = new_user()
++    _site = new_site(owner: user)
++    team = team_of(user)
++    add_member(team, role: :owner)
++
++    assert {:ok, _} = Leave.leave(team, user)
++
++    refute_team_member(user, team)
++
++    assert_email_delivered_with(
++      to: [nil: user.email],
++      subject: @subject_prefix <> "You have left \"#{team.name}\" team"
++    )
++
++    assert Repo.reload(user)
++  end
++
++  test "when member leaves, associated personal segment is deleted" do
++    user = new_user()
++    site = new_site(owner: user)
++    team = team_of(user)
++    add_member(team, role: :owner)
++
++    segment =
++      insert(:segment,
++        type: :personal,
++        owner: user,
++        site: site,
++        name: "personal segment"
++      )
++
++    assert {:ok, _} = Leave.leave(team, user)
++
++    refute Repo.reload(segment)
++  end
++
++  test "when member is removed, associated site segment will be owner-less" do
++    user = new_user()
++    site = new_site(owner: user)
++    team = team_of(user)
++    add_member(team, role: :owner)
++
++    segment =
++      insert(:segment,
++        type: :site,
++        owner: user,
++        site: site,
++        name: "site segment"
++      )
++
++    assert {:ok, _} = Leave.leave(team, user)
++
++    assert Repo.reload(segment).owner_id == nil
++  end
++
++  test "can't remove the only owner" do
++    user = new_user()
++    _site = new_site(owner: user)
++    team = team_of(user)
++
++    assert {:error, :only_one_owner} = Leave.leave(team, user)
++
++    assert_team_membership(user, team, :owner)
++  end
++
++  on_ee do
++    describe "SSO user" do
++      setup [:create_user, :create_team, :setup_sso, :provision_sso_user]
++
++      test "removes SSO user along with membership", %{team: team, user: user} do
++        add_member(team, role: :owner)
++
++        assert {:ok, _} = Leave.leave(team, user)
++
++        refute_team_member(user, team)
++
++        assert_email_delivered_with(
++          to: [nil: user.email],
++          subject: @subject_prefix <> "You have left \"#{team.name}\" team"
++        )
++
++        refute Repo.reload(user)
++      end
++    end
++  end
++end
+diff --git a/test/plausible_web/controllers/settings_controller_test.exs b/test/plausible_web/controllers/settings_controller_test.exs
+index 67e569e66..f9e7832e7 100644
+--- a/test/plausible_web/controllers/settings_controller_test.exs
++++ b/test/plausible_web/controllers/settings_controller_test.exs
+@@ -1296,7 +1296,7 @@ defmodule PlausibleWeb.SettingsControllerTest do
+       assert html = html_response(conn, 200)
+ 
+       refute html =~ "Your account cannot be deleted because you have an active subscription"
+-      assert html =~ "Delete my account"
++      assert html =~ "Delete My Account"
+     end
+ 
+     test "with active subscription", %{conn: conn, user: user} do
+@@ -1306,7 +1306,7 @@ defmodule PlausibleWeb.SettingsControllerTest do
+       assert html = html_response(conn, 200)
+ 
+       assert html =~ "Your account cannot be deleted because you have an active subscription"
+-      refute html =~ "Delete my account"
++      refute html =~ "Delete My Account"
+     end
+ 
+     test "with a setup team", %{conn: conn, user: user} do
+@@ -1322,7 +1322,7 @@ defmodule PlausibleWeb.SettingsControllerTest do
+       assert html = html_response(conn, 200)
+ 
+       assert html =~ "You are the sole owner of one or more teams"
+-      refute html =~ "Delete my account"
++      refute html =~ "Delete My Account"
+     end
+   end
+ 
+@@ -1430,6 +1430,29 @@ defmodule PlausibleWeb.SettingsControllerTest do
+       assert text(html_response(conn, 200)) =~ "can't be blank"
+     end
+ 
++    test "POST /settings/team/leave", %{conn: conn, user: user} do
++      {:ok, team} = Plausible.Teams.get_or_create(user)
++      team = Plausible.Teams.complete_setup(team)
++      conn = set_current_team(conn, team)
++      add_member(team, role: :owner)
++
++      conn = post(conn, Routes.settings_path(conn, :leave_team))
++
++      assert redirected_to(conn, 302) == Routes.site_path(conn, :index, __team: "none")
++      assert Phoenix.Flash.get(conn.assigns.flash, :success) =~ "You have left"
++    end
++
++    test "POST /settings/team/leave - only owner", %{conn: conn, user: user} do
++      {:ok, team} = Plausible.Teams.get_or_create(user)
++      team = Plausible.Teams.complete_setup(team)
++      conn = set_current_team(conn, team)
++
++      conn = post(conn, Routes.settings_path(conn, :leave_team))
++
++      assert redirected_to(conn, 302) == Routes.settings_path(conn, :team_general)
++      assert Phoenix.Flash.get(conn.assigns.flash, :error) =~ "You can't leave"
++    end
++
+     test "GET /settings/team/delete - without active subscription", %{conn: conn, user: user} do
+       {:ok, team} = Plausible.Teams.get_or_create(user)
+ 

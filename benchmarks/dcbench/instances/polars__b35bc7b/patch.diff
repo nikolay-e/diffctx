@@ -1,0 +1,919 @@
+From b35bc7be82f0c0631d2edd2789c3dc0f560d2fea Mon Sep 17 00:00:00 2001
+From: Ritchie Vink <ritchie46@gmail.com>
+Date: Thu, 27 Feb 2025 16:35:17 +0100
+Subject: [PATCH] chore: Move rolling to polars-compute (#21503)
+
+---
+ Cargo.lock                                    |  3 ++
+ crates/polars-arrow/src/legacy/kernels/mod.rs |  1 -
+ crates/polars-arrow/src/legacy/prelude.rs     |  7 -----
+ crates/polars-compute/Cargo.toml              |  2 ++
+ crates/polars-compute/src/lib.rs              |  1 +
+ .../src}/rolling/mod.rs                       | 26 +++++++++++++----
+ .../src}/rolling/no_nulls/mean.rs             |  0
+ .../src}/rolling/no_nulls/min_max.rs          |  0
+ .../src}/rolling/no_nulls/mod.rs              | 28 ++++---------------
+ .../src}/rolling/no_nulls/quantile.rs         |  4 +++
+ .../src}/rolling/no_nulls/sum.rs              |  0
+ .../src}/rolling/no_nulls/variance.rs         |  0
+ .../src}/rolling/nulls/mean.rs                |  0
+ .../src}/rolling/nulls/min_max.rs             |  5 ++--
+ .../src}/rolling/nulls/mod.rs                 |  8 ++++--
+ .../src}/rolling/nulls/quantile.rs            | 11 ++++++--
+ .../src}/rolling/nulls/sum.rs                 |  0
+ .../src}/rolling/nulls/variance.rs            |  0
+ .../src}/rolling/quantile_filter.rs           | 21 ++++++++++++--
+ .../src}/rolling/window.rs                    |  0
+ .../src/chunked_array/ops/aggregate/mod.rs    |  3 ++
+ .../chunked_array/ops/aggregate/quantile.rs   |  2 ++
+ .../polars-core/src/chunked_array/ops/mod.rs  |  1 +
+ .../src/chunked_array/ops/rolling_window.rs   |  2 +-
+ crates/polars-core/src/frame/column/mod.rs    |  2 ++
+ .../src/frame/group_by/aggregations/mod.rs    | 18 ++++++------
+ crates/polars-core/src/frame/group_by/mod.rs  |  2 +-
+ crates/polars-core/src/prelude.rs             |  1 +
+ .../src/series/implementations/datetime.rs    |  2 ++
+ .../src/series/implementations/decimal.rs     |  2 ++
+ .../src/series/implementations/duration.rs    |  2 ++
+ .../src/series/implementations/floats.rs      |  2 ++
+ .../src/series/implementations/mod.rs         |  2 ++
+ crates/polars-core/src/series/series_trait.rs |  1 +
+ .../src/expressions/aggregation.rs            |  1 +
+ crates/polars-lazy/Cargo.toml                 |  1 +
+ crates/polars-lazy/src/frame/mod.rs           |  3 +-
+ crates/polars-lazy/src/lib.rs                 |  1 -
+ .../nan_propagating_aggregate.rs              |  4 +--
+ crates/polars-ops/src/series/ops/cut.rs       |  1 +
+ crates/polars-plan/Cargo.toml                 |  1 +
+ crates/polars-plan/src/dsl/expr.rs            |  1 +
+ crates/polars-plan/src/dsl/mod.rs             |  5 +++-
+ crates/polars-plan/src/plans/aexpr/mod.rs     |  1 +
+ crates/polars-plan/src/plans/functions/dsl.rs |  1 +
+ .../src/chunkedarray/rolling_window/mod.rs    |  3 +-
+ .../rolling_kernels/no_nulls.rs               |  6 ++--
+ crates/polars-time/src/group_by/dynamic.rs    |  1 +
+ 48 files changed, 122 insertions(+), 67 deletions(-)
+ rename crates/{polars-arrow/src/legacy/kernels => polars-compute/src}/rolling/mod.rs (81%)
+ rename crates/{polars-arrow/src/legacy/kernels => polars-compute/src}/rolling/no_nulls/mean.rs (100%)
+ rename crates/{polars-arrow/src/legacy/kernels => polars-compute/src}/rolling/no_nulls/min_max.rs (100%)
+ rename crates/{polars-arrow/src/legacy/kernels => polars-compute/src}/rolling/no_nulls/mod.rs (84%)
+ rename crates/{polars-arrow/src/legacy/kernels => polars-compute/src}/rolling/no_nulls/quantile.rs (98%)
+ rename crates/{polars-arrow/src/legacy/kernels => polars-compute/src}/rolling/no_nulls/sum.rs (100%)
+ rename crates/{polars-arrow/src/legacy/kernels => polars-compute/src}/rolling/no_nulls/variance.rs (100%)
+ rename crates/{polars-arrow/src/legacy/kernels => polars-compute/src}/rolling/nulls/mean.rs (100%)
+ rename crates/{polars-arrow/src/legacy/kernels => polars-compute/src}/rolling/nulls/min_max.rs (99%)
+ rename crates/{polars-arrow/src/legacy/kernels => polars-compute/src}/rolling/nulls/mod.rs (98%)
+ rename crates/{polars-arrow/src/legacy/kernels => polars-compute/src}/rolling/nulls/quantile.rs (97%)
+ rename crates/{polars-arrow/src/legacy/kernels => polars-compute/src}/rolling/nulls/sum.rs (100%)
+ rename crates/{polars-arrow/src/legacy/kernels => polars-compute/src}/rolling/nulls/variance.rs (100%)
+ rename crates/{polars-arrow/src/legacy/kernels => polars-compute/src}/rolling/quantile_filter.rs (98%)
+ rename crates/{polars-arrow/src/legacy/kernels => polars-compute/src}/rolling/window.rs (100%)
+
+diff --git a/Cargo.lock b/Cargo.lock
+index c0f146cdf..1dc454aaa 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -3009,7 +3009,9 @@ dependencies = [
+  "polars-utils",
+  "rand",
+  "ryu",
++ "serde",
+  "strength_reduce",
++ "strum_macros",
+  "version_check",
+ ]
+ 
+@@ -3205,6 +3207,7 @@ dependencies = [
+  "memchr",
+  "once_cell",
+  "polars-arrow",
++ "polars-compute",
+  "polars-core",
+  "polars-expr",
+  "polars-io",
+diff --git a/crates/polars-arrow/src/legacy/kernels/mod.rs b/crates/polars-arrow/src/legacy/kernels/mod.rs
+index 2619eded9..b5d313a8d 100644
+--- a/crates/polars-arrow/src/legacy/kernels/mod.rs
++++ b/crates/polars-arrow/src/legacy/kernels/mod.rs
+@@ -3,7 +3,6 @@ use std::iter::Enumerate;
+ use crate::array::BooleanArray;
+ use crate::bitmap::utils::BitChunks;
+ pub mod ewm;
+-pub mod rolling;
+ pub mod set;
+ pub mod sort_partition;
+ #[cfg(feature = "performant")]
+diff --git a/crates/polars-arrow/src/legacy/prelude.rs b/crates/polars-arrow/src/legacy/prelude.rs
+index 6afeb0c6c..ffc82aacd 100644
+--- a/crates/polars-arrow/src/legacy/prelude.rs
++++ b/crates/polars-arrow/src/legacy/prelude.rs
+@@ -2,15 +2,8 @@ use crate::array::{BinaryArray, ListArray, Utf8Array};
+ pub use crate::legacy::array::default_arrays::*;
+ pub use crate::legacy::array::*;
+ pub use crate::legacy::index::*;
+-pub use crate::legacy::kernels::rolling::no_nulls::QuantileMethod;
+-pub use crate::legacy::kernels::rolling::{
+-    RollingFnParams, RollingQuantileParams, RollingVarParams,
+-};
+ pub use crate::legacy::kernels::{Ambiguous, NonExistent};
+ 
+ pub type LargeStringArray = Utf8Array<i64>;
+ pub type LargeBinaryArray = BinaryArray<i64>;
+ pub type LargeListArray = ListArray<i64>;
+-
+-#[allow(deprecated)]
+-pub use crate::legacy::kernels::rolling::no_nulls::QuantileInterpolOptions;
+diff --git a/crates/polars-compute/Cargo.toml b/crates/polars-compute/Cargo.toml
+index 7e799f129..11bd69131 100644
+--- a/crates/polars-compute/Cargo.toml
++++ b/crates/polars-compute/Cargo.toml
+@@ -20,7 +20,9 @@ num-traits = { workspace = true }
+ polars-error = { workspace = true }
+ polars-utils = { workspace = true }
+ ryu = { workspace = true, optional = true }
++serde = { workspace = true, optional = true }
+ strength_reduce = { workspace = true }
++strum_macros = { workspace = true }
+ 
+ [dev-dependencies]
+ rand = { workspace = true }
+diff --git a/crates/polars-compute/src/lib.rs b/crates/polars-compute/src/lib.rs
+index 53d1339a9..493ea9b9e 100644
+--- a/crates/polars-compute/src/lib.rs
++++ b/crates/polars-compute/src/lib.rs
+@@ -25,6 +25,7 @@ pub mod hyperloglogplus;
+ pub mod if_then_else;
+ pub mod min_max;
+ pub mod propagate_dictionary;
++pub mod rolling;
+ pub mod size;
+ pub mod sum;
+ pub mod unique;
+diff --git a/crates/polars-arrow/src/legacy/kernels/rolling/mod.rs b/crates/polars-compute/src/rolling/mod.rs
+similarity index 81%
+rename from crates/polars-arrow/src/legacy/kernels/rolling/mod.rs
+rename to crates/polars-compute/src/rolling/mod.rs
+index 51f3c95d2..987c3b6f0 100644
+--- a/crates/polars-arrow/src/legacy/kernels/rolling/mod.rs
++++ b/crates/polars-compute/src/rolling/mod.rs
+@@ -5,25 +5,39 @@ mod window;
+ 
+ use std::ops::{Add, AddAssign, Div, Mul, Sub, SubAssign};
+ 
++use arrow::array::{ArrayRef, PrimitiveArray};
++use arrow::bitmap::{Bitmap, MutableBitmap};
++use arrow::types::NativeType;
+ use num_traits::{Bounded, Float, NumCast, One, Zero};
+ use polars_utils::float::IsFloat;
+ use polars_utils::ord::{compare_fn_nan_max, compare_fn_nan_min};
+ #[cfg(feature = "serde")]
+ use serde::{Deserialize, Serialize};
++use strum_macros::IntoStaticStr;
+ use window::*;
+ 
+-use crate::array::{ArrayRef, PrimitiveArray};
+-use crate::bitmap::{Bitmap, MutableBitmap};
+-use crate::legacy::prelude::*;
+-use crate::legacy::utils::CustomIterTools;
+-use crate::types::NativeType;
+-
+ type Start = usize;
+ type End = usize;
+ type Idx = usize;
+ type WindowSize = usize;
+ type Len = usize;
+ 
++#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Hash, IntoStaticStr)]
++#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
++#[strum(serialize_all = "snake_case")]
++pub enum QuantileMethod {
++    #[default]
++    Nearest,
++    Lower,
++    Higher,
++    Midpoint,
++    Linear,
++    Equiprobable,
++}
++
++#[deprecated(note = "use QuantileMethod instead")]
++pub type QuantileInterpolOptions = QuantileMethod;
++
+ #[derive(Clone, Debug, PartialEq)]
+ #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+ pub enum RollingFnParams {
+diff --git a/crates/polars-arrow/src/legacy/kernels/rolling/no_nulls/mean.rs b/crates/polars-compute/src/rolling/no_nulls/mean.rs
+similarity index 100%
+rename from crates/polars-arrow/src/legacy/kernels/rolling/no_nulls/mean.rs
+rename to crates/polars-compute/src/rolling/no_nulls/mean.rs
+diff --git a/crates/polars-arrow/src/legacy/kernels/rolling/no_nulls/min_max.rs b/crates/polars-compute/src/rolling/no_nulls/min_max.rs
+similarity index 100%
+rename from crates/polars-arrow/src/legacy/kernels/rolling/no_nulls/min_max.rs
+rename to crates/polars-compute/src/rolling/no_nulls/min_max.rs
+diff --git a/crates/polars-arrow/src/legacy/kernels/rolling/no_nulls/mod.rs b/crates/polars-compute/src/rolling/no_nulls/mod.rs
+similarity index 84%
+rename from crates/polars-arrow/src/legacy/kernels/rolling/no_nulls/mod.rs
+rename to crates/polars-compute/src/rolling/no_nulls/mod.rs
+index 7abe2455e..72097ae9a 100644
+--- a/crates/polars-arrow/src/legacy/kernels/rolling/no_nulls/mod.rs
++++ b/crates/polars-compute/src/rolling/no_nulls/mod.rs
+@@ -5,21 +5,19 @@ mod sum;
+ mod variance;
+ use std::fmt::Debug;
+ 
++use arrow::array::PrimitiveArray;
++use arrow::datatypes::ArrowDataType;
++use arrow::legacy::error::PolarsResult;
++use arrow::legacy::utils::CustomIterTools;
++use arrow::types::NativeType;
+ pub use mean::*;
+ pub use min_max::*;
+ use num_traits::{Float, Num, NumCast};
+ pub use quantile::*;
+-#[cfg(feature = "serde")]
+-use serde::{Deserialize, Serialize};
+-use strum_macros::IntoStaticStr;
+ pub use sum::*;
+ pub use variance::*;
+ 
+ use super::*;
+-use crate::array::PrimitiveArray;
+-use crate::datatypes::ArrowDataType;
+-use crate::legacy::error::PolarsResult;
+-use crate::types::NativeType;
+ 
+ pub trait RollingAggWindowNoNulls<'a, T: NativeType> {
+     fn new(slice: &'a [T], start: usize, end: usize, params: Option<RollingFnParams>) -> Self;
+@@ -70,22 +68,6 @@ where
+     Ok(Box::new(arr))
+ }
+ 
+-#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Hash, IntoStaticStr)]
+-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+-#[strum(serialize_all = "snake_case")]
+-pub enum QuantileMethod {
+-    #[default]
+-    Nearest,
+-    Lower,
+-    Higher,
+-    Midpoint,
+-    Linear,
+-    Equiprobable,
+-}
+-
+-#[deprecated(note = "use QuantileMethod instead")]
+-pub type QuantileInterpolOptions = QuantileMethod;
+-
+ pub(super) fn rolling_apply_weights<T, Fo, Fa>(
+     values: &[T],
+     window_size: usize,
+diff --git a/crates/polars-arrow/src/legacy/kernels/rolling/no_nulls/quantile.rs b/crates/polars-compute/src/rolling/no_nulls/quantile.rs
+similarity index 98%
+rename from crates/polars-arrow/src/legacy/kernels/rolling/no_nulls/quantile.rs
+rename to crates/polars-compute/src/rolling/no_nulls/quantile.rs
+index 58ca5f98b..0637414f3 100644
+--- a/crates/polars-arrow/src/legacy/kernels/rolling/no_nulls/quantile.rs
++++ b/crates/polars-compute/src/rolling/no_nulls/quantile.rs
+@@ -1,8 +1,10 @@
++use arrow::legacy::utils::CustomIterTools;
+ use num_traits::ToPrimitive;
+ use polars_error::polars_ensure;
+ 
+ use super::QuantileMethod::*;
+ use super::*;
++use crate::rolling::quantile_filter::SealedRolling;
+ 
+ pub struct QuantileWindow<'a, T: NativeType> {
+     sorted: SortedBuf<'a, T>,
+@@ -21,6 +23,7 @@ impl<
+             + NumCast
+             + One
+             + Zero
++            + SealedRolling
+             + Sub<Output = T>,
+     > RollingAggWindowNoNulls<'a, T> for QuantileWindow<'a, T>
+ {
+@@ -115,6 +118,7 @@ where
+         + NumCast
+         + One
+         + Zero
++        + SealedRolling
+         + PartialOrd
+         + Sub<Output = T>,
+ {
+diff --git a/crates/polars-arrow/src/legacy/kernels/rolling/no_nulls/sum.rs b/crates/polars-compute/src/rolling/no_nulls/sum.rs
+similarity index 100%
+rename from crates/polars-arrow/src/legacy/kernels/rolling/no_nulls/sum.rs
+rename to crates/polars-compute/src/rolling/no_nulls/sum.rs
+diff --git a/crates/polars-arrow/src/legacy/kernels/rolling/no_nulls/variance.rs b/crates/polars-compute/src/rolling/no_nulls/variance.rs
+similarity index 100%
+rename from crates/polars-arrow/src/legacy/kernels/rolling/no_nulls/variance.rs
+rename to crates/polars-compute/src/rolling/no_nulls/variance.rs
+diff --git a/crates/polars-arrow/src/legacy/kernels/rolling/nulls/mean.rs b/crates/polars-compute/src/rolling/nulls/mean.rs
+similarity index 100%
+rename from crates/polars-arrow/src/legacy/kernels/rolling/nulls/mean.rs
+rename to crates/polars-compute/src/rolling/nulls/mean.rs
+diff --git a/crates/polars-arrow/src/legacy/kernels/rolling/nulls/min_max.rs b/crates/polars-compute/src/rolling/nulls/min_max.rs
+similarity index 99%
+rename from crates/polars-arrow/src/legacy/kernels/rolling/nulls/min_max.rs
+rename to crates/polars-compute/src/rolling/nulls/min_max.rs
+index 7f0c65d42..4aa042261 100644
+--- a/crates/polars-arrow/src/legacy/kernels/rolling/nulls/min_max.rs
++++ b/crates/polars-compute/src/rolling/nulls/min_max.rs
+@@ -1,6 +1,7 @@
++use arrow::array::iterator::NonNullValuesIter;
++use arrow::bitmap::utils::count_zeros;
++
+ use super::*;
+-use crate::array::iterator::NonNullValuesIter;
+-use crate::bitmap::utils::count_zeros;
+ 
+ pub fn is_reverse_sorted_max_nulls<T: NativeType>(values: &[T], validity: &Bitmap) -> bool {
+     let mut it = NonNullValuesIter::new(values, Some(validity));
+diff --git a/crates/polars-arrow/src/legacy/kernels/rolling/nulls/mod.rs b/crates/polars-compute/src/rolling/nulls/mod.rs
+similarity index 98%
+rename from crates/polars-arrow/src/legacy/kernels/rolling/nulls/mod.rs
+rename to crates/polars-compute/src/rolling/nulls/mod.rs
+index ad49936ef..53dd78ea5 100644
+--- a/crates/polars-arrow/src/legacy/kernels/rolling/nulls/mod.rs
++++ b/crates/polars-compute/src/rolling/nulls/mod.rs
+@@ -4,6 +4,7 @@ mod quantile;
+ mod sum;
+ mod variance;
+ 
++use arrow::legacy::utils::CustomIterTools;
+ pub use mean::*;
+ pub use min_max::*;
+ pub use quantile::*;
+@@ -90,10 +91,11 @@ where
+ 
+ #[cfg(test)]
+ mod test {
++    use arrow::array::{Array, Int32Array};
++    use arrow::buffer::Buffer;
++    use arrow::datatypes::ArrowDataType;
++
+     use super::*;
+-    use crate::array::{Array, Int32Array};
+-    use crate::buffer::Buffer;
+-    use crate::datatypes::ArrowDataType;
+ 
+     fn get_null_arr() -> PrimitiveArray<f64> {
+         // 1, None, -1, 4
+diff --git a/crates/polars-arrow/src/legacy/kernels/rolling/nulls/quantile.rs b/crates/polars-compute/src/rolling/nulls/quantile.rs
+similarity index 97%
+rename from crates/polars-arrow/src/legacy/kernels/rolling/nulls/quantile.rs
+rename to crates/polars-compute/src/rolling/nulls/quantile.rs
+index b7200ebde..73dd02582 100644
+--- a/crates/polars-arrow/src/legacy/kernels/rolling/nulls/quantile.rs
++++ b/crates/polars-compute/src/rolling/nulls/quantile.rs
+@@ -1,5 +1,7 @@
++use arrow::array::MutablePrimitiveArray;
++
+ use super::*;
+-use crate::array::MutablePrimitiveArray;
++use crate::rolling::quantile_filter::SealedRolling;
+ 
+ pub struct QuantileWindow<'a, T: NativeType + IsFloat + PartialOrd> {
+     sorted: SortedBufNulls<'a, T>,
+@@ -19,6 +21,7 @@ impl<
+             + NumCast
+             + One
+             + Zero
++            + SealedRolling
+             + PartialOrd
+             + Sub<Output = T>,
+     > RollingAggWindowNulls<'a, T> for QuantileWindow<'a, T>
+@@ -117,6 +120,7 @@ where
+         + NumCast
+         + One
+         + Zero
++        + SealedRolling
+         + PartialOrd
+         + Sub<Output = T>,
+ {
+@@ -155,9 +159,10 @@ where
+ 
+ #[cfg(test)]
+ mod test {
++    use arrow::buffer::Buffer;
++    use arrow::datatypes::ArrowDataType;
++
+     use super::*;
+-    use crate::buffer::Buffer;
+-    use crate::datatypes::ArrowDataType;
+ 
+     #[test]
+     fn test_rolling_median_nulls() {
+diff --git a/crates/polars-arrow/src/legacy/kernels/rolling/nulls/sum.rs b/crates/polars-compute/src/rolling/nulls/sum.rs
+similarity index 100%
+rename from crates/polars-arrow/src/legacy/kernels/rolling/nulls/sum.rs
+rename to crates/polars-compute/src/rolling/nulls/sum.rs
+diff --git a/crates/polars-arrow/src/legacy/kernels/rolling/nulls/variance.rs b/crates/polars-compute/src/rolling/nulls/variance.rs
+similarity index 100%
+rename from crates/polars-arrow/src/legacy/kernels/rolling/nulls/variance.rs
+rename to crates/polars-compute/src/rolling/nulls/variance.rs
+diff --git a/crates/polars-arrow/src/legacy/kernels/rolling/quantile_filter.rs b/crates/polars-compute/src/rolling/quantile_filter.rs
+similarity index 98%
+rename from crates/polars-arrow/src/legacy/kernels/rolling/quantile_filter.rs
+rename to crates/polars-compute/src/rolling/quantile_filter.rs
+index 590a4e323..67f417a23 100644
+--- a/crates/polars-arrow/src/legacy/kernels/rolling/quantile_filter.rs
++++ b/crates/polars-compute/src/rolling/quantile_filter.rs
+@@ -4,6 +4,8 @@ use std::cmp::Ordering;
+ use std::fmt::{Debug, Formatter};
+ use std::ops::{Add, Div, Mul, Sub};
+ 
++use arrow::pushable::Pushable;
++use arrow::types::NativeType;
+ use num_traits::NumCast;
+ use polars_utils::index::{Bounded, Indexable, NullCount};
+ use polars_utils::nulls::IsNull;
+@@ -11,9 +13,7 @@ use polars_utils::slice::SliceAble;
+ use polars_utils::sort::arg_sort_ascending;
+ use polars_utils::total_ord::TotalOrd;
+ 
+-use crate::legacy::prelude::QuantileMethod;
+-use crate::pushable::Pushable;
+-use crate::types::NativeType;
++use super::QuantileMethod;
+ 
+ struct Block<'a, A> {
+     k: usize,
+@@ -527,6 +527,20 @@ pub(super) trait FinishLinear {
+     fn finish_midpoint(lower: Self, upper: Self) -> Self;
+ }
+ 
++pub trait SealedRolling {}
++
++impl SealedRolling for i8 {}
++impl SealedRolling for i16 {}
++impl SealedRolling for i32 {}
++impl SealedRolling for i64 {}
++impl SealedRolling for u8 {}
++impl SealedRolling for u16 {}
++impl SealedRolling for u32 {}
++impl SealedRolling for u64 {}
++impl SealedRolling for i128 {}
++impl SealedRolling for f32 {}
++impl SealedRolling for f64 {}
++
+ impl<
+         T: NativeType
+             + NumCast
+@@ -534,6 +548,7 @@ impl<
+             + Sub<Output = T>
+             + Div<Output = T>
+             + Mul<Output = T>
++            + SealedRolling
+             + Debug,
+     > FinishLinear for T
+ {
+diff --git a/crates/polars-arrow/src/legacy/kernels/rolling/window.rs b/crates/polars-compute/src/rolling/window.rs
+similarity index 100%
+rename from crates/polars-arrow/src/legacy/kernels/rolling/window.rs
+rename to crates/polars-compute/src/rolling/window.rs
+diff --git a/crates/polars-core/src/chunked_array/ops/aggregate/mod.rs b/crates/polars-core/src/chunked_array/ops/aggregate/mod.rs
+index d86892639..10e5dc107 100644
+--- a/crates/polars-core/src/chunked_array/ops/aggregate/mod.rs
++++ b/crates/polars-core/src/chunked_array/ops/aggregate/mod.rs
+@@ -6,6 +6,7 @@ use arrow::types::NativeType;
+ use num_traits::{Float, One, ToPrimitive, Zero};
+ use polars_compute::float_sum;
+ use polars_compute::min_max::MinMaxKernel;
++use polars_compute::rolling::QuantileMethod;
+ use polars_compute::sum::{wrapping_sum_arr, WrappingSum};
+ use polars_utils::min_max::MinMax;
+ use polars_utils::sync::SyncPtr;
+@@ -657,6 +658,8 @@ impl<T: PolarsObject> ChunkAggSeries for ObjectChunked<T> {}
+ 
+ #[cfg(test)]
+ mod test {
++    use polars_compute::rolling::QuantileMethod;
++
+     use crate::prelude::*;
+ 
+     #[test]
+diff --git a/crates/polars-core/src/chunked_array/ops/aggregate/quantile.rs b/crates/polars-core/src/chunked_array/ops/aggregate/quantile.rs
+index f7716c864..5a2ff1739 100644
+--- a/crates/polars-core/src/chunked_array/ops/aggregate/quantile.rs
++++ b/crates/polars-core/src/chunked_array/ops/aggregate/quantile.rs
+@@ -1,3 +1,5 @@
++use polars_compute::rolling::QuantileMethod;
++
+ use super::*;
+ 
+ pub trait QuantileAggSeries {
+diff --git a/crates/polars-core/src/chunked_array/ops/mod.rs b/crates/polars-core/src/chunked_array/ops/mod.rs
+index 9c2c241ef..28700a357 100644
+--- a/crates/polars-core/src/chunked_array/ops/mod.rs
++++ b/crates/polars-core/src/chunked_array/ops/mod.rs
+@@ -1,5 +1,6 @@
+ //! Traits for miscellaneous operations on ChunkedArray
+ use arrow::offset::OffsetsBuffer;
++use polars_compute::rolling::QuantileMethod;
+ 
+ use crate::prelude::*;
+ 
+diff --git a/crates/polars-core/src/chunked_array/ops/rolling_window.rs b/crates/polars-core/src/chunked_array/ops/rolling_window.rs
+index 9276420a1..7d0d3d54f 100644
+--- a/crates/polars-core/src/chunked_array/ops/rolling_window.rs
++++ b/crates/polars-core/src/chunked_array/ops/rolling_window.rs
+@@ -1,4 +1,4 @@
+-use arrow::legacy::prelude::RollingFnParams;
++use polars_compute::rolling::RollingFnParams;
+ #[cfg(feature = "serde")]
+ use serde::{Deserialize, Serialize};
+ 
+diff --git a/crates/polars-core/src/frame/column/mod.rs b/crates/polars-core/src/frame/column/mod.rs
+index 1df6b5048..3e0581f40 100644
+--- a/crates/polars-core/src/frame/column/mod.rs
++++ b/crates/polars-core/src/frame/column/mod.rs
+@@ -3,6 +3,7 @@ use std::borrow::Cow;
+ use arrow::bitmap::BitmapBuilder;
+ use arrow::trusted_len::TrustMyLength;
+ use num_traits::{Num, NumCast};
++use polars_compute::rolling::QuantileMethod;
+ use polars_error::PolarsResult;
+ use polars_utils::index::check_bounds;
+ use polars_utils::pl_str::PlSmallStr;
+@@ -753,6 +754,7 @@ impl Column {
+         method: QuantileMethod,
+     ) -> Self {
+         // @scalar-opt
++
+         unsafe {
+             self.as_materialized_series()
+                 .agg_quantile(groups, quantile, method)
+diff --git a/crates/polars-core/src/frame/group_by/aggregations/mod.rs b/crates/polars-core/src/frame/group_by/aggregations/mod.rs
+index 65290c2e6..5c8d20283 100644
+--- a/crates/polars-core/src/frame/group_by/aggregations/mod.rs
++++ b/crates/polars-core/src/frame/group_by/aggregations/mod.rs
+@@ -8,17 +8,19 @@ use std::cmp::Ordering;
+ 
+ pub use agg_list::*;
+ use arrow::bitmap::{Bitmap, MutableBitmap};
+-use arrow::legacy::kernels::rolling;
+-use arrow::legacy::kernels::rolling::no_nulls::{
+-    MaxWindow, MeanWindow, MinWindow, QuantileWindow, RollingAggWindowNoNulls, SumWindow, VarWindow,
+-};
+-use arrow::legacy::kernels::rolling::nulls::RollingAggWindowNulls;
+ use arrow::legacy::kernels::take_agg::*;
+-use arrow::legacy::prelude::QuantileMethod;
+ use arrow::legacy::trusted_len::TrustedLenPush;
+ use arrow::types::NativeType;
+ use num_traits::pow::Pow;
+ use num_traits::{Bounded, Float, Num, NumCast, ToPrimitive, Zero};
++use polars_compute::rolling::no_nulls::{
++    MaxWindow, MeanWindow, MinWindow, QuantileWindow, RollingAggWindowNoNulls, SumWindow, VarWindow,
++};
++use polars_compute::rolling::nulls::RollingAggWindowNulls;
++use polars_compute::rolling::quantile_filter::SealedRolling;
++use polars_compute::rolling::{
++    self, quantile_filter, QuantileMethod, RollingFnParams, RollingQuantileParams, RollingVarParams,
++};
+ use polars_utils::float::IsFloat;
+ use polars_utils::idx_vec::IdxVec;
+ use polars_utils::ord::{compare_fn_nan_max, compare_fn_nan_min};
+@@ -343,7 +345,7 @@ where
+     ChunkedArray<T>: QuantileDispatcher<K::Native>,
+     ChunkedArray<K>: IntoSeries,
+     K: PolarsNumericType,
+-    <K as datatypes::PolarsNumericType>::Native: num_traits::Float,
++    <K as datatypes::PolarsNumericType>::Native: num_traits::Float + quantile_filter::SealedRolling,
+ {
+     let invalid_quantile = !(0.0..=1.0).contains(&quantile);
+     if invalid_quantile {
+@@ -423,7 +425,7 @@ where
+     ChunkedArray<T>: QuantileDispatcher<K::Native>,
+     ChunkedArray<K>: IntoSeries,
+     K: PolarsNumericType,
+-    <K as datatypes::PolarsNumericType>::Native: num_traits::Float,
++    <K as datatypes::PolarsNumericType>::Native: num_traits::Float + SealedRolling,
+ {
+     match groups {
+         GroupsType::Idx(groups) => {
+diff --git a/crates/polars-core/src/frame/group_by/mod.rs b/crates/polars-core/src/frame/group_by/mod.rs
+index 41f135a0f..864610314 100644
+--- a/crates/polars-core/src/frame/group_by/mod.rs
++++ b/crates/polars-core/src/frame/group_by/mod.rs
+@@ -2,6 +2,7 @@ use std::fmt::{Debug, Display, Formatter};
+ use std::hash::Hash;
+ 
+ use num_traits::NumCast;
++use polars_compute::rolling::QuantileMethod;
+ use polars_utils::format_pl_smallstr;
+ use polars_utils::hashing::DirtyHash;
+ use rayon::prelude::*;
+@@ -593,7 +594,6 @@ impl<'a> GroupBy<'a> {
+     ///
+     /// ```rust
+     /// # use polars_core::prelude::*;
+-    /// # use arrow::legacy::prelude::QuantileMethod;
+     ///
+     /// fn example(df: DataFrame) -> PolarsResult<DataFrame> {
+     ///     df.group_by(["date"])?.select(["temp"]).quantile(0.2, QuantileMethod::default())
+diff --git a/crates/polars-core/src/prelude.rs b/crates/polars-core/src/prelude.rs
+index 2c8140efe..59da2b2b1 100644
+--- a/crates/polars-core/src/prelude.rs
++++ b/crates/polars-core/src/prelude.rs
+@@ -6,6 +6,7 @@ pub(crate) use arrow::array::*;
+ pub use arrow::datatypes::{ArrowSchema, Field as ArrowField};
+ pub use arrow::legacy::prelude::*;
+ pub(crate) use arrow::trusted_len::TrustedLen;
++pub use polars_compute::rolling::{QuantileMethod, RollingFnParams, RollingVarParams};
+ pub use polars_utils::index::{ChunkId, IdxSize, NullableIdxSize};
+ pub use polars_utils::pl_str::PlSmallStr;
+ pub(crate) use polars_utils::total_ord::{TotalEq, TotalOrd};
+diff --git a/crates/polars-core/src/series/implementations/datetime.rs b/crates/polars-core/src/series/implementations/datetime.rs
+index dccefd1ce..7f1abaf25 100644
+--- a/crates/polars-core/src/series/implementations/datetime.rs
++++ b/crates/polars-core/src/series/implementations/datetime.rs
+@@ -1,3 +1,5 @@
++use polars_compute::rolling::QuantileMethod;
++
+ use super::*;
+ #[cfg(feature = "algorithm_group_by")]
+ use crate::frame::group_by::*;
+diff --git a/crates/polars-core/src/series/implementations/decimal.rs b/crates/polars-core/src/series/implementations/decimal.rs
+index f89b138d1..7cab388fe 100644
+--- a/crates/polars-core/src/series/implementations/decimal.rs
++++ b/crates/polars-core/src/series/implementations/decimal.rs
+@@ -1,3 +1,5 @@
++use polars_compute::rolling::QuantileMethod;
++
+ use super::*;
+ use crate::prelude::*;
+ 
+diff --git a/crates/polars-core/src/series/implementations/duration.rs b/crates/polars-core/src/series/implementations/duration.rs
+index ad7fe8661..437da69a0 100644
+--- a/crates/polars-core/src/series/implementations/duration.rs
++++ b/crates/polars-core/src/series/implementations/duration.rs
+@@ -1,5 +1,7 @@
+ use std::ops::DerefMut;
+ 
++use polars_compute::rolling::QuantileMethod;
++
+ use super::*;
+ use crate::chunked_array::comparison::*;
+ #[cfg(feature = "algorithm_group_by")]
+diff --git a/crates/polars-core/src/series/implementations/floats.rs b/crates/polars-core/src/series/implementations/floats.rs
+index 799c5f807..574efd3a6 100644
+--- a/crates/polars-core/src/series/implementations/floats.rs
++++ b/crates/polars-core/src/series/implementations/floats.rs
+@@ -1,3 +1,5 @@
++use polars_compute::rolling::QuantileMethod;
++
+ use super::*;
+ use crate::chunked_array::comparison::*;
+ #[cfg(feature = "algorithm_group_by")]
+diff --git a/crates/polars-core/src/series/implementations/mod.rs b/crates/polars-core/src/series/implementations/mod.rs
+index 29b69a750..7ec48591f 100644
+--- a/crates/polars-core/src/series/implementations/mod.rs
++++ b/crates/polars-core/src/series/implementations/mod.rs
+@@ -27,6 +27,8 @@ mod time;
+ use std::any::Any;
+ use std::borrow::Cow;
+ 
++use polars_compute::rolling::QuantileMethod;
++
+ use super::*;
+ use crate::chunked_array::comparison::*;
+ use crate::chunked_array::ops::compare_inner::{
+diff --git a/crates/polars-core/src/series/series_trait.rs b/crates/polars-core/src/series/series_trait.rs
+index 85baf5e6d..aa458415b 100644
+--- a/crates/polars-core/src/series/series_trait.rs
++++ b/crates/polars-core/src/series/series_trait.rs
+@@ -2,6 +2,7 @@ use std::any::Any;
+ use std::borrow::Cow;
+ 
+ use arrow::bitmap::{Bitmap, BitmapBuilder};
++use polars_compute::rolling::QuantileMethod;
+ #[cfg(feature = "serde")]
+ use serde::{Deserialize, Serialize};
+ 
+diff --git a/crates/polars-expr/src/expressions/aggregation.rs b/crates/polars-expr/src/expressions/aggregation.rs
+index 89d04dd20..2daba9c74 100644
+--- a/crates/polars-expr/src/expressions/aggregation.rs
++++ b/crates/polars-expr/src/expressions/aggregation.rs
+@@ -4,6 +4,7 @@ use arrow::array::*;
+ use arrow::compute::concatenate::concatenate;
+ use arrow::legacy::utils::CustomIterTools;
+ use arrow::offset::Offsets;
++use polars_compute::rolling::QuantileMethod;
+ use polars_core::prelude::*;
+ use polars_core::series::IsSorted;
+ use polars_core::utils::{NoNull, _split_offsets};
+diff --git a/crates/polars-lazy/Cargo.toml b/crates/polars-lazy/Cargo.toml
+index f40316bdf..e427e4401 100644
+--- a/crates/polars-lazy/Cargo.toml
++++ b/crates/polars-lazy/Cargo.toml
+@@ -12,6 +12,7 @@ description = "Lazy query engine for the Polars DataFrame library"
+ arrow = { workspace = true }
+ chrono = { workspace = true }
+ futures = { workspace = true, optional = true }
++polars-compute = { workspace = true }
+ polars-core = { workspace = true, features = ["lazy", "zip_with", "random"] }
+ polars-expr = { workspace = true }
+ polars-io = { workspace = true, features = ["lazy"] }
+diff --git a/crates/polars-lazy/src/frame/mod.rs b/crates/polars-lazy/src/frame/mod.rs
+index de744558a..6088c7fff 100644
+--- a/crates/polars-lazy/src/frame/mod.rs
++++ b/crates/polars-lazy/src/frame/mod.rs
+@@ -30,6 +30,7 @@ pub use ipc::*;
+ pub use ndjson::*;
+ #[cfg(feature = "parquet")]
+ pub use parquet::*;
++use polars_compute::rolling::QuantileMethod;
+ use polars_core::prelude::*;
+ use polars_expr::{create_physical_expr, ExpressionConversionState};
+ use polars_io::RowIndex;
+@@ -1036,7 +1037,6 @@ impl LazyFrame {
+     /// ```rust
+     /// use polars_core::prelude::*;
+     /// use polars_lazy::prelude::*;
+-    /// use arrow::legacy::prelude::QuantileMethod;
+     ///
+     /// fn example(df: DataFrame) -> LazyFrame {
+     ///       df.lazy()
+@@ -1942,7 +1942,6 @@ impl LazyGroupBy {
+     /// ```rust
+     /// use polars_core::prelude::*;
+     /// use polars_lazy::prelude::*;
+-    /// use arrow::legacy::prelude::QuantileMethod;
+     ///
+     /// fn example(df: DataFrame) -> LazyFrame {
+     ///       df.lazy()
+diff --git a/crates/polars-lazy/src/lib.rs b/crates/polars-lazy/src/lib.rs
+index f3dff5710..08da7ff13 100644
+--- a/crates/polars-lazy/src/lib.rs
++++ b/crates/polars-lazy/src/lib.rs
+@@ -104,7 +104,6 @@
+ //! use polars_core::prelude::*;
+ //! use polars_core::df;
+ //! use polars_lazy::prelude::*;
+-//! use arrow::legacy::prelude::QuantileMethod;
+ //!
+ //! fn example() -> PolarsResult<DataFrame> {
+ //!     let df = df!(
+diff --git a/crates/polars-ops/src/chunked_array/nan_propagating_aggregate.rs b/crates/polars-ops/src/chunked_array/nan_propagating_aggregate.rs
+index 19c49492c..00e8f30da 100644
+--- a/crates/polars-ops/src/chunked_array/nan_propagating_aggregate.rs
++++ b/crates/polars-ops/src/chunked_array/nan_propagating_aggregate.rs
+@@ -1,9 +1,9 @@
+ use arrow::array::Array;
+-use arrow::legacy::kernels::rolling;
+-use arrow::legacy::kernels::rolling::no_nulls::{MaxWindow, MinWindow};
+ use arrow::legacy::kernels::take_agg::{
+     take_agg_no_null_primitive_iter_unchecked, take_agg_primitive_iter_unchecked,
+ };
++use polars_compute::rolling;
++use polars_compute::rolling::no_nulls::{MaxWindow, MinWindow};
+ use polars_core::frame::group_by::aggregations::{
+     _agg_helper_idx, _agg_helper_slice, _rolling_apply_agg_window_no_nulls,
+     _rolling_apply_agg_window_nulls, _slice_from_offsets, _use_rolling_kernels,
+diff --git a/crates/polars-ops/src/series/ops/cut.rs b/crates/polars-ops/src/series/ops/cut.rs
+index 9b6680cc4..7016fd08c 100644
+--- a/crates/polars-ops/src/series/ops/cut.rs
++++ b/crates/polars-ops/src/series/ops/cut.rs
+@@ -1,3 +1,4 @@
++use polars_compute::rolling::QuantileMethod;
+ use polars_core::prelude::*;
+ use polars_utils::format_pl_smallstr;
+ 
+diff --git a/crates/polars-plan/Cargo.toml b/crates/polars-plan/Cargo.toml
+index 22c0aaf61..811ad6006 100644
+--- a/crates/polars-plan/Cargo.toml
++++ b/crates/polars-plan/Cargo.toml
+@@ -60,6 +60,7 @@ serde = [
+   "polars-io/serde",
+   "polars-ops/serde",
+   "polars-utils/serde",
++  "polars-compute/serde",
+   "either/serde",
+ ]
+ streaming = []
+diff --git a/crates/polars-plan/src/dsl/expr.rs b/crates/polars-plan/src/dsl/expr.rs
+index eb3f19c26..f41e31512 100644
+--- a/crates/polars-plan/src/dsl/expr.rs
++++ b/crates/polars-plan/src/dsl/expr.rs
+@@ -2,6 +2,7 @@ use std::fmt::{Debug, Display, Formatter};
+ use std::hash::{Hash, Hasher};
+ 
+ use bytes::Bytes;
++use polars_compute::rolling::QuantileMethod;
+ use polars_core::chunked_array::cast::CastOptions;
+ use polars_core::error::feature_gated;
+ use polars_core::prelude::*;
+diff --git a/crates/polars-plan/src/dsl/mod.rs b/crates/polars-plan/src/dsl/mod.rs
+index de2983d7f..4d88b9ca9 100644
+--- a/crates/polars-plan/src/dsl/mod.rs
++++ b/crates/polars-plan/src/dsl/mod.rs
+@@ -50,7 +50,6 @@ mod plan;
+ pub use arity::*;
+ #[cfg(feature = "dtype-array")]
+ pub use array::*;
+-use arrow::legacy::prelude::QuantileMethod;
+ pub use expr::*;
+ pub use function_expr::schema::FieldsMapper;
+ pub use function_expr::*;
+@@ -61,6 +60,7 @@ pub use meta::*;
+ pub use name::*;
+ pub use options::*;
+ pub use plan::*;
++use polars_compute::rolling::QuantileMethod;
+ use polars_core::chunked_array::cast::CastOptions;
+ use polars_core::error::feature_gated;
+ use polars_core::prelude::*;
+@@ -1390,6 +1390,7 @@ impl Expr {
+         quantile: f64,
+         mut options: RollingOptionsDynamicWindow,
+     ) -> Expr {
++        use polars_compute::rolling::{RollingFnParams, RollingQuantileParams};
+         options.fn_params = Some(RollingFnParams::Quantile(RollingQuantileParams {
+             prob: quantile,
+             method,
+@@ -1466,6 +1467,8 @@ impl Expr {
+         quantile: f64,
+         mut options: RollingOptionsFixedWindow,
+     ) -> Expr {
++        use polars_compute::rolling::{RollingFnParams, RollingQuantileParams};
++
+         options.fn_params = Some(RollingFnParams::Quantile(RollingQuantileParams {
+             prob: quantile,
+             method,
+diff --git a/crates/polars-plan/src/plans/aexpr/mod.rs b/crates/polars-plan/src/plans/aexpr/mod.rs
+index 6bdaa8aa6..8d644b57f 100644
+--- a/crates/polars-plan/src/plans/aexpr/mod.rs
++++ b/crates/polars-plan/src/plans/aexpr/mod.rs
+@@ -12,6 +12,7 @@ use std::hash::{Hash, Hasher};
+ #[cfg(feature = "cse")]
+ pub(super) use hash::traverse_and_hash_aexpr;
+ pub use minterm_iter::MintermIter;
++use polars_compute::rolling::QuantileMethod;
+ use polars_core::chunked_array::cast::CastOptions;
+ use polars_core::prelude::*;
+ use polars_core::utils::{get_time_units, try_get_supertype};
+diff --git a/crates/polars-plan/src/plans/functions/dsl.rs b/crates/polars-plan/src/plans/functions/dsl.rs
+index ec95067be..7586c4387 100644
+--- a/crates/polars-plan/src/plans/functions/dsl.rs
++++ b/crates/polars-plan/src/plans/functions/dsl.rs
+@@ -1,3 +1,4 @@
++use polars_compute::rolling::QuantileMethod;
+ use strum_macros::IntoStaticStr;
+ 
+ use super::*;
+diff --git a/crates/polars-time/src/chunkedarray/rolling_window/mod.rs b/crates/polars-time/src/chunkedarray/rolling_window/mod.rs
+index f1c0f4a32..d770e495c 100644
+--- a/crates/polars-time/src/chunkedarray/rolling_window/mod.rs
++++ b/crates/polars-time/src/chunkedarray/rolling_window/mod.rs
+@@ -3,8 +3,9 @@ mod dispatch;
+ mod rolling_kernels;
+ 
+ use arrow::array::{ArrayRef, PrimitiveArray};
+-use arrow::legacy::kernels::rolling;
+ pub use dispatch::*;
++use polars_compute::rolling;
++use polars_compute::rolling::RollingFnParams;
+ use polars_core::prelude::*;
+ #[cfg(feature = "serde")]
+ use serde::{Deserialize, Serialize};
+diff --git a/crates/polars-time/src/chunkedarray/rolling_window/rolling_kernels/no_nulls.rs b/crates/polars-time/src/chunkedarray/rolling_window/rolling_kernels/no_nulls.rs
+index 18135aaaa..ab893f151 100644
+--- a/crates/polars-time/src/chunkedarray/rolling_window/rolling_kernels/no_nulls.rs
++++ b/crates/polars-time/src/chunkedarray/rolling_window/rolling_kernels/no_nulls.rs
+@@ -1,10 +1,12 @@
+ use std::ops::{Add, Sub};
+ 
+ use arrow::bitmap::MutableBitmap;
+-use arrow::legacy::kernels::rolling::no_nulls::{self, RollingAggWindowNoNulls};
+ use bytemuck::allocation::zeroed_vec;
+ #[cfg(feature = "timezones")]
+ use chrono_tz::Tz;
++use polars_compute::rolling::no_nulls::{self, RollingAggWindowNoNulls};
++use polars_compute::rolling::quantile_filter::SealedRolling;
++use polars_compute::rolling::RollingFnParams;
+ 
+ use super::*;
+ 
+@@ -348,7 +350,7 @@ pub(crate) fn rolling_quantile<T>(
+     sorting_indices: Option<&[IdxSize]>,
+ ) -> PolarsResult<ArrayRef>
+ where
+-    T: NativeType + Float + std::iter::Sum<T> + SubAssign + AddAssign + IsFloat,
++    T: NativeType + Float + std::iter::Sum<T> + SubAssign + AddAssign + IsFloat + SealedRolling,
+ {
+     let offset_iter = match tz {
+         #[cfg(feature = "timezones")]
+diff --git a/crates/polars-time/src/group_by/dynamic.rs b/crates/polars-time/src/group_by/dynamic.rs
+index 914e8ad44..1147a697d 100644
+--- a/crates/polars-time/src/group_by/dynamic.rs
++++ b/crates/polars-time/src/group_by/dynamic.rs
+@@ -632,6 +632,7 @@ fn update_subgroups_idx(
+ #[cfg(test)]
+ mod test {
+     use chrono::prelude::*;
++    use polars_compute::rolling::QuantileMethod;
+     use polars_ops::prelude::*;
+     use polars_utils::unitvec;
+ 

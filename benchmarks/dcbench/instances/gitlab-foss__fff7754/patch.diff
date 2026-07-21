@@ -1,0 +1,267 @@
+From fff7754186202cfcdeaa0962c28e5d43ddd705b7 Mon Sep 17 00:00:00 2001
+From: Zeger-Jan van de Weg <git@zjvandeweg.nl>
+Date: Tue, 20 Nov 2018 12:48:18 +0100
+Subject: [PATCH] Rename the Repository table to PoolRepository
+
+To separate the different kinds of repositories we have at GitLab this
+table will be renamed to pool_repositories. A project can, for now at
+least, be member of none, or one of these. The table will get additional
+columns in a later merge request where more logic is implemented for the
+model.
+
+Further included is a small refactor of logic around hashing ids for the
+disk_path, mainly to ensure a previous implementation is reusable.
+
+The disk_path for the pool_repositories table no longer has a NOT NULL
+constraint, but given the hashing of the ID requires the DB to assign
+the record an ID, an after_create hook is used to update the value.
+
+A related MR is:
+https://gitlab.com/gitlab-org/gitlab-ce/merge_requests/23143, adding
+tables for 'normal' repositories and wiki_repositories.
+---
+ app/models/pool_repository.rb                 | 19 ++++++++++-----
+ app/models/storage/hashed_project.rb          |  8 ++++---
+ ...1_rename_repositories_pool_repositories.rb | 11 +++++++++
+ ...ll_constraint_pool_repository_disk_path.rb |  9 +++++++
+ db/schema.rb                                  | 18 +++++++-------
+ lib/tasks/gitlab/cleanup.rake                 |  4 ++--
+ spec/factories/pool_repositories.rb           |  5 ++++
+ spec/factories/shards.rb                      |  5 ++++
+ spec/models/pool_repository_spec.rb           | 24 +++++++++++++++++++
+ 9 files changed, 83 insertions(+), 20 deletions(-)
+ create mode 100644 db/migrate/20181120082911_rename_repositories_pool_repositories.rb
+ create mode 100644 db/migrate/20181123135036_drop_not_null_constraint_pool_repository_disk_path.rb
+ create mode 100644 spec/factories/pool_repositories.rb
+ create mode 100644 spec/factories/shards.rb
+ create mode 100644 spec/models/pool_repository_spec.rb
+
+diff --git a/app/models/pool_repository.rb b/app/models/pool_repository.rb
+index 8ef7453920..4b697d1991 100644
+--- a/app/models/pool_repository.rb
++++ b/app/models/pool_repository.rb
+@@ -1,16 +1,12 @@
+ # frozen_string_literal: true
+ 
+ class PoolRepository < ActiveRecord::Base
+-  POOL_PREFIX = '@pools'
+-
+   belongs_to :shard
+   validates :shard, presence: true
+ 
+-  # For now, only pool repositories are tracked in the database. However, we may
+-  # want to add other repository types in the future
+-  self.table_name = 'repositories'
++  has_many :member_projects, class_name: 'Project'
+ 
+-  has_many :pool_member_projects, class_name: 'Project', foreign_key: :pool_repository_id
++  after_create :correct_disk_path
+ 
+   def shard_name
+     shard&.name
+@@ -19,4 +15,15 @@ def shard_name
+   def shard_name=(name)
+     self.shard = Shard.by_name(name)
+   end
++
++  private
++
++  def correct_disk_path
++    update(disk_path: storage.disk_path)
++  end
++
++  def storage
++    Storage::HashedProject
++      .new(self, prefix: Storage::HashedProject::POOL_PATH_PREFIX)
++  end
+ end
+diff --git a/app/models/storage/hashed_project.rb b/app/models/storage/hashed_project.rb
+index 90710f73fd..911fb7e9ce 100644
+--- a/app/models/storage/hashed_project.rb
++++ b/app/models/storage/hashed_project.rb
+@@ -5,17 +5,19 @@ class HashedProject
+     attr_accessor :project
+     delegate :gitlab_shell, :repository_storage, to: :project
+ 
+-    ROOT_PATH_PREFIX = '@hashed'.freeze
++    REPOSITORY_PATH_PREFIX = '@hashed'
++    POOL_PATH_PREFIX = '@pools'
+ 
+-    def initialize(project)
++    def initialize(project, prefix: REPOSITORY_PATH_PREFIX)
+       @project = project
++      @prefix = prefix
+     end
+ 
+     # Base directory
+     #
+     # @return [String] directory where repository is stored
+     def base_dir
+-      "#{ROOT_PATH_PREFIX}/#{disk_hash[0..1]}/#{disk_hash[2..3]}" if disk_hash
++      "#{@prefix}/#{disk_hash[0..1]}/#{disk_hash[2..3]}" if disk_hash
+     end
+ 
+     # Disk path is used to build repository and project's wiki path on disk
+diff --git a/db/migrate/20181120082911_rename_repositories_pool_repositories.rb b/db/migrate/20181120082911_rename_repositories_pool_repositories.rb
+new file mode 100644
+index 0000000000..165771c477
+--- /dev/null
++++ b/db/migrate/20181120082911_rename_repositories_pool_repositories.rb
+@@ -0,0 +1,11 @@
++class RenameRepositoriesPoolRepositories < ActiveRecord::Migration[5.0]
++  include Gitlab::Database::MigrationHelpers
++
++  # This change doesn't require downtime as the table is not in use, so we're
++  # free to change an empty table
++  DOWNTIME = false
++
++  def change
++    rename_table :repositories, :pool_repositories
++  end
++end
+diff --git a/db/migrate/20181123135036_drop_not_null_constraint_pool_repository_disk_path.rb b/db/migrate/20181123135036_drop_not_null_constraint_pool_repository_disk_path.rb
+new file mode 100644
+index 0000000000..bcd969e91c
+--- /dev/null
++++ b/db/migrate/20181123135036_drop_not_null_constraint_pool_repository_disk_path.rb
+@@ -0,0 +1,9 @@
++# frozen_string_literal: true
++
++class DropNotNullConstraintPoolRepositoryDiskPath < ActiveRecord::Migration[5.0]
++  DOWNTIME = false
++
++  def change
++    change_column_null :pool_repositories, :disk_path, true
++  end
++end
+diff --git a/db/schema.rb b/db/schema.rb
+index e0ca571df5..810afcdcfd 100644
+--- a/db/schema.rb
++++ b/db/schema.rb
+@@ -1501,6 +1501,13 @@
+     t.index ["user_id"], name: "index_personal_access_tokens_on_user_id", using: :btree
+   end
+ 
++  create_table "pool_repositories", id: :bigserial, force: :cascade do |t|
++    t.integer "shard_id", null: false
++    t.string "disk_path"
++    t.index ["disk_path"], name: "index_pool_repositories_on_disk_path", unique: true, using: :btree
++    t.index ["shard_id"], name: "index_pool_repositories_on_shard_id", using: :btree
++  end
++
+   create_table "programming_languages", force: :cascade do |t|
+     t.string "name", null: false
+     t.string "color", null: false
+@@ -1798,13 +1805,6 @@
+     t.index ["project_id"], name: "index_remote_mirrors_on_project_id", using: :btree
+   end
+ 
+-  create_table "repositories", id: :bigserial, force: :cascade do |t|
+-    t.integer "shard_id", null: false
+-    t.string "disk_path", null: false
+-    t.index ["disk_path"], name: "index_repositories_on_disk_path", unique: true, using: :btree
+-    t.index ["shard_id"], name: "index_repositories_on_shard_id", using: :btree
+-  end
+-
+   create_table "repository_languages", id: false, force: :cascade do |t|
+     t.integer "project_id", null: false
+     t.integer "programming_language_id", null: false
+@@ -2377,6 +2377,7 @@
+   add_foreign_key "oauth_openid_requests", "oauth_access_grants", column: "access_grant_id", name: "fk_oauth_openid_requests_oauth_access_grants_access_grant_id"
+   add_foreign_key "pages_domains", "projects", name: "fk_ea2f6dfc6f", on_delete: :cascade
+   add_foreign_key "personal_access_tokens", "users"
++  add_foreign_key "pool_repositories", "shards", on_delete: :restrict
+   add_foreign_key "project_authorizations", "projects", on_delete: :cascade
+   add_foreign_key "project_authorizations", "users", on_delete: :cascade
+   add_foreign_key "project_auto_devops", "projects", on_delete: :cascade
+@@ -2389,7 +2390,7 @@
+   add_foreign_key "project_import_data", "projects", name: "fk_ffb9ee3a10", on_delete: :cascade
+   add_foreign_key "project_mirror_data", "projects", on_delete: :cascade
+   add_foreign_key "project_statistics", "projects", on_delete: :cascade
+-  add_foreign_key "projects", "repositories", column: "pool_repository_id", name: "fk_6e5c14658a", on_delete: :nullify
++  add_foreign_key "projects", "pool_repositories", name: "fk_6e5c14658a", on_delete: :nullify
+   add_foreign_key "prometheus_metrics", "projects", on_delete: :cascade
+   add_foreign_key "protected_branch_merge_access_levels", "protected_branches", name: "fk_8a3072ccb3", on_delete: :cascade
+   add_foreign_key "protected_branch_push_access_levels", "protected_branches", name: "fk_9ffc86a3d9", on_delete: :cascade
+@@ -2401,7 +2402,6 @@
+   add_foreign_key "push_event_payloads", "events", name: "fk_36c74129da", on_delete: :cascade
+   add_foreign_key "releases", "projects", name: "fk_47fe2a0596", on_delete: :cascade
+   add_foreign_key "remote_mirrors", "projects", on_delete: :cascade
+-  add_foreign_key "repositories", "shards", on_delete: :restrict
+   add_foreign_key "repository_languages", "projects", on_delete: :cascade
+   add_foreign_key "resource_label_events", "issues", on_delete: :cascade
+   add_foreign_key "resource_label_events", "labels", on_delete: :nullify
+diff --git a/lib/tasks/gitlab/cleanup.rake b/lib/tasks/gitlab/cleanup.rake
+index e8ae5dfa54..451ba65167 100644
+--- a/lib/tasks/gitlab/cleanup.rake
++++ b/lib/tasks/gitlab/cleanup.rake
+@@ -6,7 +6,7 @@ namespace :gitlab do
+     desc "GitLab | Cleanup | Clean namespaces"
+     task dirs: :gitlab_environment do
+       namespaces = Set.new(Namespace.pluck(:path))
+-      namespaces << Storage::HashedProject::ROOT_PATH_PREFIX
++      namespaces << Storage::HashedProject::REPOSITORY_PATH_PREFIX
+ 
+       Gitaly::Server.all.each do |server|
+         all_dirs = Gitlab::GitalyClient::StorageService
+@@ -49,7 +49,7 @@ namespace :gitlab do
+ 
+           # TODO ignoring hashed repositories for now.  But revisit to fully support
+           # possible orphaned hashed repos
+-          next if repo_with_namespace.start_with?(Storage::HashedProject::ROOT_PATH_PREFIX)
++          next if repo_with_namespace.start_with?(Storage::HashedProject::REPOSITORY_PATH_PREFIX)
+           next if Project.find_by_full_path(repo_with_namespace)
+ 
+           new_path = path + move_suffix
+diff --git a/spec/factories/pool_repositories.rb b/spec/factories/pool_repositories.rb
+new file mode 100644
+index 0000000000..2ed0844ed4
+--- /dev/null
++++ b/spec/factories/pool_repositories.rb
+@@ -0,0 +1,5 @@
++FactoryBot.define do
++  factory :pool_repository do
++    shard
++  end
++end
+diff --git a/spec/factories/shards.rb b/spec/factories/shards.rb
+new file mode 100644
+index 0000000000..c095fa5f0a
+--- /dev/null
++++ b/spec/factories/shards.rb
+@@ -0,0 +1,5 @@
++FactoryBot.define do
++  factory :shard do
++    name "default"
++  end
++end
+diff --git a/spec/models/pool_repository_spec.rb b/spec/models/pool_repository_spec.rb
+new file mode 100644
+index 0000000000..6c904710fb
+--- /dev/null
++++ b/spec/models/pool_repository_spec.rb
+@@ -0,0 +1,24 @@
++require 'spec_helper'
++
++describe PoolRepository do
++  describe 'associations' do
++    it { is_expected.to belong_to(:shard) }
++    it { is_expected.to have_many(:member_projects) }
++  end
++
++  describe 'validations' do
++    let!(:pool_repository) { create(:pool_repository) }
++
++    it { is_expected.to validate_presence_of(:shard) }
++  end
++
++  describe '#disk_path' do
++    it 'sets the hashed disk_path' do
++      pool = create(:pool_repository)
++
++      elements = File.split(pool.disk_path)
++
++      expect(elements).to all( match(/\d{2,}/) )
++    end
++  end
++end

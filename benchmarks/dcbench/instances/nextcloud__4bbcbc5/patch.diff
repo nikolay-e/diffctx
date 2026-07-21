@@ -1,0 +1,407 @@
+From 4bbcbc520620b59c19f058fa79e107ee1a8ce275 Mon Sep 17 00:00:00 2001
+From: Ferdinand Thiessen <opensource@fthiessen.de>
+Date: Mon, 5 Aug 2024 17:51:45 +0200
+Subject: [PATCH] feat: Make `ISharedStorage` public API and reuse where
+ possible
+
+Signed-off-by: Ferdinand Thiessen <opensource@fthiessen.de>
+---
+ apps/dav/lib/Connector/Sabre/FilesPlugin.php  |  4 +--
+ apps/dav/lib/Connector/Sabre/Node.php         | 32 +++++++++----------
+ apps/dav/lib/DAV/ViewOnlyPlugin.php           |  5 +--
+ apps/dav/lib/Storage/PublicShareWrapper.php   |  5 +--
+ .../tests/unit/Connector/Sabre/NodeTest.php   | 14 +++++---
+ .../dav/tests/unit/DAV/ViewOnlyPluginTest.php |  5 +--
+ apps/files_sharing/lib/ISharedStorage.php     |  3 ++
+ apps/files_sharing/lib/SharedStorage.php      |  5 +--
+ .../lib/Versions/LegacyVersionsBackend.php    |  7 ++--
+ build/integration/run-docker.sh               |  2 +-
+ lib/composer/composer/autoload_classmap.php   |  1 +
+ lib/composer/composer/autoload_static.php     |  1 +
+ lib/public/Files/Storage/ISharedStorage.php   | 26 +++++++++++++++
+ 13 files changed, 75 insertions(+), 35 deletions(-)
+ create mode 100644 lib/public/Files/Storage/ISharedStorage.php
+
+diff --git a/apps/dav/lib/Connector/Sabre/FilesPlugin.php b/apps/dav/lib/Connector/Sabre/FilesPlugin.php
+index 1324400499..bca0d15709 100644
+--- a/apps/dav/lib/Connector/Sabre/FilesPlugin.php
++++ b/apps/dav/lib/Connector/Sabre/FilesPlugin.php
+@@ -345,14 +345,14 @@ class FilesPlugin extends ServerPlugin {
+ 				return $node->getNode()->getInternalPath() === '' ? 'true' : 'false';
+ 			});
+ 
+-			$propFind->handle(self::SHARE_NOTE, function () use ($node, $httpRequest): string {
++			$propFind->handle(self::SHARE_NOTE, function () use ($node): ?string {
+ 				$user = $this->userSession->getUser();
+ 				return $node->getNoteFromShare(
+ 					$user?->getUID()
+ 				);
+ 			});
+ 
+-			$propFind->handle(self::DATA_FINGERPRINT_PROPERTYNAME, function () use ($node) {
++			$propFind->handle(self::DATA_FINGERPRINT_PROPERTYNAME, function () {
+ 				return $this->config->getSystemValue('data-fingerprint', '');
+ 			});
+ 			$propFind->handle(self::CREATIONDATE_PROPERTYNAME, function () use ($node) {
+diff --git a/apps/dav/lib/Connector/Sabre/Node.php b/apps/dav/lib/Connector/Sabre/Node.php
+index 075ea2dd65..973d5ca6f0 100644
+--- a/apps/dav/lib/Connector/Sabre/Node.php
++++ b/apps/dav/lib/Connector/Sabre/Node.php
+@@ -16,6 +16,7 @@ use OCP\Files\DavUtil;
+ use OCP\Files\FileInfo;
+ use OCP\Files\IRootFolder;
+ use OCP\Files\NotFoundException;
++use OCP\Files\Storage\ISharedStorage;
+ use OCP\Files\StorageNotAvailableException;
+ use OCP\Share\Exceptions\ShareNotFound;
+ use OCP\Share\IManager;
+@@ -262,8 +263,8 @@ abstract class Node implements \Sabre\DAV\INode {
+ 			$storage = null;
+ 		}
+ 
+-		if ($storage && $storage->instanceOfStorage('\OCA\Files_Sharing\SharedStorage')) {
+-			/** @var \OCA\Files_Sharing\SharedStorage $storage */
++		if ($storage && $storage->instanceOfStorage(ISharedStorage::class)) {
++			/** @var ISharedStorage $storage */
+ 			$permissions = (int)$storage->getShare()->getPermissions();
+ 		} else {
+ 			$permissions = $this->info->getPermissions();
+@@ -306,8 +307,8 @@ abstract class Node implements \Sabre\DAV\INode {
+ 		}
+ 
+ 		$attributes = [];
+-		if (method_exists($storage, 'getShare')) {
+-			/** @var \OCA\Files_Sharing\SharedStorage $storage */
++		if ($storage->instanceOfStorage(ISharedStorage::class)) {
++			/** @var ISharedStorage $storage */
+ 			$attributes = $storage->getShare()->getAttributes();
+ 			if ($attributes === null) {
+ 				return [];
+@@ -319,25 +320,24 @@ abstract class Node implements \Sabre\DAV\INode {
+ 		return $attributes;
+ 	}
+ 
+-	public function getNoteFromShare(?string $user): string {
++	public function getNoteFromShare(?string $user): ?string {
+ 		try {
+ 			$storage = $this->node->getStorage();
+ 		} catch (NotFoundException) {
+-			return '';
++			return null;
+ 		}
+ 
+-		if (!method_exists($storage, 'getShare')) {
+-			return '';
++		if ($storage->instanceOfStorage(ISharedStorage::class)) {
++			/** @var ISharedStorage $storage */
++			$share = $storage->getShare();
++			if ($user === $share->getShareOwner()) {
++				// Note is only for recipient not the owner
++				return null;
++			}
++			return $share->getNote();
+ 		}
+-		/** @var \OCA\Files_Sharing\SharedStorage $storage */
+ 
+-		$share = $storage->getShare();
+-		$note = $share->getNote();
+-		if ($user === $share->getShareOwner()) {
+-			// Note is only for recipient not the owner
+-			return '';
+-		}
+-		return $note;
++		return null;
+ 	}
+ 
+ 	/**
+diff --git a/apps/dav/lib/DAV/ViewOnlyPlugin.php b/apps/dav/lib/DAV/ViewOnlyPlugin.php
+index 80d0ddc8cf..b6139638aa 100644
+--- a/apps/dav/lib/DAV/ViewOnlyPlugin.php
++++ b/apps/dav/lib/DAV/ViewOnlyPlugin.php
+@@ -13,6 +13,7 @@ use OCA\DAV\Connector\Sabre\File as DavFile;
+ use OCA\Files_Versions\Sabre\VersionFile;
+ use OCP\Files\Folder;
+ use OCP\Files\NotFoundException;
++use OCP\Files\Storage\ISharedStorage;
+ use Sabre\DAV\Exception\NotFound;
+ use Sabre\DAV\Server;
+ use Sabre\DAV\ServerPlugin;
+@@ -81,11 +82,11 @@ class ViewOnlyPlugin extends ServerPlugin {
+ 
+ 			$storage = $node->getStorage();
+ 
+-			if (!$storage->instanceOfStorage(\OCA\Files_Sharing\SharedStorage::class)) {
++			if (!$storage->instanceOfStorage(ISharedStorage::class)) {
+ 				return true;
+ 			}
+ 			// Extract extra permissions
+-			/** @var \OCA\Files_Sharing\SharedStorage $storage */
++			/** @var ISharedStorage $storage */
+ 			$share = $storage->getShare();
+ 
+ 			$attributes = $share->getAttributes();
+diff --git a/apps/dav/lib/Storage/PublicShareWrapper.php b/apps/dav/lib/Storage/PublicShareWrapper.php
+index fb24abda9d..058dbe2bce 100644
+--- a/apps/dav/lib/Storage/PublicShareWrapper.php
++++ b/apps/dav/lib/Storage/PublicShareWrapper.php
+@@ -9,9 +9,10 @@ declare(strict_types=1);
+ namespace OCA\DAV\Storage;
+ 
+ use OC\Files\Storage\Wrapper\Wrapper;
++use OCP\Files\Storage\ISharedStorage;
+ use OCP\Share\IShare;
+ 
+-class PublicShareWrapper extends Wrapper {
++class PublicShareWrapper extends Wrapper implements ISharedStorage {
+ 
+ 	private IShare $share;
+ 
+@@ -29,7 +30,7 @@ class PublicShareWrapper extends Wrapper {
+ 	public function getShare(): IShare {
+ 		$storage = parent::getWrapperStorage();
+ 		if (method_exists($storage, 'getShare')) {
+-			/** @var \OCA\Files_Sharing\SharedStorage $storage */
++			/** @var ISharedStorage $storage */
+ 			return $storage->getShare();
+ 		}
+ 
+diff --git a/apps/dav/tests/unit/Connector/Sabre/NodeTest.php b/apps/dav/tests/unit/Connector/Sabre/NodeTest.php
+index 17550a2874..83f4139a2d 100644
+--- a/apps/dav/tests/unit/Connector/Sabre/NodeTest.php
++++ b/apps/dav/tests/unit/Connector/Sabre/NodeTest.php
+@@ -10,6 +10,7 @@ namespace OCA\DAV\Tests\unit\Connector\Sabre;
+ 
+ use OC\Files\FileInfo;
+ use OC\Files\Mount\MountPoint;
++use OC\Files\Node\Folder;
+ use OC\Files\View;
+ use OC\Share20\ShareAttributes;
+ use OCA\Files_Sharing\SharedMount;
+@@ -21,6 +22,7 @@ use OCP\Files\Storage;
+ use OCP\ICache;
+ use OCP\Share\IManager;
+ use OCP\Share\IShare;
++use PHPUnit\Framework\MockObject\MockObject;
+ 
+ /**
+  * Class NodeTest
+@@ -201,14 +203,16 @@ class NodeTest extends \Test\TestCase {
+ 
+ 		$share->expects($this->once())->method('getAttributes')->willReturn($attributes);
+ 
+-		$info = $this->getMockBuilder(FileInfo::class)
++		/** @var Folder&MockObject $info */
++		$info = $this->getMockBuilder(Folder::class)
+ 			->disableOriginalConstructor()
+-			->setMethods(['getStorage', 'getType'])
++			->onlyMethods(['getStorage', 'getType'])
+ 			->getMock();
+ 
+ 		$info->method('getStorage')->willReturn($storage);
+ 		$info->method('getType')->willReturn(FileInfo::TYPE_FOLDER);
+ 
++		/** @var View&MockObject $view */
+ 		$view = $this->getMockBuilder(View::class)
+ 			->disableOriginalConstructor()
+ 			->getMock();
+@@ -225,14 +229,16 @@ class NodeTest extends \Test\TestCase {
+ 
+ 		$shareManager = $this->getMockBuilder(IManager::class)->disableOriginalConstructor()->getMock();
+ 
+-		$info = $this->getMockBuilder(FileInfo::class)
++		/** @var Folder&MockObject */
++		$info = $this->getMockBuilder(Folder::class)
+ 			->disableOriginalConstructor()
+-			->setMethods(['getStorage', 'getType'])
++			->onlyMethods(['getStorage', 'getType'])
+ 			->getMock();
+ 
+ 		$info->method('getStorage')->willReturn($storage);
+ 		$info->method('getType')->willReturn(FileInfo::TYPE_FOLDER);
+ 
++		/** @var View&MockObject */
+ 		$view = $this->getMockBuilder(View::class)
+ 			->disableOriginalConstructor()
+ 			->getMock();
+diff --git a/apps/dav/tests/unit/DAV/ViewOnlyPluginTest.php b/apps/dav/tests/unit/DAV/ViewOnlyPluginTest.php
+index 63dd5b9145..eb15bfe0b5 100644
+--- a/apps/dav/tests/unit/DAV/ViewOnlyPluginTest.php
++++ b/apps/dav/tests/unit/DAV/ViewOnlyPluginTest.php
+@@ -15,6 +15,7 @@ use OCA\Files_Versions\Sabre\VersionFile;
+ use OCA\Files_Versions\Versions\IVersion;
+ use OCP\Files\File;
+ use OCP\Files\Folder;
++use OCP\Files\Storage\ISharedStorage;
+ use OCP\Files\Storage\IStorage;
+ use OCP\IUser;
+ use OCP\Share\IAttributes;
+@@ -65,7 +66,7 @@ class ViewOnlyPluginTest extends TestCase {
+ 
+ 		$storage = $this->createMock(IStorage::class);
+ 		$file->method('getStorage')->willReturn($storage);
+-		$storage->method('instanceOfStorage')->with(SharedStorage::class)->willReturn(false);
++		$storage->method('instanceOfStorage')->with(ISharedStorage::class)->willReturn(false);
+ 
+ 		$this->assertTrue($this->plugin->checkViewOnly($this->request));
+ 	}
+@@ -140,7 +141,7 @@ class ViewOnlyPluginTest extends TestCase {
+ 		$nodeInfo->expects($this->once())
+ 			->method('getStorage')
+ 			->willReturn($storage);
+-		$storage->method('instanceOfStorage')->with(SharedStorage::class)->willReturn(true);
++		$storage->method('instanceOfStorage')->with(ISharedStorage::class)->willReturn(true);
+ 		$storage->method('getShare')->willReturn($share);
+ 
+ 		$extAttr = $this->createMock(IAttributes::class);
+diff --git a/apps/files_sharing/lib/ISharedStorage.php b/apps/files_sharing/lib/ISharedStorage.php
+index 8a8e6bc10a..dfd8b134db 100644
+--- a/apps/files_sharing/lib/ISharedStorage.php
++++ b/apps/files_sharing/lib/ISharedStorage.php
+@@ -8,5 +8,8 @@ namespace OCA\Files_Sharing;
+ 
+ use OCP\Files\Storage\IStorage;
+ 
++/**
++ * @deprecated 30.0.0 use `\OCP\Files\Storage\ISharedStorage` instead
++ */
+ interface ISharedStorage extends IStorage {
+ }
+diff --git a/apps/files_sharing/lib/SharedStorage.php b/apps/files_sharing/lib/SharedStorage.php
+index f8b318dcc5..386553a51e 100644
+--- a/apps/files_sharing/lib/SharedStorage.php
++++ b/apps/files_sharing/lib/SharedStorage.php
+@@ -18,15 +18,16 @@ use OC\Files\Storage\Wrapper\PermissionsMask;
+ use OC\Files\Storage\Wrapper\Wrapper;
+ use OC\User\NoUserException;
+ use OCA\Files_External\Config\ConfigAdapter;
++use OCA\Files_Sharing\ISharedStorage as LegacyISharedStorage;
+ use OCP\Constants;
+ use OCP\Files\Cache\ICacheEntry;
+ use OCP\Files\Config\IUserMountCache;
+ use OCP\Files\Folder;
+ use OCP\Files\IHomeStorage;
+ use OCP\Files\IRootFolder;
+-use OCP\Files\Node;
+ use OCP\Files\NotFoundException;
+ use OCP\Files\Storage\IDisableEncryptionStorage;
++use OCP\Files\Storage\ISharedStorage;
+ use OCP\Files\Storage\IStorage;
+ use OCP\Lock\ILockingProvider;
+ use OCP\Share\IShare;
+@@ -35,7 +36,7 @@ use Psr\Log\LoggerInterface;
+ /**
+  * Convert target path to source path and pass the function call to the correct storage provider
+  */
+-class SharedStorage extends \OC\Files\Storage\Wrapper\Jail implements ISharedStorage, IDisableEncryptionStorage {
++class SharedStorage extends \OC\Files\Storage\Wrapper\Jail implements LegacyISharedStorage, ISharedStorage, IDisableEncryptionStorage {
+ 	/** @var \OCP\Share\IShare */
+ 	private $superShare;
+ 
+diff --git a/apps/files_versions/lib/Versions/LegacyVersionsBackend.php b/apps/files_versions/lib/Versions/LegacyVersionsBackend.php
+index 1483d03bcc..b5b948dda5 100644
+--- a/apps/files_versions/lib/Versions/LegacyVersionsBackend.php
++++ b/apps/files_versions/lib/Versions/LegacyVersionsBackend.php
+@@ -12,8 +12,6 @@ namespace OCA\Files_Versions\Versions;
+ use Exception;
+ use OC\Files\View;
+ use OCA\DAV\Connector\Sabre\Exception\Forbidden;
+-use OCA\Files_Sharing\ISharedStorage;
+-use OCA\Files_Sharing\SharedStorage;
+ use OCA\Files_Versions\Db\VersionEntity;
+ use OCA\Files_Versions\Db\VersionsMapper;
+ use OCA\Files_Versions\Storage;
+@@ -24,6 +22,7 @@ use OCP\Files\IMimeTypeLoader;
+ use OCP\Files\IRootFolder;
+ use OCP\Files\Node;
+ use OCP\Files\NotFoundException;
++use OCP\Files\Storage\ISharedStorage;
+ use OCP\Files\Storage\IStorage;
+ use OCP\IUser;
+ use OCP\IUserManager;
+@@ -48,7 +47,7 @@ class LegacyVersionsBackend implements IVersionBackend, IDeletableVersionBackend
+ 	public function getVersionsForFile(IUser $user, FileInfo $file): array {
+ 		$storage = $file->getStorage();
+ 
+-		if ($storage->instanceOfStorage(SharedStorage::class)) {
++		if ($storage->instanceOfStorage(ISharedStorage::class)) {
+ 			$owner = $storage->getOwner('');
+ 			$user = $this->userManager->get($owner);
+ 
+@@ -192,7 +191,7 @@ class LegacyVersionsBackend implements IVersionBackend, IDeletableVersionBackend
+ 
+ 		// Shared files have their versions in the owners root folder so we need to obtain them from there
+ 		if ($storage->instanceOfStorage(ISharedStorage::class) && $owner) {
+-			/** @var SharedStorage $storage */
++			/** @var ISharedStorage $storage */
+ 			$userFolder = $this->rootFolder->getUserFolder($owner->getUID());
+ 			$user = $owner;
+ 			$ownerPathInStorage = $sourceFile->getInternalPath();
+diff --git a/build/integration/run-docker.sh b/build/integration/run-docker.sh
+index 11563c9aa2..e1ec797fcf 100755
+--- a/build/integration/run-docker.sh
++++ b/build/integration/run-docker.sh
+@@ -201,7 +201,7 @@ cd "$(dirname $0)"
+ # "--image XXX" option can be provided to set the Docker image to use to run
+ # the integration tests (one of the "nextcloudci/phpX.Y:phpX.Y-Z" or
+ # "ghcr.io/nextcloud/continuous-integration-integration-phpX.Y:latest" images).
+-NEXTCLOUD_LOCAL_IMAGE="ghcr.io/nextcloud/continuous-integration-integration-php8.1:latest"
++NEXTCLOUD_LOCAL_IMAGE="ghcr.io/nextcloud/continuous-integration-integration-php8.2:latest"
+ if [ "$1" = "--image" ]; then
+ 	NEXTCLOUD_LOCAL_IMAGE=$2
+ 
+diff --git a/lib/composer/composer/autoload_classmap.php b/lib/composer/composer/autoload_classmap.php
+index 8a6c6f8ccc..7c44d95422 100644
+--- a/lib/composer/composer/autoload_classmap.php
++++ b/lib/composer/composer/autoload_classmap.php
+@@ -432,6 +432,7 @@ return array(
+     'OCP\\Files\\Storage\\ILockingStorage' => $baseDir . '/lib/public/Files/Storage/ILockingStorage.php',
+     'OCP\\Files\\Storage\\INotifyStorage' => $baseDir . '/lib/public/Files/Storage/INotifyStorage.php',
+     'OCP\\Files\\Storage\\IReliableEtagStorage' => $baseDir . '/lib/public/Files/Storage/IReliableEtagStorage.php',
++    'OCP\\Files\\Storage\\ISharedStorage' => $baseDir . '/lib/public/Files/Storage/ISharedStorage.php',
+     'OCP\\Files\\Storage\\IStorage' => $baseDir . '/lib/public/Files/Storage/IStorage.php',
+     'OCP\\Files\\Storage\\IStorageFactory' => $baseDir . '/lib/public/Files/Storage/IStorageFactory.php',
+     'OCP\\Files\\Storage\\IWriteStreamStorage' => $baseDir . '/lib/public/Files/Storage/IWriteStreamStorage.php',
+diff --git a/lib/composer/composer/autoload_static.php b/lib/composer/composer/autoload_static.php
+index 3b758ff71f..63fa40d39b 100644
+--- a/lib/composer/composer/autoload_static.php
++++ b/lib/composer/composer/autoload_static.php
+@@ -465,6 +465,7 @@ class ComposerStaticInit749170dad3f5e7f9ca158f5a9f04f6a2
+         'OCP\\Files\\Storage\\ILockingStorage' => __DIR__ . '/../../..' . '/lib/public/Files/Storage/ILockingStorage.php',
+         'OCP\\Files\\Storage\\INotifyStorage' => __DIR__ . '/../../..' . '/lib/public/Files/Storage/INotifyStorage.php',
+         'OCP\\Files\\Storage\\IReliableEtagStorage' => __DIR__ . '/../../..' . '/lib/public/Files/Storage/IReliableEtagStorage.php',
++        'OCP\\Files\\Storage\\ISharedStorage' => __DIR__ . '/../../..' . '/lib/public/Files/Storage/ISharedStorage.php',
+         'OCP\\Files\\Storage\\IStorage' => __DIR__ . '/../../..' . '/lib/public/Files/Storage/IStorage.php',
+         'OCP\\Files\\Storage\\IStorageFactory' => __DIR__ . '/../../..' . '/lib/public/Files/Storage/IStorageFactory.php',
+         'OCP\\Files\\Storage\\IWriteStreamStorage' => __DIR__ . '/../../..' . '/lib/public/Files/Storage/IWriteStreamStorage.php',
+diff --git a/lib/public/Files/Storage/ISharedStorage.php b/lib/public/Files/Storage/ISharedStorage.php
+new file mode 100644
+index 0000000000..836c4aefcd
+--- /dev/null
++++ b/lib/public/Files/Storage/ISharedStorage.php
+@@ -0,0 +1,26 @@
++<?php
++
++declare(strict_types=1);
++
++/**
++ * SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++namespace OCP\Files\Storage;
++
++use OCP\Share\IShare;
++
++/**
++ * Interface for a storage that is based on a file share
++ *
++ * @since 30.0.0
++ */
++interface ISharedStorage extends IStorage {
++	/**
++	 * The the associated share
++	 *
++	 * @return IShare
++	 * @since 30.0.0
++	 */
++	public function getShare(): IShare;
++}

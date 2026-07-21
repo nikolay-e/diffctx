@@ -1,0 +1,921 @@
+From f7bd408686ba9a4d35142f4ec81565b6f24b4bf7 Mon Sep 17 00:00:00 2001
+From: Copilot <198982749+Copilot@users.noreply.github.com>
+Date: Wed, 10 Dec 2025 15:21:31 +0100
+Subject: [PATCH] [Blazor] Remove obsolete APIs from Components (#62755)
+
+* Remove [Obsolete] APIs from Components
+
+* Fix sign-out validation logic to not fail when HistoryEntryState is null
+
+Co-authored-by: javiercn <6995051+javiercn@users.noreply.github.com>
+
+---------
+
+Co-authored-by: Javier Calvarro Nelson <jacalvar@microsoft.com>
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+Co-authored-by: javiercn <6995051+javiercn@users.noreply.github.com>
+---
+ .../Components/src/PublicAPI.Unshipped.txt    |   3 +
+ .../Components/src/Routing/Router.cs          |   8 -
+ .../EditContextDataAnnotationsExtensions.cs   |  21 --
+ .../Forms/src/PublicAPI.Unshipped.txt         |   2 +
+ ...ditContextDataAnnotationsExtensionsTest.cs |  10 -
+ .../RemoteBrowserFileStreamOptions.cs         |  39 ---
+ .../Web/src/PublicAPI.Unshipped.txt           |  30 ++
+ ...EventCallbackFactoryEventArgsExtensions.cs | 329 ------------------
+ src/Components/Web/src/WebRenderer.cs         |   3 -
+ .../JSInterop/src/InternalCalls.cs            |  10 -
+ .../src/PublicAPI.Unshipped.txt               |   7 +
+ .../src/RemoteAuthenticatorViewCore.cs        |   8 +-
+ .../AccessTokenNotAvailableException.cs       |   4 +-
+ .../src/Services/AccessTokenResult.cs         |  20 --
+ .../Services/RemoteAuthenticationService.cs   |  17 -
+ .../Services/SignOutSessionStateManager.cs    |  88 -----
+ ...thenticationServiceCollectionExtensions.cs |   3 -
+ .../test/RemoteAuthenticatorCoreTests.cs      |  51 ---
+ .../src/Infrastructure/JSInteropMethods.cs    |   7 -
+ .../WebAssembly/src/PublicAPI.Unshipped.txt   |   2 +
+ 20 files changed, 46 insertions(+), 616 deletions(-)
+ delete mode 100644 src/Components/Web/src/Forms/InputFile/RemoteBrowserFileStreamOptions.cs
+ delete mode 100644 src/Components/Web/src/Web/WebEventCallbackFactoryEventArgsExtensions.cs
+ delete mode 100644 src/Components/WebAssembly/WebAssembly.Authentication/src/Services/SignOutSessionStateManager.cs
+
+diff --git a/src/Components/Components/src/PublicAPI.Unshipped.txt b/src/Components/Components/src/PublicAPI.Unshipped.txt
+index 7dc5c58110..9e7c166fba 100644
+--- a/src/Components/Components/src/PublicAPI.Unshipped.txt
++++ b/src/Components/Components/src/PublicAPI.Unshipped.txt
+@@ -1 +1,4 @@
+ #nullable enable
++*REMOVED*Microsoft.AspNetCore.Components.ResourceAsset.ResourceAsset(string! url, System.Collections.Generic.IReadOnlyList<Microsoft.AspNetCore.Components.ResourceAssetProperty!>? properties) -> void
++*REMOVED*Microsoft.AspNetCore.Components.Routing.Router.PreferExactMatches.get -> bool
++*REMOVED*Microsoft.AspNetCore.Components.Routing.Router.PreferExactMatches.set -> void
+diff --git a/src/Components/Components/src/Routing/Router.cs b/src/Components/Components/src/Routing/Router.cs
+index ecb69fe2cf..54fc0c87aa 100644
+--- a/src/Components/Components/src/Routing/Router.cs
++++ b/src/Components/Components/src/Routing/Router.cs
+@@ -98,14 +98,6 @@ public partial class Router : IComponent, IHandleAfterRender, IDisposable
+     /// </summary>
+     [Parameter] public EventCallback<NavigationContext> OnNavigateAsync { get; set; }
+ 
+-    /// <summary>
+-    /// Gets or sets a flag to indicate whether route matching should prefer exact matches
+-    /// over wildcards.
+-    /// <para>This property is obsolete and configuring it does nothing.</para>
+-    /// </summary>
+-    [Obsolete("This property is obsolete and configuring it has no effect.")]
+-    [Parameter] public bool PreferExactMatches { get; set; }
+-
+     private RouteTable Routes { get; set; }
+ 
+     /// <inheritdoc />
+diff --git a/src/Components/Forms/src/EditContextDataAnnotationsExtensions.cs b/src/Components/Forms/src/EditContextDataAnnotationsExtensions.cs
+index 559c288112..955e74b84d 100644
+--- a/src/Components/Forms/src/EditContextDataAnnotationsExtensions.cs
++++ b/src/Components/Forms/src/EditContextDataAnnotationsExtensions.cs
+@@ -20,27 +20,6 @@ namespace Microsoft.AspNetCore.Components.Forms;
+ /// </summary>
+ public static partial class EditContextDataAnnotationsExtensions
+ {
+-    /// <summary>
+-    /// Adds DataAnnotations validation support to the <see cref="EditContext"/>.
+-    /// </summary>
+-    /// <param name="editContext">The <see cref="EditContext"/>.</param>
+-    [Obsolete("Use " + nameof(EnableDataAnnotationsValidation) + " instead.")]
+-    public static EditContext AddDataAnnotationsValidation(this EditContext editContext)
+-    {
+-        EnableDataAnnotationsValidation(editContext);
+-        return editContext;
+-    }
+-
+-    /// <summary>
+-    /// Enables DataAnnotations validation support for the <see cref="EditContext"/>.
+-    /// </summary>
+-    /// <param name="editContext">The <see cref="EditContext"/>.</param>
+-    /// <returns>A disposable object whose disposal will remove DataAnnotations validation support from the <see cref="EditContext"/>.</returns>
+-    [Obsolete("This API is obsolete and may be removed in future versions. Use the overload that accepts an IServiceProvider instead.")]
+-    public static IDisposable EnableDataAnnotationsValidation(this EditContext editContext)
+-    {
+-        return new DataAnnotationsEventSubscriptions(editContext, null!);
+-    }
+     /// <summary>
+     /// Enables DataAnnotations validation support for the <see cref="EditContext"/>.
+     /// </summary>
+diff --git a/src/Components/Forms/src/PublicAPI.Unshipped.txt b/src/Components/Forms/src/PublicAPI.Unshipped.txt
+index 7dc5c58110..8e50b300e3 100644
+--- a/src/Components/Forms/src/PublicAPI.Unshipped.txt
++++ b/src/Components/Forms/src/PublicAPI.Unshipped.txt
+@@ -1 +1,3 @@
+ #nullable enable
++*REMOVED*static Microsoft.AspNetCore.Components.Forms.EditContextDataAnnotationsExtensions.AddDataAnnotationsValidation(this Microsoft.AspNetCore.Components.Forms.EditContext! editContext) -> Microsoft.AspNetCore.Components.Forms.EditContext!
++*REMOVED*static Microsoft.AspNetCore.Components.Forms.EditContextDataAnnotationsExtensions.EnableDataAnnotationsValidation(this Microsoft.AspNetCore.Components.Forms.EditContext! editContext) -> System.IDisposable!
+diff --git a/src/Components/Forms/test/EditContextDataAnnotationsExtensionsTest.cs b/src/Components/Forms/test/EditContextDataAnnotationsExtensionsTest.cs
+index 3ebd566d4f..e58b5a736d 100644
+--- a/src/Components/Forms/test/EditContextDataAnnotationsExtensionsTest.cs
++++ b/src/Components/Forms/test/EditContextDataAnnotationsExtensionsTest.cs
+@@ -18,16 +18,6 @@ public class EditContextDataAnnotationsExtensionsTest
+         Assert.Equal("editContext", ex.ParamName);
+     }
+ 
+-    [Fact]
+-    public void ObsoleteApiReturnsEditContextForChaining()
+-    {
+-        var editContext = new EditContext(new object());
+-#pragma warning disable 0618
+-        var returnValue = editContext.AddDataAnnotationsValidation();
+-#pragma warning restore 0618
+-        Assert.Same(editContext, returnValue);
+-    }
+-
+     [Fact]
+     public void GetsValidationMessagesFromDataAnnotations()
+     {
+diff --git a/src/Components/Web/src/Forms/InputFile/RemoteBrowserFileStreamOptions.cs b/src/Components/Web/src/Forms/InputFile/RemoteBrowserFileStreamOptions.cs
+deleted file mode 100644
+index 4de7bab18c..0000000000
+--- a/src/Components/Web/src/Forms/InputFile/RemoteBrowserFileStreamOptions.cs
++++ /dev/null
+@@ -1,39 +0,0 @@
+-// Licensed to the .NET Foundation under one or more agreements.
+-// The .NET Foundation licenses this file to you under the MIT license.
+-
+-using System.Runtime.Versioning;
+-
+-namespace Microsoft.AspNetCore.Components.Forms;
+-
+-/// <summary>
+-/// Repesents configurable options for <see cref="BrowserFileStream"/> with Blazor Server.
+-/// </summary>
+-[UnsupportedOSPlatform("browser")]
+-[Obsolete("RemoteJSDataStream defaults are utilized instead of the options here.")]
+-public class RemoteBrowserFileStreamOptions
+-{
+-    /// <summary>
+-    /// Gets or sets the maximum segment size for file data sent over a SignalR circuit.
+-    /// The default value is 20K.
+-    /// <para>
+-    /// This only has an effect when using Blazor Server.
+-    /// </para>
+-    /// </summary>
+-    public int MaxSegmentSize { get; set; } = 20 * 1024; // SignalR limit is 32K.
+-
+-    /// <summary>
+-    /// Gets or sets the maximum internal buffer size for unread data sent over a SignalR circuit.
+-    /// <para>
+-    /// This only has an effect when using Blazor Server.
+-    /// </para>
+-    /// </summary>
+-    public int MaxBufferSize { get; set; } = 1024 * 1024;
+-
+-    /// <summary>
+-    /// Gets or sets the time limit for fetching a segment of file data.
+-    /// <para>
+-    /// This only has an effect when using Blazor Server.
+-    /// </para>
+-    /// </summary>
+-    public TimeSpan SegmentFetchTimeout { get; set; } = TimeSpan.FromMinutes(1);
+-}
+diff --git a/src/Components/Web/src/PublicAPI.Unshipped.txt b/src/Components/Web/src/PublicAPI.Unshipped.txt
+index 369f337157..eefd46d3c0 100644
+--- a/src/Components/Web/src/PublicAPI.Unshipped.txt
++++ b/src/Components/Web/src/PublicAPI.Unshipped.txt
+@@ -1,4 +1,34 @@
+ #nullable enable
++*REMOVED*Microsoft.AspNetCore.Components.Forms.RemoteBrowserFileStreamOptions
++*REMOVED*Microsoft.AspNetCore.Components.Forms.RemoteBrowserFileStreamOptions.MaxBufferSize.get -> int
++*REMOVED*Microsoft.AspNetCore.Components.Forms.RemoteBrowserFileStreamOptions.MaxBufferSize.set -> void
++*REMOVED*Microsoft.AspNetCore.Components.Forms.RemoteBrowserFileStreamOptions.MaxSegmentSize.get -> int
++*REMOVED*Microsoft.AspNetCore.Components.Forms.RemoteBrowserFileStreamOptions.MaxSegmentSize.set -> void
++*REMOVED*Microsoft.AspNetCore.Components.Forms.RemoteBrowserFileStreamOptions.RemoteBrowserFileStreamOptions() -> void
++*REMOVED*Microsoft.AspNetCore.Components.Forms.RemoteBrowserFileStreamOptions.SegmentFetchTimeout.get -> System.TimeSpan
++*REMOVED*Microsoft.AspNetCore.Components.Forms.RemoteBrowserFileStreamOptions.SegmentFetchTimeout.set -> void
++*REMOVED*Microsoft.AspNetCore.Components.RenderTree.WebRenderer.RendererId.init -> void
++*REMOVED*Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Action<Microsoft.AspNetCore.Components.Web.ClipboardEventArgs!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.ClipboardEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Action<Microsoft.AspNetCore.Components.Web.DragEventArgs!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.DragEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Action<Microsoft.AspNetCore.Components.Web.ErrorEventArgs!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.ErrorEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Action<Microsoft.AspNetCore.Components.Web.FocusEventArgs!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.FocusEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Action<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Action<Microsoft.AspNetCore.Components.Web.MouseEventArgs!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Action<Microsoft.AspNetCore.Components.Web.PointerEventArgs!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.PointerEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Action<Microsoft.AspNetCore.Components.Web.ProgressEventArgs!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.ProgressEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Action<Microsoft.AspNetCore.Components.Web.TouchEventArgs!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.TouchEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Action<Microsoft.AspNetCore.Components.Web.WheelEventArgs!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.WheelEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Func<Microsoft.AspNetCore.Components.Web.ClipboardEventArgs!, System.Threading.Tasks.Task!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.ClipboardEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Func<Microsoft.AspNetCore.Components.Web.DragEventArgs!, System.Threading.Tasks.Task!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.DragEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Func<Microsoft.AspNetCore.Components.Web.ErrorEventArgs!, System.Threading.Tasks.Task!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.ErrorEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Func<Microsoft.AspNetCore.Components.Web.FocusEventArgs!, System.Threading.Tasks.Task!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.FocusEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Func<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs!, System.Threading.Tasks.Task!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.KeyboardEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Func<Microsoft.AspNetCore.Components.Web.MouseEventArgs!, System.Threading.Tasks.Task!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.MouseEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Func<Microsoft.AspNetCore.Components.Web.PointerEventArgs!, System.Threading.Tasks.Task!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.PointerEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Func<Microsoft.AspNetCore.Components.Web.ProgressEventArgs!, System.Threading.Tasks.Task!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.ProgressEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Func<Microsoft.AspNetCore.Components.Web.TouchEventArgs!, System.Threading.Tasks.Task!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.TouchEventArgs!>
++*REMOVED*static Microsoft.AspNetCore.Components.Web.WebEventCallbackFactoryEventArgsExtensions.Create(this Microsoft.AspNetCore.Components.EventCallbackFactory! factory, object! receiver, System.Func<Microsoft.AspNetCore.Components.Web.WheelEventArgs!, System.Threading.Tasks.Task!>! callback) -> Microsoft.AspNetCore.Components.EventCallback<Microsoft.AspNetCore.Components.Web.WheelEventArgs!>
+ Microsoft.AspNetCore.Components.Web.Media.FileDownload
+ Microsoft.AspNetCore.Components.Web.Media.FileDownload.ChildContent.get -> Microsoft.AspNetCore.Components.RenderFragment<Microsoft.AspNetCore.Components.Web.Media.FileDownloadContext!>?
+ Microsoft.AspNetCore.Components.Web.Media.FileDownload.ChildContent.set -> void
+diff --git a/src/Components/Web/src/Web/WebEventCallbackFactoryEventArgsExtensions.cs b/src/Components/Web/src/Web/WebEventCallbackFactoryEventArgsExtensions.cs
+deleted file mode 100644
+index 4c34865354..0000000000
+--- a/src/Components/Web/src/Web/WebEventCallbackFactoryEventArgsExtensions.cs
++++ /dev/null
+@@ -1,329 +0,0 @@
+-// Licensed to the .NET Foundation under one or more agreements.
+-// The .NET Foundation licenses this file to you under the MIT license.
+-
+-namespace Microsoft.AspNetCore.Components.Web;
+-
+-/// <summary>
+-/// Provides extension methods for <see cref="EventCallbackFactory"/> and <see cref="EventArgs"/> types.
+-/// </summary>
+-public static class WebEventCallbackFactoryEventArgsExtensions
+-{
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<ClipboardEventArgs> Create(this EventCallbackFactory factory, object receiver, Action<ClipboardEventArgs> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<ClipboardEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<ClipboardEventArgs> Create(this EventCallbackFactory factory, object receiver, Func<ClipboardEventArgs, Task> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<ClipboardEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<DragEventArgs> Create(this EventCallbackFactory factory, object receiver, Action<DragEventArgs> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<DragEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<DragEventArgs> Create(this EventCallbackFactory factory, object receiver, Func<DragEventArgs, Task> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<DragEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<ErrorEventArgs> Create(this EventCallbackFactory factory, object receiver, Action<ErrorEventArgs> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<ErrorEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<ErrorEventArgs> Create(this EventCallbackFactory factory, object receiver, Func<ErrorEventArgs, Task> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<ErrorEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<FocusEventArgs> Create(this EventCallbackFactory factory, object receiver, Action<FocusEventArgs> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<FocusEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<FocusEventArgs> Create(this EventCallbackFactory factory, object receiver, Func<FocusEventArgs, Task> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<FocusEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<KeyboardEventArgs> Create(this EventCallbackFactory factory, object receiver, Action<KeyboardEventArgs> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<KeyboardEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<KeyboardEventArgs> Create(this EventCallbackFactory factory, object receiver, Func<KeyboardEventArgs, Task> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<KeyboardEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<MouseEventArgs> Create(this EventCallbackFactory factory, object receiver, Action<MouseEventArgs> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<MouseEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<MouseEventArgs> Create(this EventCallbackFactory factory, object receiver, Func<MouseEventArgs, Task> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<MouseEventArgs>(receiver, callback);
+-    }
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<PointerEventArgs> Create(this EventCallbackFactory factory, object receiver, Action<PointerEventArgs> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<PointerEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<PointerEventArgs> Create(this EventCallbackFactory factory, object receiver, Func<PointerEventArgs, Task> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<PointerEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<ProgressEventArgs> Create(this EventCallbackFactory factory, object receiver, Action<ProgressEventArgs> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<ProgressEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<ProgressEventArgs> Create(this EventCallbackFactory factory, object receiver, Func<ProgressEventArgs, Task> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<ProgressEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<TouchEventArgs> Create(this EventCallbackFactory factory, object receiver, Action<TouchEventArgs> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<TouchEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<TouchEventArgs> Create(this EventCallbackFactory factory, object receiver, Func<TouchEventArgs, Task> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<TouchEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<WheelEventArgs> Create(this EventCallbackFactory factory, object receiver, Action<WheelEventArgs> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<WheelEventArgs>(receiver, callback);
+-    }
+-
+-    /// <summary>
+-    /// Creates an <see cref="EventCallback"/> for the provided <paramref name="receiver"/> and
+-    /// <paramref name="callback"/>.
+-    /// </summary>
+-    /// <param name="factory">The <see cref="EventCallbackFactory"/>.</param>
+-    /// <param name="receiver">The event receiver.</param>
+-    /// <param name="callback">The event callback.</param>
+-    /// <returns>The <see cref="EventCallback"/>.</returns>
+-    [Obsolete("This extension method is obsolete and will be removed in a future version. Use the generic overload instead.")]
+-    public static EventCallback<WheelEventArgs> Create(this EventCallbackFactory factory, object receiver, Func<WheelEventArgs, Task> callback)
+-    {
+-        ArgumentNullException.ThrowIfNull(factory);
+-
+-        return factory.Create<WheelEventArgs>(receiver, callback);
+-    }
+-}
+diff --git a/src/Components/Web/src/WebRenderer.cs b/src/Components/Web/src/WebRenderer.cs
+index becd887453..fc83c3c360 100644
+--- a/src/Components/Web/src/WebRenderer.cs
++++ b/src/Components/Web/src/WebRenderer.cs
+@@ -52,9 +52,6 @@ public abstract class WebRenderer : Renderer
+     protected int RendererId
+     {
+         get => _rendererId;
+-
+-        [Obsolete($"The renderer ID can be assigned by overriding '{nameof(GetWebRendererId)}'.")]
+-        init { /* No-op */ }
+     }
+ 
+     /// <summary>
+diff --git a/src/Components/WebAssembly/JSInterop/src/InternalCalls.cs b/src/Components/WebAssembly/JSInterop/src/InternalCalls.cs
+index 4ad543a146..680a1c67b0 100644
+--- a/src/Components/WebAssembly/JSInterop/src/InternalCalls.cs
++++ b/src/Components/WebAssembly/JSInterop/src/InternalCalls.cs
+@@ -1,22 +1,12 @@
+ // Licensed to the .NET Foundation under one or more agreements.
+ // The .NET Foundation licenses this file to you under the MIT license.
+ 
+-using System.Diagnostics.CodeAnalysis;
+-using System.Runtime.CompilerServices;
+ using System.Runtime.InteropServices.JavaScript;
+ 
+ namespace WebAssembly.JSInterop;
+ 
+ internal static partial class InternalCalls
+ {
+-    // This method only exists for backwards compatibility and will be removed in the future.
+-    // The exact namespace, type, and method name must match the corresponding entries
+-    // in driver.c in the Mono distribution.
+-    // See: https://github.com/mono/mono/blob/90574987940959fe386008a850982ea18236a533/sdks/wasm/src/driver.c#L318-L319
+-    [MethodImpl(MethodImplOptions.InternalCall)]
+-    [Obsolete]
+-    public static extern TRes InvokeJS<T0, T1, T2, TRes>(out string exception, ref JSCallInfo callInfo, [AllowNull] T0 arg0, [AllowNull] T1 arg1, [AllowNull] T2 arg2);
+-
+     [JSImport("Blazor._internal.invokeJSJson", "blazor-internal")]
+     public static partial string InvokeJSJson(
+         string identifier,
+diff --git a/src/Components/WebAssembly/WebAssembly.Authentication/src/PublicAPI.Unshipped.txt b/src/Components/WebAssembly/WebAssembly.Authentication/src/PublicAPI.Unshipped.txt
+index 7dc5c58110..dbe9cee9e3 100644
+--- a/src/Components/WebAssembly/WebAssembly.Authentication/src/PublicAPI.Unshipped.txt
++++ b/src/Components/WebAssembly/WebAssembly.Authentication/src/PublicAPI.Unshipped.txt
+@@ -1 +1,8 @@
+ #nullable enable
++*REMOVED*Microsoft.AspNetCore.Components.WebAssembly.Authentication.AccessTokenResult.AccessTokenResult(Microsoft.AspNetCore.Components.WebAssembly.Authentication.AccessTokenResultStatus status, Microsoft.AspNetCore.Components.WebAssembly.Authentication.AccessToken! token, string! redirectUrl) -> void
++*REMOVED*Microsoft.AspNetCore.Components.WebAssembly.Authentication.AccessTokenResult.RedirectUrl.get -> string?
++*REMOVED*Microsoft.AspNetCore.Components.WebAssembly.Authentication.RemoteAuthenticationService<TRemoteAuthenticationState, TAccount, TProviderOptions>.RemoteAuthenticationService(Microsoft.JSInterop.IJSRuntime! jsRuntime, Microsoft.Extensions.Options.IOptionsSnapshot<Microsoft.AspNetCore.Components.WebAssembly.Authentication.RemoteAuthenticationOptions<TProviderOptions>!>! options, Microsoft.AspNetCore.Components.NavigationManager! navigation, Microsoft.AspNetCore.Components.WebAssembly.Authentication.AccountClaimsPrincipalFactory<TAccount!>! accountClaimsPrincipalFactory) -> void
++*REMOVED*Microsoft.AspNetCore.Components.WebAssembly.Authentication.SignOutSessionStateManager
++*REMOVED*Microsoft.AspNetCore.Components.WebAssembly.Authentication.SignOutSessionStateManager.SignOutSessionStateManager(Microsoft.JSInterop.IJSRuntime! jsRuntime) -> void
++*REMOVED*virtual Microsoft.AspNetCore.Components.WebAssembly.Authentication.SignOutSessionStateManager.SetSignOutState() -> System.Threading.Tasks.ValueTask
++*REMOVED*virtual Microsoft.AspNetCore.Components.WebAssembly.Authentication.SignOutSessionStateManager.ValidateSignOutState() -> System.Threading.Tasks.Task<bool>!
+diff --git a/src/Components/WebAssembly/WebAssembly.Authentication/src/RemoteAuthenticatorViewCore.cs b/src/Components/WebAssembly/WebAssembly.Authentication/src/RemoteAuthenticatorViewCore.cs
+index 69c9b1e70c..37f6c0ad3b 100644
+--- a/src/Components/WebAssembly/WebAssembly.Authentication/src/RemoteAuthenticatorViewCore.cs
++++ b/src/Components/WebAssembly/WebAssembly.Authentication/src/RemoteAuthenticatorViewCore.cs
+@@ -106,10 +106,6 @@ public partial class RemoteAuthenticatorViewCore<[DynamicallyAccessedMembers(Jso
+ 
+     [Inject] internal AuthenticationStateProvider AuthenticationProvider { get; set; } = default!;
+ 
+-#pragma warning disable CS0618 // Type or member is obsolete, we keep it for now for backwards compatibility
+-    [Inject] internal SignOutSessionStateManager SignOutManager { get; set; } = default!;
+-#pragma warning restore CS0618 // Type or member is obsolete, we keep it for now for backwards compatibility
+-
+     [Inject] internal ILogger<RemoteAuthenticatorViewCore<TAuthenticationState>> Logger { get; set; } = default!;
+ 
+     /// <inheritdoc />
+@@ -282,9 +278,7 @@ public partial class RemoteAuthenticatorViewCore<[DynamicallyAccessedMembers(Jso
+ 
+     private async Task ProcessLogOut(string returnUrl)
+     {
+-        if ((Navigation.HistoryEntryState != null && !ValidateSignOutRequestState()) ||
+-            // For backcompat purposes, keep SignOutManager working, even though we now use the history.state for this.
+-            (Navigation.HistoryEntryState == null && !await SignOutManager.ValidateSignOutState()))
++        if (Navigation.HistoryEntryState != null && !ValidateSignOutRequestState())
+         {
+             Log.LogoutOperationInitiatedExternally(Logger);
+             Navigation.NavigateTo(ApplicationPaths.LogOutFailedPath, AuthenticationNavigationOptions with { HistoryEntryState = "The logout was not initiated from within the page." });
+diff --git a/src/Components/WebAssembly/WebAssembly.Authentication/src/Services/AccessTokenNotAvailableException.cs b/src/Components/WebAssembly/WebAssembly.Authentication/src/Services/AccessTokenNotAvailableException.cs
+index d1ce1b61e4..1c42d3d794 100644
+--- a/src/Components/WebAssembly/WebAssembly.Authentication/src/Services/AccessTokenNotAvailableException.cs
++++ b/src/Components/WebAssembly/WebAssembly.Authentication/src/Services/AccessTokenNotAvailableException.cs
+@@ -41,9 +41,7 @@ public class AccessTokenNotAvailableException : Exception
+         }
+         else
+         {
+-#pragma warning disable CS0618 // Type or member is obsolete
+-            _navigation.NavigateTo(_tokenResult.RedirectUrl!);
+-#pragma warning restore CS0618 // Type or member is obsolete
++            _navigation.NavigateTo(_tokenResult.InteractiveRequestUrl!);
+         }
+     }
+ 
+diff --git a/src/Components/WebAssembly/WebAssembly.Authentication/src/Services/AccessTokenResult.cs b/src/Components/WebAssembly/WebAssembly.Authentication/src/Services/AccessTokenResult.cs
+index 576b323509..3971b66eda 100644
+--- a/src/Components/WebAssembly/WebAssembly.Authentication/src/Services/AccessTokenResult.cs
++++ b/src/Components/WebAssembly/WebAssembly.Authentication/src/Services/AccessTokenResult.cs
+@@ -12,20 +12,6 @@ public class AccessTokenResult
+ {
+     private readonly AccessToken _token;
+ 
+-    /// <summary>
+-    /// Initializes a new instance of <see cref="AccessTokenResult"/>.
+-    /// </summary>
+-    /// <param name="status">The status of the result.</param>
+-    /// <param name="token">The <see cref="AccessToken"/> in case it was successful.</param>
+-    /// <param name="redirectUrl">The redirect uri to go to for provisioning the token.</param>
+-    [Obsolete("Use the AccessTokenResult(AccessTokenResultStatus, AccessToken, string, InteractiveRequestOptions)")]
+-    public AccessTokenResult(AccessTokenResultStatus status, AccessToken token, [StringSyntax(StringSyntaxAttribute.Uri)] string redirectUrl)
+-    {
+-        Status = status;
+-        _token = token;
+-        RedirectUrl = redirectUrl;
+-    }
+-
+     /// <summary>
+     /// Initializes a new instance of <see cref="AccessTokenResult"/>.
+     /// </summary>
+@@ -46,12 +32,6 @@ public class AccessTokenResult
+     /// </summary>
+     public AccessTokenResultStatus Status { get; }
+ 
+-    /// <summary>
+-    /// Gets the URL to redirect to if <see cref="Status"/> is <see cref="AccessTokenResultStatus.RequiresRedirect"/>.
+-    /// </summary>
+-    [Obsolete("Use 'InteractiveRequestUrl' and 'InteractiveRequest' instead.")]
+-    public string? RedirectUrl { get; }
+-
+     /// <summary>
+     /// Gets the URL to call <see cref="NavigationManagerExtensions.NavigateToLogin(NavigationManager, string, InteractiveRequestOptions)"/> if <see cref="Status"/> is
+     /// <see cref="AccessTokenResultStatus.RequiresRedirect"/>.
+diff --git a/src/Components/WebAssembly/WebAssembly.Authentication/src/Services/RemoteAuthenticationService.cs b/src/Components/WebAssembly/WebAssembly.Authentication/src/Services/RemoteAuthenticationService.cs
+index 12d315bdaf..61e5d080e4 100644
+--- a/src/Components/WebAssembly/WebAssembly.Authentication/src/Services/RemoteAuthenticationService.cs
++++ b/src/Components/WebAssembly/WebAssembly.Authentication/src/Services/RemoteAuthenticationService.cs
+@@ -57,23 +57,6 @@ public class RemoteAuthenticationService<
+     /// </summary>
+     protected RemoteAuthenticationOptions<TProviderOptions> Options { get; }
+ 
+-    /// <summary>
+-    /// Initializes a new instance.
+-    /// </summary>
+-    /// <param name="jsRuntime">The <see cref="IJSRuntime"/> to use for performing JavaScript interop operations.</param>
+-    /// <param name="options">The options to be passed down to the underlying JavaScript library handling the authentication operations.</param>
+-    /// <param name="navigation">The <see cref="NavigationManager"/> used to generate URLs.</param>
+-    /// <param name="accountClaimsPrincipalFactory">The <see cref="AccountClaimsPrincipalFactory{TAccount}"/> used to generate the <see cref="ClaimsPrincipal"/> for the user.</param>
+-    [Obsolete("Use the constructor RemoteAuthenticationService(IJSRuntime,IOptionsSnapshot<RemoteAuthenticationOptions<TProviderOptions>>,NavigationManager,AccountClaimsPrincipalFactory<TAccount>,ILogger<RemoteAuthenticationService<TRemoteAuthenticationState, TAccount, TProviderOptions>>) instead.")]
+-    public RemoteAuthenticationService(
+-        IJSRuntime jsRuntime,
+-        IOptionsSnapshot<RemoteAuthenticationOptions<TProviderOptions>> options,
+-        NavigationManager navigation,
+-        AccountClaimsPrincipalFactory<TAccount> accountClaimsPrincipalFactory)
+-        : this(jsRuntime, options, navigation, accountClaimsPrincipalFactory, null)
+-    {
+-    }
+-
+     /// <summary>
+     /// Initializes a new instance.
+     /// </summary>
+diff --git a/src/Components/WebAssembly/WebAssembly.Authentication/src/Services/SignOutSessionStateManager.cs b/src/Components/WebAssembly/WebAssembly.Authentication/src/Services/SignOutSessionStateManager.cs
+deleted file mode 100644
+index 74b61cb7ac..0000000000
+--- a/src/Components/WebAssembly/WebAssembly.Authentication/src/Services/SignOutSessionStateManager.cs
++++ /dev/null
+@@ -1,88 +0,0 @@
+-// Licensed to the .NET Foundation under one or more agreements.
+-// The .NET Foundation licenses this file to you under the MIT license.
+-
+-using System.Diagnostics.CodeAnalysis;
+-using System.Text.Json;
+-using Microsoft.JSInterop;
+-using static Microsoft.AspNetCore.Internal.LinkerFlags;
+-
+-namespace Microsoft.AspNetCore.Components.WebAssembly.Authentication;
+-
+-/// <summary>
+-/// Handles CSRF protection for the logout endpoint.
+-/// </summary>
+-[Obsolete("Use 'Microsoft.AspNetCore.Components.Webassembly.Authentication.NavigationManagerExtensions.NavigateToLogout' instead.")]
+-public class SignOutSessionStateManager
+-{
+-    private readonly IJSRuntime _jsRuntime;
+-
+-    /// <summary>
+-    /// Initialize a new instance of <see cref="SignOutSessionStateManager"/>.
+-    /// </summary>
+-    /// <param name="jsRuntime">The <see cref="IJSRuntime"/>.</param>
+-    public SignOutSessionStateManager(IJSRuntime jsRuntime) => _jsRuntime = jsRuntime;
+-
+-    /// <summary>
+-    /// Sets up some state in session storage to allow for logouts from within the <see cref="RemoteAuthenticationDefaults.LogoutPath"/> page.
+-    /// </summary>
+-    /// <returns>A <see cref="ValueTask"/> that completes when the state has been saved to session storage.</returns>
+-    [DynamicDependency(JsonSerialized, typeof(SignOutState))]
+-    [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode", Justification = "The correct members will be preserved by the above DynamicDependency.")]
+-    // This should use JSON source generation
+-    public virtual ValueTask SetSignOutState()
+-    {
+-        return _jsRuntime.InvokeVoidAsync(
+-            "sessionStorage.setItem",
+-            "Microsoft.AspNetCore.Components.WebAssembly.Authentication.SignOutState",
+-            JsonSerializer.Serialize(SignOutState.Instance, JsonSerializerOptions.Web));
+-    }
+-
+-    /// <summary>
+-    /// Validates the existence of some state previously setup by <see cref="SetSignOutState"/> in session storage to allow
+-    /// logouts from within the <see cref="RemoteAuthenticationDefaults.LogoutPath"/> page.
+-    /// </summary>
+-    /// <returns>A <see cref="Task"/> that completes when the state has been validated and indicates the validity of the state.</returns>
+-    public virtual async Task<bool> ValidateSignOutState()
+-    {
+-        var state = await GetSignOutState();
+-        if (state.Local)
+-        {
+-            await ClearSignOutState();
+-            return true;
+-        }
+-
+-        return false;
+-    }
+-
+-    private async ValueTask<SignOutState> GetSignOutState()
+-    {
+-        var result = await _jsRuntime.InvokeAsync<string>(
+-            "sessionStorage.getItem",
+-            "Microsoft.AspNetCore.Components.WebAssembly.Authentication.SignOutState");
+-        if (result == null)
+-        {
+-            return default;
+-        }
+-
+-        return DeserializeSignOutState(result);
+-    }
+-
+-    [DynamicDependency(JsonSerialized, typeof(SignOutState))]
+-    [UnconditionalSuppressMessage("ReflectionAnalysis", "IL2026:RequiresUnreferencedCode", Justification = "The correct members will be preserved by the above DynamicDependency.")]
+-    // This should use JSON source generation
+-    private static SignOutState DeserializeSignOutState(string result) => JsonSerializer.Deserialize<SignOutState>(result, JsonSerializerOptions.Web);
+-
+-    private ValueTask ClearSignOutState()
+-    {
+-        return _jsRuntime.InvokeVoidAsync(
+-            "sessionStorage.removeItem",
+-            "Microsoft.AspNetCore.Components.WebAssembly.Authentication.SignOutState");
+-    }
+-
+-    private struct SignOutState
+-    {
+-        public static readonly SignOutState Instance = new SignOutState { Local = true };
+-
+-        public bool Local { get; set; }
+-    }
+-}
+diff --git a/src/Components/WebAssembly/WebAssembly.Authentication/src/WebAssemblyAuthenticationServiceCollectionExtensions.cs b/src/Components/WebAssembly/WebAssembly.Authentication/src/WebAssemblyAuthenticationServiceCollectionExtensions.cs
+index 20cf1e0867..ee43cde437 100644
+--- a/src/Components/WebAssembly/WebAssembly.Authentication/src/WebAssemblyAuthenticationServiceCollectionExtensions.cs
++++ b/src/Components/WebAssembly/WebAssembly.Authentication/src/WebAssemblyAuthenticationServiceCollectionExtensions.cs
+@@ -71,9 +71,6 @@ public static class WebAssemblyAuthenticationServiceCollectionExtensions
+ 
+         services.TryAddScoped<IRemoteAuthenticationPathsProvider, DefaultRemoteApplicationPathsProvider<TProviderOptions>>();
+         services.TryAddScoped<IAccessTokenProviderAccessor, AccessTokenProviderAccessor>();
+-#pragma warning disable CS0618 // Type or member is obsolete, we keep it for now for backwards compatibility
+-        services.TryAddScoped<SignOutSessionStateManager>();
+-#pragma warning restore CS0618 // Type or member is obsolete, we keep it for now for backwards compatibility
+ 
+         services.TryAddScoped<AccountClaimsPrincipalFactory<TAccount>>();
+ 
+diff --git a/src/Components/WebAssembly/WebAssembly.Authentication/test/RemoteAuthenticatorCoreTests.cs b/src/Components/WebAssembly/WebAssembly.Authentication/test/RemoteAuthenticatorCoreTests.cs
+index edf7b0e791..c624fcfc91 100644
+--- a/src/Components/WebAssembly/WebAssembly.Authentication/test/RemoteAuthenticatorCoreTests.cs
++++ b/src/Components/WebAssembly/WebAssembly.Authentication/test/RemoteAuthenticatorCoreTests.cs
+@@ -370,37 +370,6 @@ public class RemoteAuthenticatorCoreTests
+ 
+     }
+ 
+-    [Fact]
+-    public async Task AuthenticationManager_Logout_RedirectsToFailureOnInvalidSignOutState()
+-    {
+-        // Arrange
+-        var (remoteAuthenticator, renderer, authServiceMock) = CreateAuthenticationManager(
+-            "https://www.example.com/base/authentication/logout",
+-            new InteractiveRequestOptions { Interaction = InteractionType.SignIn, ReturnUrl = "https://www.example.com/base/fetchData" }.ToState());
+-
+-        if (remoteAuthenticator.SignOutManager is TestSignOutSessionStateManager testManager)
+-        {
+-            testManager.SignOutState = false;
+-        }
+-
+-        var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
+-        {
+-            [_action] = RemoteAuthenticationActions.LogOut
+-        });
+-
+-        // Act
+-        await renderer.Dispatcher.InvokeAsync<object>(() => remoteAuthenticator.SetParametersAsync(parameters));
+-
+-        // Assert
+-        Assert.Equal(
+-            "https://www.example.com/base/authentication/logout-failed",
+-            remoteAuthenticator.Navigation.Uri);
+-
+-        Assert.Equal(
+-            "The logout was not initiated from within the page.",
+-            ((TestNavigationManager)remoteAuthenticator.Navigation).HistoryEntryState);
+-    }
+-
+     [Fact]
+     public async Task AuthenticationManager_Logout_NavigatesToLogoutFailureOnError()
+     {
+@@ -731,8 +700,6 @@ public class RemoteAuthenticatorCoreTests
+             Mock.Of<IOptionsSnapshot<RemoteAuthenticationOptions<OidcProviderOptions>>>(),
+             navigationManager);
+ 
+-        remoteAuthenticator.SignOutManager = new TestSignOutSessionStateManager();
+-
+         remoteAuthenticator.AuthenticationService = authenticationServiceMock;
+         remoteAuthenticator.AuthenticationProvider = authenticationServiceMock;
+         return (remoteAuthenticator, renderer, authenticationServiceMock);
+@@ -756,24 +723,6 @@ public class RemoteAuthenticatorCoreTests
+         }
+     }
+ 
+-#pragma warning disable CS0618 // Type or member is obsolete, we keep it for now for backwards compatibility
+-    private class TestSignOutSessionStateManager : SignOutSessionStateManager
+-#pragma warning restore CS0618 // Type or member is obsolete, we keep it for now for backwards compatibility
+-    {
+-        public TestSignOutSessionStateManager() : base(null)
+-        {
+-        }
+-        public bool SignOutState { get; set; } = true;
+-
+-        public override ValueTask SetSignOutState()
+-        {
+-            SignOutState = true;
+-            return default;
+-        }
+-
+-        public override Task<bool> ValidateSignOutState() => Task.FromResult(SignOutState);
+-    }
+-
+     private class TestJsRuntime : IJSRuntime
+     {
+         public (string identifier, object[] args) LastInvocation { get; set; }
+diff --git a/src/Components/WebAssembly/WebAssembly/src/Infrastructure/JSInteropMethods.cs b/src/Components/WebAssembly/WebAssembly/src/Infrastructure/JSInteropMethods.cs
+index 12849698a8..fffc8dd15a 100644
+--- a/src/Components/WebAssembly/WebAssembly/src/Infrastructure/JSInteropMethods.cs
++++ b/src/Components/WebAssembly/WebAssembly/src/Infrastructure/JSInteropMethods.cs
+@@ -14,13 +14,6 @@ namespace Microsoft.AspNetCore.Components.WebAssembly.Infrastructure;
+ [EditorBrowsable(EditorBrowsableState.Never)]
+ public static class JSInteropMethods
+ {
+-    /// <summary>
+-    /// For framework use only.
+-    /// </summary>
+-    [Obsolete("This API is for framework use only and is no longer used in the current version")]
+-    public static void NotifyLocationChanged(string uri, bool isInterceptedLink)
+-        => WebAssemblyNavigationManager.Instance.SetLocation(uri, null, isInterceptedLink);
+-
+     /// <summary>
+     /// For framework use only.
+     /// </summary>
+diff --git a/src/Components/WebAssembly/WebAssembly/src/PublicAPI.Unshipped.txt b/src/Components/WebAssembly/WebAssembly/src/PublicAPI.Unshipped.txt
+index 7dc5c58110..c65885b63a 100644
+--- a/src/Components/WebAssembly/WebAssembly/src/PublicAPI.Unshipped.txt
++++ b/src/Components/WebAssembly/WebAssembly/src/PublicAPI.Unshipped.txt
+@@ -1 +1,3 @@
+ #nullable enable
++*REMOVED*~static Microsoft.AspNetCore.Components.WebAssembly.Infrastructure.JSInteropMethods.NotifyLocationChanged(string uri, bool isInterceptedLink) -> void
++*REMOVED*static Microsoft.AspNetCore.Components.WebAssembly.Infrastructure.JSInteropMethods.NotifyLocationChanged(string! uri, bool isInterceptedLink) -> void

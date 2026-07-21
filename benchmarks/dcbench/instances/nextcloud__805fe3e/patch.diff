@@ -1,0 +1,1050 @@
+From 805fe3e15b68beb5a3cf0ce8f1263e9030d3c04d Mon Sep 17 00:00:00 2001
+From: Ferdinand Thiessen <opensource@fthiessen.de>
+Date: Thu, 28 Aug 2025 17:43:35 +0200
+Subject: [PATCH] feat(files): provide UI to sanitize filenames after enabling
+ WCF
+
+Signed-off-by: Ferdinand Thiessen <opensource@fthiessen.de>
+---
+ apps/files/appinfo/info.xml                   |   1 +
+ .../composer/composer/autoload_classmap.php   |   4 +-
+ .../composer/composer/autoload_static.php     |   4 +-
+ apps/files/lib/AppInfo/Application.php        |   3 -
+ .../lib/BackgroundJob/SanitizeFilenames.php   | 224 ++++++++++++++++++
+ apps/files/lib/Command/SanitizeFilenames.php  |   9 +
+ .../lib/Controller/FilenamesController.php    | 102 ++++++++
+ apps/files/lib/Service/SettingsService.php    |  49 ++++
+ apps/files/lib/Settings/AdminSettings.php     |  48 ++++
+ .../lib/Settings/DeclarativeAdminSettings.php |  67 ------
+ .../Settings/SettingsSanitizeFilenames.vue    | 181 ++++++++++++++
+ apps/files/src/main-settings-admin.ts         |  17 ++
+ ...-settings.js => main-settings-personal.ts} |   4 +-
+ apps/files/src/views/SettingsAdmin.vue        |  78 ++++++
+ apps/files/templates/settings-admin.php       |   8 +
+ webpack.modules.js                            |   3 +-
+ 16 files changed, 727 insertions(+), 75 deletions(-)
+ create mode 100644 apps/files/lib/BackgroundJob/SanitizeFilenames.php
+ create mode 100644 apps/files/lib/Controller/FilenamesController.php
+ create mode 100644 apps/files/lib/Settings/AdminSettings.php
+ delete mode 100644 apps/files/lib/Settings/DeclarativeAdminSettings.php
+ create mode 100644 apps/files/src/components/Settings/SettingsSanitizeFilenames.vue
+ create mode 100644 apps/files/src/main-settings-admin.ts
+ rename apps/files/src/{main-personal-settings.js => main-settings-personal.ts} (92%)
+ create mode 100644 apps/files/src/views/SettingsAdmin.vue
+ create mode 100644 apps/files/templates/settings-admin.php
+
+diff --git a/apps/files/appinfo/info.xml b/apps/files/appinfo/info.xml
+index fb53cef79b..4c9a6e95e7 100644
+--- a/apps/files/appinfo/info.xml
++++ b/apps/files/appinfo/info.xml
+@@ -59,6 +59,7 @@
+ 	</commands>
+ 
+ 	<settings>
++		<admin>OCA\Files\Settings\AdminSettings</admin>
+ 		<personal>OCA\Files\Settings\PersonalSettings</personal>
+ 	</settings>
+ 
+diff --git a/apps/files/composer/composer/autoload_classmap.php b/apps/files/composer/composer/autoload_classmap.php
+index 0c0f734251..25f9c0eaf3 100644
+--- a/apps/files/composer/composer/autoload_classmap.php
++++ b/apps/files/composer/composer/autoload_classmap.php
+@@ -23,6 +23,7 @@ return array(
+     'OCA\\Files\\BackgroundJob\\CleanupFileLocks' => $baseDir . '/../lib/BackgroundJob/CleanupFileLocks.php',
+     'OCA\\Files\\BackgroundJob\\DeleteExpiredOpenLocalEditor' => $baseDir . '/../lib/BackgroundJob/DeleteExpiredOpenLocalEditor.php',
+     'OCA\\Files\\BackgroundJob\\DeleteOrphanedItems' => $baseDir . '/../lib/BackgroundJob/DeleteOrphanedItems.php',
++    'OCA\\Files\\BackgroundJob\\SanitizeFilenames' => $baseDir . '/../lib/BackgroundJob/SanitizeFilenames.php',
+     'OCA\\Files\\BackgroundJob\\ScanFiles' => $baseDir . '/../lib/BackgroundJob/ScanFiles.php',
+     'OCA\\Files\\BackgroundJob\\TransferOwnership' => $baseDir . '/../lib/BackgroundJob/TransferOwnership.php',
+     'OCA\\Files\\Capabilities' => $baseDir . '/../lib/Capabilities.php',
+@@ -53,6 +54,7 @@ return array(
+     'OCA\\Files\\Controller\\ConversionApiController' => $baseDir . '/../lib/Controller/ConversionApiController.php',
+     'OCA\\Files\\Controller\\DirectEditingController' => $baseDir . '/../lib/Controller/DirectEditingController.php',
+     'OCA\\Files\\Controller\\DirectEditingViewController' => $baseDir . '/../lib/Controller/DirectEditingViewController.php',
++    'OCA\\Files\\Controller\\FilenamesController' => $baseDir . '/../lib/Controller/FilenamesController.php',
+     'OCA\\Files\\Controller\\OpenLocalEditorController' => $baseDir . '/../lib/Controller/OpenLocalEditorController.php',
+     'OCA\\Files\\Controller\\TemplateController' => $baseDir . '/../lib/Controller/TemplateController.php',
+     'OCA\\Files\\Controller\\TransferOwnershipController' => $baseDir . '/../lib/Controller/TransferOwnershipController.php',
+@@ -88,6 +90,6 @@ return array(
+     'OCA\\Files\\Service\\TagService' => $baseDir . '/../lib/Service/TagService.php',
+     'OCA\\Files\\Service\\UserConfig' => $baseDir . '/../lib/Service/UserConfig.php',
+     'OCA\\Files\\Service\\ViewConfig' => $baseDir . '/../lib/Service/ViewConfig.php',
+-    'OCA\\Files\\Settings\\DeclarativeAdminSettings' => $baseDir . '/../lib/Settings/DeclarativeAdminSettings.php',
++    'OCA\\Files\\Settings\\AdminSettings' => $baseDir . '/../lib/Settings/AdminSettings.php',
+     'OCA\\Files\\Settings\\PersonalSettings' => $baseDir . '/../lib/Settings/PersonalSettings.php',
+ );
+diff --git a/apps/files/composer/composer/autoload_static.php b/apps/files/composer/composer/autoload_static.php
+index 19310ed4e9..75c5f40cd8 100644
+--- a/apps/files/composer/composer/autoload_static.php
++++ b/apps/files/composer/composer/autoload_static.php
+@@ -38,6 +38,7 @@ class ComposerStaticInitFiles
+         'OCA\\Files\\BackgroundJob\\CleanupFileLocks' => __DIR__ . '/..' . '/../lib/BackgroundJob/CleanupFileLocks.php',
+         'OCA\\Files\\BackgroundJob\\DeleteExpiredOpenLocalEditor' => __DIR__ . '/..' . '/../lib/BackgroundJob/DeleteExpiredOpenLocalEditor.php',
+         'OCA\\Files\\BackgroundJob\\DeleteOrphanedItems' => __DIR__ . '/..' . '/../lib/BackgroundJob/DeleteOrphanedItems.php',
++        'OCA\\Files\\BackgroundJob\\SanitizeFilenames' => __DIR__ . '/..' . '/../lib/BackgroundJob/SanitizeFilenames.php',
+         'OCA\\Files\\BackgroundJob\\ScanFiles' => __DIR__ . '/..' . '/../lib/BackgroundJob/ScanFiles.php',
+         'OCA\\Files\\BackgroundJob\\TransferOwnership' => __DIR__ . '/..' . '/../lib/BackgroundJob/TransferOwnership.php',
+         'OCA\\Files\\Capabilities' => __DIR__ . '/..' . '/../lib/Capabilities.php',
+@@ -68,6 +69,7 @@ class ComposerStaticInitFiles
+         'OCA\\Files\\Controller\\ConversionApiController' => __DIR__ . '/..' . '/../lib/Controller/ConversionApiController.php',
+         'OCA\\Files\\Controller\\DirectEditingController' => __DIR__ . '/..' . '/../lib/Controller/DirectEditingController.php',
+         'OCA\\Files\\Controller\\DirectEditingViewController' => __DIR__ . '/..' . '/../lib/Controller/DirectEditingViewController.php',
++        'OCA\\Files\\Controller\\FilenamesController' => __DIR__ . '/..' . '/../lib/Controller/FilenamesController.php',
+         'OCA\\Files\\Controller\\OpenLocalEditorController' => __DIR__ . '/..' . '/../lib/Controller/OpenLocalEditorController.php',
+         'OCA\\Files\\Controller\\TemplateController' => __DIR__ . '/..' . '/../lib/Controller/TemplateController.php',
+         'OCA\\Files\\Controller\\TransferOwnershipController' => __DIR__ . '/..' . '/../lib/Controller/TransferOwnershipController.php',
+@@ -103,7 +105,7 @@ class ComposerStaticInitFiles
+         'OCA\\Files\\Service\\TagService' => __DIR__ . '/..' . '/../lib/Service/TagService.php',
+         'OCA\\Files\\Service\\UserConfig' => __DIR__ . '/..' . '/../lib/Service/UserConfig.php',
+         'OCA\\Files\\Service\\ViewConfig' => __DIR__ . '/..' . '/../lib/Service/ViewConfig.php',
+-        'OCA\\Files\\Settings\\DeclarativeAdminSettings' => __DIR__ . '/..' . '/../lib/Settings/DeclarativeAdminSettings.php',
++        'OCA\\Files\\Settings\\AdminSettings' => __DIR__ . '/..' . '/../lib/Settings/AdminSettings.php',
+         'OCA\\Files\\Settings\\PersonalSettings' => __DIR__ . '/..' . '/../lib/Settings/PersonalSettings.php',
+     );
+ 
+diff --git a/apps/files/lib/AppInfo/Application.php b/apps/files/lib/AppInfo/Application.php
+index 2761b44ecf..1de8e60ab5 100644
+--- a/apps/files/lib/AppInfo/Application.php
++++ b/apps/files/lib/AppInfo/Application.php
+@@ -29,7 +29,6 @@ use OCA\Files\Search\FilesSearchProvider;
+ use OCA\Files\Service\TagService;
+ use OCA\Files\Service\UserConfig;
+ use OCA\Files\Service\ViewConfig;
+-use OCA\Files\Settings\DeclarativeAdminSettings;
+ use OCP\Activity\IManager as IActivityManager;
+ use OCP\AppFramework\App;
+ use OCP\AppFramework\Bootstrap\IBootContext;
+@@ -111,8 +110,6 @@ class Application extends App implements IBootstrap {
+ 		$context->registerCapability(AdvancedCapabilities::class);
+ 		$context->registerCapability(DirectEditingCapabilities::class);
+ 
+-		$context->registerDeclarativeSettings(DeclarativeAdminSettings::class);
+-
+ 		$context->registerEventListener(LoadSidebar::class, LoadSidebarListener::class);
+ 		$context->registerEventListener(RenderReferenceEvent::class, RenderReferenceEventListener::class);
+ 		$context->registerEventListener(BeforeNodeRenamedEvent::class, SyncLivePhotosListener::class);
+diff --git a/apps/files/lib/BackgroundJob/SanitizeFilenames.php b/apps/files/lib/BackgroundJob/SanitizeFilenames.php
+new file mode 100644
+index 0000000000..855fa4b2d0
+--- /dev/null
++++ b/apps/files/lib/BackgroundJob/SanitizeFilenames.php
+@@ -0,0 +1,224 @@
++<?php
++
++declare(strict_types=1);
++
++/**
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++namespace OCA\Files\BackgroundJob;
++
++use OC\Files\SetupManager;
++use OCA\Files\AppInfo\Application;
++use OCA\Files\Service\SettingsService;
++use OCP\AppFramework\Services\IAppConfig;
++use OCP\AppFramework\Utility\ITimeFactory;
++use OCP\BackgroundJob\IJobList;
++use OCP\BackgroundJob\QueuedJob;
++use OCP\Config\IUserConfig;
++use OCP\Files\File;
++use OCP\Files\Folder;
++use OCP\Files\IFilenameValidator;
++use OCP\Files\IRootFolder;
++use OCP\Files\Node;
++use OCP\Files\NotFoundException;
++use OCP\IUser;
++use OCP\IUserManager;
++use OCP\IUserSession;
++use OCP\Lock\LockedException;
++use Psr\Log\LoggerInterface;
++
++class SanitizeFilenames extends QueuedJob {
++
++	private int $offset;
++	private int $limit;
++	private int $currentIndex;
++	private ?string $charReplacement = null;
++
++	public function __construct(
++		ITimeFactory $time,
++		private IJobList $jobList,
++		private IUserSession $session,
++		private IUserManager $manager,
++		private IAppConfig $appConfig,
++		private IUserConfig $userConfig,
++		private IRootFolder $rootFolder,
++		private SetupManager $setupManager,
++		private IFilenameValidator $filenameValidator,
++		private LoggerInterface $logger,
++	) {
++		parent::__construct($time);
++		$this->setAllowParallelRuns(false);
++	}
++
++	/**
++	 * Makes the background job do its work
++	 *
++	 * @param array $argument unused argument
++	 * @throws \Exception
++	 */
++	public function run($argument) {
++		$this->charReplacement = strval($argument['charReplacement']) ?: null;
++		if (isset($argument['errorsOnly'])) {
++			$this->retryFailedNodes();
++			return;
++		}
++
++		$this->offset = intval($argument['offset']);
++		$this->limit = intval($argument['limit']);
++		if ($this->offset === 0) {
++			$this->appConfig->setAppValueInt('sanitize_filenames_status', SettingsService::STATUS_WCF_RUNNING);
++		}
++
++		$this->currentIndex = 0;
++		foreach ($this->manager->getSeenUsers($this->offset) as $user) {
++			$this->sanitizeUserFiles($user);
++			$this->currentIndex++;
++			$this->appConfig->setAppValueInt('sanitize_filenames_index', $this->currentIndex);
++
++			if ($this->currentIndex === $this->limit) {
++				break;
++			}
++		}
++
++		if ($this->currentIndex === $this->limit) {
++			$this->offset += $this->limit;
++			$this->jobList->add(self::class, ['limit' => $this->limit, 'offset' => $this->offset, 'charReplacement' => $this->charReplacement]);
++			return;
++		}
++
++		// No index to process anymore, we are done
++		$this->appConfig->deleteAppValue('sanitize_filenames_index');
++
++		$hasErrors = !empty($this->userConfig->getValuesByUsers(Application::APP_ID, 'sanitize_filenames_errors'));
++		if ($hasErrors) {
++			$this->logger->info('Filename sanitization finished with errors. Retrying failed files in next background job run.');
++			$this->jobList->add(self::class, ['errorsOnly' => true, 'charReplacement' => $this->charReplacement]);
++			return;
++		}
++
++		// we are really done!
++		$this->appConfig->setAppValueInt('sanitize_filenames_status', SettingsService::STATUS_WCF_DONE);
++	}
++
++	/**
++	 * Retry to sanitize files that failed in the first run
++	 */
++	private function retryFailedNodes(): void {
++		$this->logger->debug('Retry sanitizing failed filename sanitization.');
++		$results = $this->userConfig->getValuesByUsers(Application::APP_ID, 'sanitize_filenames_errors');
++
++		$hasErrors = false;
++		foreach ($results as $userId => $errors) {
++			$user = $this->manager->get($userId);
++			if ($user === null) {
++				// user got deleted meanwhile, ignore
++				continue;
++			}
++
++			$hasErrors = $hasErrors || $this->retryFailedUserNodes($user, $errors);
++			$this->userConfig->deleteUserConfig($userId, Application::APP_ID, 'sanitize_filenames_errors');
++		}
++
++		if ($hasErrors) {
++			$this->appConfig->setAppValueInt('sanitize_filenames_status', SettingsService::STATUS_WCF_ERROR);
++			$this->logger->error('Retrying filename sanitization failed permanently.');
++		} else {
++			$this->appConfig->setAppValueInt('sanitize_filenames_status', SettingsService::STATUS_WCF_DONE);
++			$this->logger->info('Retrying filename sanitization succeeded.');
++		}
++	}
++
++	private function retryFailedUserNodes(IUser $user, array $errors): bool {
++		$this->session->setVolatileActiveUser($user);
++		$folder = $this->rootFolder->getUserFolder($user->getUID());
++
++		$this->logger->debug("filename sanitization retry: started for user '{$user->getUID()}'");
++		$hasErrors = false;
++		foreach ($errors as $path) {
++			try {
++				$node = $folder->get($path);
++				$this->sanitizeNode($node);
++			} catch (NotFoundException) {
++				// file got deleted meanwhile, ignore
++			} catch (\Exception $error) {
++				$this->logger->error('filename sanitization failed when retried: ' . $path, ['exception' => $error]);
++				$hasErrors = true;
++			}
++		}
++
++		// tear down FS for user to make sure we do not run out of memory due to cached user FS
++		$this->setupManager->tearDown();
++
++		return $hasErrors;
++	}
++
++
++	private function sanitizeUserFiles(IUser $user): void {
++		// Set an active user so that event listeners can correctly work (e.g. files versions)
++		$this->session->setVolatileActiveUser($user);
++		$folder = $this->rootFolder->getUserFolder($user->getUID());
++
++		$this->logger->debug("filename sanitization: started for user '{$user->getUID()}'");
++		$errors = $this->sanitizeFolder($folder);
++
++		// tear down FS for user to make sure we do not run out of memory due to cached user FS
++		$this->setupManager->tearDown();
++
++		if (!empty($errors)) {
++			$this->userConfig->setValueArray($user->getUID(), 'files', 'sanitize_filenames_errors', $errors, true);
++		}
++	}
++
++	/**
++	 * Sanitizes the filenames of all nodes in a folder
++	 *
++	 * @return list<string> list of nodes that could not be sanitized
++	 */
++	private function sanitizeFolder(Folder $folder): array {
++		$errors = [];
++		foreach ($folder->getDirectoryListing() as $node) {
++			try {
++				$this->sanitizeNode($node);
++			} catch (LockedException) {
++				$this->logger->debug('filename sanitization skipped: ' . $node->getPath() . ' (file is locked)');
++				$errors[] = $node->getPath();
++			} catch (\Exception $error) {
++				$this->logger->warning('filename sanitization failed: ' . $node->getPath(), ['exception' => $error]);
++				$errors[] = $node->getPath();
++			}
++
++			if ($node instanceof Folder) {
++				$errors = array_merge($errors, $this->sanitizeFolder($node));
++			}
++		}
++		return $errors;
++	}
++
++	/**
++	 * Sanitizes the filename of a single node
++	 *
++	 * @throws LockedException If the file is locked
++	 * @throws \Exception Unknown error
++	 */
++	private function sanitizeNode(Node $node): void {
++		if ($node->isShared() && !$node->isUpdateable()) {
++			// we cannot rename files in shares where we do not have permissions - we do it when sanitizing the owner's files
++			return;
++		}
++
++		try {
++			$oldName = $node->getName();
++			$newName = $this->filenameValidator->sanitizeFilename($oldName, $this->charReplacement);
++			if ($oldName !== $newName) {
++				$newName = $node->getParent()->getNonExistingName($newName);
++				$path = rtrim(dirname($node->getPath()), '/');
++
++				$node->move("$path/$newName");
++			}
++		} catch (NotFoundException) {
++			// file got deleted meanwhile, ignore
++			// or this is shared without permissions to rename it, ignore (owner will rename it)
++		}
++	}
++}
+diff --git a/apps/files/lib/Command/SanitizeFilenames.php b/apps/files/lib/Command/SanitizeFilenames.php
+index 88d41d1cb5..5cdebffdeb 100644
+--- a/apps/files/lib/Command/SanitizeFilenames.php
++++ b/apps/files/lib/Command/SanitizeFilenames.php
+@@ -11,6 +11,8 @@ namespace OCA\Files\Command;
+ use Exception;
+ use OC\Core\Command\Base;
+ use OC\Files\FilenameValidator;
++use OCA\Files\Service\SettingsService;
++use OCP\AppFramework\Services\IAppConfig;
+ use OCP\Files\Folder;
+ use OCP\Files\IRootFolder;
+ use OCP\Files\NotPermittedException;
+@@ -29,6 +31,7 @@ class SanitizeFilenames extends Base {
+ 	private OutputInterface $output;
+ 	private ?string $charReplacement;
+ 	private bool $dryRun;
++	private bool $errorsOrSkipped = false;
+ 
+ 	public function __construct(
+ 		private IUserManager $userManager,
+@@ -36,6 +39,8 @@ class SanitizeFilenames extends Base {
+ 		private IUserSession $session,
+ 		private IFactory $l10nFactory,
+ 		private FilenameValidator $filenameValidator,
++		private SettingsService $service,
++		private IAppConfig $appConfig,
+ 	) {
+ 		parent::__construct();
+ 	}
+@@ -100,6 +105,10 @@ class SanitizeFilenames extends Base {
+ 			}
+ 		} else {
+ 			$this->userManager->callForSeenUsers($this->sanitizeUserFiles(...));
++			if ($this->service->hasFilesWindowsSupport() && $this->appConfig->getAppValueInt('sanitize_filenames_status') === 0) {
++				// we are done - if this is for sanitizing all users for windows filename support then set this UI flag
++				$this->appConfig->setAppValueInt('sanitize_filenames_status', SettingsService::STATUS_WCF_DONE);
++			}
+ 		}
+ 		return self::SUCCESS;
+ 	}
+diff --git a/apps/files/lib/Controller/FilenamesController.php b/apps/files/lib/Controller/FilenamesController.php
+new file mode 100644
+index 0000000000..2dc05005dc
+--- /dev/null
++++ b/apps/files/lib/Controller/FilenamesController.php
+@@ -0,0 +1,102 @@
++<?php
++
++declare(strict_types=1);
++
++/**
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++namespace OCA\Files\Controller;
++
++use OCA\Files\BackgroundJob\SanitizeFilenames;
++use OCA\Files\Service\SettingsService;
++use OCP\AppFramework\Http\Attribute\OpenAPI;
++use OCP\AppFramework\Http\Attribute\Route;
++use OCP\AppFramework\Http\DataResponse;
++use OCP\AppFramework\OCS\OCSBadRequestException;
++use OCP\AppFramework\OCSController;
++use OCP\AppFramework\Services\IAppConfig;
++use OCP\BackgroundJob\IJobList;
++use OCP\IL10N;
++use OCP\IRequest;
++use OCP\IUserManager;
++
++class FilenamesController extends OCSController {
++
++	public function __construct(
++		string $appName,
++		IRequest $request,
++		private IL10N $l10n,
++		private IJobList $jobList,
++		private IAppConfig $appConfig,
++		private IUserManager $userManager,
++		private SettingsService $settingsService,
++	) {
++		parent::__construct($appName, $request);
++	}
++
++	/**
++	 * Toggle the Windows filename support feature.
++	 *
++	 * @param bool $enabled - The new state of the Windows filename support
++	 * @return DataResponse
++	 */
++	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
++	#[Route(type: Route::TYPE_API, verb: 'POST', url: '/api/v1/filenames/windows-compatibility')]
++	public function toggleWindowFilenameSupport(bool $enabled): DataResponse {
++		$this->settingsService->setFilesWindowsSupport($enabled);
++		return new DataResponse(['enabled' => $enabled]);
++	}
++
++	/**
++	 * Start a filename sanitization job
++	 *
++	 * @param null|int $limit Limit the number of users to be sanitized per run
++	 * @param null|string $charReplacement Optionally specify a character to replace forbidden characters with
++	 * @return DataResponse
++	 * @throws OCSBadRequestException On invalid parameters or if a sanitization is already running
++	 */
++	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
++	#[Route(type: Route::TYPE_API, verb: 'POST', url: '/api/v1/filenames/sanitization')]
++	public function sanitizeFilenames(?int $limit = 10, ?string $charReplacement = null): DataResponse {
++		if ($limit < 1) {
++			throw new OCSBadRequestException($this->l10n->t('Limit must be a positive integer.'));
++		}
++		if ($charReplacement !== null && ($charReplacement === '' || mb_strlen($charReplacement) > 1)) {
++			throw new OCSBadRequestException($this->l10n->t('The replacement character may only be a single character.'));
++		}
++
++		if ($this->settingsService->isFilenameSanitizationRunning()) {
++			throw new OCSBadRequestException($this->l10n->t('Filename sanitization already started.'));
++		}
++
++		$this->jobList->add(SanitizeFilenames::class, [
++			'offset' => 0,
++			'limit' => $limit,
++			'charReplacement' => $charReplacement,
++		]);
++
++		return new DataResponse([]);
++	}
++
++	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
++	#[Route(type: Route::TYPE_API, verb: 'GET', url: '/api/v1/filenames/sanitization')]
++	public function getStatus(): DataResponse {
++		return new DataResponse($this->settingsService->getSanitizationStatus());
++	}
++
++	/**
++	 * @return DataResponse
++	 * @throws OCSBadRequestException If there is no filename sanitization in progress
++	 */
++	#[OpenAPI(scope: OpenAPI::SCOPE_IGNORE)]
++	#[Route(type: Route::TYPE_API, verb: 'DELETE', url: '/api/v1/filenames/sanitization')]
++	public function stopSanitization(): DataResponse {
++		if (!$this->settingsService->isFilenameSanitizationRunning()) {
++			throw new OCSBadRequestException($this->l10n->t('No filename sanitization inprogress.'));
++		}
++
++		$this->jobList->remove(SanitizeFilenames::class);
++		return new DataResponse([]);
++	}
++}
+diff --git a/apps/files/lib/Service/SettingsService.php b/apps/files/lib/Service/SettingsService.php
+index d07e907a5f..6afec4e654 100644
+--- a/apps/files/lib/Service/SettingsService.php
++++ b/apps/files/lib/Service/SettingsService.php
+@@ -8,7 +8,13 @@ declare(strict_types=1);
+ namespace OCA\Files\Service;
+ 
+ use OC\Files\FilenameValidator;
++use OCA\Files\AppInfo\Application;
++use OCA\Files\BackgroundJob\SanitizeFilenames;
++use OCP\AppFramework\Services\IAppConfig;
++use OCP\BackgroundJob\IJobList;
++use OCP\Config\IUserConfig;
+ use OCP\IConfig;
++use OCP\IUserManager;
+ use Psr\Log\LoggerInterface;
+ 
+ class SettingsService {
+@@ -30,10 +36,20 @@ class SettingsService {
+ 		'*',
+ 	];
+ 
++	public const STATUS_WCF_UNKNOWN = 0;
++	public const STATUS_WCF_SCHEDULED = 1;
++	public const STATUS_WCF_RUNNING = 2;
++	public const STATUS_WCF_DONE = 3;
++	public const STATUS_WCF_ERROR = 4;
++
+ 	public function __construct(
+ 		private IConfig $config,
++		private IAppConfig $appConfig,
++		private IUserConfig $userConfig,
+ 		private FilenameValidator $filenameValidator,
+ 		private LoggerInterface $logger,
++		private IUserManager $userManager,
++		private IJobList $jobList,
+ 	) {
+ 	}
+ 
+@@ -59,5 +75,38 @@ class SettingsService {
+ 			'forbidden_filename_extensions' => empty($extensions) ? null : $extensions,
+ 		];
+ 		$this->config->setSystemValues($values);
++
++		// reset any sanitization status
++		$this->appConfig->deleteAppValue('sanitize_filenames_status');
++		$this->appConfig->deleteAppValue('sanitize_filenames_index');
++		$this->userConfig->deleteKey(Application::APP_ID, 'sanitize_filenames_errors');
++	}
++
++	public function isFilenameSanitizationRunning(): bool {
++		$jobs = $this->jobList->getJobsIterator(SanitizeFilenames::class, 1, 0);
++		foreach ($jobs as $job) {
++			return true;
++		}
++		return false;
++	}
++
++	/**
++	 * Get the current status of the filename sanitization.
++	 *
++	 * @psalm-return array{total: int, processed: int, status: self::STATUS_WCF_*, errors: array<string, string>}
++	 */
++	public function getSanitizationStatus(): array {
++		/** @var self::STATUS_WCF_* */
++		$status = $this->appConfig->getAppValueInt('sanitize_filenames_status');
++		$index = $this->appConfig->getAppValueInt('sanitize_filenames_index', -1);
++		$total = $this->userManager->countSeenUsers();
++		/** @var array<string, string> */
++		$errors = $this->userConfig->getValuesByUsers(Application::APP_ID, 'sanitize_filenames_errors');
++
++		if ($status === 0 && $this->isFilenameSanitizationRunning()) {
++			$status = 1; // we know its scheduled
++		}
++
++		return ['status' => $status, 'processed' => $index, 'total' => $total, 'errors' => $errors];
+ 	}
+ }
+diff --git a/apps/files/lib/Settings/AdminSettings.php b/apps/files/lib/Settings/AdminSettings.php
+new file mode 100644
+index 0000000000..6c609ef633
+--- /dev/null
++++ b/apps/files/lib/Settings/AdminSettings.php
+@@ -0,0 +1,48 @@
++<?php
++
++declare(strict_types=1);
++/**
++ * SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++namespace OCA\Files\Settings;
++
++use OCA\Files\AppInfo\Application;
++use OCA\Files\Service\SettingsService;
++use OCP\AppFramework\Http\TemplateResponse;
++use OCP\AppFramework\Services\IInitialState;
++use OCP\IL10N;
++use OCP\IURLGenerator;
++use OCP\Settings\ISettings;
++use OCP\Util;
++
++class AdminSettings implements ISettings {
++
++	public function __construct(
++		private IL10N $l,
++		private SettingsService $service,
++		private IURLGenerator $urlGenerator,
++		private IInitialState $initialState,
++	) {
++	}
++
++	public function getSection(): string {
++		return 'server';
++	}
++
++	public function getPriority(): int {
++		return 10;
++	}
++
++	public function getForm(): TemplateResponse {
++		$windowSupport = $this->service->hasFilesWindowsSupport();
++		$this->initialState->provideInitialState('filesCompatibilitySettings', [
++			'docUrl' => $this->urlGenerator->linkToDocs(''),
++			'status' => $this->service->getSanitizationStatus(),
++			'windowsSupport' => $windowSupport,
++		]);
++
++		Util::addScript(Application::APP_ID, 'settings-admin');
++		return new TemplateResponse(Application::APP_ID, 'settings-admin', renderAs: TemplateResponse::RENDER_AS_BLANK);
++	}
++}
+diff --git a/apps/files/lib/Settings/DeclarativeAdminSettings.php b/apps/files/lib/Settings/DeclarativeAdminSettings.php
+deleted file mode 100644
+index bbf97cc4d3..0000000000
+--- a/apps/files/lib/Settings/DeclarativeAdminSettings.php
++++ /dev/null
+@@ -1,67 +0,0 @@
+-<?php
+-
+-declare(strict_types=1);
+-/**
+- * SPDX-FileCopyrightText: 2024 Nextcloud GmbH and Nextcloud contributors
+- * SPDX-License-Identifier: AGPL-3.0-or-later
+- */
+-namespace OCA\Files\Settings;
+-
+-use OCA\Files\Service\SettingsService;
+-use OCP\IL10N;
+-use OCP\IURLGenerator;
+-use OCP\IUser;
+-use OCP\Settings\DeclarativeSettingsTypes;
+-use OCP\Settings\IDeclarativeSettingsFormWithHandlers;
+-
+-class DeclarativeAdminSettings implements IDeclarativeSettingsFormWithHandlers {
+-
+-	public function __construct(
+-		private IL10N $l,
+-		private SettingsService $service,
+-		private IURLGenerator $urlGenerator,
+-	) {
+-	}
+-
+-	public function getValue(string $fieldId, IUser $user): mixed {
+-		return match($fieldId) {
+-			'windows_support' => $this->service->hasFilesWindowsSupport(),
+-			default => throw new \InvalidArgumentException('Unexpected field id ' . $fieldId),
+-		};
+-	}
+-
+-	public function setValue(string $fieldId, mixed $value, IUser $user): void {
+-		switch ($fieldId) {
+-			case 'windows_support':
+-				$this->service->setFilesWindowsSupport((bool)$value);
+-				break;
+-		}
+-	}
+-
+-	public function getSchema(): array {
+-		return [
+-			'id' => 'files-filename-support',
+-			'priority' => 10,
+-			'section_type' => DeclarativeSettingsTypes::SECTION_TYPE_ADMIN,
+-			'section_id' => 'server',
+-			'storage_type' => DeclarativeSettingsTypes::STORAGE_TYPE_EXTERNAL,
+-			'title' => $this->l->t('Files compatibility'),
+-			'doc_url' => $this->urlGenerator->linkToDocs('admin-windows-compatible-filenames'),
+-			'description' => (
+-				$this->l->t('Allow to restrict filenames to ensure files can be synced with all clients. By default all filenames valid on POSIX (e.g. Linux or macOS) are allowed.')
+-				. "\n" . $this->l->t('After enabling the Windows compatible filenames, existing files cannot be modified anymore but can be renamed to valid new names by their owner.')
+-				. "\n" . $this->l->t('It is also possible to migrate files automatically after enabling this setting, please refer to the documentation about the occ command.')
+-			),
+-
+-			'fields' => [
+-				[
+-					'id' => 'windows_support',
+-					'title' => $this->l->t('Enforce Windows compatibility'),
+-					'description' => $this->l->t('This will block filenames not valid on Windows systems, like using reserved names or special characters. But this will not enforce compatibility of case sensitivity.'),
+-					'type' => DeclarativeSettingsTypes::CHECKBOX,
+-					'default' => false,
+-				],
+-			],
+-		];
+-	}
+-}
+diff --git a/apps/files/src/components/Settings/SettingsSanitizeFilenames.vue b/apps/files/src/components/Settings/SettingsSanitizeFilenames.vue
+new file mode 100644
+index 0000000000..0aa6b13b6b
+--- /dev/null
++++ b/apps/files/src/components/Settings/SettingsSanitizeFilenames.vue
+@@ -0,0 +1,181 @@
++<!--
++  - SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++  - SPDX-License-Identifier: AGPL-3.0-or-later
++-->
++
++<script setup lang="ts">
++import type { OCSResponse } from '@nextcloud/typings/ocs'
++
++import axios, { isAxiosError } from '@nextcloud/axios'
++import { showError } from '@nextcloud/dialogs'
++import { loadState } from '@nextcloud/initial-state'
++import { t } from '@nextcloud/l10n'
++import { generateOcsUrl } from '@nextcloud/router'
++import NcButton from '@nextcloud/vue/components/NcButton'
++import NcInputField from '@nextcloud/vue/components/NcInputField'
++import NcLoadingIcon from '@nextcloud/vue/components/NcLoadingIcon'
++import NcNoteCard from '@nextcloud/vue/components/NcNoteCard'
++import NcProgressBar from '@nextcloud/vue/components/NcProgressBar'
++import { computed, ref, shallowRef } from 'vue'
++import logger from '../../logger.ts'
++
++type ApiStatus = { total: number, processed: number, errors?: Record<string, string[]>, status: 0 | 1 | 2 | 3 | 4 }
++
++const { status: initialStatus } = loadState<{ isRunningSanitization: boolean, status: ApiStatus }>('files', 'filesCompatibilitySettings')
++
++const loading = ref(false)
++const renameLimit = ref(10)
++const status = ref(initialStatus.status)
++const processedUsers = ref(initialStatus.processed)
++const totalUsers = ref(initialStatus.total)
++const errors = shallowRef<ApiStatus['errors']>(initialStatus.errors || {})
++
++const progress = computed(() => processedUsers.value > 0 ? Math.round((processedUsers.value * 100) / totalUsers.value) : 0)
++const isRunning = computed(() => status.value === 1 || status.value === 2)
++
++/**
++ * Start the sanitization process
++ */
++async function startSanitization() {
++	if (isRunning.value) {
++		return
++	}
++
++	try {
++		loading.value = true
++		await axios.post(generateOcsUrl('apps/files/api/v1/filenames/sanitization'), {
++			limit: renameLimit.value,
++		})
++		status.value = 1
++	} catch (error) {
++		logger.error('Failed to start filename sanitization.', { error })
++
++		if (isAxiosError(error) && error.response?.data?.ocs) {
++			showError((error.response.data as OCSResponse).ocs.meta.message!)
++		} else {
++			showError(t('files', 'Failed to start filename sanitization.'))
++		}
++	} finally {
++		loading.value = false
++	}
++}
++
++/**
++ * Refresh the filename sanitization status
++ */
++async function refreshStatus() {
++	if (loading.value) {
++		return
++	}
++
++	try {
++		loading.value = true
++		const { data } = await axios.get<OCSResponse<ApiStatus>>(generateOcsUrl('apps/files/api/v1/filenames/sanitization'))
++		status.value = data.ocs.data.status
++		totalUsers.value = data.ocs.data.total
++		processedUsers.value = data.ocs.data.processed
++		errors.value = data.ocs.data.errors || {}
++	} catch (error) {
++		logger.error('Failed to refresh filename sanitization status.', { error })
++		showError(t('files', 'Failed to refresh filename sanitization status.'))
++	} finally {
++		loading.value = false
++	}
++}
++</script>
++
++<template>
++	<NcNoteCard v-if="isRunning">
++		<div class="sanitize-filenames__progress-container">
++			<p>
++				{{ t('files', 'Filename sanitization in progress.') }}
++				<br>
++				<template v-if="processedUsers > 0">
++					{{ t('files', 'Currently {processedUsers} of {totalUsers} accounts are already processed.', { processedUsers, totalUsers }) }}
++				</template>
++				<template v-else>
++					{{ t('files', 'Preparing …') }}
++				</template>
++			</p>
++			<NcProgressBar :value="progress" :size="12" />
++			<NcButton variant="tertiary" @click="refreshStatus">
++				<template v-if="loading" #icon>
++					<NcLoadingIcon />
++				</template>
++				{{ t('files', 'Refresh') }}
++			</NcButton>
++		</div>
++	</NcNoteCard>
++
++	<NcNoteCard v-else-if="status === 3" type="success">
++		{{ t('files', 'All files have been santized for Windows filename support.') }}
++	</NcNoteCard>
++
++	<form v-else
++		class="sanitize-filenames__form"
++		:disabled="loading"
++		@submit.stop.prevent="startSanitization">
++		<NcNoteCard v-if="status === 4" type="error">
++			{{ t('files', 'Some files could not be sanitized, please check your logs.') }}
++			<ul class="sanitize-filenames__errors" :aria-label="t('files', 'Sanitization errors')">
++				<li v-for="[user, failedFiles] of Object.entries(errors)" :key="user">
++					<h4>{{ user }}:</h4>
++					<ul :aria-label="t('files', 'Not sanitized filenames')">
++						<li v-for="file of failedFiles" :key="file">
++							{{ file }}
++						</li>
++					</ul>
++				</li>
++			</ul>
++		</NcNoteCard>
++		<NcNoteCard>
++			{{ t('files', 'Windows filename support has been enabled.') }}
++			<br>
++			{{ t('files', 'While this blocks users from creating new files with unsupported filenames, existing files are not yet renamed and thus still may break sync on Windows.') }}
++			{{ t('files', 'You can trigger a rename of files with invalid filenames, this will be done in the background and may take some time.') }}
++			{{ t('files', 'Please note that this may cause high workload on the sync clients.') }}
++		</NcNoteCard>
++
++		<fieldset class="sanitize-filenames__fields">
++			<NcInputField v-model="renameLimit"
++				:label="t('files', 'Limit')"
++				:helper-text="t('files', 'This allows to configure how many users should be processed in one background job run.')"
++				min="1"
++				type="number" />
++
++			<NcButton type="submit" variant="error">
++				<template v-if="loading" #icon>
++					<NcLoadingIcon />
++				</template>
++				{{ t('files', 'Sanitize filenames') }}
++				<span v-if="loading" class="hidden-visually">
++					{{ t('files', '(starting)') }}
++				</span>
++			</NcButton>
++		</fieldset>
++	</form>
++</template>
++
++<style scoped>
++.sanitize-filenames__progress-container {
++	align-items: end;
++	display: flex;
++	flex-direction: column;
++	gap: var(--default-grid-baseline);
++}
++
++.sanitize-filenames__form {
++	display: flex;
++	flex-direction: column;
++	gap: var(--default-grid-baseline);
++}
++
++.sanitize-filenames__fields {
++	display: flex;
++	flex-direction: column;
++	gap: var(--default-grid-baseline);
++
++	align-items: end;
++	max-width: 400px;
++}
++</style>
+diff --git a/apps/files/src/main-settings-admin.ts b/apps/files/src/main-settings-admin.ts
+new file mode 100644
+index 0000000000..b4afc0b13f
+--- /dev/null
++++ b/apps/files/src/main-settings-admin.ts
+@@ -0,0 +1,17 @@
++/**
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++
++import { getCSPNonce } from '@nextcloud/auth'
++import { t } from '@nextcloud/l10n'
++import Vue from 'vue'
++import PersonalSettings from './views/SettingsAdmin.vue'
++
++// eslint-disable-next-line camelcase
++__webpack_nonce__ = getCSPNonce()
++
++Vue.prototype.t = t
++const View = Vue.extend(PersonalSettings)
++const instance = new View()
++instance.$mount('#files-admin-settings')
+diff --git a/apps/files/src/main-personal-settings.js b/apps/files/src/main-settings-personal.ts
+similarity index 92%
+rename from apps/files/src/main-personal-settings.js
+rename to apps/files/src/main-settings-personal.ts
+index dce190f016..39e3645f6b 100644
+--- a/apps/files/src/main-personal-settings.js
++++ b/apps/files/src/main-settings-personal.ts
+@@ -3,9 +3,9 @@
+  * SPDX-License-Identifier: AGPL-3.0-or-later
+  */
+ 
+-import Vue from 'vue'
+ import { getCSPNonce } from '@nextcloud/auth'
+-
++import { t } from '@nextcloud/l10n'
++import Vue from 'vue'
+ import PersonalSettings from './components/PersonalSettings.vue'
+ 
+ // eslint-disable-next-line camelcase
+diff --git a/apps/files/src/views/SettingsAdmin.vue b/apps/files/src/views/SettingsAdmin.vue
+new file mode 100644
+index 0000000000..857a051044
+--- /dev/null
++++ b/apps/files/src/views/SettingsAdmin.vue
+@@ -0,0 +1,78 @@
++<!--
++  - SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++  - SPDX-License-Identifier: AGPL-3.0-or-later
++-->
++
++<script setup lang="ts">
++import axios from '@nextcloud/axios'
++import { showError } from '@nextcloud/dialogs'
++import { loadState } from '@nextcloud/initial-state'
++import { t } from '@nextcloud/l10n'
++import { generateOcsUrl } from '@nextcloud/router'
++import NcCheckboxRadioSwitch from '@nextcloud/vue/components/NcCheckboxRadioSwitch'
++import NcSettingsSection from '@nextcloud/vue/components/NcSettingsSection'
++import SettingsSanitizeFilenames from '../components/Settings/SettingsSanitizeFilenames.vue'
++import { ref } from 'vue'
++import logger from '../logger'
++
++const {
++	docUrl,
++	isRunningSanitization,
++	windowsSupport,
++} = loadState<{ docUrl: string, isRunningSanitization: boolean, windowsSupport: boolean }>('files', 'filesCompatibilitySettings')
++
++const description = t('files', 'Allow to restrict filenames to ensure files can be synced with all clients. By default all filenames valid on POSIX (e.g. Linux or macOS) are allowed.')
++	+ '\n' + t('files', 'After enabling the Windows compatible filenames, existing files cannot be modified anymore but can be renamed to valid new names by their owner.')
++
++const loading = ref(false)
++const hasWindowsSupport = ref(windowsSupport)
++
++/**
++ * Toggle the Windows filename support on the backend.
++ *
++ * @param enabled - The new state to be set
++ */
++async function toggleWindowsFilenameSupport(enabled: boolean) {
++	if (loading.value) {
++		return
++	}
++
++	try {
++		loading.value = true
++		await axios.post(generateOcsUrl('apps/files/api/v1/filenames/windows-compatibility'), { enabled })
++		hasWindowsSupport.value = enabled
++	} catch (error) {
++		showError(t('files', 'Failed to toggle Windows filename support'))
++		logger.error('Failed to toggle Windows filename support', { error })
++	} finally {
++		loading.value = false
++	}
++}
++</script>
++
++<template>
++	<NcSettingsSection :doc-url="docUrl"
++		:name="t('files', 'Files compatibility')"
++		:description="description">
++		<NcCheckboxRadioSwitch :model-value="hasWindowsSupport"
++			:disabled="isRunningSanitization"
++			:loading="loading"
++			type="switch"
++			@update:model-value="toggleWindowsFilenameSupport">
++			{{ t('files', 'Enforce Windows compatibility') }}
++		</NcCheckboxRadioSwitch>
++		<p class="hint">
++			{{ t('files', 'This will block filenames not valid on Windows systems, like using reserved names or special characters. But this will not enforce compatibility of case sensitivity.') }}
++		</p>
++
++		<SettingsSanitizeFilenames v-if="hasWindowsSupport" />
++	</NcSettingsSection>
++</template>
++
++<style scoped>
++.hint {
++	color: var(--color-text-maxcontrast);
++	margin-inline-start: var(--border-radius-element);
++	margin-block-end: 1em;
++}
++</style>
+diff --git a/apps/files/templates/settings-admin.php b/apps/files/templates/settings-admin.php
+new file mode 100644
+index 0000000000..ac6f683d60
+--- /dev/null
++++ b/apps/files/templates/settings-admin.php
+@@ -0,0 +1,8 @@
++<?php
++
++/**
++ * SPDX-FileCopyrightText: 2025 Nextcloud GmbH and Nextcloud contributors
++ * SPDX-License-Identifier: AGPL-3.0-or-later
++ */
++?>
++<div id="files-admin-settings"></div>
+diff --git a/webpack.modules.js b/webpack.modules.js
+index 38b03920fa..79ddf00777 100644
+--- a/webpack.modules.js
++++ b/webpack.modules.js
+@@ -42,7 +42,8 @@ module.exports = {
+ 		main: path.join(__dirname, 'apps/files/src', 'main.ts'),
+ 		init: path.join(__dirname, 'apps/files/src', 'init.ts'),
+ 		search: path.join(__dirname, 'apps/files/src/plugins/search', 'folderSearch.ts'),
+-		'settings-personal': path.join(__dirname, 'apps/files/src', 'main-personal-settings.js'),
++		'settings-admin': path.join(__dirname, 'apps/files/src', 'main-settings-admin.ts'),
++		'settings-personal': path.join(__dirname, 'apps/files/src', 'main-settings-personal.ts'),
+ 		'reference-files': path.join(__dirname, 'apps/files/src', 'reference-files.ts'),
+ 	},
+ 	files_external: {

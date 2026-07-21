@@ -1,0 +1,3468 @@
+From 926090b68eb970725c891bbf5aa3ac3ad0559be4 Mon Sep 17 00:00:00 2001
+From: Copilot <198982749+Copilot@users.noreply.github.com>
+Date: Thu, 31 Jul 2025 09:22:37 -0700
+Subject: [PATCH] Mark WebHostBuilder class as obsolete (#62785)
+
+---
+ .../HostingTests.cs                           |   2 +
+ src/DefaultBuilder/src/WebHost.cs             |   2 +
+ src/Hosting/Hosting/src/WebHostBuilder.cs     |   1 +
+ .../Hosting/test/WebHostBuilderTests.cs       |   8 +
+ src/Hosting/Hosting/test/WebHostTests.cs      |   2 +
+ .../TestHost/test/ClientHandlerTests.cs       |  31 +-
+ .../TestHost/test/HttpContextBuilderTests.cs  | 378 +++++++++-----
+ .../TestHost/test/RequestBuilderTests.cs      |  34 +-
+ src/Hosting/TestHost/test/TestClientTests.cs  | 448 ++++++++++++----
+ src/Hosting/TestHost/test/TestServerTests.cs  | 494 ++++++++++++------
+ .../TestHost/test/WebSocketClientTests.cs     | 161 +++---
+ .../test/WebHostServiceTests.cs               |   4 +
+ .../IStartupInjectionAssemblyName/Program.cs  |   2 +
+ .../Program.cs                                |  22 +-
+ .../samples/IdentitySample.Mvc/Program.cs     |  20 +-
+ .../testassets/InProcessWebSite/Program.cs    |  12 +
+ .../Kestrel/test/HttpsConfigurationTests.cs   | 230 ++++----
+ .../WebHostBuilderKestrelExtensionsTests.cs   | 141 +++--
+ .../Http3/Http3TlsTests.cs                    |  96 ++--
+ .../ServerComparison.TestSites/Program.cs     |  52 +-
+ .../Client/test/UnitTests/TestServerTests.cs  |  73 ++-
+ 21 files changed, 1497 insertions(+), 716 deletions(-)
+
+diff --git a/src/DataProtection/DataProtection/test/Microsoft.AspNetCore.DataProtection.Tests/HostingTests.cs b/src/DataProtection/DataProtection/test/Microsoft.AspNetCore.DataProtection.Tests/HostingTests.cs
+index 31f8626d19..073fea0e77 100644
+--- a/src/DataProtection/DataProtection/test/Microsoft.AspNetCore.DataProtection.Tests/HostingTests.cs
++++ b/src/DataProtection/DataProtection/test/Microsoft.AspNetCore.DataProtection.Tests/HostingTests.cs
+@@ -25,6 +25,7 @@ public class HostingTests
+             .Returns(Mock.Of<IKeyRing>())
+             .Callback(() => tcs.TrySetResult());
+ 
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         var builder = new WebHostBuilder()
+             .UseStartup<TestStartup>()
+             .ConfigureServices(s =>
+@@ -33,6 +34,7 @@ public class HostingTests
+                 .Replace(ServiceDescriptor.Singleton(mockKeyRing.Object))
+                 .AddSingleton<IServer>(
+                     new FakeServer(onStart: () => tcs.TrySetException(new InvalidOperationException("Server was started before key ring was initialized")))));
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+ 
+         using (var host = builder.Build())
+         {
+diff --git a/src/DefaultBuilder/src/WebHost.cs b/src/DefaultBuilder/src/WebHost.cs
+index a3e8b030d4..1c3b9b4f07 100644
+--- a/src/DefaultBuilder/src/WebHost.cs
++++ b/src/DefaultBuilder/src/WebHost.cs
+@@ -154,7 +154,9 @@ public static class WebHost
+     /// <returns>The initialized <see cref="IWebHostBuilder"/>.</returns>
+     public static IWebHostBuilder CreateDefaultBuilder(string[] args)
+     {
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         var builder = new WebHostBuilder();
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+ 
+         if (string.IsNullOrEmpty(builder.GetSetting(WebHostDefaults.ContentRootKey)))
+         {
+diff --git a/src/Hosting/Hosting/src/WebHostBuilder.cs b/src/Hosting/Hosting/src/WebHostBuilder.cs
+index f21d359369..23d57a3e59 100644
+--- a/src/Hosting/Hosting/src/WebHostBuilder.cs
++++ b/src/Hosting/Hosting/src/WebHostBuilder.cs
+@@ -20,6 +20,7 @@ namespace Microsoft.AspNetCore.Hosting;
+ /// <summary>
+ /// A builder for <see cref="IWebHost"/>
+ /// </summary>
++[Obsolete("WebHostBuilder is deprecated in favor of HostBuilder and WebApplicationBuilder. For more information, visit https://aka.ms/aspnet/deprecate/004.", DiagnosticId = "ASPDEPR004")]
+ public class WebHostBuilder : IWebHostBuilder
+ {
+     private readonly HostingEnvironment _hostingEnvironment;
+diff --git a/src/Hosting/Hosting/test/WebHostBuilderTests.cs b/src/Hosting/Hosting/test/WebHostBuilderTests.cs
+index caf6d2a695..b5e1f3b056 100644
+--- a/src/Hosting/Hosting/test/WebHostBuilderTests.cs
++++ b/src/Hosting/Hosting/test/WebHostBuilderTests.cs
+@@ -429,6 +429,7 @@ public class WebHostBuilderTests
+     public void ServiceProviderDisposedOnBuildException()
+     {
+         var service = new DisposableService();
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         var hostBuilder = new WebHostBuilder()
+             .UseServer(new TestServer())
+             .ConfigureServices(services =>
+@@ -437,6 +438,7 @@ public class WebHostBuilderTests
+                 services.AddSingleton(sp => service);
+             })
+             .UseStartup<StartupWithResolvedDisposableThatThrows>();
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+ 
+         Assert.Throws<InvalidOperationException>(() => hostBuilder.Build());
+         Assert.True(service.Disposed);
+@@ -1483,14 +1485,18 @@ public class WebHostBuilderTests
+             .AddInMemoryCollection(vals);
+         var config = builder.Build();
+ 
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         return new WebHostBuilder().UseConfiguration(config);
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+     }
+ 
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+     public static TheoryData<IWebHostBuilder> DefaultWebHostBuilders => new TheoryData<IWebHostBuilder>
+         {
+             new WebHostBuilder(),
+             new GenericWebHostBuilderWrapper(new HostBuilder())
+         };
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+ 
+     public static TheoryData<IWebHostBuilder> DefaultWebHostBuildersWithConfig
+     {
+@@ -1506,10 +1512,12 @@ public class WebHostBuilderTests
+                 .AddInMemoryCollection(vals);
+             var config = builder.Build();
+ 
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+             return new TheoryData<IWebHostBuilder> {
+                     new WebHostBuilder().UseConfiguration(config),
+                     new GenericWebHostBuilderWrapper(new HostBuilder()).UseConfiguration(config)
+                 };
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+         }
+     }
+ 
+diff --git a/src/Hosting/Hosting/test/WebHostTests.cs b/src/Hosting/Hosting/test/WebHostTests.cs
+index a6114d47f0..36bb6a960e 100644
+--- a/src/Hosting/Hosting/test/WebHostTests.cs
++++ b/src/Hosting/Hosting/test/WebHostTests.cs
+@@ -1103,7 +1103,9 @@ public partial class WebHostTests
+ 
+     private IWebHostBuilder CreateBuilder(IConfiguration config = null)
+     {
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         return new WebHostBuilder().UseConfiguration(config ?? new ConfigurationBuilder().Build()).UseStartup("Microsoft.AspNetCore.Hosting.Tests");
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+     }
+ 
+     private static bool[] RegisterCallbacksThatThrow(IServiceCollection services)
+diff --git a/src/Hosting/TestHost/test/ClientHandlerTests.cs b/src/Hosting/TestHost/test/ClientHandlerTests.cs
+index 503408f0df..170310ec27 100644
+--- a/src/Hosting/TestHost/test/ClientHandlerTests.cs
++++ b/src/Hosting/TestHost/test/ClientHandlerTests.cs
+@@ -11,6 +11,7 @@ using Microsoft.AspNetCore.Http;
+ using Microsoft.AspNetCore.Http.Features;
+ using Microsoft.AspNetCore.InternalTesting;
+ using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Hosting;
+ using Microsoft.Extensions.Logging;
+ using Microsoft.Net.Http.Headers;
+ 
+@@ -691,19 +692,27 @@ public class ClientHandlerTests
+     {
+         // This logger will attempt to access information from HttpRequest once the HttpContext is created
+         var logger = new VerifierLogger();
+-        var builder = new WebHostBuilder()
+-            .ConfigureServices(services =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
+             {
+-                services.AddSingleton<ILogger<IWebHost>>(logger);
++                webHostBuilder
++                    .UseTestServer()
++                    .ConfigureServices(services =>
++                    {
++                        services.AddSingleton<ILogger<IWebHost>>(logger);
++                    })
++                    .Configure(app =>
++                    {
++                        app.Run(context =>
++                        {
++                            return Task.FromResult(0);
++                        });
++                    });
+             })
+-            .Configure(app =>
+-            {
+-                app.Run(context =>
+-                {
+-                    return Task.FromResult(0);
+-                });
+-            });
+-        var server = new TestServer(builder);
++            .Build();
++        var server = host.GetTestServer();
++
++        await host.StartAsync();
+ 
+         // The HttpContext will be created and the logger will make sure that the HttpRequest exists and contains reasonable values
+         var result = await server.CreateClient().GetStringAsync("/");
+diff --git a/src/Hosting/TestHost/test/HttpContextBuilderTests.cs b/src/Hosting/TestHost/test/HttpContextBuilderTests.cs
+index 30ebbf3f18..b46b229233 100644
+--- a/src/Hosting/TestHost/test/HttpContextBuilderTests.cs
++++ b/src/Hosting/TestHost/test/HttpContextBuilderTests.cs
+@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Http;
+ using Microsoft.AspNetCore.Http.Features;
+ using Microsoft.AspNetCore.InternalTesting;
+ using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Hosting;
+ using Microsoft.Extensions.Logging;
+ 
+ namespace Microsoft.AspNetCore.TestHost;
+@@ -17,8 +18,18 @@ public class HttpContextBuilderTests
+     [Fact]
+     public async Task ExpectedValuesAreAvailable()
+     {
+-        var builder = new WebHostBuilder().Configure(app => { });
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => { });
++            })
++            .Build();
++        var server = host.GetTestServer();
++
++        await host.StartAsync();
++
+         server.BaseAddress = new Uri("https://example.com/A/Path/");
+         var context = await server.SendAsync(c =>
+         {
+@@ -48,8 +59,18 @@ public class HttpContextBuilderTests
+     public async Task UserAgentHeaderWorks()
+     {
+         var userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:71.0) Gecko/20100101 Firefox/71.0";
+-        var builder = new WebHostBuilder().Configure(app => { });
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => { });
++            })
++            .Build();
++        var server = host.GetTestServer();
++
++        await host.StartAsync();
++
+         server.BaseAddress = new Uri("https://example.com/");
+         var context = await server.SendAsync(c =>
+         {
+@@ -63,8 +84,18 @@ public class HttpContextBuilderTests
+     [Fact]
+     public async Task SingleSlashNotMovedToPathBase()
+     {
+-        var builder = new WebHostBuilder().Configure(app => { });
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => { });
++            })
++            .Build();
++        var server = host.GetTestServer();
++
++        await host.StartAsync();
++
+         var context = await server.SendAsync(c =>
+         {
+             c.Request.Path = "/";
+@@ -77,15 +108,25 @@ public class HttpContextBuilderTests
+     [Fact]
+     public async Task MiddlewareOnlySetsHeaders()
+     {
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(c =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                c.Response.Headers["TestHeader"] = "TestValue";
+-                return Task.FromResult(0);
+-            });
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(c =>
++                        {
++                            c.Response.Headers["TestHeader"] = "TestValue";
++                            return Task.FromResult(0);
++                        });
++                    });
++            })
++            .Build();
++        var server = host.GetTestServer();
++
++        await host.StartAsync();
++
+         var context = await server.SendAsync(c => { });
+ 
+         Assert.Equal("TestValue", context.Response.Headers["TestHeader"]);
+@@ -95,15 +136,21 @@ public class HttpContextBuilderTests
+     public async Task BlockingMiddlewareShouldNotBlockClient()
+     {
+         var block = new ManualResetEvent(false);
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(c =>
++        var builder = new HostBuilder().ConfigureWebHost(webHostBuilder =>
++            webHostBuilder.Configure(app =>
+             {
+-                block.WaitOne();
+-                return Task.FromResult(0);
+-            });
+-        });
+-        var server = new TestServer(builder);
++                app.Run(c =>
++                {
++                    block.WaitOne();
++                    return Task.FromResult(0);
++                });
++            })
++            .UseTestServer());
++        using var host = builder.Build();
++
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var task = server.SendAsync(c => { });
+ 
+         Assert.False(task.IsCompleted);
+@@ -118,20 +165,29 @@ public class HttpContextBuilderTests
+     public async Task HeadersAvailableBeforeSyncBodyFinished()
+     {
+         var block = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(async c =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                c.Response.Headers["TestHeader"] = "TestValue";
+-                var bytes = Encoding.UTF8.GetBytes("BodyStarted" + Environment.NewLine);
+-                c.Features.Get<IHttpBodyControlFeature>().AllowSynchronousIO = true;
+-                c.Response.Body.Write(bytes, 0, bytes.Length);
+-                await block.Task;
+-                bytes = Encoding.UTF8.GetBytes("BodyFinished");
+-                c.Response.Body.Write(bytes, 0, bytes.Length);
+-            });
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(async c =>
++                        {
++                            c.Response.Headers["TestHeader"] = "TestValue";
++                            var bytes = Encoding.UTF8.GetBytes("BodyStarted" + Environment.NewLine);
++                            c.Features.Get<IHttpBodyControlFeature>().AllowSynchronousIO = true;
++                            c.Response.Body.Write(bytes, 0, bytes.Length);
++                            await block.Task;
++                            bytes = Encoding.UTF8.GetBytes("BodyFinished");
++                            c.Response.Body.Write(bytes, 0, bytes.Length);
++                        });
++                    });
++            })
++            .Build();
++        var server = host.GetTestServer();
++        await host.StartAsync();
++
+         var context = await server.SendAsync(c => { });
+ 
+         Assert.Equal("TestValue", context.Response.Headers["TestHeader"]);
+@@ -145,17 +201,26 @@ public class HttpContextBuilderTests
+     public async Task HeadersAvailableBeforeAsyncBodyFinished()
+     {
+         var block = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(async c =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                c.Response.Headers["TestHeader"] = "TestValue";
+-                await c.Response.WriteAsync("BodyStarted" + Environment.NewLine);
+-                await block.Task;
+-                await c.Response.WriteAsync("BodyFinished");
+-            });
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(async c =>
++                        {
++                            c.Response.Headers["TestHeader"] = "TestValue";
++                            await c.Response.WriteAsync("BodyStarted" + Environment.NewLine);
++                            await block.Task;
++                            await c.Response.WriteAsync("BodyFinished");
++                        });
++                    });
++            })
++            .Build();
++        var server = host.GetTestServer();
++        await host.StartAsync();
++
+         var context = await server.SendAsync(c => { });
+ 
+         Assert.Equal("TestValue", context.Response.Headers["TestHeader"]);
+@@ -169,17 +234,26 @@ public class HttpContextBuilderTests
+     public async Task FlushSendsHeaders()
+     {
+         var block = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(async c =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                c.Response.Headers["TestHeader"] = "TestValue";
+-                await c.Response.Body.FlushAsync();
+-                await block.Task;
+-                await c.Response.WriteAsync("BodyFinished");
+-            });
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(async c =>
++                        {
++                            c.Response.Headers["TestHeader"] = "TestValue";
++                            await c.Response.Body.FlushAsync();
++                            await block.Task;
++                            await c.Response.WriteAsync("BodyFinished");
++                        });
++                    });
++            })
++            .Build();
++        var server = host.GetTestServer();
++        await host.StartAsync();
++
+         var context = await server.SendAsync(c => { });
+ 
+         Assert.Equal("TestValue", context.Response.Headers["TestHeader"]);
+@@ -191,17 +265,26 @@ public class HttpContextBuilderTests
+     public async Task ClientDisposalCloses()
+     {
+         var block = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(async c =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                c.Response.Headers["TestHeader"] = "TestValue";
+-                await c.Response.Body.FlushAsync();
+-                await block.Task;
+-                await c.Response.WriteAsync("BodyFinished");
+-            });
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(async c =>
++                        {
++                            c.Response.Headers["TestHeader"] = "TestValue";
++                            await c.Response.Body.FlushAsync();
++                            await block.Task;
++                            await c.Response.WriteAsync("BodyFinished");
++                        });
++                    });
++            })
++            .Build();
++        var server = host.GetTestServer();
++        await host.StartAsync();
++
+         var context = await server.SendAsync(c => { });
+ 
+         Assert.Equal("TestValue", context.Response.Headers["TestHeader"]);
+@@ -217,17 +300,26 @@ public class HttpContextBuilderTests
+     public async Task ClientCancellationAborts()
+     {
+         var block = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(c =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                block.SetResult();
+-                Assert.True(c.RequestAborted.WaitHandle.WaitOne(TimeSpan.FromSeconds(10)));
+-                c.RequestAborted.ThrowIfCancellationRequested();
+-                return Task.CompletedTask;
+-            });
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(c =>
++                        {
++                            block.SetResult();
++                            Assert.True(c.RequestAborted.WaitHandle.WaitOne(TimeSpan.FromSeconds(10)));
++                            c.RequestAborted.ThrowIfCancellationRequested();
++                            return Task.CompletedTask;
++                        });
++                    });
++            })
++            .Build();
++        var server = host.GetTestServer();
++        await host.StartAsync();
++
+         var cts = new CancellationTokenSource();
+         var contextTask = server.SendAsync(c => { }, cts.Token);
+         await block.Task;
+@@ -240,17 +332,26 @@ public class HttpContextBuilderTests
+     public async Task ClientCancellationAbortsReadAsync()
+     {
+         var block = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(async c =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                c.Response.Headers["TestHeader"] = "TestValue";
+-                await c.Response.Body.FlushAsync();
+-                await block.Task;
+-                await c.Response.WriteAsync("BodyFinished");
+-            });
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(async c =>
++                        {
++                            c.Response.Headers["TestHeader"] = "TestValue";
++                            await c.Response.Body.FlushAsync();
++                            await block.Task;
++                            await c.Response.WriteAsync("BodyFinished");
++                        });
++                    });
++            })
++            .Build();
++        var server = host.GetTestServer();
++        await host.StartAsync();
++
+         var context = await server.SendAsync(c => { });
+ 
+         Assert.Equal("TestValue", context.Response.Headers["TestHeader"]);
+@@ -266,14 +367,21 @@ public class HttpContextBuilderTests
+     [Fact]
+     public Task ExceptionBeforeFirstWriteIsReported()
+     {
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(c =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                throw new InvalidOperationException("Test Exception");
+-            });
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(c =>
++                        {
++                            throw new InvalidOperationException("Test Exception");
++                        });
++                    });
++            })
++            .Build();
++        var server = host.GetTestServer();
+         return Assert.ThrowsAsync<InvalidOperationException>(() => server.SendAsync(c => { }));
+     }
+ 
+@@ -281,17 +389,26 @@ public class HttpContextBuilderTests
+     public async Task ExceptionAfterFirstWriteIsReported()
+     {
+         var block = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(async c =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                c.Response.Headers["TestHeader"] = "TestValue";
+-                await c.Response.WriteAsync("BodyStarted");
+-                await block.Task;
+-                throw new InvalidOperationException("Test Exception");
+-            });
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(async c =>
++                        {
++                            c.Response.Headers["TestHeader"] = "TestValue";
++                            await c.Response.WriteAsync("BodyStarted");
++                            await block.Task;
++                            throw new InvalidOperationException("Test Exception");
++                        });
++                    });
++            })
++            .Build();
++        var server = host.GetTestServer();
++        await host.StartAsync();
++
+         var context = await server.SendAsync(c => { });
+ 
+         Assert.Equal("TestValue", context.Response.Headers["TestHeader"]);
+@@ -306,19 +423,27 @@ public class HttpContextBuilderTests
+     {
+         // This logger will attempt to access information from HttpRequest once the HttpContext is created
+         var logger = new VerifierLogger();
+-        var builder = new WebHostBuilder()
+-            .ConfigureServices(services =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                services.AddSingleton<ILogger<IWebHost>>(logger);
++                webBuilder
++                    .UseTestServer()
++                    .ConfigureServices(services =>
++                    {
++                        services.AddSingleton<ILogger<IWebHost>>(logger);
++                    })
++                    .Configure(app =>
++                    {
++                        app.Run(context =>
++                        {
++                            return Task.FromResult(0);
++                        });
++                    });
+             })
+-            .Configure(app =>
+-            {
+-                app.Run(context =>
+-                {
+-                    return Task.FromResult(0);
+-                });
+-            });
+-        var server = new TestServer(builder);
++            .Build();
++        var server = host.GetTestServer();
++
++        await host.StartAsync();
+ 
+         // The HttpContext will be created and the logger will make sure that the HttpRequest exists and contains reasonable values
+         var ctx = await server.SendAsync(c => { });
+@@ -328,17 +453,24 @@ public class HttpContextBuilderTests
+     public async Task CallingAbortInsideHandlerShouldSetRequestAborted()
+     {
+         var requestAborted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+-        var builder = new WebHostBuilder()
+-            .Configure(app =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                app.Run(context =>
+-                {
+-                    context.RequestAborted.Register(() => requestAborted.SetResult());
+-                    context.Abort();
+-                    return Task.CompletedTask;
+-                });
+-            });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(context =>
++                        {
++                            context.RequestAborted.Register(() => requestAborted.SetResult());
++                            context.Abort();
++                            return Task.CompletedTask;
++                        });
++                    });
++            })
++            .Build();
++        var server = host.GetTestServer();
++        await host.StartAsync();
+ 
+         var ex = await Assert.ThrowsAsync<OperationCanceledException>(() => server.SendAsync(c => { }));
+         Assert.Equal("The application aborted the request.", ex.Message);
+diff --git a/src/Hosting/TestHost/test/RequestBuilderTests.cs b/src/Hosting/TestHost/test/RequestBuilderTests.cs
+index 5b6703e5ac..f3ac067977 100644
+--- a/src/Hosting/TestHost/test/RequestBuilderTests.cs
++++ b/src/Hosting/TestHost/test/RequestBuilderTests.cs
+@@ -2,6 +2,7 @@
+ // The .NET Foundation licenses this file to you under the MIT license.
+ 
+ using Microsoft.AspNetCore.Hosting;
++using Microsoft.Extensions.Hosting;
+ 
+ namespace Microsoft.AspNetCore.TestHost;
+ 
+@@ -10,8 +11,15 @@ public class RequestBuilderTests
+     [Fact]
+     public void AddRequestHeader()
+     {
+-        var builder = new WebHostBuilder().Configure(app => { });
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseTestServer()
++                    .Configure(app => { });
++            })
++            .Build();
++        var server = host.GetTestServer();
+         server.CreateRequest("/")
+             .AddHeader("Host", "MyHost:90")
+             .And(request =>
+@@ -23,8 +31,15 @@ public class RequestBuilderTests
+     [Fact]
+     public void AddContentHeaders()
+     {
+-        var builder = new WebHostBuilder().Configure(app => { });
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseTestServer()
++                    .Configure(app => { });
++            })
++            .Build();
++        var server = host.GetTestServer();
+         server.CreateRequest("/")
+             .AddHeader("Content-Type", "Test/Value")
+             .And(request =>
+@@ -38,8 +53,15 @@ public class RequestBuilderTests
+     public void TestServer_PropertyShouldHoldTestServerInstance()
+     {
+         // Arrange
+-        var builder = new WebHostBuilder().Configure(app => { });
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseTestServer()
++                    .Configure(app => { });
++            })
++            .Build();
++        var server = host.GetTestServer();
+ 
+         // Act
+         var requestBuilder = server.CreateRequest("/");
+diff --git a/src/Hosting/TestHost/test/TestClientTests.cs b/src/Hosting/TestHost/test/TestClientTests.cs
+index ce9c3a76c8..2993c53e9a 100644
+--- a/src/Hosting/TestHost/test/TestClientTests.cs
++++ b/src/Hosting/TestHost/test/TestClientTests.cs
+@@ -12,6 +12,7 @@ using Microsoft.AspNetCore.Http.Features;
+ using Microsoft.AspNetCore.Internal;
+ using Microsoft.AspNetCore.InternalTesting;
+ using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Hosting;
+ using Microsoft.Extensions.Logging;
+ using Microsoft.Net.Http.Headers;
+ 
+@@ -26,8 +27,18 @@ public class TestClientTests
+         var expected = "GET Response";
+         RequestDelegate appDelegate = ctx =>
+             ctx.Response.WriteAsync(expected);
+-        var builder = new WebHostBuilder().Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            })
++            .Build();
++
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+ 
+         // Act
+@@ -48,8 +59,20 @@ public class TestClientTests
+             Assert.Equal("/", ctx.Request.Path.Value);
+             return ctx.Response.WriteAsync(expected);
+         };
+-        var builder = new WebHostBuilder().Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++
++            })
++            .Build();
++
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+ 
+         // Act
+@@ -70,8 +93,19 @@ public class TestClientTests
+             Assert.Equal("/", ctx.Request.Path.Value);
+             return ctx.Response.WriteAsync(expected);
+         };
+-        var builder = new WebHostBuilder().Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            })
++            .Build();
++
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+ 
+         // Act
+@@ -90,8 +124,19 @@ public class TestClientTests
+             var content = await new StreamReader(ctx.Request.Body).ReadToEndAsync();
+             await ctx.Response.WriteAsync(content + " PUT Response");
+         };
+-        var builder = new WebHostBuilder().Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            })
++            .Build();
++
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+ 
+         // Act
+@@ -108,8 +153,19 @@ public class TestClientTests
+         // Arrange
+         RequestDelegate appDelegate = async ctx =>
+             await ctx.Response.WriteAsync(await new StreamReader(ctx.Request.Body).ReadToEndAsync() + " POST Response");
+-        var builder = new WebHostBuilder().Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            })
++            .Build();
++
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+ 
+         // Act
+@@ -132,7 +188,6 @@ public class TestClientTests
+             data[i] = character[0];
+         }
+ 
+-        var builder = new WebHostBuilder();
+         RequestDelegate app = async ctx =>
+         {
+             var disposable = new TestDisposable();
+@@ -144,8 +199,17 @@ public class TestClientTests
+             await ctx.Response.Body.WriteAsync(data, 1024, 1024);
+         };
+ 
+-        builder.Configure(appBuilder => appBuilder.Run(app));
+-        var server = new TestServer(builder);
++        var builder = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(appBuilder => appBuilder.Run(app));
++            });
++        using var host = builder.Build();
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+ 
+         // Act & Assert
+@@ -189,8 +253,18 @@ public class TestClientTests
+ 
+         Stream requestStream = null;
+ 
+-        var builder = new WebHostBuilder().Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            })
++            .Build();
++
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+ 
+         var httpRequest = new HttpRequestMessage(HttpMethod.Post, "http://localhost:12345");
+@@ -246,8 +320,18 @@ public class TestClientTests
+             return Task.CompletedTask;
+         };
+ 
+-        var builder = new WebHostBuilder().Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            })
++            .Build();
++
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+ 
+         var message = new HttpRequestMessage(HttpMethod.Post, "https://example.com/");
+@@ -297,8 +381,18 @@ public class TestClientTests
+ 
+         Stream requestStream = null;
+ 
+-        var builder = new WebHostBuilder().Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            })
++            .Build();
++
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+ 
+         var httpRequest = new HttpRequestMessage(HttpMethod.Post, "http://localhost:12345");
+@@ -354,8 +448,18 @@ public class TestClientTests
+ 
+         Stream requestStream = null;
+ 
+-        var builder = new WebHostBuilder().Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            })
++            .Build();
++
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+ 
+         var httpRequest = new HttpRequestMessage(HttpMethod.Post, "http://localhost:12345");
+@@ -416,8 +520,19 @@ public class TestClientTests
+ 
+         Stream requestStream = null;
+ 
+-        var builder = new WebHostBuilder().Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            })
++            .Build();
++
++        var server = host.GetTestServer();
++
++        await host.StartAsync();
++
+         var client = server.CreateClient();
+ 
+         var httpRequest = new HttpRequestMessage(HttpMethod.Post, "http://localhost:12345");
+@@ -463,8 +578,18 @@ public class TestClientTests
+ 
+         Stream requestStream = null;
+ 
+-        var builder = new WebHostBuilder().Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            })
++            .Build();
++
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+ 
+         var httpRequest = new HttpRequestMessage(HttpMethod.Post, "http://localhost:12345");
+@@ -514,8 +639,19 @@ public class TestClientTests
+ 
+         Stream requestStream = null;
+ 
+-        var builder = new WebHostBuilder().Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            })
++            .Build();
++
++        var server = host.GetTestServer();
++
++        await host.StartAsync();
++
+         var client = server.CreateClient();
+ 
+         var httpRequest = new HttpRequestMessage(HttpMethod.Post, "http://localhost:12345");
+@@ -598,16 +734,25 @@ public class TestClientTests
+                 }
+             }
+         };
+-        var builder = new WebHostBuilder()
+-            .ConfigureServices(services =>
+-            {
+-                services.AddSingleton<ILogger<IWebHost>>(logger);
+-            })
+-            .Configure(app =>
++
++        var builder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
+             {
+-                app.Run(appDelegate);
++                webHostBuilder
++                .UseTestServer()
++                .ConfigureServices(services =>
++                {
++                    services.AddSingleton<ILogger<IWebHost>>(logger);
++                })
++                .Configure(app =>
++                {
++                    app.Run(appDelegate);
++                });
+             });
+-        var server = new TestServer(builder);
++        using var host = builder.Build();
++
++        await host.StartAsync();
++        var server = host.GetTestServer();
+ 
+         // Act
+         var client = server.CreateWebSocketClient();
+@@ -668,13 +813,18 @@ public class TestClientTests
+                 }
+             }
+         };
+-        var builder = new WebHostBuilder()
+-            .Configure(app =>
++
++        var builder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
+             {
+-                app.Run(appDelegate);
++                webHostBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
+             });
+-        var server = new TestServer(builder);
++        using var host = builder.Build();
++        await host.StartAsync();
+ 
++        var server = host.GetTestServer();
+         // Act
+         var client = server.CreateWebSocketClient();
+         client.SubProtocols.Add("alpha");
+@@ -720,10 +870,19 @@ public class TestClientTests
+                 }
+             }
+         };
+-        var builder = new WebHostBuilder()
+-            .ConfigureServices(services => services.AddSingleton<ILogger<IWebHost>>(logger))
+-            .Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++
++        var builder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseTestServer()
++                    .ConfigureServices(services => services.AddSingleton<ILogger<IWebHost>>(logger))
++                    .Configure(app => app.Run(appDelegate));
++            });
++        using var host = builder.Build();
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+ 
+         // Act
+         var client = server.CreateWebSocketClient();
+@@ -763,11 +922,18 @@ public class TestClientTests
+                 websocket.Dispose();
+             }
+         };
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(appDelegate);
+-        });
+-        var server = new TestServer(builder);
++
++        var builder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            });
++        using var host = builder.Build();
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+ 
+         // Act
+         var client = server.CreateWebSocketClient();
+@@ -796,11 +962,18 @@ public class TestClientTests
+                 }
+             }
+         };
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(appDelegate);
+-        });
+-        var server = new TestServer(builder);
++
++        var builder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            });
++        using var host = builder.Build();
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+ 
+         // Act
+         var client = server.CreateWebSocketClient();
+@@ -844,8 +1017,18 @@ public class TestClientTests
+         };
+ 
+         // Act
+-        var builder = new WebHostBuilder().Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            })
++            .Build();
++
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+         var request = new HttpRequestMessage(HttpMethod.Get, "http://localhost:12345");
+         var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+@@ -860,21 +1043,31 @@ public class TestClientTests
+     public async Task ClientCancellationAbortsRequest()
+     {
+         var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+-        var builder = new WebHostBuilder().Configure(app => app.Run(async ctx =>
+-        {
+-            try
+-            {
+-                await Task.Delay(TimeSpan.FromSeconds(30), ctx.RequestAborted);
+-                tcs.SetResult();
+-            }
+-            catch (Exception e)
++
++        var builder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
+             {
+-                tcs.SetException(e);
+-                return;
+-            }
+-            throw new InvalidOperationException("The request was not aborted");
+-        }));
+-        using var server = new TestServer(builder);
++                webHostBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(async ctx =>
++                    {
++                        try
++                        {
++                            await Task.Delay(TimeSpan.FromSeconds(30), ctx.RequestAborted);
++                            tcs.SetResult();
++                        }
++                        catch (Exception e)
++                        {
++                            tcs.SetException(e);
++                            return;
++                        }
++                        throw new InvalidOperationException("The request was not aborted");
++                    }));
++            });
++        using var host = builder.Build();
++        await host.StartAsync();
++
++        using var server = host.GetTestServer();
+         using var client = server.CreateClient();
+         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1));
+         var response = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.GetAsync("http://localhost:12345", cts.Token));
+@@ -890,16 +1083,25 @@ public class TestClientTests
+         asyncLocal.Value = value;
+ 
+         object capturedValue = null;
+-        var builder = new WebHostBuilder()
+-            .Configure(app =>
++
++        var builder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
+             {
+-                app.Run((context) =>
+-                {
+-                    capturedValue = asyncLocal.Value;
+-                    return context.Response.WriteAsync("Done");
+-                });
++                webHostBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run((context) =>
++                        {
++                            capturedValue = asyncLocal.Value;
++                            return context.Response.WriteAsync("Done");
++                        });
++                    });
+             });
+-        var server = new TestServer(builder);
++        using var host = builder.Build();
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+ 
+         var resp = await client.GetAsync("/");
+@@ -915,19 +1117,28 @@ public class TestClientTests
+         asyncLocal.Value = value;
+ 
+         object capturedValue = null;
+-        var builder = new WebHostBuilder()
+-            .Configure(app =>
++
++        var builder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
+             {
+-                app.Run((context) =>
+-                {
+-                    capturedValue = asyncLocal.Value;
+-                    return context.Response.WriteAsync("Done");
+-                });
++                webHostBuilder
++                    .UseTestServer(o =>
++                    {
++                        o.PreserveExecutionContext = true;
++                    })
++                    .Configure(app =>
++                    {
++                        app.Run((context) =>
++                        {
++                            capturedValue = asyncLocal.Value;
++                            return context.Response.WriteAsync("Done");
++                        });
++                    });
+             });
+-        var server = new TestServer(builder)
+-        {
+-            PreserveExecutionContext = true
+-        };
++        using var host = builder.Build();
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+ 
+         var resp = await client.GetAsync("/");
+@@ -946,8 +1157,18 @@ public class TestClientTests
+             protocol = ctx.Request.Protocol;
+             await ctx.Response.WriteAsync(expected);
+         };
+-        var builder = new WebHostBuilder().Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            })
++            .Build();
++
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+         var request = new HttpRequestMessage(HttpMethod.Get, "http://localhost:12345");
+ 
+@@ -972,8 +1193,18 @@ public class TestClientTests
+             protocol = ctx.Request.Protocol;
+             await ctx.Response.WriteAsync(expected);
+         };
+-        var builder = new WebHostBuilder().Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            })
++            .Build();
++
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+         var request = new HttpRequestMessage(HttpMethod.Get, "http://localhost:12345");
+         request.Version = new Version(2, 0);
+@@ -999,8 +1230,18 @@ public class TestClientTests
+             protocol = ctx.Request.Protocol;
+             await ctx.Response.WriteAsync(expected);
+         };
+-        var builder = new WebHostBuilder().Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            })
++            .Build();
++
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+         var request = new HttpRequestMessage(HttpMethod.Get, "http://localhost:12345");
+         request.Version = new Version(3, 0);
+@@ -1018,7 +1259,10 @@ public class TestClientTests
+     [Fact]
+     public async Task VerifyWebSocketAndUpgradeFeaturesForNonWebSocket()
+     {
+-        using (var testServer = new TestServer(new WebHostBuilder()
++        var builder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            webHostBuilder
++            .UseTestServer()
+             .Configure(app =>
+             {
+                 app.UseWebSockets();
+@@ -1036,12 +1280,14 @@ public class TestClientTests
+ 
+                     await c.Response.WriteAsync("test");
+                 });
+-            })))
+-        {
+-            var client = testServer.CreateClient();
++            }));
++        using var host = builder.Build();
++        await host.StartAsync();
+ 
+-            var actual = await client.GetStringAsync("http://localhost:12345/");
+-            Assert.Equal("test", actual);
+-        }
++        var testServer = host.GetTestServer();
++        var client = testServer.CreateClient();
++
++        var actual = await client.GetStringAsync("http://localhost:12345/");
++        Assert.Equal("test", actual);
+     }
+ }
+diff --git a/src/Hosting/TestHost/test/TestServerTests.cs b/src/Hosting/TestHost/test/TestServerTests.cs
+index 8437d11065..4cd798ae3e 100644
+--- a/src/Hosting/TestHost/test/TestServerTests.cs
++++ b/src/Hosting/TestHost/test/TestServerTests.cs
+@@ -92,23 +92,29 @@ public class TestServerTests
+     {
+         // Arrange
+         // Act & Assert (Does not throw)
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         new TestServer(new WebHostBuilder().Configure(app => { }));
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+     }
+ 
+     [Fact]
+     public void CreateWithDelegate_DI()
+     {
+-        var builder = new WebHostBuilder()
+-            .Configure(app => { })
+-            .UseTestServer();
+-
+-        using var host = builder.Build();
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => { });
++            })
++            .Build();
+         host.Start();
+     }
+ 
+     [Fact]
+     public void DoesNotCaptureStartupErrorsByDefault()
+     {
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         var builder = new WebHostBuilder()
+             .Configure(app =>
+             {
+@@ -116,11 +122,13 @@ public class TestServerTests
+             });
+ 
+         Assert.Throws<InvalidOperationException>(() => new TestServer(builder));
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+     }
+ 
+     [Fact]
+     public async Task ServicesCanBeOverridenForTestingAsync()
+     {
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         var builder = new WebHostBuilder()
+             .ConfigureServices(s => s.AddSingleton<IServiceProviderFactory<ThirdPartyContainer>, ThirdPartyContainerServiceProviderFactory>())
+             .UseStartup<ThirdPartyContainerStartup>()
+@@ -128,6 +136,7 @@ public class TestServerTests
+             .ConfigureTestContainer<ThirdPartyContainer>(container => container.Services.AddSingleton(new TestService { Message = "OverridesConfigureContainer" }));
+ 
+         var host = new TestServer(builder);
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+ 
+         var response = await host.CreateClient().GetStringAsync("/");
+ 
+@@ -162,6 +171,7 @@ public class TestServerTests
+     [Fact]
+     public void CaptureStartupErrorsSettingPreserved()
+     {
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         var builder = new WebHostBuilder()
+             .CaptureStartupErrors(true)
+             .Configure(app =>
+@@ -171,12 +181,14 @@ public class TestServerTests
+ 
+         // Does not throw
+         new TestServer(builder);
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+     }
+ 
+     [Fact]
+     public void ApplicationServicesAvailableFromTestServer()
+     {
+         var testService = new TestService();
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         var builder = new WebHostBuilder()
+             .Configure(app => { })
+             .ConfigureServices(services =>
+@@ -184,21 +196,52 @@ public class TestServerTests
+                 services.AddSingleton(testService);
+             });
+         var server = new TestServer(builder);
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+ 
+         Assert.Equal(testService, server.Host.Services.GetRequiredService<TestService>());
+     }
+ 
++    [Fact]
++    public async Task ApplicationServicesAvailableFromTestServer_GenericHost()
++    {
++        var testService = new TestService();
++        var builder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++                webHostBuilder
++                    .UseTestServer()
++                    .Configure(app => { })
++                    .ConfigureServices(services =>
++                    {
++                        services.AddSingleton(testService);
++                    }));
++        using var host = builder.Build();
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
++
++        Assert.Equal(testService, server.Services.GetRequiredService<TestService>());
++    }
++
+     [Fact]
+     public async Task RequestServicesAutoCreated()
+     {
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(context =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                return context.Response.WriteAsync("RequestServices:" + (context.RequestServices != null));
+-            });
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(context =>
++                        {
++                            return context.Response.WriteAsync("RequestServices:" + (context.RequestServices != null));
++                        });
++                    });
++            })
++            .Build();
++
++        await host.StartAsync();
++        var server = host.GetTestServer();
+ 
+         string result = await server.CreateClient().GetStringAsync("/path");
+         Assert.Equal("RequestServices:True", result);
+@@ -207,17 +250,26 @@ public class TestServerTests
+     [Fact]
+     public async Task DispoingTheRequestBodyDoesNotDisposeClientStreams()
+     {
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(async context =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                using (var sr = new StreamReader(context.Request.Body))
+-                {
+-                    await context.Response.WriteAsync(await sr.ReadToEndAsync());
+-                }
+-            });
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(async context =>
++                        {
++                            using (var sr = new StreamReader(context.Request.Body))
++                            {
++                                await context.Response.WriteAsync(await sr.ReadToEndAsync());
++                            }
++                        });
++                    });
++            })
++            .Build();
++
++        await host.StartAsync();
++        var server = host.GetTestServer();
+ 
+         var stream = new ThrowOnDisposeStream();
+         stream.Write(Encoding.ASCII.GetBytes("Hello World"));
+@@ -250,8 +302,10 @@ public class TestServerTests
+     [Fact]
+     public async Task CustomServiceProviderSetsApplicationServices()
+     {
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         var builder = new WebHostBuilder().UseStartup<CustomContainerStartup>();
+         var server = new TestServer(builder);
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+         string result = await server.CreateClient().GetStringAsync("/path");
+         Assert.Equal("ApplicationServicesEqual:True", result);
+     }
+@@ -261,6 +315,7 @@ public class TestServerTests
+     {
+         // Arrange
+         var url = "http://localhost:8000/appName/serviceName";
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         var builder = new WebHostBuilder()
+             .UseUrls(url)
+             .Configure(applicationBuilder =>
+@@ -268,6 +323,7 @@ public class TestServerTests
+                 var serverAddressesFeature = applicationBuilder.ServerFeatures.Get<IServerAddressesFeature>();
+                 Assert.Contains(serverAddressesFeature.Addresses, s => string.Equals(s, url, StringComparison.Ordinal));
+             });
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+ 
+         var featureCollection = new FeatureCollection();
+         featureCollection.Set<IServerAddressesFeature>(new ServerAddressesFeature());
+@@ -283,6 +339,7 @@ public class TestServerTests
+     public void TestServerConstructedWithoutFeatureCollectionHasServerAddressesFeature()
+     {
+         // Arrange
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         var builder = new WebHostBuilder()
+             .Configure(applicationBuilder =>
+             {
+@@ -292,6 +349,7 @@ public class TestServerTests
+ 
+         // Act
+         new TestServer(builder);
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+ 
+         // Assert
+         // Is inside configure callback
+@@ -300,10 +358,12 @@ public class TestServerTests
+     [Fact]
+     public void TestServerConstructorWithNullFeatureCollectionThrows()
+     {
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         var builder = new WebHostBuilder()
+             .Configure(b => { });
+ 
+         Assert.Throws<ArgumentNullException>(() => new TestServer(builder, null));
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+     }
+ 
+     [Fact]
+@@ -324,12 +384,14 @@ public class TestServerTests
+     {
+         // Arrange
+         var testService = new TestService();
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         var builder = new WebHostBuilder()
+             .ConfigureServices(services => services.AddSingleton(testService))
+             .Configure(_ => { });
+ 
+         // Act
+         var testServer = new TestServer(builder);
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+ 
+         // Assert
+         Assert.Equal(testService, testServer.Services.GetService<TestService>());
+@@ -423,19 +485,28 @@ public class TestServerTests
+     [Fact]
+     public async Task ExistingRequestServicesWillNotBeReplaced()
+     {
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(context =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                var service = context.RequestServices.GetService<TestService>();
+-                return context.Response.WriteAsync("Found:" + (service != null));
+-            });
+-        })
+-        .ConfigureServices(services =>
+-        {
+-            services.AddTransient<IStartupFilter, RequestServicesFilter>();
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(context =>
++                        {
++                            var service = context.RequestServices.GetService<TestService>();
++                            return context.Response.WriteAsync("Found:" + (service != null));
++                        });
++                    })
++                    .ConfigureServices(services =>
++                    {
++                        services.AddTransient<IStartupFilter, RequestServicesFilter>();
++                    });
++            })
++            .Build();
++
++        await host.StartAsync();
++        var server = host.GetTestServer();
+ 
+         string result = await server.CreateClient().GetStringAsync("/path");
+         Assert.Equal("Found:True", result);
+@@ -444,20 +515,29 @@ public class TestServerTests
+     [Fact]
+     public async Task CanSetCustomServiceProvider()
+     {
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(context =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                context.RequestServices = new ServiceCollection()
+-                .AddTransient<TestService>()
+-                .BuildServiceProvider();
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(context =>
++                        {
++                            context.RequestServices = new ServiceCollection()
++                            .AddTransient<TestService>()
++                            .BuildServiceProvider();
+ 
+-                var s = context.RequestServices.GetRequiredService<TestService>();
++                            var s = context.RequestServices.GetRequiredService<TestService>();
+ 
+-                return context.Response.WriteAsync("Success");
+-            });
+-        });
+-        var server = new TestServer(builder);
++                            return context.Response.WriteAsync("Success");
++                        });
++                    });
++            })
++            .Build();
++
++        await host.StartAsync();
++        var server = host.GetTestServer();
+ 
+         string result = await server.CreateClient().GetStringAsync("/path");
+         Assert.Equal("Success", result);
+@@ -493,19 +573,28 @@ public class TestServerTests
+     public async Task ExistingServiceProviderFeatureWillNotBeReplaced()
+     {
+         var appServices = new ServiceCollection().BuildServiceProvider();
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(context =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                Assert.Equal(appServices, context.RequestServices);
+-                return context.Response.WriteAsync("Success");
+-            });
+-        })
+-        .ConfigureServices(services =>
+-        {
+-            services.AddSingleton<IStartupFilter>(new ReplaceServiceProvidersFeatureFilter(appServices, appServices));
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(context =>
++                        {
++                            Assert.Equal(appServices, context.RequestServices);
++                            return context.Response.WriteAsync("Success");
++                        });
++                    })
++                    .ConfigureServices(services =>
++                    {
++                        services.AddSingleton<IStartupFilter>(new ReplaceServiceProvidersFeatureFilter(appServices, appServices));
++                    });
++            })
++            .Build();
++
++        await host.StartAsync();
++        var server = host.GetTestServer();
+ 
+         var result = await server.CreateClient().GetStringAsync("/path");
+         Assert.Equal("Success", result);
+@@ -534,19 +623,28 @@ public class TestServerTests
+     [Fact]
+     public async Task WillReplaceServiceProviderFeatureWithNullRequestServices()
+     {
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(context =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                Assert.Null(context.RequestServices);
+-                return context.Response.WriteAsync("Success");
+-            });
+-        })
+-        .ConfigureServices(services =>
+-        {
+-            services.AddTransient<IStartupFilter, NullServiceProvidersFeatureFilter>();
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(context =>
++                        {
++                            Assert.Null(context.RequestServices);
++                            return context.Response.WriteAsync("Success");
++                        });
++                    })
++                    .ConfigureServices(services =>
++                    {
++                        services.AddTransient<IStartupFilter, NullServiceProvidersFeatureFilter>();
++                    });
++            })
++            .Build();
++
++        await host.StartAsync();
++        var server = host.GetTestServer();
+ 
+         var result = await server.CreateClient().GetStringAsync("/path");
+         Assert.Equal("Success", result);
+@@ -555,15 +653,24 @@ public class TestServerTests
+     [Fact]
+     public async Task CanAccessLogger()
+     {
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(context =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                var logger = app.ApplicationServices.GetRequiredService<ILogger<HttpContext>>();
+-                return context.Response.WriteAsync("FoundLogger:" + (logger != null));
+-            });
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(context =>
++                        {
++                            var logger = app.ApplicationServices.GetRequiredService<ILogger<HttpContext>>();
++                            return context.Response.WriteAsync("FoundLogger:" + (logger != null));
++                        });
++                    });
++            })
++            .Build();
++
++        await host.StartAsync();
++        var server = host.GetTestServer();
+ 
+         string result = await server.CreateClient().GetStringAsync("/path");
+         Assert.Equal("FoundLogger:True", result);
+@@ -572,19 +679,28 @@ public class TestServerTests
+     [Fact]
+     public async Task CanAccessHttpContext()
+     {
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(context =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                var accessor = app.ApplicationServices.GetRequiredService<IHttpContextAccessor>();
+-                return context.Response.WriteAsync("HasContext:" + (accessor.HttpContext != null));
+-            });
+-        })
+-        .ConfigureServices(services =>
+-        {
+-            services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(context =>
++                        {
++                            var accessor = app.ApplicationServices.GetRequiredService<IHttpContextAccessor>();
++                            return context.Response.WriteAsync("HasContext:" + (accessor.HttpContext != null));
++                        });
++                    })
++                    .ConfigureServices(services =>
++                    {
++                        services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
++                    });
++            })
++            .Build();
++
++        await host.StartAsync();
++        var server = host.GetTestServer();
+ 
+         string result = await server.CreateClient().GetStringAsync("/path");
+         Assert.Equal("HasContext:True", result);
+@@ -603,20 +719,29 @@ public class TestServerTests
+     [Fact]
+     public async Task CanAddNewHostServices()
+     {
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(context =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                var accessor = app.ApplicationServices.GetRequiredService<ContextHolder>();
+-                return context.Response.WriteAsync("HasContext:" + (accessor.Accessor.HttpContext != null));
+-            });
+-        })
+-        .ConfigureServices(services =>
+-        {
+-            services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
+-            services.AddSingleton<ContextHolder>();
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(context =>
++                        {
++                            var accessor = app.ApplicationServices.GetRequiredService<ContextHolder>();
++                            return context.Response.WriteAsync("HasContext:" + (accessor.Accessor.HttpContext != null));
++                        });
++                    })
++                    .ConfigureServices(services =>
++                    {
++                        services.AddSingleton<IHttpContextAccessor, HttpContextAccessor>();
++                        services.AddSingleton<ContextHolder>();
++                    });
++            })
++            .Build();
++
++        await host.StartAsync();
++        var server = host.GetTestServer();
+ 
+         string result = await server.CreateClient().GetStringAsync("/path");
+         Assert.Equal("HasContext:True", result);
+@@ -625,14 +750,23 @@ public class TestServerTests
+     [Fact]
+     public async Task CreateInvokesApp()
+     {
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(context =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                return context.Response.WriteAsync("CreateInvokesApp");
+-            });
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(context =>
++                        {
++                            return context.Response.WriteAsync("CreateInvokesApp");
++                        });
++                    });
++            })
++            .Build();
++
++        await host.StartAsync();
++        var server = host.GetTestServer();
+ 
+         string result = await server.CreateClient().GetStringAsync("/path");
+         Assert.Equal("CreateInvokesApp", result);
+@@ -641,15 +775,24 @@ public class TestServerTests
+     [Fact]
+     public async Task DisposeStreamIgnored()
+     {
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            app.Run(async context =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
+             {
+-                await context.Response.WriteAsync("Response");
+-                context.Response.Body.Dispose();
+-            });
+-        });
+-        var server = new TestServer(builder);
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(async context =>
++                        {
++                            await context.Response.WriteAsync("Response");
++                            context.Response.Body.Dispose();
++                        });
++                    });
++            })
++            .Build();
++
++        await host.StartAsync();
++        var server = host.GetTestServer();
+ 
+         HttpResponseMessage result = await server.CreateClient().GetAsync("/");
+         Assert.Equal(HttpStatusCode.OK, result.StatusCode);
+@@ -659,6 +802,7 @@ public class TestServerTests
+     [Fact]
+     public async Task DisposedServerThrows()
+     {
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         var builder = new WebHostBuilder().Configure(app =>
+         {
+             app.Run(async context =>
+@@ -668,6 +812,7 @@ public class TestServerTests
+             });
+         });
+         var server = new TestServer(builder);
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+ 
+         HttpResponseMessage result = await server.CreateClient().GetAsync("/");
+         Assert.Equal(HttpStatusCode.OK, result.StatusCode);
+@@ -678,17 +823,23 @@ public class TestServerTests
+     [Fact]
+     public async Task CancelAborts()
+     {
+-        var builder = new WebHostBuilder()
+-                              .Configure(app =>
+-                              {
+-                                  app.Run(context =>
+-                                  {
+-                                      TaskCompletionSource tcs = new TaskCompletionSource();
+-                                      tcs.SetCanceled();
+-                                      return tcs.Task;
+-                                  });
+-                              });
+-        var server = new TestServer(builder);
++        var builder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++                webHostBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(context =>
++                        {
++                            TaskCompletionSource tcs = new TaskCompletionSource();
++                            tcs.SetCanceled();
++                            return tcs.Task;
++                        });
++                    }));
++        using var host = builder.Build();
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+ 
+         await Assert.ThrowsAsync<TaskCanceledException>(async () => { string result = await server.CreateClient().GetStringAsync("/path"); });
+     }
+@@ -696,9 +847,15 @@ public class TestServerTests
+     [Fact]
+     public async Task CanCreateViaStartupType()
+     {
+-        var builder = new WebHostBuilder()
+-            .UseStartup<TestStartup>();
+-        var server = new TestServer(builder);
++        var builder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++                webHostBuilder
++                    .UseTestServer()
++                    .UseStartup<TestStartup>());
++        using var host = builder.Build();
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         HttpResponseMessage result = await server.CreateClient().GetAsync("/");
+         Assert.Equal(HttpStatusCode.OK, result.StatusCode);
+         Assert.Equal("FoundService:True", await result.Content.ReadAsStringAsync());
+@@ -707,10 +864,16 @@ public class TestServerTests
+     [Fact]
+     public async Task CanCreateViaStartupTypeAndSpecifyEnv()
+     {
+-        var builder = new WebHostBuilder()
+-                        .UseStartup<TestStartup>()
+-                        .UseEnvironment("Foo");
+-        var server = new TestServer(builder);
++        var builder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++                webHostBuilder
++                    .UseTestServer()
++                    .UseStartup<TestStartup>()
++                    .UseEnvironment("Foo"));
++        using var host = builder.Build();
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+ 
+         HttpResponseMessage result = await server.CreateClient().GetAsync("/");
+         Assert.Equal(HttpStatusCode.OK, result.StatusCode);
+@@ -722,16 +885,22 @@ public class TestServerTests
+     {
+         DiagnosticListener diagnosticListener = null;
+ 
+-        var builder = new WebHostBuilder()
+-                        .Configure(app =>
++        var builder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++                webHostBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        diagnosticListener = app.ApplicationServices.GetRequiredService<DiagnosticListener>();
++                        app.Run(context =>
+                         {
+-                            diagnosticListener = app.ApplicationServices.GetRequiredService<DiagnosticListener>();
+-                            app.Run(context =>
+-                            {
+-                                return context.Response.WriteAsync("Hello World");
+-                            });
++                            return context.Response.WriteAsync("Hello World");
+                         });
+-        var server = new TestServer(builder);
++                    }));
++        using var host = builder.Build();
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+ 
+         var listener = new TestDiagnosticListener();
+         diagnosticListener.SubscribeWithAdapter(listener);
+@@ -750,15 +919,22 @@ public class TestServerTests
+     public async Task ExceptionDiagnosticAvailable()
+     {
+         DiagnosticListener diagnosticListener = null;
+-        var builder = new WebHostBuilder().Configure(app =>
+-        {
+-            diagnosticListener = app.ApplicationServices.GetRequiredService<DiagnosticListener>();
+-            app.Run(context =>
+-            {
+-                throw new Exception("Test exception");
+-            });
+-        });
+-        var server = new TestServer(builder);
++        var builder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++                webHostBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        diagnosticListener = app.ApplicationServices.GetRequiredService<DiagnosticListener>();
++                        app.Run(context =>
++                        {
++                            throw new Exception("Test exception");
++                        });
++                    }));
++        using var host = builder.Build();
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+ 
+         var listener = new TestDiagnosticListener();
+         diagnosticListener.SubscribeWithAdapter(listener);
+@@ -783,8 +959,18 @@ public class TestServerTests
+         RequestDelegate appDelegate = ctx =>
+             ctx.Response.WriteAsync(ctx.Request.Headers.Host);
+ 
+-        var builder = new WebHostBuilder().Configure(app => app.Run(appDelegate));
+-        var server = new TestServer(builder);
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webBuilder =>
++            {
++                webBuilder
++                    .UseTestServer()
++                    .Configure(app => app.Run(appDelegate));
++            })
++            .Build();
++
++        await host.StartAsync();
++
++        var server = host.GetTestServer();
+         var client = server.CreateClient();
+ 
+         var request = new HttpRequestMessage(HttpMethod.Get, uri);
+diff --git a/src/Hosting/TestHost/test/WebSocketClientTests.cs b/src/Hosting/TestHost/test/WebSocketClientTests.cs
+index d17f6a4396..f3e32c28d5 100644
+--- a/src/Hosting/TestHost/test/WebSocketClientTests.cs
++++ b/src/Hosting/TestHost/test/WebSocketClientTests.cs
+@@ -4,6 +4,7 @@
+ using Microsoft.AspNetCore.Builder;
+ using Microsoft.AspNetCore.Hosting;
+ using Microsoft.AspNetCore.Http.Features;
++using Microsoft.Extensions.Hosting;
+ 
+ namespace Microsoft.AspNetCore.TestHost.Tests;
+ 
+@@ -19,22 +20,31 @@ public class WebSocketClientTests
+         string capturedHost = null;
+         string capturedPath = null;
+ 
+-        using (var testServer = new TestServer(new WebHostBuilder()
+-            .Configure(app =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
+             {
+-                app.Run(ctx =>
+-                {
+-                    if (ctx.Request.Path.StartsWithSegments("/connect"))
++                webHostBuilder
++                    .UseTestServer()
++                    .Configure(app =>
+                     {
+-                        capturedScheme = ctx.Request.Scheme;
+-                        capturedHost = ctx.Request.Host.Value;
+-                        capturedPath = ctx.Request.Path;
+-                    }
+-                    return Task.FromResult(0);
+-                });
+-            })))
+-        {
+-            var client = testServer.CreateWebSocketClient();
++                        app.Run(ctx =>
++                        {
++                            if (ctx.Request.Path.StartsWithSegments("/connect"))
++                            {
++                                capturedScheme = ctx.Request.Scheme;
++                                capturedHost = ctx.Request.Host.Value;
++                                capturedPath = ctx.Request.Path;
++                            }
++                            return Task.FromResult(0);
++                        });
++                    });
++            })
++            .Build();
++
++        await host.StartAsync();
++
++        var testServer = host.GetTestServer();
++        var client = testServer.CreateWebSocketClient();
+ 
+             try
+             {
+@@ -46,7 +56,6 @@ public class WebSocketClientTests
+             {
+                 // An exception will be thrown because our dummy endpoint does not implement a full Web socket server
+             }
+-        }
+ 
+         Assert.Equal("http", capturedScheme);
+         Assert.Equal(expectedHost, capturedHost);
+@@ -56,72 +65,88 @@ public class WebSocketClientTests
+     [Fact]
+     public async Task CanAcceptWebSocket()
+     {
+-        using (var testServer = new TestServer(new WebHostBuilder()
+-            .Configure(app =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
+             {
+-                app.UseWebSockets();
+-                app.Run(async ctx =>
+-                {
+-                    if (ctx.Request.Path.StartsWithSegments("/connect"))
++                webHostBuilder
++                    .UseTestServer()
++                    .Configure(app =>
+                     {
+-                        if (ctx.WebSockets.IsWebSocketRequest)
++                        app.UseWebSockets();
++                        app.Run(async ctx =>
+                         {
+-                            using var websocket = await ctx.WebSockets.AcceptWebSocketAsync();
+-                            var buffer = new byte[1000];
+-                            var res = await websocket.ReceiveAsync(buffer, default);
+-                            await websocket.SendAsync(buffer.AsMemory(0, res.Count), System.Net.WebSockets.WebSocketMessageType.Binary, true, default);
+-                            await websocket.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, null, default);
+-                        }
+-                    }
+-                });
+-            })))
+-        {
+-            var client = testServer.CreateWebSocketClient();
++                            if (ctx.Request.Path.StartsWithSegments("/connect"))
++                            {
++                                if (ctx.WebSockets.IsWebSocketRequest)
++                                {
++                                    using var websocket = await ctx.WebSockets.AcceptWebSocketAsync();
++                                    var buffer = new byte[1000];
++                                    var res = await websocket.ReceiveAsync(buffer, default);
++                                    await websocket.SendAsync(buffer.AsMemory(0, res.Count), System.Net.WebSockets.WebSocketMessageType.Binary, true, default);
++                                    await websocket.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, null, default);
++                                }
++                            }
++                        });
++                    });
++            })
++            .Build();
+ 
+-            using var socket = await client.ConnectAsync(
+-                uri: new Uri("http://localhost/connect"),
+-                cancellationToken: default);
++        await host.StartAsync();
+ 
+-            await socket.SendAsync(new byte[10], System.Net.WebSockets.WebSocketMessageType.Binary, true, default);
+-            var res = await socket.ReceiveAsync(new byte[100], default);
+-            Assert.Equal(10, res.Count);
+-            Assert.True(res.EndOfMessage);
++        var testServer = host.GetTestServer();
++        var client = testServer.CreateWebSocketClient();
+ 
+-            await socket.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, null, default);
+-        }
++        using var socket = await client.ConnectAsync(
++            uri: new Uri("http://localhost/connect"),
++            cancellationToken: default);
++
++        await socket.SendAsync(new byte[10], System.Net.WebSockets.WebSocketMessageType.Binary, true, default);
++        var res = await socket.ReceiveAsync(new byte[100], default);
++        Assert.Equal(10, res.Count);
++        Assert.True(res.EndOfMessage);
++
++        await socket.CloseAsync(System.Net.WebSockets.WebSocketCloseStatus.NormalClosure, null, default);
+     }
+ 
+     [Fact]
+     public async Task VerifyWebSocketAndUpgradeFeatures()
+     {
+-        using (var testServer = new TestServer(new WebHostBuilder()
+-            .Configure(app =>
++        using var host = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
+             {
+-                app.Run(async c =>
+-                {
+-                    var upgradeFeature = c.Features.Get<IHttpUpgradeFeature>();
+-                    Assert.NotNull(upgradeFeature);
+-                    Assert.False(upgradeFeature.IsUpgradableRequest);
+-                    await Assert.ThrowsAsync<NotSupportedException>(() => upgradeFeature.UpgradeAsync());
+-
+-                    var webSocketFeature = c.Features.Get<IHttpWebSocketFeature>();
+-                    Assert.NotNull(webSocketFeature);
+-                    Assert.True(webSocketFeature.IsWebSocketRequest);
+-                });
+-            })))
+-        {
+-            var client = testServer.CreateWebSocketClient();
++                webHostBuilder
++                    .UseTestServer()
++                    .Configure(app =>
++                    {
++                        app.Run(async c =>
++                        {
++                            var upgradeFeature = c.Features.Get<IHttpUpgradeFeature>();
++                            Assert.NotNull(upgradeFeature);
++                            Assert.False(upgradeFeature.IsUpgradableRequest);
++                            await Assert.ThrowsAsync<NotSupportedException>(() => upgradeFeature.UpgradeAsync());
+ 
+-            try
+-            {
+-                using var socket = await client.ConnectAsync(
+-                    uri: new Uri("http://localhost/connect"),
+-                    cancellationToken: default);
+-            }
+-            catch
+-            {
+-                // An exception will be thrown because our endpoint does not accept the websocket
+-            }
++                            var webSocketFeature = c.Features.Get<IHttpWebSocketFeature>();
++                            Assert.NotNull(webSocketFeature);
++                            Assert.True(webSocketFeature.IsWebSocketRequest);
++                        });
++                    });
++            })
++            .Build();
++
++        await host.StartAsync();
++
++        var testServer = host.GetTestServer();
++        var client = testServer.CreateWebSocketClient();
++
++        try
++        {
++            using var socket = await client.ConnectAsync(
++                uri: new Uri("http://localhost/connect"),
++                cancellationToken: default);
++        }
++        catch
++        {
++            // An exception will be thrown because our endpoint does not accept the websocket
+         }
+     }
+ }
+diff --git a/src/Hosting/WindowsServices/test/WebHostServiceTests.cs b/src/Hosting/WindowsServices/test/WebHostServiceTests.cs
+index 16a4bcac02..6d428ac4cb 100644
+--- a/src/Hosting/WindowsServices/test/WebHostServiceTests.cs
++++ b/src/Hosting/WindowsServices/test/WebHostServiceTests.cs
+@@ -19,7 +19,9 @@ public class WebHostServiceTests
+     [ConditionalFact]
+     public async Task StopBeforeServiceStarted()
+     {
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         var host = new WebHostBuilder().UseServer(new FakeServer()).Configure(x => { }).Build();
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+         var webHostService = new WebHostService(host);
+         var applicationLifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+ 
+@@ -33,7 +35,9 @@ public class WebHostServiceTests
+     [ConditionalFact]
+     public async Task StopAfterServiceStarted()
+     {
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         var host = new WebHostBuilder().UseServer(new FakeServer()).Configure(x => { }).Build();
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+         var webHostService = new WebHostService(host);
+         var applicationLifetime = host.Services.GetRequiredService<IHostApplicationLifetime>();
+ 
+diff --git a/src/Hosting/test/testassets/IStartupInjectionAssemblyName/Program.cs b/src/Hosting/test/testassets/IStartupInjectionAssemblyName/Program.cs
+index 99f3ded974..7735af5408 100644
+--- a/src/Hosting/test/testassets/IStartupInjectionAssemblyName/Program.cs
++++ b/src/Hosting/test/testassets/IStartupInjectionAssemblyName/Program.cs
+@@ -18,7 +18,9 @@ public class Program
+ 
+     // Do not change the signature of this method. It's used for tests.
+     private static IWebHostBuilder CreateWebHostBuilder(string[] args) =>
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         new WebHostBuilder()
+         .SuppressStatusMessages(true)
+         .ConfigureServices(services => services.AddSingleton<IStartup, Startup>());
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+ }
+diff --git a/src/Hosting/test/testassets/Microsoft.AspNetCore.Hosting.TestSites/Program.cs b/src/Hosting/test/testassets/Microsoft.AspNetCore.Hosting.TestSites/Program.cs
+index e211da9e14..a3d3b15817 100644
+--- a/src/Hosting/test/testassets/Microsoft.AspNetCore.Hosting.TestSites/Program.cs
++++ b/src/Hosting/test/testassets/Microsoft.AspNetCore.Hosting.TestSites/Program.cs
+@@ -8,6 +8,7 @@ using Microsoft.AspNetCore.Hosting;
+ using Microsoft.AspNetCore.Hosting.Server;
+ using Microsoft.AspNetCore.Http.Features;
+ using Microsoft.Extensions.Configuration;
++using Microsoft.Extensions.Hosting;
+ using Microsoft.Extensions.Logging;
+ using Microsoft.Extensions.Logging.Console;
+ 
+@@ -22,16 +23,19 @@ public static class Program
+             .AddEnvironmentVariables(prefix: "ASPNETCORE_")
+             .Build();
+ 
+-        var builder = new WebHostBuilder()
+-            .UseServer(new NoopServer())
+-            .UseConfiguration(config)
+-            .SuppressStatusMessages(true)
+-            .ConfigureLogging((_, factory) =>
++        var builder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
+             {
+-                factory.AddConsole();
+-                factory.AddFilter<ConsoleLoggerProvider>(level => level >= LogLevel.Warning);
+-            })
+-            .UseStartup("Microsoft.AspNetCore.Hosting.TestSites");
++                webHostBuilder.UseServer(new NoopServer())
++                    .UseConfiguration(config)
++                    .SuppressStatusMessages(true)
++                    .ConfigureLogging((_, factory) =>
++                    {
++                        factory.AddConsole();
++                        factory.AddFilter<ConsoleLoggerProvider>(level => level >= LogLevel.Warning);
++                    })
++                    .UseStartup("Microsoft.AspNetCore.Hosting.TestSites");
++            });
+ 
+         if (config["STARTMECHANIC"] == "Run")
+         {
+diff --git a/src/Identity/samples/IdentitySample.Mvc/Program.cs b/src/Identity/samples/IdentitySample.Mvc/Program.cs
+index a8c1e8cb56..1cfe3c78f5 100644
+--- a/src/Identity/samples/IdentitySample.Mvc/Program.cs
++++ b/src/Identity/samples/IdentitySample.Mvc/Program.cs
+@@ -1,6 +1,10 @@
+ // Licensed to the .NET Foundation under one or more agreements.
+ // The .NET Foundation licenses this file to you under the MIT license.
+ 
++using System.IO;
++using Microsoft.AspNetCore.Hosting;
++using Microsoft.Extensions.Hosting;
++
+ namespace IdentitySample;
+ 
+ public static class Program
+@@ -12,10 +16,14 @@ public static class Program
+         host.Run();
+     }
+ 
+-    public static IWebHostBuilder CreateHostBuilder(string[] args) =>
+-        new WebHostBuilder()
+-            .UseKestrel()
+-            .UseContentRoot(Directory.GetCurrentDirectory())
+-            .UseIISIntegration()
+-            .UseStartup<Startup>();
++    public static IHostBuilder CreateHostBuilder(string[] args) =>
++        new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseKestrel()
++                    .UseContentRoot(Directory.GetCurrentDirectory())
++                    .UseIISIntegration()
++                    .UseStartup<Startup>();
++            });
+ }
+diff --git a/src/Servers/IIS/IIS/test/testassets/InProcessWebSite/Program.cs b/src/Servers/IIS/IIS/test/testassets/InProcessWebSite/Program.cs
+index 8ae69750af..72d339ba51 100644
+--- a/src/Servers/IIS/IIS/test/testassets/InProcessWebSite/Program.cs
++++ b/src/Servers/IIS/IIS/test/testassets/InProcessWebSite/Program.cs
+@@ -56,10 +56,12 @@ public static class Program
+                 return 12;
+             case "HangOnStop":
+                 {
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+                     var host = new WebHostBuilder()
+                         .UseIIS()
+                         .UseStartup<Startup>()
+                         .Build();
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+                     host.Run();
+ 
+                     Thread.Sleep(Timeout.Infinite);
+@@ -67,11 +69,13 @@ public static class Program
+                 break;
+             case "IncreaseShutdownLimit":
+                 {
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+                     var host = new WebHostBuilder()
+                         .UseIIS()
+                         .UseShutdownTimeout(TimeSpan.FromSeconds(120))
+                         .UseStartup<Startup>()
+                         .Build();
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+ 
+                     host.Run();
+                 }
+@@ -94,11 +98,13 @@ public static class Program
+                 return 0;
+             case "OverriddenServer":
+                 {
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+                     var host = new WebHostBuilder()
+                             .UseIIS()
+                             .ConfigureServices(services => services.AddSingleton<IServer, DummyServer>())
+                             .Configure(builder => builder.Run(async context => { await context.Response.WriteAsync("I shouldn't work"); }))
+                             .Build();
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+                     host.Run();
+                 }
+                 break;
+@@ -111,6 +117,7 @@ public static class Program
+ #if !FORWARDCOMPAT
+             case "DecreaseRequestLimit":
+                 {
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+                     var host = new WebHostBuilder()
+                         .ConfigureLogging((_, factory) =>
+                         {
+@@ -124,6 +131,7 @@ public static class Program
+                         })
+                         .UseStartup<Startup>()
+                         .Build();
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+ 
+                     host.Run();
+                     break;
+@@ -131,6 +139,7 @@ public static class Program
+ #endif
+             case "ThrowInStartup":
+                 {
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+                     var host = new WebHostBuilder()
+                                     .ConfigureLogging((_, factory) =>
+                                     {
+@@ -140,6 +149,7 @@ public static class Program
+                                     .UseIIS()
+                                     .UseStartup<ThrowingStartup>()
+                                     .Build();
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+ 
+                     host.Run();
+                 }
+@@ -189,6 +199,7 @@ public static class Program
+ 
+     private static int StartServer()
+     {
++#pragma warning disable ASPDEPR004 // Type or member is obsolete
+         var host = new WebHostBuilder()
+             .ConfigureLogging((_, factory) =>
+             {
+@@ -200,6 +211,7 @@ public static class Program
+             .UseIISIntegration()
+             .UseStartup<Startup>()
+             .Build();
++#pragma warning restore ASPDEPR004 // Type or member is obsolete
+ 
+         host.Run();
+         return 0;
+diff --git a/src/Servers/Kestrel/Kestrel/test/HttpsConfigurationTests.cs b/src/Servers/Kestrel/Kestrel/test/HttpsConfigurationTests.cs
+index cb27ce5bc2..07f9e09248 100644
+--- a/src/Servers/Kestrel/Kestrel/test/HttpsConfigurationTests.cs
++++ b/src/Servers/Kestrel/Kestrel/test/HttpsConfigurationTests.cs
+@@ -4,11 +4,13 @@
+ using System.Security.Cryptography.X509Certificates;
+ using Microsoft.AspNetCore.Connections;
+ using Microsoft.AspNetCore.Hosting;
++using Microsoft.AspNetCore.Hosting.Server;
+ using Microsoft.AspNetCore.Hosting.Server.Features;
+ using Microsoft.AspNetCore.Server.Kestrel.Core;
+ using Microsoft.AspNetCore.Server.Kestrel.Https;
+ using Microsoft.Extensions.Configuration;
+ using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Hosting;
+ 
+ namespace Microsoft.AspNetCore.Server.Kestrel.Tests;
+ 
+@@ -21,35 +23,39 @@ public class HttpsConfigurationTests
+     [InlineData("https://127.0.0.1:0", false)]
+     public async Task BindAddressFromSetting(string address, bool useKestrelHttpsConfiguration)
+     {
+-        var hostBuilder = new WebHostBuilder()
+-                .UseKestrelCore()
+-                .ConfigureKestrel(serverOptions =>
+-                {
+-                    serverOptions.TestOverrideDefaultCertificate = new X509Certificate2(Path.Combine("shared", "TestCertificates", "aspnetdevcert.pfx"), "testPassword");
+-                })
+-                .Configure(app => { });
+-
+-        // This is what ASPNETCORE_URLS would populate
+-        hostBuilder.UseSetting(WebHostDefaults.ServerUrlsKey, address);
+-
+-        if (useKestrelHttpsConfiguration)
+-        {
+-            hostBuilder.UseKestrelHttpsConfiguration();
+-        }
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseKestrelCore()
++                    .ConfigureKestrel(serverOptions =>
++                    {
++                        serverOptions.TestOverrideDefaultCertificate = new X509Certificate2(Path.Combine("shared", "TestCertificates", "aspnetdevcert.pfx"), "testPassword");
++                    })
++                    .Configure(app => { })
++                    // This is what ASPNETCORE_URLS would populate
++                    .UseSetting(WebHostDefaults.ServerUrlsKey, address);
+ 
+-        var host = hostBuilder.Build();
++                if (useKestrelHttpsConfiguration)
++                {
++                    webHostBuilder.UseKestrelHttpsConfiguration();
++                }
++            });
+ 
+-        Assert.Single(host.ServerFeatures.Get<IServerAddressesFeature>().Addresses, address);
++        using var host = hostBuilder.Build();
+ 
+         if (address.StartsWith("https", StringComparison.OrdinalIgnoreCase) && !useKestrelHttpsConfiguration)
+         {
+-            Assert.Throws<InvalidOperationException>(host.Run);
++            Assert.Throws<InvalidOperationException>(host.Start);
++            Assert.Empty(host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>().Addresses);
+         }
+         else
+         {
+-            // Binding succeeds
+             await host.StartAsync();
+-            await host.StopAsync();
++
++            var addr = Assert.Single(host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>().Addresses);
++            // addr will contain the realized port, so we'll remove the port for comparison
++            Assert.Equal(address[..^2].ToString(), addr.Substring(0, addr.LastIndexOf(':')));
+         }
+     }
+ 
+@@ -59,18 +65,24 @@ public class HttpsConfigurationTests
+         const string httpAddress = "http://127.0.0.1:0";
+         const string httpsAddress = "https://localhost:5001";
+ 
+-        var hostBuilder = new WebHostBuilder()
+-                .UseKestrelCore()
+-                .Configure(app => { });
+-
+-        // This is what ASPNETCORE_URLS would populate
+-        hostBuilder.UseSetting(WebHostDefaults.ServerUrlsKey, $"{httpAddress};{httpsAddress}");
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseKestrelCore()
++                    .Configure(app => { })
++                    // This is what ASPNETCORE_URLS would populate
++                    .UseSetting(WebHostDefaults.ServerUrlsKey, $"{httpAddress};{httpsAddress}");
++            });
+ 
+         var host = hostBuilder.Build();
+ 
+-        Assert.Equal(new[] { httpAddress, httpsAddress }, host.ServerFeatures.Get<IServerAddressesFeature>().Addresses);
++        var ex = Assert.Throws<InvalidOperationException>(host.Start);
++        Assert.Contains("Call UseKestrelHttpsConfiguration()", ex.Message);
+ 
+-        Assert.Throws<InvalidOperationException>(host.Run);
++        var addr = Assert.Single(host.Services.GetRequiredService<IServer>().Features.Get<IServerAddressesFeature>().Addresses);
++        // addr will contain the realized port, so we'll remove the port for comparison
++        Assert.Equal(httpAddress[..^2].ToString(), addr.Substring(0, addr.LastIndexOf(':')));
+     }
+ 
+     [Theory]
+@@ -80,24 +92,28 @@ public class HttpsConfigurationTests
+     [InlineData("https://127.0.0.1:0", false)]
+     public async Task BindAddressFromEndpoint(string address, bool useKestrelHttpsConfiguration)
+     {
+-        var hostBuilder = new WebHostBuilder()
+-                .UseKestrelCore()
+-                .ConfigureKestrel(serverOptions =>
+-                {
+-                    var config = new ConfigurationBuilder().AddInMemoryCollection(new[]
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseKestrelCore()
++                    .ConfigureKestrel(serverOptions =>
+                     {
+-                        new KeyValuePair<string, string>("Endpoints:end1:Url", address),
+-                        new KeyValuePair<string, string>("Certificates:Default:Path", Path.Combine("shared", "TestCertificates", "aspnetdevcert.pfx")),
+-                        new KeyValuePair<string, string>("Certificates:Default:Password", "testPassword"),
+-                    }).Build();
+-                    serverOptions.Configure(config);
+-                })
+-                .Configure(app => { });
+-
+-        if (useKestrelHttpsConfiguration)
+-        {
+-            hostBuilder.UseKestrelHttpsConfiguration();
+-        }
++                        var config = new ConfigurationBuilder().AddInMemoryCollection(new[]
++                        {
++                            new KeyValuePair<string, string>("Endpoints:end1:Url", address),
++                            new KeyValuePair<string, string>("Certificates:Default:Path", Path.Combine("shared", "TestCertificates", "aspnetdevcert.pfx")),
++                            new KeyValuePair<string, string>("Certificates:Default:Password", "testPassword"),
++                        }).Build();
++                        serverOptions.Configure(config);
++                    })
++                    .Configure(app => { });
++
++                if (useKestrelHttpsConfiguration)
++                {
++                    webHostBuilder.UseKestrelHttpsConfiguration();
++                }
++            });
+ 
+         var host = hostBuilder.Build();
+ 
+@@ -118,23 +134,27 @@ public class HttpsConfigurationTests
+     [InlineData(false)]
+     public async Task LoadDefaultCertificate(bool useKestrelHttpsConfiguration)
+     {
+-        var hostBuilder = new WebHostBuilder()
+-                .UseKestrelCore()
+-                .ConfigureKestrel(serverOptions =>
+-                {
+-                    var config = new ConfigurationBuilder().AddInMemoryCollection(new[]
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseKestrelCore()
++                    .ConfigureKestrel(serverOptions =>
+                     {
+-                        new KeyValuePair<string, string>("Certificates:Default:Path", Path.Combine("shared", "TestCertificates", "aspnetdevcert.pfx")),
+-                        new KeyValuePair<string, string>("Certificates:Default:Password", "testPassword"),
+-                    }).Build();
+-                    serverOptions.Configure(config);
+-                })
+-                .Configure(app => { });
+-
+-        if (useKestrelHttpsConfiguration)
+-        {
+-            hostBuilder.UseKestrelHttpsConfiguration();
+-        }
++                        var config = new ConfigurationBuilder().AddInMemoryCollection(new[]
++                        {
++                            new KeyValuePair<string, string>("Certificates:Default:Path", Path.Combine("shared", "TestCertificates", "aspnetdevcert.pfx")),
++                            new KeyValuePair<string, string>("Certificates:Default:Password", "testPassword"),
++                        }).Build();
++                        serverOptions.Configure(config);
++                    })
++                    .Configure(app => { });
++
++                if (useKestrelHttpsConfiguration)
++                {
++                    webHostBuilder.UseKestrelHttpsConfiguration();
++                }
++            });
+ 
+         var host = hostBuilder.Build();
+ 
+@@ -150,24 +170,28 @@ public class HttpsConfigurationTests
+     [InlineData("https://127.0.0.1:0", false)]
+     public async Task LoadEndpointCertificate(string address, bool useKestrelHttpsConfiguration)
+     {
+-        var hostBuilder = new WebHostBuilder()
+-                .UseKestrelCore()
+-                .ConfigureKestrel(serverOptions =>
+-                {
+-                    var config = new ConfigurationBuilder().AddInMemoryCollection(new[]
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseKestrelCore()
++                    .ConfigureKestrel(serverOptions =>
+                     {
+-                        new KeyValuePair<string, string>("Endpoints:end1:Url", address),
+-                        new KeyValuePair<string, string>("Certificates:Default:Path", Path.Combine("shared", "TestCertificates", "aspnetdevcert.pfx")),
+-                        new KeyValuePair<string, string>("Certificates:Default:Password", "testPassword"),
+-                    }).Build();
+-                    serverOptions.Configure(config);
+-                })
+-                .Configure(app => { });
+-
+-        if (useKestrelHttpsConfiguration)
+-        {
+-            hostBuilder.UseKestrelHttpsConfiguration();
+-        }
++                        var config = new ConfigurationBuilder().AddInMemoryCollection(new[]
++                        {
++                            new KeyValuePair<string, string>("Endpoints:end1:Url", address),
++                            new KeyValuePair<string, string>("Certificates:Default:Path", Path.Combine("shared", "TestCertificates", "aspnetdevcert.pfx")),
++                            new KeyValuePair<string, string>("Certificates:Default:Password", "testPassword"),
++                        }).Build();
++                        serverOptions.Configure(config);
++                    })
++                    .Configure(app => { });
++
++                if (useKestrelHttpsConfiguration)
++                {
++                    webHostBuilder.UseKestrelHttpsConfiguration();
++                }
++            });
+ 
+         var host = hostBuilder.Build();
+ 
+@@ -186,18 +210,22 @@ public class HttpsConfigurationTests
+     [Fact]
+     public async Task UseHttpsJustWorks()
+     {
+-        var hostBuilder = new WebHostBuilder()
+-            .UseKestrelCore()
+-            .ConfigureKestrel(serverOptions =>
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
+             {
+-                serverOptions.TestOverrideDefaultCertificate = new X509Certificate2(Path.Combine("shared", "TestCertificates", "aspnetdevcert.pfx"), "testPassword");
++                webHostBuilder
++                    .UseKestrelCore()
++                    .ConfigureKestrel(serverOptions =>
++                    {
++                        serverOptions.TestOverrideDefaultCertificate = new X509Certificate2(Path.Combine("shared", "TestCertificates", "aspnetdevcert.pfx"), "testPassword");
+ 
+-                serverOptions.ListenAnyIP(0, listenOptions =>
+-                {
+-                    listenOptions.UseHttps();
+-                });
+-            })
+-            .Configure(app => { });
++                        serverOptions.ListenAnyIP(0, listenOptions =>
++                        {
++                            listenOptions.UseHttps();
++                        });
++                    })
++                    .Configure(app => { });
++            });
+ 
+         var host = hostBuilder.Build();
+ 
+@@ -211,19 +239,23 @@ public class HttpsConfigurationTests
+     [Fact]
+     public async Task UseHttpsMayNotImplyUseKestrelHttpsConfiguration()
+     {
+-        var hostBuilder = new WebHostBuilder()
+-            .UseKestrelCore()
+-            .ConfigureKestrel(serverOptions =>
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
+             {
+-                serverOptions.ListenAnyIP(0, listenOptions =>
+-                {
+-                    listenOptions.UseHttps(new HttpsConnectionAdapterOptions()
++                webHostBuilder
++                    .UseKestrelCore()
++                    .ConfigureKestrel(serverOptions =>
+                     {
+-                        ServerCertificate = new X509Certificate2(Path.Combine("shared", "TestCertificates", "aspnetdevcert.pfx"), "testPassword"),
+-                    });
+-                });
+-            })
+-            .Configure(app => { });
++                        serverOptions.ListenAnyIP(0, listenOptions =>
++                        {
++                            listenOptions.UseHttps(new HttpsConnectionAdapterOptions()
++                            {
++                                ServerCertificate = new X509Certificate2(Path.Combine("shared", "TestCertificates", "aspnetdevcert.pfx"), "testPassword"),
++                            });
++                        });
++                    })
++                    .Configure(app => { });
++            });
+ 
+         var host = hostBuilder.Build();
+ 
+diff --git a/src/Servers/Kestrel/Kestrel/test/WebHostBuilderKestrelExtensionsTests.cs b/src/Servers/Kestrel/Kestrel/test/WebHostBuilderKestrelExtensionsTests.cs
+index 26a33f3877..4de3accacb 100644
+--- a/src/Servers/Kestrel/Kestrel/test/WebHostBuilderKestrelExtensionsTests.cs
++++ b/src/Servers/Kestrel/Kestrel/test/WebHostBuilderKestrelExtensionsTests.cs
+@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.Server.Kestrel.Transport.NamedPipes;
+ using Microsoft.AspNetCore.Server.Kestrel.Transport.NamedPipes.Internal;
+ using Microsoft.AspNetCore.Server.Kestrel.Transport.Sockets;
+ using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Hosting;
+ using Microsoft.Extensions.Options;
+ 
+ namespace Microsoft.AspNetCore.Server.Kestrel.Tests;
+@@ -26,9 +27,13 @@ public class WebHostBuilderKestrelExtensionsTests
+     public void ApplicationServicesNotNullAfterUseKestrelWithoutOptions()
+     {
+         // Arrange
+-        var hostBuilder = new WebHostBuilder()
+-            .UseKestrel()
+-            .Configure(app => { });
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseKestrel()
++                    .Configure(app => { });
++            });
+ 
+         hostBuilder.ConfigureServices(services =>
+         {
+@@ -47,13 +52,17 @@ public class WebHostBuilderKestrelExtensionsTests
+     public void ApplicationServicesNotNullDuringUseKestrelWithOptions()
+     {
+         // Arrange
+-        var hostBuilder = new WebHostBuilder()
+-            .UseKestrel(options =>
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
+             {
+-                // Assert
+-                Assert.NotNull(options.ApplicationServices);
+-            })
+-            .Configure(app => { });
++                webHostBuilder
++                    .UseKestrel(options =>
++                    {
++                        // Assert
++                        Assert.NotNull(options.ApplicationServices);
++                    })
++                    .Configure(app => { });
++            });
+ 
+         // Act
+         hostBuilder.Build();
+@@ -62,9 +71,13 @@ public class WebHostBuilderKestrelExtensionsTests
+     [Fact]
+     public void DefaultTransportFactoriesConfigured()
+     {
+-        var hostBuilder = new WebHostBuilder()
+-            .UseKestrel()
+-            .Configure(app => { });
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseKestrel()
++                    .Configure(app => { });
++            });
+ 
+         var transportFactories = hostBuilder.Build().Services.GetServices<IConnectionListenerFactory>();
+ 
+@@ -84,18 +97,26 @@ public class WebHostBuilderKestrelExtensionsTests
+     [Fact]
+     public void SocketsTransportCanBeManuallySelectedIndependentOfOrder()
+     {
+-        var hostBuilder = new WebHostBuilder()
+-            .UseKestrel()
+-            .UseSockets()
+-            .Configure(app => { });
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseKestrel()
++                    .UseSockets()
++                    .Configure(app => { });
++            });
+ 
+         var factories = hostBuilder.Build().Services.GetServices<IConnectionListenerFactory>();
+         AssertContainsType<SocketTransportFactory, IConnectionListenerFactory>(factories);
+ 
+-        var hostBuilderReversed = new WebHostBuilder()
+-            .UseSockets()
+-            .UseKestrel()
+-            .Configure(app => { });
++        var hostBuilderReversed = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseSockets()
++                    .UseKestrel()
++                    .Configure(app => { });
++            });
+ 
+         var factoriesReversed = hostBuilderReversed.Build().Services.GetServices<IConnectionListenerFactory>();
+         AssertContainsType<SocketTransportFactory, IConnectionListenerFactory>(factoriesReversed);
+@@ -109,10 +130,14 @@ public class WebHostBuilderKestrelExtensionsTests
+     [Fact]
+     public void ServerIsKestrelServerImpl()
+     {
+-        var hostBuilder = new WebHostBuilder()
+-            .UseSockets()
+-            .UseKestrel()
+-            .Configure(app => { });
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseSockets()
++                    .UseKestrel()
++                    .Configure(app => { });
++            });
+ 
+         var server = Assert.IsType<KestrelServerImpl>(hostBuilder.Build().Services.GetService<IServer>());
+ 
+@@ -140,10 +165,14 @@ public class WebHostBuilderKestrelExtensionsTests
+     [Fact]
+     public void MemoryPoolFactorySetCorrectlyWithSockets()
+     {
+-        var hostBuilder = new WebHostBuilder()
+-            .UseSockets()
+-            .UseKestrel()
+-            .Configure(app => { });
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseSockets()
++                    .UseKestrel()
++                    .Configure(app => { });
++            });
+ 
+         var host = hostBuilder.Build();
+ 
+@@ -153,10 +182,14 @@ public class WebHostBuilderKestrelExtensionsTests
+         Assert.Same(memoryPoolFactory, host.Services.GetRequiredService<IOptions<SocketTransportOptions>>().Value.MemoryPoolFactory);
+ 
+         // Swap order of UseKestrel and UseSockets
+-        hostBuilder = new WebHostBuilder()
+-            .UseKestrel()
+-            .UseSockets()
+-            .Configure(app => { });
++        hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseKestrel()
++                    .UseSockets()
++                    .Configure(app => { });
++            });
+ 
+         host = hostBuilder.Build();
+ 
+@@ -169,9 +202,13 @@ public class WebHostBuilderKestrelExtensionsTests
+     [Fact]
+     public void SocketsHasDefaultMemoryPool()
+     {
+-        var hostBuilder = new WebHostBuilder()
+-            .UseSockets()
+-            .Configure(app => { });
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseSockets()
++                    .Configure(app => { });
++            });
+ 
+         var host = hostBuilder.Build();
+ 
+@@ -186,10 +223,14 @@ public class WebHostBuilderKestrelExtensionsTests
+     [NamedPipesSupported]
+     public void MemoryPoolFactorySetCorrectlyWithNamedPipes()
+     {
+-        var hostBuilder = new WebHostBuilder()
+-            .UseNamedPipes()
+-            .UseKestrel()
+-            .Configure(app => { });
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseNamedPipes()
++                    .UseKestrel()
++                    .Configure(app => { });
++            });
+ 
+         var host = hostBuilder.Build();
+ 
+@@ -199,10 +240,14 @@ public class WebHostBuilderKestrelExtensionsTests
+         Assert.Same(memoryPoolFactory, host.Services.GetRequiredService<IOptions<NamedPipeTransportOptions>>().Value.MemoryPoolFactory);
+ 
+         // Swap order of UseKestrel and UseNamedPipes
+-        hostBuilder = new WebHostBuilder()
+-            .UseKestrel()
+-            .UseNamedPipes()
+-            .Configure(app => { });
++        hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseKestrel()
++                    .UseNamedPipes()
++                    .Configure(app => { });
++            });
+ 
+         host = hostBuilder.Build();
+ 
+@@ -216,9 +261,13 @@ public class WebHostBuilderKestrelExtensionsTests
+     [NamedPipesSupported]
+     public void NamedPipesHasDefaultMemoryPool()
+     {
+-        var hostBuilder = new WebHostBuilder()
+-            .UseNamedPipes()
+-            .Configure(app => { });
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseNamedPipes()
++                    .Configure(app => { });
++            });
+ 
+         var host = hostBuilder.Build();
+ 
+diff --git a/src/Servers/Kestrel/test/Interop.FunctionalTests/Http3/Http3TlsTests.cs b/src/Servers/Kestrel/test/Interop.FunctionalTests/Http3/Http3TlsTests.cs
+index 78279c042b..ac66ad3a72 100644
+--- a/src/Servers/Kestrel/test/Interop.FunctionalTests/Http3/Http3TlsTests.cs
++++ b/src/Servers/Kestrel/test/Interop.FunctionalTests/Http3/Http3TlsTests.cs
+@@ -345,39 +345,43 @@ public class Http3TlsTests : LoggedTest
+     [InlineData(false, false, false)]
+     public async Task UseKestrelCore_CodeBased(bool useQuic, bool useHttps, bool useHttpsEnablesHttpsConfiguration)
+     {
+-        var hostBuilder = new WebHostBuilder()
+-                .UseKestrelCore()
+-                .ConfigureKestrel(serverOptions =>
+-                {
+-                    serverOptions.ListenAnyIP(0, listenOptions =>
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseKestrelCore()
++                    .ConfigureKestrel(serverOptions =>
+                     {
+-                        listenOptions.Protocols = HttpProtocols.Http3;
+-                        if (useHttps)
++                        serverOptions.ListenAnyIP(0, listenOptions =>
+                         {
+-                            if (useHttpsEnablesHttpsConfiguration)
++                            listenOptions.Protocols = HttpProtocols.Http3;
++                            if (useHttps)
+                             {
+-                                listenOptions.UseHttps(httpsOptions =>
++                                if (useHttpsEnablesHttpsConfiguration)
+                                 {
+-                                    httpsOptions.ServerCertificate = TestResources.GetTestCertificate();
+-                                });
+-                            }
+-                            else
+-                            {
+-                                // Specifically choose an overload that doesn't enable https configuration
+-                                listenOptions.UseHttps(new HttpsConnectionAdapterOptions
++                                    listenOptions.UseHttps(httpsOptions =>
++                                    {
++                                        httpsOptions.ServerCertificate = TestResources.GetTestCertificate();
++                                    });
++                                }
++                                else
+                                 {
+-                                    ServerCertificate = TestResources.GetTestCertificate()
+-                                });
++                                    // Specifically choose an overload that doesn't enable https configuration
++                                    listenOptions.UseHttps(new HttpsConnectionAdapterOptions
++                                    {
++                                        ServerCertificate = TestResources.GetTestCertificate()
++                                    });
++                                }
+                             }
+-                        }
+-                    });
+-                })
+-                .Configure(app => { });
++                        });
++                    })
++                    .Configure(app => { });
+ 
+-        if (useQuic)
+-        {
+-            hostBuilder.UseQuic();
+-        }
++                if (useQuic)
++                {
++                    webHostBuilder.UseQuic();
++                }
++            });
+ 
+         var host = hostBuilder.Build();
+ 
+@@ -400,25 +404,29 @@ public class Http3TlsTests : LoggedTest
+     [InlineData(false)]
+     public void UseKestrelCore_ConfigurationBased(bool useQuic)
+     {
+-        var hostBuilder = new WebHostBuilder()
+-                .UseKestrelCore()
+-                .ConfigureKestrel(serverOptions =>
+-                {
+-                    var config = new ConfigurationBuilder().AddInMemoryCollection(new[]
++        var hostBuilder = new HostBuilder()
++            .ConfigureWebHost(webHostBuilder =>
++            {
++                webHostBuilder
++                    .UseKestrelCore()
++                    .ConfigureKestrel(serverOptions =>
+                     {
+-                        new KeyValuePair<string, string>("Endpoints:end1:Url", "https://127.0.0.1:0"),
+-                        new KeyValuePair<string, string>("Endpoints:end1:Protocols", "Http3"),
+-                        new KeyValuePair<string, string>("Certificates:Default:Path", Path.Combine("shared", "TestCertificates", "aspnetdevcert.pfx")),
+-                        new KeyValuePair<string, string>("Certificates:Default:Password", "testPassword"),
+-                    }).Build();
+-                    serverOptions.Configure(config);
+-                })
+-                .Configure(app => { });
+-
+-        if (useQuic)
+-        {
+-            hostBuilder.UseQuic();
+-        }
++                        var config = new ConfigurationBuilder().AddInMemoryCollection(new[]
++                        {
++                            new KeyValuePair<string, string>("Endpoints:end1:Url", "https://127.0.0.1:0"),
++                            new KeyValuePair<string, string>("Endpoints:end1:Protocols", "Http3"),
++                            new KeyValuePair<string, string>("Certificates:Default:Path", Path.Combine("shared", "TestCertificates", "aspnetdevcert.pfx")),
++                            new KeyValuePair<string, string>("Certificates:Default:Password", "testPassword"),
++                        }).Build();
++                        serverOptions.Configure(config);
++                    })
++                    .Configure(app => { });
++
++                if (useQuic)
++                {
++                    webHostBuilder.UseQuic();
++                }
++            });
+ 
+         var host = hostBuilder.Build();
+ 
+diff --git a/src/Servers/testassets/ServerComparison.TestSites/Program.cs b/src/Servers/testassets/ServerComparison.TestSites/Program.cs
+index aa623fb9cd..5af832b703 100644
+--- a/src/Servers/testassets/ServerComparison.TestSites/Program.cs
++++ b/src/Servers/testassets/ServerComparison.TestSites/Program.cs
+@@ -5,6 +5,7 @@ using System;
+ using Microsoft.AspNetCore.Hosting;
+ using Microsoft.AspNetCore.Server.HttpSys;
+ using Microsoft.Extensions.Configuration;
++using Microsoft.Extensions.Hosting;
+ using Microsoft.Extensions.Logging;
+ 
+ namespace ServerComparison.TestSites;
+@@ -13,38 +14,43 @@ public static class Program
+ {
+     public static void Main(string[] args)
+     {
+-        var builder = new WebHostBuilder()
+-            .UseConfiguration(new ConfigurationBuilder()
+-                .AddCommandLine(args)
+-                .Build())
++        var configuration = new ConfigurationBuilder()
++            .AddCommandLine(args)
++            .Build();
++
++        var builder = new HostBuilder()
+             .ConfigureLogging((_, factory) =>
+             {
+                 factory.AddConsole();
+                 factory.AddFilter("Console", level => level >= LogLevel.Warning);
+             })
+-            .UseStartup("ServerComparison.TestSites");
+-
+-        builder.UseKestrel();
+-        builder.UseIISIntegration();
+-        builder.UseIIS();
+-
+-        // Switch between Kestrel, IIS, and HttpSys for different tests. Default to Kestrel for normal app execution.
+-        if (string.Equals(builder.GetSetting("server"), "Microsoft.AspNetCore.Server.HttpSys", StringComparison.OrdinalIgnoreCase))
+-        {
+-            builder.UseHttpSys(options =>
++            .ConfigureWebHost(webHostBuilder =>
+             {
+-                if (string.Equals(builder.GetSetting("environment") ??
+-                    Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
+-                    "NtlmAuthentication", StringComparison.OrdinalIgnoreCase))
++                webHostBuilder
++                    .UseConfiguration(configuration)
++                    .UseStartup("ServerComparison.TestSites")
++                    .UseKestrel()
++                    .UseIISIntegration()
++                    .UseIIS();
++
++                // Switch between Kestrel, IIS, and HttpSys for different tests. Default to Kestrel for normal app execution.
++                if (string.Equals(configuration["server"], "Microsoft.AspNetCore.Server.HttpSys", StringComparison.OrdinalIgnoreCase))
+                 {
+-                    // Set up NTLM authentication for HttpSys as follows.
+-                    // For IIS and IISExpress use inetmgr to setup NTLM authentication on the application or
+-                    // modify the applicationHost.config to enable NTLM.
+-                    options.Authentication.AllowAnonymous = true;
+-                    options.Authentication.Schemes = AuthenticationSchemes.Negotiate | AuthenticationSchemes.NTLM;
++                    webHostBuilder.UseHttpSys(options =>
++                    {
++                        if (string.Equals(configuration["environment"] ??
++                            Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT"),
++                            "NtlmAuthentication", StringComparison.OrdinalIgnoreCase))
++                        {
++                            // Set up NTLM authentication for HttpSys as follows.
++                            // For IIS and IISExpress use inetmgr to setup NTLM authentication on the application or
++                            // modify the applicationHost.config to enable NTLM.
++                            options.Authentication.AllowAnonymous = true;
++                            options.Authentication.Schemes = AuthenticationSchemes.Negotiate | AuthenticationSchemes.NTLM;
++                        }
++                    });
+                 }
+             });
+-        }
+ 
+         var host = builder.Build();
+ 
+diff --git a/src/SignalR/clients/csharp/Client/test/UnitTests/TestServerTests.cs b/src/SignalR/clients/csharp/Client/test/UnitTests/TestServerTests.cs
+index 4e5580c7fb..d682bdc5f0 100644
+--- a/src/SignalR/clients/csharp/Client/test/UnitTests/TestServerTests.cs
++++ b/src/SignalR/clients/csharp/Client/test/UnitTests/TestServerTests.cs
+@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Hosting;
+ using Microsoft.AspNetCore.SignalR.Tests;
+ using Microsoft.AspNetCore.TestHost;
+ using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Hosting;
+ using Microsoft.Extensions.Logging;
+ using Xunit;
+ 
+@@ -19,20 +20,30 @@ public class TestServerTests : VerifiableLoggedTest
+     {
+         using (StartVerifiableLog())
+         {
+-            var builder = new WebHostBuilder().ConfigureServices(s =>
+-            {
+-                s.AddLogging();
+-                s.AddSingleton(LoggerFactory);
+-                s.AddSignalR();
+-            }).Configure(app =>
+-            {
+-                app.UseRouting();
+-                app.UseEndpoints(endpoints =>
++            using var host = new HostBuilder()
++                .ConfigureWebHost(webHostBuilder =>
+                 {
+-                    endpoints.MapHub<EchoHub>("/echo");
+-                });
+-            });
+-            var server = new TestServer(builder);
++                    webHostBuilder
++                        .UseTestServer()
++                        .ConfigureServices(s =>
++                        {
++                            s.AddLogging();
++                            s.AddSingleton(LoggerFactory);
++                            s.AddSignalR();
++                        })
++                        .Configure(app =>
++                        {
++                            app.UseRouting();
++                            app.UseEndpoints(endpoints =>
++                            {
++                                endpoints.MapHub<EchoHub>("/echo");
++                            });
++                        });
++                })
++                .Build();
++
++            await host.StartAsync();
++            var server = host.GetTestServer();
+ 
+             var webSocketFactoryCalled = false;
+             var connectionBuilder = new HubConnectionBuilder()
+@@ -71,20 +82,30 @@ public class TestServerTests : VerifiableLoggedTest
+     {
+         using (StartVerifiableLog())
+         {
+-            var builder = new WebHostBuilder().ConfigureServices(s =>
+-            {
+-                s.AddLogging();
+-                s.AddSingleton(LoggerFactory);
+-                s.AddSignalR();
+-            }).Configure(app =>
+-            {
+-                app.UseRouting();
+-                app.UseEndpoints(endpoints =>
++            using var host = new HostBuilder()
++                .ConfigureWebHost(webHostBuilder =>
+                 {
+-                    endpoints.MapHub<EchoHub>("/echo");
+-                });
+-            });
+-            var server = new TestServer(builder);
++                    webHostBuilder
++                        .UseTestServer()
++                        .ConfigureServices(s =>
++                        {
++                            s.AddLogging();
++                            s.AddSingleton(LoggerFactory);
++                            s.AddSignalR();
++                        })
++                        .Configure(app =>
++                        {
++                            app.UseRouting();
++                            app.UseEndpoints(endpoints =>
++                            {
++                                endpoints.MapHub<EchoHub>("/echo");
++                            });
++                        });
++                })
++                .Build();
++
++            await host.StartAsync();
++            var server = host.GetTestServer();
+ 
+             var connectionBuilder = new HubConnectionBuilder()
+                 .WithUrl(server.BaseAddress + "echo", options =>

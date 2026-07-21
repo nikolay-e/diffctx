@@ -1,0 +1,3876 @@
+From 715571429ec54282139c3929b98a7ebcd35a5c37 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Alejandro=20R=2E=20Sede=C3=B1o?= <asedeno@google.com>
+Date: Tue, 17 Sep 2024 04:21:53 -0400
+Subject: [PATCH] Remove most binds for abseil and migrate abseil external_deps
+ to deps (#36171)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Remove most binds for abseil and migrate abseil external_deps to deps.
+
+Risk Level: low
+Testing: existing test pass
+
+---------
+
+Signed-off-by: Alejandro R Sedeño <asedeno@google.com>
+---
+ bazel/external/quiche.BUILD                   | 18 +---
+ bazel/repositories.bzl                        | 96 +------------------
+ contrib/config/source/BUILD                   |  2 +-
+ contrib/kafka/filters/network/source/BUILD    |  2 +-
+ .../filters/network/source/BUILD              |  2 +-
+ .../sip_proxy/filters/network/source/BUILD    |  6 +-
+ .../filters/network/source/router/BUILD       |  2 +-
+ .../filters/network/source/tra/BUILD          |  6 +-
+ envoy/api/BUILD                               |  2 +-
+ envoy/buffer/BUILD                            |  4 +-
+ envoy/common/BUILD                            | 10 +-
+ envoy/config/BUILD                            |  4 +-
+ envoy/grpc/BUILD                              |  2 +-
+ envoy/http/BUILD                              | 14 ++-
+ envoy/matcher/BUILD                           |  6 +-
+ envoy/network/BUILD                           | 12 ++-
+ envoy/router/BUILD                            |  8 +-
+ envoy/runtime/BUILD                           |  6 +-
+ envoy/server/BUILD                            |  2 +-
+ envoy/ssl/BUILD                               |  4 +-
+ envoy/stats/BUILD                             |  2 +-
+ envoy/stream_info/BUILD                       |  4 +-
+ envoy/udp/BUILD                               |  2 +-
+ envoy/upstream/BUILD                          |  8 +-
+ mobile/examples/cc/fetch_client/BUILD         |  2 +-
+ mobile/library/cc/BUILD                       |  4 +-
+ mobile/library/common/event/BUILD             |  2 +-
+ mobile/library/common/http/BUILD              |  2 +-
+ source/common/access_log/BUILD                |  4 +-
+ source/common/common/BUILD                    | 46 ++++-----
+ source/common/config/BUILD                    |  2 +-
+ source/common/event/BUILD                     |  4 +-
+ source/common/formatter/BUILD                 |  2 +-
+ source/common/grpc/BUILD                      | 10 +-
+ source/common/http/BUILD                      | 18 ++--
+ source/common/http/http1/BUILD                |  4 +-
+ source/common/http/http2/BUILD                |  8 +-
+ source/common/json/BUILD                      |  4 +-
+ source/common/network/BUILD                   | 18 ++--
+ source/common/orca/BUILD                      | 12 +--
+ source/common/quic/BUILD                      |  4 +-
+ source/common/quic/platform/BUILD             | 40 ++++----
+ source/common/router/BUILD                    |  8 +-
+ source/common/singleton/BUILD                 |  6 +-
+ source/common/ssl/BUILD                       |  2 +-
+ source/common/stats/BUILD                     | 10 +-
+ source/common/stream_info/BUILD               |  6 +-
+ source/common/tcp/BUILD                       |  2 +-
+ source/common/tls/BUILD                       | 28 +++---
+ source/common/tls/cert_validator/BUILD        |  4 +-
+ source/common/upstream/BUILD                  |  6 +-
+ source/exe/BUILD                              |  4 +-
+ .../access_loggers/open_telemetry/BUILD       |  2 +-
+ source/extensions/common/aws/BUILD            | 10 +-
+ source/extensions/common/dubbo/BUILD          |  2 +-
+ source/extensions/common/wasm/BUILD           |  4 +-
+ .../extensions/filters/common/ratelimit/BUILD |  2 +-
+ source/extensions/filters/common/rbac/BUILD   |  2 +-
+ source/extensions/filters/http/cache/BUILD    |  4 +-
+ source/extensions/filters/http/cors/BUILD     |  4 +-
+ .../extensions/filters/http/gcp_authn/BUILD   |  2 +-
+ .../filters/network/dubbo_proxy/BUILD         |  2 +-
+ .../filters/network/generic_proxy/BUILD       |  8 +-
+ .../filters/network/thrift_proxy/BUILD        | 13 ++-
+ .../filters/network/thrift_proxy/router/BUILD |  2 +-
+ .../header_validators/envoy_default/BUILD     | 10 +-
+ .../load_balancing_policies/common/BUILD      |  2 +-
+ .../load_balancing_policies/ring_hash/BUILD   |  4 +-
+ source/extensions/tracers/zipkin/BUILD        |  4 +-
+ .../extensions/transport_sockets/alts/BUILD   | 14 ++-
+ .../transport_sockets/starttls/BUILD          |  4 +-
+ .../tls/cert_validator/spiffe/BUILD           |  4 +-
+ .../extensions/watchdog/profile_action/BUILD  |  4 +-
+ source/server/BUILD                           | 14 +--
+ source/server/config_validation/BUILD         |  2 +-
+ test/common/common/BUILD                      | 14 +--
+ test/common/config/BUILD                      |  2 +-
+ test/common/http/http2/BUILD                  |  2 +-
+ test/common/network/BUILD                     |  2 +-
+ test/common/orca/BUILD                        |  8 +-
+ test/common/router/BUILD                      | 10 +-
+ test/common/stats/BUILD                       | 12 +--
+ test/common/upstream/BUILD                    | 12 +--
+ test/common/watchdog/BUILD                    |  4 +-
+ .../access_loggers/wasm/test_data/BUILD       |  7 +-
+ test/extensions/bootstrap/wasm/BUILD          |  4 +-
+ .../extensions/bootstrap/wasm/test_data/BUILD |  6 +-
+ test/extensions/common/wasm/BUILD             |  4 +-
+ test/extensions/common/wasm/test_data/BUILD   |  6 +-
+ .../extensions/config_subscription/grpc/BUILD |  2 +-
+ .../filters/http/wasm/test_data/BUILD         |  2 +-
+ .../filters/network/wasm/test_data/BUILD      |  2 +-
+ .../network/dns_resolver/apple/BUILD          |  2 +-
+ .../resource_monitors/cpu_utilization/BUILD   |  4 +-
+ .../downstream_connections/BUILD              |  2 +-
+ .../resource_monitors/fixed_heap/BUILD        |  2 +-
+ test/extensions/stats_sinks/wasm/BUILD        |  2 +-
+ test/extensions/tracers/opentelemetry/BUILD   |  2 +-
+ test/extensions/tracers/zipkin/BUILD          |  2 +-
+ test/extensions/watchdog/profile_action/BUILD |  4 +-
+ test/fuzz/BUILD                               |  4 +-
+ test/integration/BUILD                        | 12 +--
+ test/integration/admin_html/BUILD             |  4 +-
+ test/integration/filters/BUILD                |  2 +-
+ test/mocks/http/BUILD                         |  4 +-
+ test/mocks/runtime/BUILD                      |  2 +-
+ test/test_common/BUILD                        |  8 +-
+ 107 files changed, 284 insertions(+), 476 deletions(-)
+
+diff --git a/bazel/external/quiche.BUILD b/bazel/external/quiche.BUILD
+index ad11894e3..950f9426a 100644
+--- a/bazel/external/quiche.BUILD
++++ b/bazel/external/quiche.BUILD
+@@ -433,9 +433,6 @@ envoy_cc_library(
+         "quiche/http2/adapter/oghttp2_session.h",
+     ],
+     copts = quiche_copts,
+-    external_deps = [
+-        "abseil_algorithm",
+-    ],
+     repository = "@envoy",
+     deps = [
+         ":http2_adapter_chunked_buffer",
+@@ -457,6 +454,7 @@ envoy_cc_library(
+         ":http2_no_op_headers_handler_lib",
+         ":quiche_common_callbacks",
+         ":spdy_core_http2_header_block_lib",
++        "@com_google_absl//absl/algorithm",
+         "@com_google_absl//absl/cleanup",
+     ],
+ )
+@@ -2296,13 +2294,11 @@ envoy_quic_cc_library(
+     hdrs = [
+         "quiche/quic/core/quic_connection_context.h",
+     ],
+-    external_deps = [
+-        "abseil_str_format",
+-    ],
+     deps = [
+         ":quic_platform_export",
+         ":quiche_common_platform",
+         ":quiche_common_text_utils_lib",
++        "@com_google_absl//absl/strings:str_format",
+     ],
+ )
+ 
+@@ -2664,7 +2660,6 @@ envoy_quic_cc_library(
+     hdrs = ["quiche/quic/core/crypto/proof_source_x509.h"],
+     external_deps = [
+         "ssl",
+-        "abseil_node_hash_map",
+     ],
+     deps = [
+         ":quic_core_crypto_certificate_view_lib",
+@@ -2675,6 +2670,7 @@ envoy_quic_cc_library(
+         ":quic_platform_base",
+         ":quiche_common_endian_lib",
+         "@com_google_absl//absl/base:core_headers",
++        "@com_google_absl//absl/container:node_hash_map",
+     ],
+ )
+ 
+@@ -5091,13 +5087,11 @@ envoy_cc_test(
+ envoy_cc_library(
+     name = "quiche_common_print_elements_lib",
+     hdrs = ["quiche/common/print_elements.h"],
+-    external_deps = [
+-        "abseil_inlined_vector",
+-    ],
+     repository = "@envoy",
+     tags = ["nofips"],
+     deps = [
+         ":quiche_common_platform_export",
++        "@com_google_absl//absl/container:inlined_vector",
+     ],
+ )
+ 
+@@ -5123,14 +5117,12 @@ envoy_cc_library(
+     name = "quiche_common_text_utils_lib",
+     srcs = ["quiche/common/quiche_text_utils.cc"],
+     hdrs = ["quiche/common/quiche_text_utils.h"],
+-    external_deps = [
+-        "abseil_str_format",
+-    ],
+     repository = "@envoy",
+     tags = ["nofips"],
+     deps = [
+         ":quiche_common_platform_export",
+         "@com_google_absl//absl/hash",
++        "@com_google_absl//absl/strings:str_format",
+     ],
+ )
+ 
+diff --git a/bazel/repositories.bzl b/bazel/repositories.bzl
+index 2b4d0d768..f0fed861e 100644
+--- a/bazel/repositories.bzl
++++ b/bazel/repositories.bzl
+@@ -696,24 +696,8 @@ def _com_google_absl():
+         patches = ["@envoy//bazel:abseil.patch"],
+         patch_args = ["-p1"],
+     )
+-    native.bind(
+-        name = "abseil_any",
+-        actual = "@com_google_absl//absl/types:any",
+-    )
+-    native.bind(
+-        name = "abseil_base",
+-        actual = "@com_google_absl//absl/base:base",
+-    )
+ 
+-    # Bind for grpc.
+-    native.bind(
+-        name = "absl-base",
+-        actual = "@com_google_absl//absl/base",
+-    )
+-    native.bind(
+-        name = "abseil_btree",
+-        actual = "@com_google_absl//absl/container:btree",
+-    )
++    # keep these until jwt_verify_lib is updated.
+     native.bind(
+         name = "abseil_flat_hash_map",
+         actual = "@com_google_absl//absl/container:flat_hash_map",
+@@ -722,93 +706,15 @@ def _com_google_absl():
+         name = "abseil_flat_hash_set",
+         actual = "@com_google_absl//absl/container:flat_hash_set",
+     )
+-    native.bind(
+-        name = "abseil_hash",
+-        actual = "@com_google_absl//absl/hash:hash",
+-    )
+-    native.bind(
+-        name = "abseil_hash_testing",
+-        actual = "@com_google_absl//absl/hash:hash_testing",
+-    )
+-    native.bind(
+-        name = "abseil_inlined_vector",
+-        actual = "@com_google_absl//absl/container:inlined_vector",
+-    )
+-    native.bind(
+-        name = "abseil_memory",
+-        actual = "@com_google_absl//absl/memory:memory",
+-    )
+-    native.bind(
+-        name = "abseil_node_hash_map",
+-        actual = "@com_google_absl//absl/container:node_hash_map",
+-    )
+-    native.bind(
+-        name = "abseil_node_hash_set",
+-        actual = "@com_google_absl//absl/container:node_hash_set",
+-    )
+-    native.bind(
+-        name = "abseil_str_format",
+-        actual = "@com_google_absl//absl/strings:str_format",
+-    )
+     native.bind(
+         name = "abseil_strings",
+         actual = "@com_google_absl//absl/strings:strings",
+     )
+-    native.bind(
+-        name = "abseil_int128",
+-        actual = "@com_google_absl//absl/numeric:int128",
+-    )
+-    native.bind(
+-        name = "abseil_optional",
+-        actual = "@com_google_absl//absl/types:optional",
+-    )
+-    native.bind(
+-        name = "abseil_synchronization",
+-        actual = "@com_google_absl//absl/synchronization:synchronization",
+-    )
+-    native.bind(
+-        name = "abseil_symbolize",
+-        actual = "@com_google_absl//absl/debugging:symbolize",
+-    )
+-    native.bind(
+-        name = "abseil_stacktrace",
+-        actual = "@com_google_absl//absl/debugging:stacktrace",
+-    )
+-    native.bind(
+-        name = "abseil_statusor",
+-        actual = "@com_google_absl//absl/status:statusor",
+-    )
+-
+-    # Require abseil_time as an indirect dependency as it is needed by the
+-    # direct dependency jwt_verify_lib.
+     native.bind(
+         name = "abseil_time",
+         actual = "@com_google_absl//absl/time:time",
+     )
+ 
+-    # Bind for grpc.
+-    native.bind(
+-        name = "absl-time",
+-        actual = "@com_google_absl//absl/time:time",
+-    )
+-
+-    native.bind(
+-        name = "abseil_algorithm",
+-        actual = "@com_google_absl//absl/algorithm:algorithm",
+-    )
+-    native.bind(
+-        name = "abseil_variant",
+-        actual = "@com_google_absl//absl/types:variant",
+-    )
+-    native.bind(
+-        name = "abseil_status",
+-        actual = "@com_google_absl//absl/status",
+-    )
+-    native.bind(
+-        name = "abseil_cleanup",
+-        actual = "@com_google_absl//absl/cleanup:cleanup",
+-    )
+-
+ def _com_google_protobuf():
+     external_http_archive(
+         name = "rules_python",
+diff --git a/contrib/config/source/BUILD b/contrib/config/source/BUILD
+index 07ae49bf5..d807ee238 100644
+--- a/contrib/config/source/BUILD
++++ b/contrib/config/source/BUILD
+@@ -12,7 +12,6 @@ envoy_cc_contrib_extension(
+     name = "kv_store_xds_delegate",
+     srcs = ["kv_store_xds_delegate.cc"],
+     hdrs = ["kv_store_xds_delegate.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/common:key_value_store_interface",
+         "//envoy/common:time_interface",
+@@ -21,6 +20,7 @@ envoy_cc_contrib_extension(
+         "//envoy/stats:stats_macros",
+         "//source/common/config:utility_lib",
+         "//source/common/protobuf:utility_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//contrib/envoy/extensions/config/v3alpha:pkg_cc_proto",
+         "@envoy_api//envoy/service/discovery/v3:pkg_cc_proto",
+     ],
+diff --git a/contrib/kafka/filters/network/source/BUILD b/contrib/kafka/filters/network/source/BUILD
+index a7e075125..438d87ee4 100644
+--- a/contrib/kafka/filters/network/source/BUILD
++++ b/contrib/kafka/filters/network/source/BUILD
+@@ -246,8 +246,8 @@ envoy_cc_library(
+     hdrs = [
+         "kafka_types.h",
+     ],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//source/common/common:macros",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+diff --git a/contrib/rocketmq_proxy/filters/network/source/BUILD b/contrib/rocketmq_proxy/filters/network/source/BUILD
+index e421666b9..7fe92542b 100644
+--- a/contrib/rocketmq_proxy/filters/network/source/BUILD
++++ b/contrib/rocketmq_proxy/filters/network/source/BUILD
+@@ -139,8 +139,8 @@ envoy_cc_contrib_extension(
+ envoy_cc_library(
+     name = "metadata_lib",
+     hdrs = ["metadata.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//source/common/http:header_map_lib",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+diff --git a/contrib/sip_proxy/filters/network/source/BUILD b/contrib/sip_proxy/filters/network/source/BUILD
+index 109ae63de..167cd61f3 100644
+--- a/contrib/sip_proxy/filters/network/source/BUILD
++++ b/contrib/sip_proxy/filters/network/source/BUILD
+@@ -44,7 +44,6 @@ envoy_cc_library(
+     name = "conn_manager_lib",
+     srcs = ["conn_manager.cc"],
+     hdrs = ["conn_manager.h"],
+-    external_deps = ["abseil_any"],
+     deps = [
+         ":app_exception_lib",
+         ":decoder_lib",
+@@ -67,6 +66,7 @@ envoy_cc_library(
+         "//source/common/stats:timespan_lib",
+         "//source/common/stream_info:stream_info_lib",
+         "//source/common/tracing:http_tracer_lib",
++        "@com_google_absl//absl/types:any",
+     ],
+ )
+ 
+@@ -112,12 +112,12 @@ envoy_cc_library(
+         "metadata.h",
+         "operation.h",
+     ],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":sip_lib",
+         "//envoy/buffer:buffer_interface",
+         "//source/common/common:macros",
+         "//source/common/http:header_map_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//contrib/envoy/extensions/filters/network/sip_proxy/v3alpha:pkg_cc_proto",
+     ],
+ )
+@@ -138,7 +138,6 @@ envoy_cc_library(
+     hdrs = [
+         "utility.h",
+     ],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":decoder_events_lib",
+         ":metadata_lib",
+@@ -150,6 +149,7 @@ envoy_cc_library(
+         "//source/common/config:utility_lib",
+         "//source/common/protobuf",
+         "//source/common/singleton:const_singleton",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//contrib/envoy/extensions/filters/network/sip_proxy/tra/v3alpha:pkg_cc_proto",
+         "@envoy_api//contrib/envoy/extensions/filters/network/sip_proxy/v3alpha:pkg_cc_proto",
+     ],
+diff --git a/contrib/sip_proxy/filters/network/source/router/BUILD b/contrib/sip_proxy/filters/network/source/router/BUILD
+index 4f9b933eb..abc822367 100644
+--- a/contrib/sip_proxy/filters/network/source/router/BUILD
++++ b/contrib/sip_proxy/filters/network/source/router/BUILD
+@@ -27,10 +27,10 @@ envoy_cc_contrib_extension(
+ envoy_cc_library(
+     name = "router_interface",
+     hdrs = ["router.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//contrib/sip_proxy/filters/network/source:metadata_lib",
+         "//envoy/router:router_interface",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+diff --git a/contrib/sip_proxy/filters/network/source/tra/BUILD b/contrib/sip_proxy/filters/network/source/tra/BUILD
+index da11318b7..7d1c69681 100644
+--- a/contrib/sip_proxy/filters/network/source/tra/BUILD
++++ b/contrib/sip_proxy/filters/network/source/tra/BUILD
+@@ -34,13 +34,11 @@ envoy_cc_contrib_extension(
+ envoy_cc_library(
+     name = "tra_client_interface",
+     hdrs = ["tra.h"],
+-    external_deps = [
+-        "abseil_optional",
+-        "abseil_any",
+-    ],
+     deps = [
+         "//envoy/singleton:manager_interface",
+         "//envoy/tracing:tracer_interface",
+         "//source/common/stats:symbol_table_lib",
++        "@com_google_absl//absl/types:any",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+diff --git a/envoy/api/BUILD b/envoy/api/BUILD
+index 3ac0872aa..2753a6e62 100644
+--- a/envoy/api/BUILD
++++ b/envoy/api/BUILD
+@@ -36,8 +36,8 @@ envoy_cc_library(
+         "os_sys_calls_hot_restart.h",
+         "os_sys_calls_linux.h",
+     ],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/network:address_interface",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+diff --git a/envoy/buffer/BUILD b/envoy/buffer/BUILD
+index 6913dc1bd..3ca278369 100644
+--- a/envoy/buffer/BUILD
++++ b/envoy/buffer/BUILD
+@@ -11,9 +11,6 @@ envoy_package()
+ envoy_cc_library(
+     name = "buffer_interface",
+     hdrs = ["buffer.h"],
+-    external_deps = [
+-        "abseil_inlined_vector",
+-    ],
+     deps = [
+         "//envoy/api:os_sys_calls_interface",
+         "//envoy/common:exception_lib",
+@@ -21,5 +18,6 @@ envoy_cc_library(
+         "//source/common/common:assert_lib",
+         "//source/common/common:byte_order_lib",
+         "//source/common/common:utility_lib",
++        "@com_google_absl//absl/container:inlined_vector",
+     ],
+ )
+diff --git a/envoy/common/BUILD b/envoy/common/BUILD
+index e1ee7d1f3..3c8680576 100644
+--- a/envoy/common/BUILD
++++ b/envoy/common/BUILD
+@@ -14,7 +14,7 @@ envoy_basic_cc_library(
+     hdrs = [
+         "platform.h",
+     ],
+-    external_deps = ["abseil_strings"],
++    deps = ["@com_google_absl//absl/strings"],
+ )
+ 
+ envoy_basic_cc_library(
+@@ -39,7 +39,7 @@ envoy_basic_cc_library(
+     hdrs = [
+         "optref.h",
+     ],
+-    external_deps = ["abseil_optional"],
++    deps = ["@com_google_absl//absl/types:optional"],
+ )
+ 
+ envoy_cc_library(
+@@ -146,12 +146,10 @@ envoy_cc_library(
+     hdrs = [
+         "union_string.h",
+     ],
+-    external_deps = [
+-        "abseil_inlined_vector",
+-        "abseil_variant",
+-    ],
+     deps = [
+         "//source/common/common:assert_lib",
+         "//source/common/common:utility_lib",
++        "@com_google_absl//absl/container:inlined_vector",
++        "@com_google_absl//absl/types:variant",
+     ],
+ )
+diff --git a/envoy/config/BUILD b/envoy/config/BUILD
+index 6a24595f4..a76ac86f5 100644
+--- a/envoy/config/BUILD
++++ b/envoy/config/BUILD
+@@ -11,11 +11,11 @@ envoy_package()
+ envoy_cc_library(
+     name = "config_provider_interface",
+     hdrs = ["config_provider.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/common:time_interface",
+         "//source/common/common:assert_lib",
+         "//source/common/protobuf",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+@@ -125,12 +125,12 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "xds_resources_delegate_interface",
+     hdrs = ["xds_resources_delegate.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":subscription_interface",
+         ":typed_config_interface",
+         "//envoy/api:api_interface",
+         "//envoy/protobuf:message_validator_interface",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/service/discovery/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/envoy/grpc/BUILD b/envoy/grpc/BUILD
+index 62c5f36b1..47b963119 100644
+--- a/envoy/grpc/BUILD
++++ b/envoy/grpc/BUILD
+@@ -11,7 +11,6 @@ envoy_package()
+ envoy_cc_library(
+     name = "async_client_interface",
+     hdrs = ["async_client.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":status",
+         "//envoy/buffer:buffer_interface",
+@@ -21,6 +20,7 @@ envoy_cc_library(
+         "//envoy/tracing:tracer_interface",
+         "//source/common/common:assert_lib",
+         "//source/common/protobuf",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+diff --git a/envoy/http/BUILD b/envoy/http/BUILD
+index eea971bfe..0d4854c72 100644
+--- a/envoy/http/BUILD
++++ b/envoy/http/BUILD
+@@ -27,7 +27,6 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "async_client_interface",
+     hdrs = ["async_client.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":filter_interface",
+         ":message_interface",
+@@ -36,6 +35,7 @@ envoy_cc_library(
+         "//envoy/tracing:tracer_interface",
+         "//source/common/protobuf",
+         "//source/common/protobuf:utility_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/route/v3:pkg_cc_proto",
+     ],
+ )
+@@ -91,18 +91,17 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "filter_factory_interface",
+     hdrs = ["filter_factory.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":header_map_interface",
+         "//envoy/access_log:access_log_interface",
+         "//envoy/grpc:status",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+ envoy_cc_library(
+     name = "filter_interface",
+     hdrs = ["filter.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":codec_interface",
+         ":filter_factory_interface",
+@@ -119,6 +118,7 @@ envoy_cc_library(
+         "//envoy/tracing:tracer_interface",
+         "//envoy/upstream:load_balancer_interface",
+         "//source/common/common:scope_tracked_object_stack",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+@@ -135,15 +135,13 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "header_map_interface",
+     hdrs = ["header_map.h"],
+-    external_deps = [
+-        "abseil_inlined_vector",
+-    ],
+     deps = [
+         ":header_formatter_interface",
+         "//envoy/common:union_string",
+         "//envoy/stream_info:filter_state_interface",
+         "//source/common/common:assert_lib",
+         "//source/common/common:hash_lib",
++        "@com_google_absl//absl/container:inlined_vector",
+     ],
+ )
+ 
+@@ -164,13 +162,13 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "query_params_interface",
+     hdrs = ["query_params.h"],
+-    external_deps = ["abseil_btree"],
++    deps = ["@com_google_absl//absl/container:btree"],
+ )
+ 
+ envoy_cc_library(
+     name = "metadata_interface",
+     hdrs = ["metadata_interface.h"],
+-    external_deps = ["abseil_node_hash_map"],
++    deps = ["@com_google_absl//absl/container:node_hash_map"],
+ )
+ 
+ envoy_cc_library(
+diff --git a/envoy/matcher/BUILD b/envoy/matcher/BUILD
+index 604c1bf4a..63f02e8a2 100644
+--- a/envoy/matcher/BUILD
++++ b/envoy/matcher/BUILD
+@@ -11,14 +11,12 @@ envoy_package()
+ envoy_cc_library(
+     name = "matcher_interface",
+     hdrs = ["matcher.h"],
+-    external_deps = [
+-        "abseil_base",
+-        "abseil_hash",
+-    ],
+     deps = [
+         "//envoy/config:typed_config_interface",
+         "//envoy/protobuf:message_validator_interface",
+         "@com_github_cncf_xds//xds/type/matcher/v3:pkg_cc_proto",
++        "@com_google_absl//absl/base",
++        "@com_google_absl//absl/hash",
+         "@envoy_api//envoy/config/common/matcher/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+     ],
+diff --git a/envoy/network/BUILD b/envoy/network/BUILD
+index cef61c8cb..f40b97d53 100644
+--- a/envoy/network/BUILD
++++ b/envoy/network/BUILD
+@@ -20,7 +20,6 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "connection_interface",
+     hdrs = ["connection.h"],
+-    external_deps = ["abseil_int128"],
+     deps = [
+         ":address_interface",
+         ":filter_interface",
+@@ -29,6 +28,7 @@ envoy_cc_library(
+         "//envoy/event:deferred_deletable",
+         "//envoy/ssl:connection_interface",
+         "//envoy/stream_info:stream_info_interface",
++        "@com_google_absl//absl/numeric:int128",
+     ],
+ )
+ 
+@@ -99,8 +99,10 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "drain_decision_interface",
+     hdrs = ["drain_decision.h"],
+-    external_deps = ["abseil_base"],
+-    deps = ["//envoy/common:callback"],
++    deps = [
++        "//envoy/common:callback",
++        "@com_google_absl//absl/base",
++    ],
+ )
+ 
+ envoy_cc_library(
+@@ -126,16 +128,15 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "hash_policy_interface",
+     hdrs = ["hash_policy.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":connection_interface",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+ envoy_cc_library(
+     name = "io_handle_interface",
+     hdrs = ["io_handle.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":address_interface",
+         "//envoy/api:io_error_interface",
+@@ -143,6 +144,7 @@ envoy_cc_library(
+         "//envoy/buffer:buffer_interface",
+         "//envoy/event:file_event_interface",
+         "//source/common/common:assert_lib",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+diff --git a/envoy/router/BUILD b/envoy/router/BUILD
+index 9e03be232..33af45f78 100644
+--- a/envoy/router/BUILD
++++ b/envoy/router/BUILD
+@@ -49,11 +49,11 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "route_config_update_info_interface",
+     hdrs = ["route_config_update_receiver.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":rds_interface",
+         "//envoy/common:time_interface",
+         "//source/common/protobuf",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/route/v3:pkg_cc_proto",
+         "@envoy_api//envoy/service/discovery/v3:pkg_cc_proto",
+     ],
+@@ -62,7 +62,6 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "router_filter_interface",
+     hdrs = ["router_filter_interface.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/http:filter_interface",
+         "//envoy/http:header_map_interface",
+@@ -70,13 +69,13 @@ envoy_cc_library(
+         "//envoy/stream_info:stream_info_interface",
+         "//envoy/upstream:cluster_manager_interface",
+         "//envoy/upstream:host_description_interface",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+ envoy_cc_library(
+     name = "router_interface",
+     hdrs = ["router.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":internal_redirect_interface",
+         ":path_matcher_interface",
+@@ -98,6 +97,7 @@ envoy_cc_library(
+         "//envoy/upstream:retry_interface",
+         "//source/common/protobuf",
+         "//source/common/protobuf:utility_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/route/v3:pkg_cc_proto",
+         "@envoy_api//envoy/type/v3:pkg_cc_proto",
+@@ -136,9 +136,9 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "string_accessor_interface",
+     hdrs = ["string_accessor.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/stream_info:filter_state_interface",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+diff --git a/envoy/runtime/BUILD b/envoy/runtime/BUILD
+index da5c1527a..4a384841e 100644
+--- a/envoy/runtime/BUILD
++++ b/envoy/runtime/BUILD
+@@ -11,15 +11,13 @@ envoy_package()
+ envoy_cc_library(
+     name = "runtime_interface",
+     hdrs = ["runtime.h"],
+-    external_deps = [
+-        "abseil_node_hash_map",
+-        "abseil_optional",
+-    ],
+     deps = [
+         "//envoy/stats:stats_interface",
+         "//envoy/thread_local:thread_local_object",
+         "//source/common/common:assert_lib",
+         "//source/common/singleton:threadsafe_singleton",
++        "@com_google_absl//absl/container:node_hash_map",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/type/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/envoy/server/BUILD b/envoy/server/BUILD
+index 0ea9b6a3b..b7b22fde0 100644
+--- a/envoy/server/BUILD
++++ b/envoy/server/BUILD
+@@ -30,11 +30,11 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "configuration_interface",
+     hdrs = ["configuration.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/http:context_interface",
+         "//envoy/stats:sink_interface",
+         "//envoy/upstream:cluster_manager_interface",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/envoy/ssl/BUILD b/envoy/ssl/BUILD
+index beb310276..89efc64bf 100644
+--- a/envoy/ssl/BUILD
++++ b/envoy/ssl/BUILD
+@@ -11,10 +11,10 @@ envoy_package()
+ envoy_cc_library(
+     name = "connection_interface",
+     hdrs = ["connection.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":ssl_socket_state",
+         "//envoy/common:time_interface",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+@@ -61,8 +61,8 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "certificate_validation_context_config_interface",
+     hdrs = ["certificate_validation_context_config.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/extensions/transport_sockets/tls/v3:pkg_cc_proto",
+         "@envoy_api//envoy/type/matcher/v3:pkg_cc_proto",
+     ],
+diff --git a/envoy/stats/BUILD b/envoy/stats/BUILD
+index d707c449b..20815c1ec 100644
+--- a/envoy/stats/BUILD
++++ b/envoy/stats/BUILD
+@@ -32,13 +32,13 @@ envoy_cc_library(
+         "tag_extractor.h",
+         "tag_producer.h",
+     ],
+-    external_deps = ["abseil_inlined_vector"],
+     deps = [
+         ":refcount_ptr_interface",
+         ":tag_interface",
+         "//envoy/common:interval_set_interface",
+         "//envoy/common:optref_lib",
+         "//envoy/common:time_interface",
++        "@com_google_absl//absl/container:inlined_vector",
+     ],
+ )
+ 
+diff --git a/envoy/stream_info/BUILD b/envoy/stream_info/BUILD
+index cb79d2392..ad7a490ec 100644
+--- a/envoy/stream_info/BUILD
++++ b/envoy/stream_info/BUILD
+@@ -11,7 +11,6 @@ envoy_package()
+ envoy_cc_library(
+     name = "stream_info_interface",
+     hdrs = ["stream_info.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":filter_state_interface",
+         ":stream_id_provider_interface",
+@@ -25,6 +24,7 @@ envoy_cc_library(
+         "//source/common/common:assert_lib",
+         "//source/common/protobuf",
+         "//source/common/singleton:const_singleton",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+     ],
+ )
+@@ -32,12 +32,12 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "filter_state_interface",
+     hdrs = ["filter_state.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/config:typed_config_interface",
+         "//source/common/common:fmt_lib",
+         "//source/common/common:utility_lib",
+         "//source/common/protobuf",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+diff --git a/envoy/udp/BUILD b/envoy/udp/BUILD
+index 8454b0e89..e89a26ea3 100644
+--- a/envoy/udp/BUILD
++++ b/envoy/udp/BUILD
+@@ -11,8 +11,8 @@ envoy_package()
+ envoy_cc_library(
+     name = "hash_policy_interface",
+     hdrs = ["hash_policy.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/network:address_interface",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+diff --git a/envoy/upstream/BUILD b/envoy/upstream/BUILD
+index 0ea30e9fb..ec48479d7 100644
+--- a/envoy/upstream/BUILD
++++ b/envoy/upstream/BUILD
+@@ -11,9 +11,6 @@ envoy_package()
+ envoy_cc_library(
+     name = "cluster_manager_interface",
+     hdrs = ["cluster_manager.h"],
+-    external_deps = [
+-        "abseil_node_hash_map",
+-    ],
+     deps = [
+         ":health_checker_interface",
+         ":load_balancer_interface",
+@@ -35,6 +32,7 @@ envoy_cc_library(
+         "//envoy/singleton:manager_interface",
+         "//envoy/tcp:conn_pool_interface",
+         "//envoy/thread_local:thread_local_interface",
++        "@com_google_absl//absl/container:node_hash_map",
+         "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/cluster/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+@@ -102,9 +100,9 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "outlier_detection_interface",
+     hdrs = ["outlier_detection.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/common:time_interface",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/data/cluster/v3:pkg_cc_proto",
+     ],
+ )
+@@ -147,7 +145,6 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "upstream_interface",
+     hdrs = ["upstream.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":health_check_host_monitor_interface",
+         ":locality_lib",
+@@ -164,6 +161,7 @@ envoy_cc_library(
+         "//envoy/ssl:context_interface",
+         "//envoy/ssl:context_manager_interface",
+         "//envoy/upstream:types_interface",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/cluster/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+     ],
+diff --git a/mobile/examples/cc/fetch_client/BUILD b/mobile/examples/cc/fetch_client/BUILD
+index 70f4c4900..67afac03f 100644
+--- a/mobile/examples/cc/fetch_client/BUILD
++++ b/mobile/examples/cc/fetch_client/BUILD
+@@ -16,13 +16,13 @@ envoy_cc_library(
+     hdrs = [
+         "fetch_client.h",
+     ],
+-    external_deps = ["abseil_synchronization"],
+     repository = "@envoy",
+     deps = [
+         "//library/cc:engine_builder_lib",
+         "//library/common/http:client_lib",
+         "//library/common/http:header_utility_lib",
+         "//library/common/types:c_types_lib",
++        "@com_google_absl//absl/synchronization",
+         "@envoy//envoy/http:header_map_interface",
+         "@envoy//source/common/http:header_map_lib",
+     ],
+diff --git a/mobile/library/cc/BUILD b/mobile/library/cc/BUILD
+index 24e706ee1..d3cad9190 100644
+--- a/mobile/library/cc/BUILD
++++ b/mobile/library/cc/BUILD
+@@ -20,11 +20,11 @@ envoy_cc_library(
+         "//bazel:exclude_certificates": ["-DEXCLUDE_CERTIFICATES"],
+         "//conditions:default": [],
+     }),
+-    external_deps = ["abseil_optional"],
+     repository = "@envoy",
+     visibility = ["//visibility:public"],
+     deps = [
+         ":envoy_engine_cc_lib_no_stamp",
++        "@com_google_absl//absl/types:optional",
+         "@envoy//source/common/common:assert_lib",
+         "@envoy//source/common/protobuf",
+         "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
+@@ -75,7 +75,6 @@ envoy_cc_library(
+         "stream_prototype.h",
+         "string_accessor.h",
+     ],
+-    external_deps = ["abseil_optional"],
+     repository = "@envoy",
+     visibility = ["//visibility:public"],
+     deps = [
+@@ -84,6 +83,7 @@ envoy_cc_library(
+         "//library/common/api:c_types",
+         "//library/common/bridge:utility_lib",
+         "//library/common/extensions/key_value/platform:config",
++        "@com_google_absl//absl/types:optional",
+         "@envoy//source/common/buffer:buffer_lib",
+         "@envoy//source/common/http:header_map_lib",
+         "@envoy//source/common/http:utility_lib",
+diff --git a/mobile/library/common/event/BUILD b/mobile/library/common/event/BUILD
+index b50a08a0b..2219fd750 100644
+--- a/mobile/library/common/event/BUILD
++++ b/mobile/library/common/event/BUILD
+@@ -8,10 +8,10 @@ envoy_cc_library(
+     name = "provisional_dispatcher_lib",
+     srcs = ["provisional_dispatcher.cc"],
+     hdrs = ["provisional_dispatcher.h"],
+-    external_deps = ["abseil_optional"],
+     repository = "@envoy",
+     deps = [
+         "//library/common/types:c_types_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy//envoy/event:deferred_deletable",
+         "@envoy//envoy/event:dispatcher_interface",
+         "@envoy//source/common/common:lock_guard_lib",
+diff --git a/mobile/library/common/http/BUILD b/mobile/library/common/http/BUILD
+index f2d693855..e3a82e5ef 100644
+--- a/mobile/library/common/http/BUILD
++++ b/mobile/library/common/http/BUILD
+@@ -8,7 +8,6 @@ envoy_cc_library(
+     name = "client_lib",
+     srcs = ["client.cc"],
+     hdrs = ["client.h"],
+-    external_deps = ["abseil_optional"],
+     repository = "@envoy",
+     deps = [
+         ":header_utility_lib",
+@@ -23,6 +22,7 @@ envoy_cc_library(
+         "//library/common/stream_info:extra_stream_info_lib",
+         "//library/common/system:system_helper_lib",
+         "//library/common/types:c_types_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy//envoy/buffer:buffer_interface",
+         "@envoy//envoy/common:scope_tracker_interface",
+         "@envoy//envoy/event:deferred_deletable",
+diff --git a/source/common/access_log/BUILD b/source/common/access_log/BUILD
+index 869662afa..7359f9b10 100644
+--- a/source/common/access_log/BUILD
++++ b/source/common/access_log/BUILD
+@@ -12,9 +12,6 @@ envoy_cc_library(
+     name = "access_log_lib",
+     srcs = ["access_log_impl.cc"],
+     hdrs = ["access_log_impl.h"],
+-    external_deps = [
+-        "abseil_hash",
+-    ],
+     deps = [
+         "//envoy/access_log:access_log_config_interface",
+         "//envoy/access_log:access_log_interface",
+@@ -34,6 +31,7 @@ envoy_cc_library(
+         "//source/common/protobuf:utility_lib",
+         "//source/common/stream_info:stream_info_lib",
+         "//source/common/tracing:http_tracer_lib",
++        "@com_google_absl//absl/hash",
+         "@envoy_api//envoy/config/accesslog/v3:pkg_cc_proto",
+         "@envoy_api//envoy/type/v3:pkg_cc_proto",
+     ],
+diff --git a/source/common/common/BUILD b/source/common/common/BUILD
+index a11235fac..415b71d4c 100644
+--- a/source/common/common/BUILD
++++ b/source/common/common/BUILD
+@@ -21,13 +21,13 @@ envoy_cc_library(
+     name = "assert_lib",
+     srcs = ["assert.cc"],
+     hdrs = ["assert.h"],
+-    external_deps = [
+-        "abseil_base",
+-        "abseil_synchronization",
+-        "abseil_stacktrace",
+-        "abseil_symbolize",
++    deps = [
++        ":minimal_logger_lib",
++        "@com_google_absl//absl/base",
++        "@com_google_absl//absl/debugging:stacktrace",
++        "@com_google_absl//absl/debugging:symbolize",
++        "@com_google_absl//absl/synchronization",
+     ],
+-    deps = [":minimal_logger_lib"],
+ )
+ 
+ envoy_cc_library(
+@@ -128,12 +128,12 @@ envoy_basic_cc_library(
+     name = "fmt_lib",
+     hdrs = ["fmt.h"],
+     external_deps = [
+-        "abseil_strings",
+         "fmtlib",
+     ],
+     deps = [
+         "//envoy/common:base_includes",
+         "@com_google_absl//absl/status",
++        "@com_google_absl//absl/strings",
+     ],
+ )
+ 
+@@ -168,7 +168,6 @@ envoy_cc_library(
+     srcs = ["key_value_store_base.cc"],
+     hdrs = ["key_value_store_base.h"],
+     external_deps = [
+-        "abseil_cleanup",
+         "quiche_quic_platform",
+     ],
+     deps = [
+@@ -177,6 +176,7 @@ envoy_cc_library(
+         "//envoy/filesystem:filesystem_interface",
+         "//source/common/config:ttl_lib",
+         "@com_github_google_quiche//:quiche_common_lib",
++        "@com_google_absl//absl/cleanup",
+     ],
+ )
+ 
+@@ -210,10 +210,6 @@ envoy_cc_library(
+         "json_escape_string.h",
+         "logger.h",
+     ],
+-    external_deps = [
+-        "abseil_synchronization",
+-        "abseil_flat_hash_map",
+-    ],
+     deps = [
+         ":base_logger_lib",
+         ":fmt_lib",
+@@ -221,6 +217,8 @@ envoy_cc_library(
+         ":macros",
+         ":non_copyable",
+         "//source/common/protobuf",
++        "@com_google_absl//absl/container:flat_hash_map",
++        "@com_google_absl//absl/synchronization",
+     ] + select({
+         "//bazel:android_logger": ["logger_impl_lib_android"],
+         "//conditions:default": ["logger_impl_lib_standard"],
+@@ -232,9 +230,11 @@ envoy_cc_library(
+     srcs = ["base_logger.cc"],
+     hdrs = ["base_logger.h"],
+     external_deps = [
+-        "abseil_strings",
+         "spdlog",
+     ],
++    deps = [
++        "@com_google_absl//absl/strings",
++    ],
+ )
+ 
+ envoy_cc_library(
+@@ -277,10 +277,10 @@ envoy_cc_library(
+     name = "mutex_tracer_lib",
+     srcs = ["mutex_tracer_impl.cc"],
+     hdrs = ["mutex_tracer_impl.h"],
+-    external_deps = ["abseil_synchronization"],
+     deps = [
+         ":assert_lib",
+         "//envoy/common:mutex_tracer",
++        "@com_google_absl//absl/synchronization",
+     ],
+ )
+ 
+@@ -316,7 +316,6 @@ envoy_cc_library(
+     name = "matchers_lib",
+     srcs = ["matchers.cc"],
+     hdrs = ["matchers.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":utility_lib",
+         "//envoy/common:matchers_interface",
+@@ -325,6 +324,7 @@ envoy_cc_library(
+         "//source/common/config:utility_lib",
+         "//source/common/http:path_utility_lib",
+         "//source/common/protobuf",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+         "@envoy_api//envoy/type/matcher/v3:pkg_cc_proto",
+     ],
+@@ -401,16 +401,16 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "thread_annotations",
+     hdrs = ["thread_annotations.h"],
+-    external_deps = ["abseil_base"],
++    deps = ["@com_google_absl//absl/base"],
+ )
+ 
+ envoy_cc_library(
+     name = "thread_synchronizer_lib",
+     srcs = ["thread_synchronizer.cc"],
+     hdrs = ["thread_synchronizer.h"],
+-    external_deps = ["abseil_synchronization"],
+     deps = [
+         ":assert_lib",
++        "@com_google_absl//absl/synchronization",
+     ],
+ )
+ 
+@@ -418,10 +418,10 @@ envoy_cc_library(
+     name = "thread_lib",
+     srcs = ["thread.cc"],
+     hdrs = ["thread.h"],
+-    external_deps = ["abseil_synchronization"],
+     deps = envoy_cc_platform_dep("thread_impl_lib") + [
+         ":macros",
+         ":non_copyable",
++        "@com_google_absl//absl/synchronization",
+     ],
+ )
+ 
+@@ -468,7 +468,6 @@ envoy_cc_library(
+     name = "utility_lib",
+     srcs = ["utility.cc"],
+     hdrs = ["utility.h"],
+-    external_deps = ["abseil_node_hash_map"],
+     deps = [
+         ":assert_lib",
+         ":hash_lib",
+@@ -477,6 +476,7 @@ envoy_cc_library(
+         "//envoy/common:interval_set_interface",
+         "//envoy/common:time_interface",
+         "//source/common/singleton:const_singleton",
++        "@com_google_absl//absl/container:node_hash_map",
+         "@com_googlesource_code_re2//:re2",
+     ],
+ )
+@@ -484,12 +484,10 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "compiled_string_map_lib",
+     hdrs = ["compiled_string_map.h"],
+-    external_deps = [
+-        "abseil_strings",
+-    ],
+     deps = [
+         "//envoy/common:pure_lib",
+         "//source/common/common:assert_lib",
++        "@com_google_absl//absl/strings",
+     ],
+ )
+ 
+@@ -617,12 +615,10 @@ envoy_cc_library(
+     hdrs = [
+         "inline_map.h",
+     ],
+-    external_deps = [
+-        "abseil_node_hash_set",
+-    ],
+     deps = [
+         "//source/common/common:assert_lib",
+         "//source/common/common:macros",
+         "//source/common/common:utility_lib",
++        "@com_google_absl//absl/container:node_hash_set",
+     ],
+ )
+diff --git a/source/common/config/BUILD b/source/common/config/BUILD
+index dca8c8227..f44bd06da 100644
+--- a/source/common/config/BUILD
++++ b/source/common/config/BUILD
+@@ -216,7 +216,6 @@ envoy_cc_library(
+     name = "utility_lib",
+     srcs = ["utility.cc"],
+     hdrs = ["utility.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/config:grpc_mux_interface",
+         "//envoy/config:subscription_interface",
+@@ -235,6 +234,7 @@ envoy_cc_library(
+         "//source/common/version:api_version_lib",
+         "@com_github_cncf_xds//udpa/type/v1:pkg_cc_proto",
+         "@com_github_cncf_xds//xds/type/v3:pkg_cc_proto",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/cluster/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+diff --git a/source/common/event/BUILD b/source/common/event/BUILD
+index 41d65b47e..659d8e76b 100644
+--- a/source/common/event/BUILD
++++ b/source/common/event/BUILD
+@@ -114,9 +114,6 @@ envoy_cc_library(
+         "file_event_impl.h",
+         "schedulable_cb_impl.h",
+     ],
+-    external_deps = [
+-        "abseil_inlined_vector",
+-    ],
+     deps = [
+         ":libevent_lib",
+         ":libevent_scheduler_lib",
+@@ -128,6 +125,7 @@ envoy_cc_library(
+         "//source/common/common:minimal_logger_lib",
+         "//source/common/common:thread_lib",
+         "//source/common/signal:fatal_error_handler_lib",
++        "@com_google_absl//absl/container:inlined_vector",
+     ] + envoy_select_signal_trace(["//source/common/signal:sigaction_lib"]),
+ )
+ 
+diff --git a/source/common/formatter/BUILD b/source/common/formatter/BUILD
+index 0d67f123e..393eb6daa 100644
+--- a/source/common/formatter/BUILD
++++ b/source/common/formatter/BUILD
+@@ -18,7 +18,6 @@ envoy_cc_library(
+         "http_formatter_context.h",
+         "substitution_formatter.h",
+     ],
+-    external_deps = ["abseil_str_format"],
+     deps = [
+         "//envoy/api:api_interface",
+         "//envoy/formatter:substitution_formatter_interface",
+@@ -27,6 +26,7 @@ envoy_cc_library(
+         "//source/common/http:header_map_lib",
+         "//source/common/http:utility_lib",
+         "//source/common/json:json_loader_lib",
++        "@com_google_absl//absl/strings:str_format",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/source/common/grpc/BUILD b/source/common/grpc/BUILD
+index ed55b58cb..3e183c19e 100644
+--- a/source/common/grpc/BUILD
++++ b/source/common/grpc/BUILD
+@@ -75,9 +75,9 @@ envoy_cc_library(
+     name = "status_lib",
+     srcs = ["status.cc"],
+     hdrs = ["status.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/grpc:status",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+@@ -85,7 +85,6 @@ envoy_cc_library(
+     name = "common_lib",
+     srcs = ["common.cc"],
+     hdrs = ["common.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/http:header_map_interface",
+         "//envoy/http:message_interface",
+@@ -109,6 +108,7 @@ envoy_cc_library(
+         "//source/common/http:message_lib",
+         "//source/common/http:utility_lib",
+         "//source/common/protobuf",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+@@ -116,7 +116,6 @@ envoy_cc_library(
+     name = "context_lib",
+     srcs = ["context_impl.cc"],
+     hdrs = ["context_impl.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":common_lib",
+         ":stat_names_lib",
+@@ -126,6 +125,7 @@ envoy_cc_library(
+         "//source/common/common:hash_lib",
+         "//source/common/stats:symbol_table_lib",
+         "//source/common/stats:utility_lib",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+@@ -134,7 +134,6 @@ envoy_cc_library(
+     srcs = ["google_grpc_utils.cc"],
+     hdrs = ["google_grpc_utils.h"],
+     external_deps = [
+-        "abseil_optional",
+         "grpc",
+     ],
+     deps = [
+@@ -148,6 +147,7 @@ envoy_cc_library(
+         "//source/common/common:macros",
+         "//source/common/common:utility_lib",
+         "//source/common/grpc:status_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+     ],
+ )
+@@ -167,7 +167,6 @@ envoy_cc_library(
+     srcs = ["google_async_client_impl.cc"],
+     hdrs = ["google_async_client_impl.h"],
+     external_deps = [
+-        "abseil_synchronization",
+         "grpc",
+     ],
+     deps = [
+@@ -187,6 +186,7 @@ envoy_cc_library(
+         "//source/common/common:linked_object",
+         "//source/common/common:thread_annotations",
+         "//source/common/tracing:http_tracer_lib",
++        "@com_google_absl//absl/synchronization",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/source/common/http/BUILD b/source/common/http/BUILD
+index d3a4d70d7..c9d337388 100644
+--- a/source/common/http/BUILD
++++ b/source/common/http/BUILD
+@@ -166,11 +166,9 @@ envoy_cc_library(
+     name = "dependency_manager",
+     srcs = ["dependency_manager.cc"],
+     hdrs = ["dependency_manager.h"],
+-    external_deps = [
+-        "abseil_flat_hash_set",
+-        "abseil_status",
+-    ],
+     deps = [
++        "@com_google_absl//absl/container:flat_hash_set",
++        "@com_google_absl//absl/status",
+         "@envoy_api//envoy/extensions/filters/common/dependency/v3:pkg_cc_proto",
+     ],
+ )
+@@ -522,8 +520,6 @@ envoy_cc_library(
+     srcs = ["utility.cc"],
+     hdrs = ["utility.h"],
+     external_deps = [
+-        "abseil_node_hash_set",
+-        "abseil_optional",
+         "http_parser",
+         "quiche_http2_protocol",
+     ],
+@@ -549,6 +545,8 @@ envoy_cc_library(
+         "//source/common/network:utility_lib",
+         "//source/common/protobuf:utility_lib",
+         "//source/common/runtime:runtime_features_lib",
++        "@com_google_absl//absl/container:node_hash_set",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/route/v3:pkg_cc_proto",
+     ],
+@@ -588,13 +586,11 @@ envoy_cc_library(
+     name = "path_utility_lib",
+     srcs = ["path_utility.cc"],
+     hdrs = ["path_utility.h"],
+-    external_deps = [
+-        "abseil_optional",
+-    ],
+     deps = [
+         "//envoy/http:header_map_interface",
+         "//source/common/common:logger_lib",
+         "//source/common/runtime:runtime_features_lib",
++        "@com_google_absl//absl/types:optional",
+         "@com_googlesource_googleurl//url",
+     ],
+ )
+@@ -619,12 +615,10 @@ envoy_cc_library(
+     name = "status_lib",
+     srcs = ["status.cc"],
+     hdrs = ["status.h"],
+-    external_deps = [
+-        "abseil_status",
+-    ],
+     deps = [
+         "//envoy/http:codes_interface",
+         "//source/common/common:assert_lib",
++        "@com_google_absl//absl/status",
+     ],
+ )
+ 
+diff --git a/source/common/http/http1/BUILD b/source/common/http/http1/BUILD
+index b2d52f504..84f8e2d7c 100644
+--- a/source/common/http/http1/BUILD
++++ b/source/common/http/http1/BUILD
+@@ -70,7 +70,6 @@ envoy_cc_library(
+     name = "conn_pool_lib",
+     srcs = ["conn_pool.cc"],
+     hdrs = ["conn_pool.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/event:deferred_deletable",
+         "//envoy/event:dispatcher_interface",
+@@ -85,6 +84,7 @@ envoy_cc_library(
+         "//source/common/http:headers_lib",
+         "//source/common/runtime:runtime_features_lib",
+         "//source/common/upstream:upstream_lib",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+@@ -92,12 +92,12 @@ envoy_cc_library(
+     name = "settings_lib",
+     srcs = ["settings.cc"],
+     hdrs = ["settings.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/http:codec_interface",
+         "//envoy/protobuf:message_validator_interface",
+         "//source/common/config:utility_lib",
+         "//source/common/runtime:runtime_features_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/source/common/http/http2/BUILD b/source/common/http/http2/BUILD
+index d4ba05d75..26fa680b9 100644
+--- a/source/common/http/http2/BUILD
++++ b/source/common/http/http2/BUILD
+@@ -30,10 +30,6 @@ envoy_cc_library(
+     hdrs = ["codec_impl.h"],
+     external_deps = [
+         "quiche_http2_adapter",
+-        "abseil_optional",
+-        "abseil_inlined_vector",
+-        "abseil_algorithm",
+-        "abseil_cleanup",
+     ],
+     deps = [
+         ":codec_stats_lib",
+@@ -65,6 +61,10 @@ envoy_cc_library(
+         "//source/common/http:utility_lib",
+         "//source/common/network:common_connection_filter_states_lib",
+         "//source/common/runtime:runtime_features_lib",
++        "@com_google_absl//absl/algorithm",
++        "@com_google_absl//absl/cleanup",
++        "@com_google_absl//absl/container:inlined_vector",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+     ] + envoy_select_nghttp2([envoy_external_dep_path("nghttp2")]),
+ )
+diff --git a/source/common/json/BUILD b/source/common/json/BUILD
+index 6967d116d..1ca1e30c9 100644
+--- a/source/common/json/BUILD
++++ b/source/common/json/BUILD
+@@ -62,7 +62,7 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "constants_lib",
+     hdrs = ["constants.h"],
+-    external_deps = [
+-        "abseil_strings",
++    deps = [
++        "@com_google_absl//absl/strings",
+     ],
+ )
+diff --git a/source/common/network/BUILD b/source/common/network/BUILD
+index 3ec9a93e7..7eefab3fa 100644
+--- a/source/common/network/BUILD
++++ b/source/common/network/BUILD
+@@ -102,7 +102,6 @@ envoy_cc_library(
+     name = "connection_impl",
+     srcs = ["connection_impl.cc"],
+     hdrs = ["connection_impl.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":address_lib",
+         ":connection_base_lib",
+@@ -123,6 +122,7 @@ envoy_cc_library(
+         "//source/common/network:socket_option_factory_lib",
+         "//source/common/runtime:runtime_features_lib",
+         "//source/common/stream_info:stream_info_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+     ],
+ )
+@@ -219,15 +219,13 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "lc_trie_lib",
+     hdrs = ["lc_trie.h"],
+-    external_deps = [
+-        "abseil_node_hash_set",
+-        "abseil_int128",
+-    ],
+     deps = [
+         ":address_lib",
+         ":cidr_range_lib",
+         ":utility_lib",
+         "//source/common/common:assert_lib",
++        "@com_google_absl//absl/container:node_hash_set",
++        "@com_google_absl//absl/numeric:int128",
+     ],
+ )
+ 
+@@ -415,7 +413,6 @@ envoy_cc_library(
+     name = "socket_option_lib",
+     srcs = ["socket_option_impl.cc"],
+     hdrs = ["socket_option_impl.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":address_lib",
+         "//envoy/api:os_sys_calls_interface",
+@@ -425,6 +422,7 @@ envoy_cc_library(
+         "//source/common/common:minimal_logger_lib",
+         "//source/common/common:scalar_to_byte_vector_lib",
+         "//source/common/common:utility_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+     ],
+ )
+@@ -433,7 +431,6 @@ envoy_cc_library(
+     name = "addr_family_aware_socket_option_lib",
+     srcs = ["addr_family_aware_socket_option_impl.cc"],
+     hdrs = ["addr_family_aware_socket_option_impl.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":address_lib",
+         ":socket_lib",
+@@ -442,6 +439,7 @@ envoy_cc_library(
+         "//source/common/api:os_sys_calls_lib",
+         "//source/common/common:assert_lib",
+         "//source/common/common:logger_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+     ],
+ )
+@@ -467,7 +465,6 @@ envoy_cc_library(
+     name = "socket_option_factory_lib",
+     srcs = ["socket_option_factory.cc"],
+     hdrs = ["socket_option_factory.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":addr_family_aware_socket_option_lib",
+         ":address_lib",
+@@ -475,6 +472,7 @@ envoy_cc_library(
+         ":win32_redirect_records_option_lib",
+         "//envoy/network:listen_socket_interface",
+         "//source/common/common:logger_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+     ],
+ )
+@@ -574,12 +572,10 @@ envoy_cc_library(
+         "filter_matcher.cc",
+     ],
+     hdrs = ["filter_matcher.h"],
+-    external_deps = [
+-        "abseil_str_format",
+-    ],
+     deps = [
+         "//envoy/network:filter_interface",
+         "//envoy/network:listen_socket_interface",
++        "@com_google_absl//absl/strings:str_format",
+         "@envoy_api//envoy/config/listener/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/source/common/orca/BUILD b/source/common/orca/BUILD
+index fab411692..c558cee04 100644
+--- a/source/common/orca/BUILD
++++ b/source/common/orca/BUILD
+@@ -13,14 +13,14 @@ envoy_cc_library(
+     srcs = ["orca_parser.cc"],
+     hdrs = ["orca_parser.h"],
+     external_deps = [
+-        "abseil_strings",
+-        "abseil_statusor",
+         "fmtlib",
+     ],
+     deps = [
+         "//envoy/http:header_map_interface",
+         "//source/common/common:base64_lib",
+         "@com_github_cncf_xds//xds/data/orca/v3:pkg_cc_proto",
++        "@com_google_absl//absl/status:statusor",
++        "@com_google_absl//absl/strings",
+     ],
+ )
+ 
+@@ -29,10 +29,6 @@ envoy_cc_library(
+     srcs = ["orca_load_metrics.cc"],
+     hdrs = ["orca_load_metrics.h"],
+     external_deps = [
+-        "abseil_flat_hash_set",
+-        "abseil_status",
+-        "abseil_strings",
+-        "abseil_statusor",
+         "fmtlib",
+     ],
+     deps = [
+@@ -41,5 +37,9 @@ envoy_cc_library(
+         "//source/common/http:header_utility_lib",
+         "//source/common/protobuf:utility_lib_header",
+         "@com_github_cncf_xds//xds/data/orca/v3:pkg_cc_proto",
++        "@com_google_absl//absl/container:flat_hash_map",
++        "@com_google_absl//absl/status",
++        "@com_google_absl//absl/status:statusor",
++        "@com_google_absl//absl/strings",
+     ],
+ )
+diff --git a/source/common/quic/BUILD b/source/common/quic/BUILD
+index 8a91e5705..62a54d13e 100644
+--- a/source/common/quic/BUILD
++++ b/source/common/quic/BUILD
+@@ -287,9 +287,6 @@ envoy_cc_library(
+         "envoy_quic_server_session.h",
+         "envoy_quic_server_stream.h",
+     ],
+-    external_deps = [
+-        "abseil_optional",
+-    ],
+     tags = ["nofips"],
+     deps = [
+         ":envoy_quic_connection_debug_visitor_factory_interface",
+@@ -305,6 +302,7 @@ envoy_cc_library(
+         "//source/common/common:assert_lib",
+         "//source/common/http:header_map_lib",
+         "@com_github_google_quiche//:quic_server_http_spdy_session_lib",
++        "@com_google_absl//absl/types:optional",
+     ] + envoy_select_enable_http_datagrams([
+         ":http_datagram_handler",
+     ]),
+diff --git a/source/common/quic/platform/BUILD b/source/common/quic/platform/BUILD
+index f77f96078..4852feee0 100644
+--- a/source/common/quic/platform/BUILD
++++ b/source/common/quic/platform/BUILD
+@@ -40,11 +40,9 @@ envoy_package()
+ envoy_cc_library(
+     name = "quiche_flags_constants",
+     hdrs = ["quiche_flags_constants.h"],
+-    external_deps = [
+-        "abseil_base",
+-    ],
+     deps = [
+         "//source/common/http:http_option_limits_lib",
++        "@com_google_absl//absl/base",
+     ],
+ )
+ 
+@@ -52,16 +50,14 @@ envoy_quiche_platform_impl_cc_library(
+     name = "quiche_flags_impl_lib",
+     srcs = ["quiche_flags_impl.cc"],
+     hdrs = ["quiche_flags_impl.h"],
+-    external_deps = [
+-        "abseil_base",
+-        "abseil_synchronization",
+-    ],
+     deps = [
+         ":quiche_flags_constants",
+         "//source/common/common:assert_lib",
+         "@com_github_google_quiche//:quiche_feature_flags_list_lib",
+         "@com_github_google_quiche//:quiche_protocol_flags_list_lib",
++        "@com_google_absl//absl/base",
+         "@com_google_absl//absl/flags:flag",
++        "@com_google_absl//absl/synchronization",
+     ],
+ )
+ 
+@@ -69,10 +65,10 @@ envoy_quiche_platform_impl_cc_library(
+     name = "quiche_time_utils_impl_lib",
+     srcs = ["quiche_time_utils_impl.cc"],
+     hdrs = ["quiche_time_utils_impl.h"],
+-    external_deps = [
+-        "abseil_base",
+-        "abseil_optional",
+-        "abseil_time",
++    deps = [
++        "@com_google_absl//absl/base",
++        "@com_google_absl//absl/time",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+@@ -96,20 +92,18 @@ envoy_quiche_platform_impl_cc_library(
+ 
+ envoy_quiche_platform_impl_cc_library(
+     name = "quic_base_impl_lib",
+-    external_deps = [
+-        "abseil_base",
+-        "abseil_hash",
+-        "abseil_inlined_vector",
+-        "abseil_memory",
+-        "abseil_node_hash_map",
+-        "abseil_node_hash_set",
+-    ],
+     tags = ["nofips"],
+     deps = [
+         ":quiche_flags_impl_lib",
+         "//source/common/common:assert_lib",
+         "@com_github_google_quiche//:quic_platform_export",
++        "@com_google_absl//absl/base",
+         "@com_google_absl//absl/container:btree",
++        "@com_google_absl//absl/container:inlined_vector",
++        "@com_google_absl//absl/container:node_hash_map",
++        "@com_google_absl//absl/container:node_hash_set",
++        "@com_google_absl//absl/hash",
++        "@com_google_absl//absl/memory",
+     ],
+ )
+ 
+@@ -144,16 +138,14 @@ envoy_quiche_platform_impl_cc_library(
+     hdrs = [
+         "quiche_mem_slice_impl.h",
+     ],
+-    external_deps = [
+-        "abseil_hash",
+-        "abseil_node_hash_map",
+-    ],
+     deps = [
+         ":quiche_flags_impl_lib",
+         ":quiche_logging_impl_lib",
+         "//source/common/buffer:buffer_lib",
+         "@com_github_google_quiche//:quiche_common_buffer_allocator_lib",
+         "@com_github_google_quiche//:quiche_common_callbacks",
++        "@com_google_absl//absl/container:node_hash_map",
++        "@com_google_absl//absl/hash",
+     ],
+ )
+ 
+@@ -167,6 +159,6 @@ envoy_quiche_platform_impl_cc_library(
+ envoy_quiche_platform_impl_cc_library(
+     name = "quiche_export_impl_lib",
+     hdrs = ["quiche_export_impl.h"],
+-    external_deps = ["abseil_base"],
+     tags = ["nofips"],
++    deps = ["@com_google_absl//absl/base"],
+ )
+diff --git a/source/common/router/BUILD b/source/common/router/BUILD
+index 70200e05e..6f86c9985 100644
+--- a/source/common/router/BUILD
++++ b/source/common/router/BUILD
+@@ -35,7 +35,6 @@ envoy_cc_library(
+     name = "config_lib",
+     srcs = ["config_impl.cc"],
+     hdrs = ["config_impl.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":config_utility_lib",
+         ":context_lib",
+@@ -77,6 +76,7 @@ envoy_cc_library(
+         "//source/extensions/matching/network/common:inputs_lib",
+         "//source/extensions/path/match/uri_template:config",
+         "//source/extensions/path/rewrite/uri_template:config",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/common/matcher/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/route/v3:pkg_cc_proto",
+@@ -235,15 +235,13 @@ envoy_cc_library(
+     name = "scoped_config_lib",
+     srcs = ["scoped_config_impl.cc"],
+     hdrs = ["scoped_config_impl.h"],
+-    external_deps = [
+-        "abseil_str_format",
+-    ],
+     deps = [
+         ":config_lib",
+         "//envoy/router:rds_interface",
+         "//envoy/router:scopes_interface",
+         "//envoy/thread_local:thread_local_interface",
+         "//source/common/protobuf:utility_lib",
++        "@com_google_absl//absl/strings:str_format",
+         "@envoy_api//envoy/config/route/v3:pkg_cc_proto",
+         "@envoy_api//envoy/extensions/filters/network/http_connection_manager/v3:pkg_cc_proto",
+     ],
+@@ -284,7 +282,6 @@ envoy_cc_library(
+     name = "retry_state_lib",
+     srcs = ["retry_state_impl.cc"],
+     hdrs = ["retry_state_impl.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/event:timer_interface",
+         "//envoy/http:codec_interface",
+@@ -300,6 +297,7 @@ envoy_cc_library(
+         "//source/common/http:header_utility_lib",
+         "//source/common/http:headers_lib",
+         "//source/common/http:utility_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/route/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/source/common/singleton/BUILD b/source/common/singleton/BUILD
+index 728c2ed78..1580ec85b 100644
+--- a/source/common/singleton/BUILD
++++ b/source/common/singleton/BUILD
+@@ -29,6 +29,8 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "threadsafe_singleton",
+     hdrs = ["threadsafe_singleton.h"],
+-    external_deps = ["abseil_base"],
+-    deps = ["//source/common/common:assert_lib"],
++    deps = [
++        "//source/common/common:assert_lib",
++        "@com_google_absl//absl/base",
++    ],
+ )
+diff --git a/source/common/ssl/BUILD b/source/common/ssl/BUILD
+index 4526fe428..9a903309b 100644
+--- a/source/common/ssl/BUILD
++++ b/source/common/ssl/BUILD
+@@ -26,12 +26,12 @@ envoy_cc_library(
+     name = "certificate_validation_context_config_impl_lib",
+     srcs = ["certificate_validation_context_config_impl.cc"],
+     hdrs = ["certificate_validation_context_config_impl.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/api:api_interface",
+         "//envoy/ssl:certificate_validation_context_config_interface",
+         "//source/common/common:empty_string",
+         "//source/common/config:datasource_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+         "@envoy_api//envoy/extensions/transport_sockets/tls/v3:pkg_cc_proto",
+         "@envoy_api//envoy/type/matcher/v3:pkg_cc_proto",
+diff --git a/source/common/stats/BUILD b/source/common/stats/BUILD
+index 5c35a29df..b2852de43 100644
+--- a/source/common/stats/BUILD
++++ b/source/common/stats/BUILD
+@@ -29,12 +29,12 @@ envoy_cc_library(
+     name = "custom_stat_namespaces_lib",
+     srcs = ["custom_stat_namespaces_impl.cc"],
+     hdrs = ["custom_stat_namespaces_impl.h"],
+-    external_deps = ["abseil_flat_hash_set"],
+     deps = [
+         "//envoy/stats:custom_stat_namespaces_interface",
+         "//source/common/common:assert_lib",
+         "//source/common/common:macros",
+         "//source/common/common:thread_lib",
++        "@com_google_absl//absl/container:flat_hash_set",
+     ],
+ )
+ 
+@@ -181,10 +181,6 @@ envoy_cc_library(
+     name = "symbol_table_lib",
+     srcs = ["symbol_table.cc"],
+     hdrs = ["symbol_table.h"],
+-    external_deps = [
+-        "abseil_base",
+-        "abseil_inlined_vector",
+-    ],
+     deps = [
+         ":recent_lookups_lib",
+         "//source/common/common:assert_lib",
+@@ -192,6 +188,8 @@ envoy_cc_library(
+         "//source/common/common:minimal_logger_lib",
+         "//source/common/common:thread_lib",
+         "//source/common/common:utility_lib",
++        "@com_google_absl//absl/base",
++        "@com_google_absl//absl/container:inlined_vector",
+     ],
+ )
+ 
+@@ -211,7 +209,6 @@ envoy_cc_library(
+     name = "tag_producer_lib",
+     srcs = ["tag_producer_impl.cc"],
+     hdrs = ["tag_producer_impl.h"],
+-    external_deps = ["abseil_node_hash_set"],
+     deps = [
+         ":symbol_table_lib",
+         ":tag_extractor_lib",
+@@ -220,6 +217,7 @@ envoy_cc_library(
+         "//source/common/common:perf_annotation_lib",
+         "//source/common/config:well_known_names",
+         "//source/common/protobuf",
++        "@com_google_absl//absl/container:node_hash_set",
+         "@envoy_api//envoy/config/metrics/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/source/common/stream_info/BUILD b/source/common/stream_info/BUILD
+index 452ccb42d..175913e02 100644
+--- a/source/common/stream_info/BUILD
++++ b/source/common/stream_info/BUILD
+@@ -38,16 +38,14 @@ envoy_cc_library(
+     name = "utility_lib",
+     srcs = ["utility.cc"],
+     hdrs = ["utility.h"],
+-    external_deps = [
+-        "abseil_optional",
+-        "abseil_node_hash_map",
+-    ],
+     deps = [
+         "//envoy/common:time_interface",
+         "//envoy/http:codes_interface",
+         "//envoy/stream_info:stream_info_interface",
+         "//source/common/http:default_server_string_lib",
+         "//source/common/runtime:runtime_features_lib",
++        "@com_google_absl//absl/container:node_hash_map",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/extensions/filters/network/http_connection_manager/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/source/common/tcp/BUILD b/source/common/tcp/BUILD
+index cbe05d4b1..9d944f895 100644
+--- a/source/common/tcp/BUILD
++++ b/source/common/tcp/BUILD
+@@ -16,7 +16,6 @@ envoy_cc_library(
+     hdrs = [
+         "conn_pool.h",
+     ],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/event:deferred_deletable",
+         "//envoy/event:dispatcher_interface",
+@@ -33,6 +32,7 @@ envoy_cc_library(
+         "//source/common/network:utility_lib",
+         "//source/common/stats:timespan_lib",
+         "//source/common/upstream:upstream_lib",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+diff --git a/source/common/tls/BUILD b/source/common/tls/BUILD
+index ca18f4920..4a0b1b3b7 100644
+--- a/source/common/tls/BUILD
++++ b/source/common/tls/BUILD
+@@ -64,10 +64,6 @@ envoy_cc_library(
+     srcs = ["ssl_socket.cc"],
+     hdrs = ["ssl_socket.h"],
+     external_deps = [
+-        "abseil_hash",
+-        "abseil_node_hash_map",
+-        "abseil_optional",
+-        "abseil_synchronization",
+         "ssl",
+     ],
+     # TLS is core functionality.
+@@ -91,6 +87,10 @@ envoy_cc_library(
+         "//source/common/common:thread_annotations",
+         "//source/common/http:headers_lib",
+         "//source/common/network:transport_socket_options_lib",
++        "@com_google_absl//absl/container:node_hash_set",
++        "@com_google_absl//absl/hash",
++        "@com_google_absl//absl/synchronization",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+@@ -99,14 +99,14 @@ envoy_cc_library(
+     srcs = ["client_ssl_socket.cc"],
+     hdrs = ["client_ssl_socket.h"],
+     external_deps = [
+-        "abseil_hash",
+-        "abseil_node_hash_map",
+-        "abseil_optional",
+-        "abseil_synchronization",
+         "ssl",
+     ],
+     deps = [
+         ":ssl_socket_base",
++        "@com_google_absl//absl/container:node_hash_set",
++        "@com_google_absl//absl/hash",
++        "@com_google_absl//absl/synchronization",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+@@ -115,14 +115,14 @@ envoy_cc_library(
+     srcs = ["server_ssl_socket.cc"],
+     hdrs = ["server_ssl_socket.h"],
+     external_deps = [
+-        "abseil_hash",
+-        "abseil_node_hash_map",
+-        "abseil_optional",
+-        "abseil_synchronization",
+         "ssl",
+     ],
+     deps = [
+         ":ssl_socket_base",
++        "@com_google_absl//absl/container:node_hash_set",
++        "@com_google_absl//absl/hash",
++        "@com_google_absl//absl/synchronization",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+@@ -186,8 +186,6 @@ envoy_cc_library(
+         "context_manager_impl.h",
+     ],
+     external_deps = [
+-        "abseil_node_hash_set",
+-        "abseil_synchronization",
+         "ssl",
+     ],
+     # TLS is core functionality.
+@@ -215,6 +213,8 @@ envoy_cc_library(
+         "//source/common/tls/cert_validator:cert_validator_lib",
+         "//source/common/tls/private_key:private_key_manager_lib",
+         "@com_github_google_quiche//:quic_core_crypto_proof_source_lib",
++        "@com_google_absl//absl/container:node_hash_set",
++        "@com_google_absl//absl/synchronization",
+         "@envoy_api//envoy/admin/v3:pkg_cc_proto",
+         "@envoy_api//envoy/type/matcher/v3:pkg_cc_proto",
+     ],
+diff --git a/source/common/tls/cert_validator/BUILD b/source/common/tls/cert_validator/BUILD
+index f0b1b69e8..ed1619c6d 100644
+--- a/source/common/tls/cert_validator/BUILD
++++ b/source/common/tls/cert_validator/BUILD
+@@ -25,8 +25,6 @@ envoy_cc_library(
+     ],
+     external_deps = [
+         "ssl",
+-        "abseil_base",
+-        "abseil_hash",
+     ],
+     visibility = ["//visibility:public"],
+     deps = [
+@@ -44,6 +42,8 @@ envoy_cc_library(
+         "//source/common/stats:utility_lib",
+         "//source/common/tls:stats_lib",
+         "//source/common/tls:utility_lib",
++        "@com_google_absl//absl/base",
++        "@com_google_absl//absl/hash",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+         "@envoy_api//envoy/extensions/transport_sockets/tls/v3:pkg_cc_proto",
+         "@envoy_api//envoy/type/matcher/v3:pkg_cc_proto",
+diff --git a/source/common/upstream/BUILD b/source/common/upstream/BUILD
+index a483b745f..e96b08a31 100644
+--- a/source/common/upstream/BUILD
++++ b/source/common/upstream/BUILD
+@@ -427,7 +427,6 @@ envoy_cc_library(
+         "transport_socket_match_impl.h",
+         "upstream_impl.h",
+     ],
+-    external_deps = ["abseil_synchronization"],
+     deps = [
+         ":load_balancer_context_base_lib",
+         ":resource_manager_lib",
+@@ -467,6 +466,7 @@ envoy_cc_library(
+         "//source/extensions/upstreams/http:config",
+         "//source/extensions/upstreams/tcp:config",
+         "//source/server:transport_socket_config_lib",
++        "@com_google_absl//absl/synchronization",
+         "@envoy_api//envoy/config/cluster/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/endpoint/v3:pkg_cc_proto",
+@@ -554,9 +554,9 @@ envoy_cc_library(
+     hdrs = [
+         "default_local_address_selector.h",
+     ],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/upstream:upstream_interface",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+@@ -568,7 +568,6 @@ envoy_cc_library(
+     hdrs = [
+         "default_local_address_selector_factory.h",
+     ],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":default_local_address_selector",
+         "//envoy/network:address_interface",
+@@ -576,6 +575,7 @@ envoy_cc_library(
+         "//envoy/registry",
+         "//envoy/upstream:upstream_interface",
+         "//source/common/network:resolver_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/upstream/local_address_selector/v3:pkg_cc_proto",
+     ],
+     # Ensure this factory in the source is always linked in.
+diff --git a/source/exe/BUILD b/source/exe/BUILD
+index 8885a4923..0a6038e01 100644
+--- a/source/exe/BUILD
++++ b/source/exe/BUILD
+@@ -57,14 +57,12 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "envoy_main_entry_lib",
+     srcs = ["main.cc"],
+-    external_deps = [
+-        "abseil_symbolize",
+-    ],
+     deps = [
+         ":envoy_main_common_lib",
+         ":platform_impl_lib",
+         ":scm_impl_lib",
+         "//source/server:options_lib",
++        "@com_google_absl//absl/debugging:symbolize",
+     ],
+ )
+ 
+diff --git a/source/extensions/access_loggers/open_telemetry/BUILD b/source/extensions/access_loggers/open_telemetry/BUILD
+index c1042afa5..1d03346d0 100644
+--- a/source/extensions/access_loggers/open_telemetry/BUILD
++++ b/source/extensions/access_loggers/open_telemetry/BUILD
+@@ -78,11 +78,11 @@ envoy_cc_library(
+     name = "substitution_formatter_lib",
+     srcs = ["substitution_formatter.cc"],
+     hdrs = ["substitution_formatter.h"],
+-    external_deps = ["abseil_str_format"],
+     deps = [
+         "//envoy/stream_info:stream_info_interface",
+         "//source/common/common:assert_lib",
+         "//source/common/formatter:substitution_formatter_lib",
++        "@com_google_absl//absl/strings:str_format",
+         "@opentelemetry_proto//:common_cc_proto",
+     ],
+ )
+diff --git a/source/extensions/common/aws/BUILD b/source/extensions/common/aws/BUILD
+index cd651d362..fda282db8 100644
+--- a/source/extensions/common/aws/BUILD
++++ b/source/extensions/common/aws/BUILD
+@@ -92,7 +92,9 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "credentials_provider_interface",
+     hdrs = ["credentials_provider.h"],
+-    external_deps = ["abseil_optional"],
++    deps = [
++        "@com_google_absl//absl/types:optional",
++    ],
+ )
+ 
+ envoy_cc_library(
+@@ -111,7 +113,6 @@ envoy_cc_library(
+     name = "credentials_provider_impl_lib",
+     srcs = ["credentials_provider_impl.cc"],
+     hdrs = ["credentials_provider_impl.h"],
+-    external_deps = ["abseil_time"],
+     deps = [
+         ":credentials_provider_interface",
+         ":metadata_fetcher_lib",
+@@ -124,6 +125,7 @@ envoy_cc_library(
+         "//source/common/json:json_loader_lib",
+         "//source/common/runtime:runtime_features_lib",
+         "//source/common/tracing:http_tracer_lib",
++        "@com_google_absl//absl/time",
+     ],
+ )
+ 
+@@ -155,7 +157,9 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "region_provider_interface",
+     hdrs = ["region_provider.h"],
+-    external_deps = ["abseil_optional"],
++    deps = [
++        "@com_google_absl//absl/types:optional",
++    ],
+ )
+ 
+ envoy_cc_library(
+diff --git a/source/extensions/common/dubbo/BUILD b/source/extensions/common/dubbo/BUILD
+index d3c9340fd..ec22a68ea 100644
+--- a/source/extensions/common/dubbo/BUILD
++++ b/source/extensions/common/dubbo/BUILD
+@@ -38,10 +38,10 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "metadata_lib",
+     hdrs = ["metadata.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":message_lib",
+         "//source/common/buffer:buffer_lib",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+diff --git a/source/extensions/common/wasm/BUILD b/source/extensions/common/wasm/BUILD
+index 8022b0d74..c45b87e20 100644
+--- a/source/extensions/common/wasm/BUILD
++++ b/source/extensions/common/wasm/BUILD
+@@ -98,8 +98,6 @@ envoy_cc_extension(
+         ":wasm_hdr",
+         ":wasm_runtime_factory_interface",
+         "//envoy/server:lifecycle_notifier_interface",
+-        "//external:abseil_base",
+-        "//external:abseil_node_hash_map",
+         "//external:zlib",
+         "//source/common/buffer:buffer_lib",
+         "//source/common/common:enum_to_int",
+@@ -115,6 +113,8 @@ envoy_cc_extension(
+         "//source/extensions/common/wasm/ext:set_envoy_filter_state_cc_proto",
+         "//source/extensions/common/wasm/ext:verify_signature_cc_proto",
+         "//source/extensions/filters/common/expr:context_lib",
++        "@com_google_absl//absl/base",
++        "@com_google_absl//absl/container:node_hash_map",
+         "@com_google_cel_cpp//eval/public:builtin_func_registrar",
+         "@com_google_cel_cpp//eval/public:cel_expr_builder_factory",
+         "@com_google_cel_cpp//eval/public:cel_value",
+diff --git a/source/extensions/filters/common/ratelimit/BUILD b/source/extensions/filters/common/ratelimit/BUILD
+index 6529fa385..d69ea98a7 100644
+--- a/source/extensions/filters/common/ratelimit/BUILD
++++ b/source/extensions/filters/common/ratelimit/BUILD
+@@ -33,12 +33,12 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "ratelimit_client_interface",
+     hdrs = ["ratelimit.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/ratelimit:ratelimit_interface",
+         "//envoy/singleton:manager_interface",
+         "//envoy/tracing:tracer_interface",
+         "//source/common/stats:symbol_table_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/service/ratelimit/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/source/extensions/filters/common/rbac/BUILD b/source/extensions/filters/common/rbac/BUILD
+index 5cb7ee9d2..bf3dcf04d 100644
+--- a/source/extensions/filters/common/rbac/BUILD
++++ b/source/extensions/filters/common/rbac/BUILD
+@@ -27,7 +27,6 @@ envoy_cc_library(
+         "matcher_extension.h",
+         "matchers.h",
+     ],
+-    external_deps = ["abseil_optional"],
+     tags = ["skip_on_windows"],
+     deps = [
+         "//envoy/http:header_map_interface",
+@@ -39,6 +38,7 @@ envoy_cc_library(
+         "//source/common/network:cidr_range_lib",
+         "//source/extensions/filters/common/expr:evaluator_lib",
+         "//source/extensions/path/match/uri_template:uri_template_match_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/rbac/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/route/v3:pkg_cc_proto",
+diff --git a/source/extensions/filters/http/cache/BUILD b/source/extensions/filters/http/cache/BUILD
+index 7eaf3a411..9107e06fc 100644
+--- a/source/extensions/filters/http/cache/BUILD
++++ b/source/extensions/filters/http/cache/BUILD
+@@ -111,7 +111,6 @@ envoy_cc_library(
+     name = "range_utils_lib",
+     srcs = ["range_utils.cc"],
+     hdrs = ["range_utils.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":cache_headers_utils_lib",
+         ":key_cc_proto",
+@@ -120,6 +119,7 @@ envoy_cc_library(
+         "//source/common/common:assert_lib",
+         "//source/common/common:logger_lib",
+         "//source/common/http:headers_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/extensions/filters/http/cache/v3:pkg_cc_proto",
+     ],
+ )
+@@ -128,7 +128,6 @@ envoy_cc_library(
+     name = "cache_headers_utils_lib",
+     srcs = ["cache_headers_utils.cc"],
+     hdrs = ["cache_headers_utils.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":cache_custom_headers",
+         "//envoy/common:time_interface",
+@@ -139,6 +138,7 @@ envoy_cc_library(
+         "//source/common/http:headers_lib",
+         "//source/common/protobuf",
+         "@com_google_absl//absl/container:btree",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/extensions/filters/http/cache/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/source/extensions/filters/http/cors/BUILD b/source/extensions/filters/http/cors/BUILD
+index 60b5e0d42..5aefb9449 100644
+--- a/source/extensions/filters/http/cors/BUILD
++++ b/source/extensions/filters/http/cors/BUILD
+@@ -16,9 +16,6 @@ envoy_cc_library(
+     name = "cors_filter_lib",
+     srcs = ["cors_filter.cc"],
+     hdrs = ["cors_filter.h"],
+-    external_deps = [
+-        "abseil_inlined_vector",
+-    ],
+     deps = [
+         "//envoy/http:codes_interface",
+         "//envoy/http:filter_interface",
+@@ -28,6 +25,7 @@ envoy_cc_library(
+         "//source/common/http:header_map_lib",
+         "//source/common/http:headers_lib",
+         "//source/common/http:utility_lib",
++        "@com_google_absl//absl/container:inlined_vector",
+     ],
+ )
+ 
+diff --git a/source/extensions/filters/http/gcp_authn/BUILD b/source/extensions/filters/http/gcp_authn/BUILD
+index cc19cccf8..ecb021ee0 100644
+--- a/source/extensions/filters/http/gcp_authn/BUILD
++++ b/source/extensions/filters/http/gcp_authn/BUILD
+@@ -29,7 +29,6 @@ envoy_cc_library(
+     name = "gcp_authn_lib",
+     srcs = ["gcp_authn_impl.cc"],
+     hdrs = ["gcp_authn_impl.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "token_cache",
+         "//source/common/http:headers_lib",
+@@ -37,6 +36,7 @@ envoy_cc_library(
+         "//source/common/http:utility_lib",
+         "//source/extensions/filters/http/common:factory_base_lib",
+         "//source/extensions/filters/http/common:pass_through_filter_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/extensions/filters/http/gcp_authn/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/source/extensions/filters/network/dubbo_proxy/BUILD b/source/extensions/filters/network/dubbo_proxy/BUILD
+index 0f91338b3..909bb29b7 100644
+--- a/source/extensions/filters/network/dubbo_proxy/BUILD
++++ b/source/extensions/filters/network/dubbo_proxy/BUILD
+@@ -119,11 +119,11 @@ envoy_cc_extension(
+ envoy_cc_library(
+     name = "metadata_lib",
+     hdrs = ["metadata.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":message_lib",
+         "//source/common/buffer:buffer_lib",
+         "//source/common/http:header_map_lib",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+diff --git a/source/extensions/filters/network/generic_proxy/BUILD b/source/extensions/filters/network/generic_proxy/BUILD
+index 7559e538e..c4759e9bf 100644
+--- a/source/extensions/filters/network/generic_proxy/BUILD
++++ b/source/extensions/filters/network/generic_proxy/BUILD
+@@ -184,15 +184,13 @@ envoy_cc_library(
+     hdrs = [
+         "tracing.h",
+     ],
+-    external_deps = [
+-        "abseil_strings",
+-        "abseil_optional",
+-        "abseil_status",
+-    ],
+     deps = [
+         "//envoy/common:pure_lib",
+         "//envoy/tracing:trace_context_interface",
+         "//source/extensions/filters/network/generic_proxy/interface:stream_interface",
++        "@com_google_absl//absl/status",
++        "@com_google_absl//absl/strings",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+diff --git a/source/extensions/filters/network/thrift_proxy/BUILD b/source/extensions/filters/network/thrift_proxy/BUILD
+index 2d2b0448d..85ca7b672 100644
+--- a/source/extensions/filters/network/thrift_proxy/BUILD
++++ b/source/extensions/filters/network/thrift_proxy/BUILD
+@@ -68,7 +68,6 @@ envoy_cc_library(
+     name = "conn_manager_lib",
+     srcs = ["conn_manager.cc"],
+     hdrs = ["conn_manager.h"],
+-    external_deps = ["abseil_any"],
+     deps = [
+         ":app_exception_lib",
+         ":decoder_lib",
+@@ -93,6 +92,7 @@ envoy_cc_library(
+         "//source/common/stats:timespan_lib",
+         "//source/common/stream_info:stream_info_lib",
+         "//source/extensions/filters/network/thrift_proxy/router:router_interface",
++        "@com_google_absl//absl/types:any",
+     ],
+ )
+ 
+@@ -139,21 +139,20 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "metadata_lib",
+     hdrs = ["metadata.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":thrift_lib",
+         ":tracing_interface",
+         "//envoy/buffer:buffer_interface",
+         "//source/common/common:macros",
+         "//source/common/http:header_map_lib",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+ envoy_cc_library(
+     name = "tracing_interface",
+     hdrs = ["tracing.h"],
+-    external_deps = ["abseil_optional"],
+-    deps = [],
++    deps = ["@com_google_absl//absl/types:optional"],
+ )
+ 
+ envoy_cc_library(
+@@ -173,7 +172,6 @@ envoy_cc_library(
+     hdrs = [
+         "protocol.h",
+     ],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":conn_state_lib",
+         ":decoder_events_lib",
+@@ -187,6 +185,7 @@ envoy_cc_library(
+         "//source/common/common:assert_lib",
+         "//source/common/config:utility_lib",
+         "//source/common/singleton:const_singleton",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+@@ -234,12 +233,12 @@ envoy_cc_library(
+     hdrs = [
+         "compact_protocol_impl.h",
+     ],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":buffer_helper_lib",
+         ":protocol_interface",
+         "//source/common/common:macros",
+         "//source/common/runtime:runtime_features_lib",
++        "@com_google_absl//absl/types:optional",
+     ],
+     alwayslink = 1,
+ )
+@@ -274,7 +273,6 @@ envoy_cc_library(
+ envoy_cc_library(
+     name = "transport_interface",
+     hdrs = ["transport.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":buffer_helper_lib",
+         ":metadata_lib",
+@@ -285,6 +283,7 @@ envoy_cc_library(
+         "//source/common/common:assert_lib",
+         "//source/common/config:utility_lib",
+         "//source/common/singleton:const_singleton",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+diff --git a/source/extensions/filters/network/thrift_proxy/router/BUILD b/source/extensions/filters/network/thrift_proxy/router/BUILD
+index 6910d7aba..9bf5cd354 100644
+--- a/source/extensions/filters/network/thrift_proxy/router/BUILD
++++ b/source/extensions/filters/network/thrift_proxy/router/BUILD
+@@ -25,7 +25,6 @@ envoy_cc_extension(
+ envoy_cc_library(
+     name = "router_interface",
+     hdrs = ["router.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/rds:rds_interface",
+         "//envoy/router:router_interface",
+@@ -37,6 +36,7 @@ envoy_cc_library(
+         "//source/extensions/filters/network/thrift_proxy:metadata_lib",
+         "//source/extensions/filters/network/thrift_proxy:protocol_converter_lib",
+         "//source/extensions/filters/network/thrift_proxy:protocol_options_config_lib",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+diff --git a/source/extensions/http/header_validators/envoy_default/BUILD b/source/extensions/http/header_validators/envoy_default/BUILD
+index 73dc0481e..6aabbe9ca 100644
+--- a/source/extensions/http/header_validators/envoy_default/BUILD
++++ b/source/extensions/http/header_validators/envoy_default/BUILD
+@@ -26,9 +26,9 @@ envoy_cc_library(
+         ":path_normalizer",
+         "//envoy/http:header_validator_errors",
+         "//envoy/http:header_validator_interface",
+-        "//external:abseil_node_hash_map",
+-        "//external:abseil_node_hash_set",
+         "//source/common/http:headers_lib",
++        "@com_google_absl//absl/container:node_hash_map",
++        "@com_google_absl//absl/container:node_hash_set",
+         "@envoy_api//envoy/extensions/http/header_validators/envoy_default/v3:pkg_cc_proto",
+     ],
+ )
+@@ -98,10 +98,10 @@ envoy_cc_library(
+         ":header_validator_common",
+         "//envoy/http:header_validator_errors",
+         "//envoy/http:header_validator_interface",
+-        "//external:abseil_node_hash_set",
+         "//source/common/http:header_utility_lib",
+         "//source/common/http:headers_lib",
+         "//source/common/http:utility_lib",
++        "@com_google_absl//absl/container:node_hash_set",
+         "@com_google_absl//absl/functional:bind_front",
+     ],
+ )
+@@ -122,12 +122,12 @@ envoy_cc_library(
+         ":header_validator_common",
+         "//envoy/http:header_validator_errors",
+         "//envoy/http:header_validator_interface",
+-        "//external:abseil_node_hash_map",
+-        "//external:abseil_node_hash_set",
+         "//source/common/http:header_map_lib",
+         "//source/common/http:header_utility_lib",
+         "//source/common/http:headers_lib",
+         "//source/common/http:utility_lib",
++        "@com_google_absl//absl/container:node_hash_map",
++        "@com_google_absl//absl/container:node_hash_set",
+         "@com_google_absl//absl/functional:bind_front",
+     ],
+ )
+diff --git a/source/extensions/load_balancing_policies/common/BUILD b/source/extensions/load_balancing_policies/common/BUILD
+index cd4ea6a5c..8d6dd7563 100644
+--- a/source/extensions/load_balancing_policies/common/BUILD
++++ b/source/extensions/load_balancing_policies/common/BUILD
+@@ -21,12 +21,12 @@ envoy_cc_library(
+     name = "thread_aware_lb_lib",
+     srcs = ["thread_aware_lb_impl.cc"],
+     hdrs = ["thread_aware_lb_impl.h"],
+-    external_deps = ["abseil_synchronization"],
+     deps = [
+         ":load_balancer_lib",
+         "//source/common/common:minimal_logger_lib",
+         "//source/common/config:metadata_lib",
+         "//source/common/config:well_known_names",
++        "@com_google_absl//absl/synchronization",
+         "@envoy_api//envoy/config/cluster/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/source/extensions/load_balancing_policies/ring_hash/BUILD b/source/extensions/load_balancing_policies/ring_hash/BUILD
+index 435b97c0e..be9df9c2d 100644
+--- a/source/extensions/load_balancing_policies/ring_hash/BUILD
++++ b/source/extensions/load_balancing_policies/ring_hash/BUILD
+@@ -13,13 +13,11 @@ envoy_cc_library(
+     name = "ring_hash_lb_lib",
+     srcs = ["ring_hash_lb.cc"],
+     hdrs = ["ring_hash_lb.h"],
+-    external_deps = [
+-        "abseil_inlined_vector",
+-    ],
+     deps = [
+         "//envoy/upstream:load_balancer_interface",
+         "//source/common/common:minimal_logger_lib",
+         "//source/extensions/load_balancing_policies/common:thread_aware_lb_lib",
++        "@com_google_absl//absl/container:inlined_vector",
+         "@envoy_api//envoy/config/cluster/v3:pkg_cc_proto",
+         "@envoy_api//envoy/extensions/load_balancing_policies/ring_hash/v3:pkg_cc_proto",
+     ],
+diff --git a/source/extensions/tracers/zipkin/BUILD b/source/extensions/tracers/zipkin/BUILD
+index 660108850..171080ecb 100644
+--- a/source/extensions/tracers/zipkin/BUILD
++++ b/source/extensions/tracers/zipkin/BUILD
+@@ -34,9 +34,6 @@ envoy_cc_library(
+         "zipkin_json_field_names.h",
+         "zipkin_tracer_impl.h",
+     ],
+-    external_deps = [
+-        "abseil_optional",
+-    ],
+     deps = [
+         "//envoy/common:time_interface",
+         "//envoy/local_info:local_info_interface",
+@@ -59,6 +56,7 @@ envoy_cc_library(
+         "//source/common/tracing:http_tracer_lib",
+         "//source/common/upstream:cluster_update_tracker_lib",
+         "@com_github_openzipkin_zipkinapi//:zipkin_cc_proto",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/trace/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/source/extensions/transport_sockets/alts/BUILD b/source/extensions/transport_sockets/alts/BUILD
+index fe03259a7..7d66d8dd9 100644
+--- a/source/extensions/transport_sockets/alts/BUILD
++++ b/source/extensions/transport_sockets/alts/BUILD
+@@ -35,9 +35,6 @@ envoy_cc_extension(
+     hdrs = [
+         "config.h",
+     ],
+-    external_deps = [
+-        "abseil_node_hash_set",
+-    ],
+     deps = [
+         ":alts_channel_pool",
+         ":tsi_handshaker",
+@@ -45,6 +42,7 @@ envoy_cc_extension(
+         "//envoy/registry",
+         "//envoy/server:transport_socket_config_interface",
+         "//source/common/grpc:google_grpc_context_lib",
++        "@com_google_absl//absl/container:node_hash_set",
+         "@envoy_api//envoy/extensions/transport_sockets/alts/v3:pkg_cc_proto",
+     ],
+ )
+@@ -135,13 +133,13 @@ envoy_cc_library(
+     srcs = ["alts_proxy.cc"],
+     hdrs = ["alts_proxy.h"],
+     external_deps = [
+-        "abseil_memory",
+-        "abseil_status",
+-        "abseil_statusor",
+         "grpc",
+     ],
+     deps = [
+         ":handshaker_cc_grpc",
++        "@com_google_absl//absl/memory",
++        "@com_google_absl//absl/status",
++        "@com_google_absl//absl/status:statusor",
+     ],
+ )
+ 
+@@ -150,13 +148,13 @@ envoy_cc_library(
+     srcs = ["alts_tsi_handshaker.cc"],
+     hdrs = ["alts_tsi_handshaker.h"],
+     external_deps = [
+-        "abseil_memory",
+-        "abseil_status",
+         "grpc",
+     ],
+     deps = [
+         ":alts_proxy",
+         ":handshaker_cc_grpc",
+         ":tsi_frame_protector",
++        "@com_google_absl//absl/memory",
++        "@com_google_absl//absl/status",
+     ],
+ )
+diff --git a/source/extensions/transport_sockets/starttls/BUILD b/source/extensions/transport_sockets/starttls/BUILD
+index 6740d1b68..1117a147a 100644
+--- a/source/extensions/transport_sockets/starttls/BUILD
++++ b/source/extensions/transport_sockets/starttls/BUILD
+@@ -30,8 +30,6 @@ envoy_cc_library(
+     srcs = ["starttls_socket.cc"],
+     hdrs = ["starttls_socket.h"],
+     external_deps = [
+-        "abseil_optional",
+-        "abseil_synchronization",
+         "ssl",
+     ],
+     deps = [
+@@ -44,6 +42,8 @@ envoy_cc_library(
+         "//source/common/common:minimal_logger_lib",
+         "//source/common/common:thread_annotations",
+         "//source/common/network:transport_socket_options_lib",
++        "@com_google_absl//absl/synchronization",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/extensions/transport_sockets/starttls/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/source/extensions/transport_sockets/tls/cert_validator/spiffe/BUILD b/source/extensions/transport_sockets/tls/cert_validator/spiffe/BUILD
+index 72f5fedd2..150928e55 100644
+--- a/source/extensions/transport_sockets/tls/cert_validator/spiffe/BUILD
++++ b/source/extensions/transport_sockets/tls/cert_validator/spiffe/BUILD
+@@ -18,8 +18,6 @@ envoy_cc_extension(
+     ],
+     external_deps = [
+         "ssl",
+-        "abseil_base",
+-        "abseil_hash",
+     ],
+     deps = [
+         "//envoy/ssl:context_config_interface",
+@@ -36,6 +34,8 @@ envoy_cc_extension(
+         "//source/common/tls:stats_lib",
+         "//source/common/tls:utility_lib",
+         "//source/common/tls/cert_validator:cert_validator_lib",
++        "@com_google_absl//absl/base",
++        "@com_google_absl//absl/hash",
+         "@envoy_api//envoy/extensions/transport_sockets/tls/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/source/extensions/watchdog/profile_action/BUILD b/source/extensions/watchdog/profile_action/BUILD
+index 5f01f35e2..e8fccf321 100644
+--- a/source/extensions/watchdog/profile_action/BUILD
++++ b/source/extensions/watchdog/profile_action/BUILD
+@@ -13,9 +13,6 @@ envoy_cc_library(
+     name = "profile_action_lib",
+     srcs = ["profile_action.cc"],
+     hdrs = ["profile_action.h"],
+-    external_deps = [
+-        "abseil_optional",
+-    ],
+     deps = [
+         "//envoy/api:api_interface",
+         "//envoy/common:time_interface",
+@@ -25,6 +22,7 @@ envoy_cc_library(
+         "//source/common/profiler:profiler_lib",
+         "//source/common/protobuf:utility_lib",
+         "//source/common/stats:symbol_table_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/extensions/watchdog/profile_action/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/source/server/BUILD b/source/server/BUILD
+index 35b6e173c..7420331d1 100644
+--- a/source/server/BUILD
++++ b/source/server/BUILD
+@@ -14,14 +14,12 @@ envoy_cc_library(
+     name = "backtrace_lib",
+     srcs = ["backtrace.cc"],
+     hdrs = ["backtrace.h"],
+-    external_deps = [
+-        "abseil_stacktrace",
+-        "abseil_symbolize",
+-    ],
+     tags = ["backtrace"],
+     deps = [
+         "//source/common/common:minimal_logger_lib",
+         "//source/common/version:version_lib",
++        "@com_google_absl//absl/debugging:stacktrace",
++        "@com_google_absl//absl/debugging:symbolize",
+     ],
+ )
+ 
+@@ -128,7 +126,6 @@ envoy_cc_library(
+     name = "guarddog_lib",
+     srcs = ["guarddog_impl.cc"],
+     hdrs = ["guarddog_impl.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":watchdog_lib",
+         "//envoy/api:api_interface",
+@@ -149,6 +146,7 @@ envoy_cc_library(
+         "//source/common/protobuf:utility_lib",
+         "//source/common/stats:symbol_table_lib",
+         "//source/common/watchdog:abort_action_config",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
+         "@envoy_api//envoy/watchdog/v3:pkg_cc_proto",
+     ],
+@@ -408,10 +406,6 @@ envoy_cc_library(
+     name = "server_base_lib",
+     srcs = ["server.cc"],
+     hdrs = ["server.h"],
+-    external_deps = [
+-        "abseil_node_hash_map",
+-        "abseil_optional",
+-    ],
+     deps = [
+         ":api_listener_lib",
+         ":configuration_lib",
+@@ -466,6 +460,8 @@ envoy_cc_library(
+         "//source/common/upstream:health_discovery_service_lib",
+         "//source/common/version:version_lib",
+         "//source/server/admin:admin_lib",
++        "@com_google_absl//absl/container:node_hash_map",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/admin/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
+     ],
+diff --git a/source/server/config_validation/BUILD b/source/server/config_validation/BUILD
+index 49732a80f..2bc89abf8 100644
+--- a/source/server/config_validation/BUILD
++++ b/source/server/config_validation/BUILD
+@@ -63,7 +63,6 @@ envoy_cc_library(
+     name = "server_lib",
+     srcs = ["server.cc"],
+     hdrs = ["server.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":admin_lib",
+         ":api_lib",
+@@ -96,6 +95,7 @@ envoy_cc_library(
+         "//source/server:server_lib",
+         "//source/server:utils_lib",
+         "//source/server/admin:admin_factory_context",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/listener/v3:pkg_cc_proto",
+diff --git a/test/common/common/BUILD b/test/common/common/BUILD
+index 23daa9263..cac07a646 100644
+--- a/test/common/common/BUILD
++++ b/test/common/common/BUILD
+@@ -275,15 +275,13 @@ envoy_cc_test(
+ envoy_cc_test(
+     name = "utility_test",
+     srcs = ["utility_test.cc"],
+-    external_deps = [
+-        "abseil_strings",
+-    ],
+     deps = [
+         "//source/common/common:utility_lib",
+         "//test/common/memory:memory_test_utility_lib",
+         "//test/test_common:simulated_time_system_lib",
+         "//test/test_common:test_time_lib",
+         "//test/test_common:utility_lib",
++        "@com_google_absl//absl/strings",
+     ],
+ )
+ 
+@@ -385,12 +383,12 @@ envoy_cc_benchmark_binary(
+     name = "utility_speed_test",
+     srcs = ["utility_speed_test.cc"],
+     external_deps = [
+-        "abseil_strings",
+         "benchmark",
+     ],
+     deps = [
+         "//source/common/common:assert_lib",
+         "//source/common/common:utility_lib",
++        "@com_google_absl//absl/strings",
+     ],
+ )
+ 
+@@ -403,11 +401,11 @@ envoy_cc_benchmark_binary(
+     name = "trie_lookup_table_speed_test",
+     srcs = ["trie_lookup_table_speed_test.cc"],
+     external_deps = [
+-        "abseil_strings",
+         "benchmark",
+     ],
+     deps = [
+         "//source/common/common:trie_lookup_table_lib",
++        "@com_google_absl//absl/strings",
+     ],
+ )
+ 
+@@ -428,10 +426,10 @@ envoy_cc_test(
+ envoy_cc_test(
+     name = "thread_id_test",
+     srcs = ["thread_id_test.cc"],
+-    external_deps = ["abseil_hash_testing"],
+     deps = [
+         "//source/common/common:thread_lib",
+         "//test/test_common:thread_factory_for_test_lib",
++        "@com_google_absl//absl/hash:hash_testing",
+     ],
+ )
+ 
+@@ -457,11 +455,9 @@ envoy_cc_test(
+     name = "version_test",
+     srcs = ["version_test.cc"],
+     copts = envoy_select_boringssl(["-DENVOY_SSL_FIPS"]),
+-    external_deps = [
+-        "abseil_strings",
+-    ],
+     deps = [
+         "//source/common/version:version_lib",
++        "@com_google_absl//absl/strings",
+     ],
+ )
+ 
+diff --git a/test/common/config/BUILD b/test/common/config/BUILD
+index b72678b00..409bfc62f 100644
+--- a/test/common/config/BUILD
++++ b/test/common/config/BUILD
+@@ -123,7 +123,6 @@ envoy_cc_test(
+ envoy_cc_test(
+     name = "utility_test",
+     srcs = ["utility_test.cc"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//source/common/config:api_version_lib",
+         "//source/common/config:utility_lib",
+@@ -141,6 +140,7 @@ envoy_cc_test(
+         "//test/test_common:utility_lib",
+         "@com_github_cncf_xds//udpa/type/v1:pkg_cc_proto",
+         "@com_github_cncf_xds//xds/type/v3:pkg_cc_proto",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/api/v2:pkg_cc_proto",
+         "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/cluster/v3:pkg_cc_proto",
+diff --git a/test/common/http/http2/BUILD b/test/common/http/http2/BUILD
+index 100c61994..f6a8835d4 100644
+--- a/test/common/http/http2/BUILD
++++ b/test/common/http/http2/BUILD
+@@ -53,13 +53,13 @@ envoy_cc_test_library(
+     name = "codec_impl_test_util",
+     hdrs = ["codec_impl_test_util.h"],
+     external_deps = [
+-        "abseil_optional",
+         "quiche_http2_adapter",
+     ],
+     deps = [
+         "//source/common/http/http2:codec_lib",
+         "//test/mocks:common_lib",
+         "//test/mocks/server:overload_manager_mocks",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+diff --git a/test/common/network/BUILD b/test/common/network/BUILD
+index bfbc24def..8c7e54a68 100644
+--- a/test/common/network/BUILD
++++ b/test/common/network/BUILD
+@@ -332,7 +332,6 @@ envoy_cc_test(
+ envoy_cc_test(
+     name = "socket_option_factory_test",
+     srcs = ["socket_option_factory_test.cc"],
+-    external_deps = ["abseil_str_format"],
+     deps = [
+         "//source/common/network:address_lib",
+         "//source/common/network:socket_option_factory_lib",
+@@ -341,6 +340,7 @@ envoy_cc_test(
+         "//test/mocks/network:network_mocks",
+         "//test/test_common:environment_lib",
+         "//test/test_common:threadsafe_singleton_injector_lib",
++        "@com_google_absl//absl/strings:str_format",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/test/common/orca/BUILD b/test/common/orca/BUILD
+index ea012a118..c63c06cd9 100644
+--- a/test/common/orca/BUILD
++++ b/test/common/orca/BUILD
+@@ -12,8 +12,6 @@ envoy_cc_test(
+     name = "orca_load_metrics_test",
+     srcs = ["orca_load_metrics_test.cc"],
+     external_deps = [
+-        "abseil_status",
+-        "abseil_strings",
+         "fmtlib",
+     ],
+     deps = [
+@@ -22,6 +20,8 @@ envoy_cc_test(
+         "//test/test_common:status_utility_lib",
+         "//test/test_common:utility_lib",
+         "@com_github_cncf_xds//xds/data/orca/v3:pkg_cc_proto",
++        "@com_google_absl//absl/status",
++        "@com_google_absl//absl/strings",
+     ],
+ )
+ 
+@@ -29,8 +29,6 @@ envoy_cc_test(
+     name = "orca_parser_test",
+     srcs = ["orca_parser_test.cc"],
+     external_deps = [
+-        "abseil_status",
+-        "abseil_strings",
+         "fmtlib",
+     ],
+     deps = [
+@@ -39,5 +37,7 @@ envoy_cc_test(
+         "//test/test_common:status_utility_lib",
+         "//test/test_common:utility_lib",
+         "@com_github_cncf_xds//xds/data/orca/v3:pkg_cc_proto",
++        "@com_google_absl//absl/status",
++        "@com_google_absl//absl/strings",
+     ],
+ )
+diff --git a/test/common/router/BUILD b/test/common/router/BUILD
+index 90ba27829..414d76920 100644
+--- a/test/common/router/BUILD
++++ b/test/common/router/BUILD
+@@ -137,13 +137,11 @@ envoy_cc_test(
+ envoy_cc_test(
+     name = "scoped_config_impl_test",
+     srcs = ["scoped_config_impl_test.cc"],
+-    external_deps = [
+-        "abseil_strings",
+-    ],
+     deps = [
+         "//source/common/router:scoped_config_lib",
+         "//test/mocks/router:router_mocks",
+         "//test/test_common:utility_lib",
++        "@com_google_absl//absl/strings",
+         "@envoy_api//envoy/config/route/v3:pkg_cc_proto",
+         "@envoy_api//envoy/extensions/filters/network/http_connection_manager/v3:pkg_cc_proto",
+     ],
+@@ -152,9 +150,6 @@ envoy_cc_test(
+ envoy_cc_test(
+     name = "scoped_rds_test",
+     srcs = ["scoped_rds_test.cc"],
+-    external_deps = [
+-        "abseil_strings",
+-    ],
+     deps = [
+         "//envoy/config:subscription_interface",
+         "//envoy/init:manager_interface",
+@@ -175,6 +170,7 @@ envoy_cc_test(
+         "//test/test_common:simulated_time_system_lib",
+         "//test/test_common:test_runtime_lib",
+         "//test/test_common:utility_lib",
++        "@com_google_absl//absl/strings",
+         "@envoy_api//envoy/admin/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/route/v3:pkg_cc_proto",
+@@ -387,7 +383,6 @@ envoy_cc_test_library(
+ envoy_cc_test(
+     name = "router_upstream_log_test",
+     srcs = ["router_upstream_log_test.cc"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//source/common/buffer:buffer_lib",
+         "//source/common/formatter:formatter_extension_lib",
+@@ -408,6 +403,7 @@ envoy_cc_test(
+         "//test/mocks/server:factory_context_mocks",
+         "//test/mocks/ssl:ssl_mocks",
+         "//test/test_common:utility_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/accesslog/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+         "@envoy_api//envoy/extensions/filters/http/router/v3:pkg_cc_proto",
+diff --git a/test/common/stats/BUILD b/test/common/stats/BUILD
+index 6aed0a2e9..95ccb0e0e 100644
+--- a/test/common/stats/BUILD
++++ b/test/common/stats/BUILD
+@@ -116,9 +116,6 @@ envoy_cc_test_library(
+     name = "stat_test_utility_lib",
+     srcs = ["stat_test_utility.cc"],
+     hdrs = ["stat_test_utility.h"],
+-    external_deps = [
+-        "abseil_strings",
+-    ],
+     deps = [
+         "//envoy/stats:stats_interface",
+         "//source/common/common:assert_lib",
+@@ -126,6 +123,7 @@ envoy_cc_test_library(
+         "//source/common/stats:isolated_store_lib",
+         "//test/common/memory:memory_test_utility_lib",
+         "//test/test_common:global_lib",
++        "@com_google_absl//absl/strings",
+     ],
+ )
+ 
+@@ -160,7 +158,6 @@ envoy_cc_test(
+ envoy_cc_test(
+     name = "symbol_table_impl_test",
+     srcs = ["symbol_table_impl_test.cc"],
+-    external_deps = ["abseil_hash_testing"],
+     deps = [
+         ":stat_test_utility_lib",
+         "//source/common/common:mutex_tracer_lib",
+@@ -170,6 +167,7 @@ envoy_cc_test(
+         "//test/mocks/stats:stats_mocks",
+         "//test/test_common:logging_lib",
+         "//test/test_common:utility_lib",
++        "@com_google_absl//absl/hash:hash_testing",
+     ],
+ )
+ 
+@@ -218,7 +216,6 @@ envoy_cc_benchmark_binary(
+         "symbol_table_speed_test.cc",
+     ],
+     external_deps = [
+-        "abseil_strings",
+         "benchmark",
+     ],
+     deps = [
+@@ -232,6 +229,7 @@ envoy_cc_benchmark_binary(
+         "//test/mocks/stats:stats_mocks",
+         "//test/test_common:logging_lib",
+         "//test/test_common:utility_lib",
++        "@com_google_absl//absl/strings",
+     ],
+ )
+ 
+@@ -282,7 +280,6 @@ envoy_cc_benchmark_binary(
+         "stats_matcher_impl_speed_test.cc",
+     ],
+     external_deps = [
+-        "abseil_strings",
+         "benchmark",
+     ],
+     deps = [
+@@ -291,6 +288,7 @@ envoy_cc_benchmark_binary(
+         "//test/mocks/server:server_factory_context_mocks",
+         "//test/test_common:logging_lib",
+         "//test/test_common:utility_lib",
++        "@com_google_absl//absl/strings",
+         "@envoy_api//envoy/config/metrics/v3:pkg_cc_proto",
+         "@envoy_api//envoy/type/matcher/v3:pkg_cc_proto",
+     ],
+@@ -369,7 +367,6 @@ envoy_cc_benchmark_binary(
+     name = "thread_local_store_speed_test",
+     srcs = ["thread_local_store_speed_test.cc"],
+     external_deps = [
+-        "abseil_strings",
+         "benchmark",
+     ],
+     deps = [
+@@ -383,6 +380,7 @@ envoy_cc_benchmark_binary(
+         "//test/test_common:simulated_time_system_lib",
+         "//test/test_common:test_time_lib",
+         "//test/test_common:utility_lib",
++        "@com_google_absl//absl/strings",
+         "@envoy_api//envoy/config/metrics/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/test/common/upstream/BUILD b/test/common/upstream/BUILD
+index 1891a2d1d..97fdd2040 100644
+--- a/test/common/upstream/BUILD
++++ b/test/common/upstream/BUILD
+@@ -60,9 +60,6 @@ envoy_cc_test(
+ envoy_cc_test(
+     name = "deferred_cluster_initialization_test",
+     srcs = ["deferred_cluster_initialization_test.cc"],
+-    external_deps = [
+-        "abseil_base",
+-    ],
+     deps = [
+         ":test_cluster_manager",
+         "//envoy/upstream:cluster_manager_interface",
+@@ -73,6 +70,7 @@ envoy_cc_test(
+         "//test/mocks/config:config_mocks",
+         "//test/test_common:simulated_time_system_lib",
+         "//test/test_common:utility_lib",
++        "@com_google_absl//absl/base",
+         "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/cluster/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+@@ -85,9 +83,6 @@ envoy_cc_test(
+     name = "cluster_manager_impl_test",
+     size = "large",
+     srcs = ["cluster_manager_impl_test.cc"],
+-    external_deps = [
+-        "abseil_optional",
+-    ],
+     deps = [
+         ":test_cluster_manager",
+         "//source/common/router:context_lib",
+@@ -124,6 +119,7 @@ envoy_cc_test(
+         "//test/mocks/upstream:od_cds_api_mocks",
+         "//test/mocks/upstream:thread_aware_load_balancer_mocks",
+         "//test/test_common:test_runtime_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/admin/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/cluster/v3:pkg_cc_proto",
+@@ -353,7 +349,6 @@ envoy_cc_test(
+ envoy_cc_test(
+     name = "outlier_detection_impl_test",
+     srcs = ["outlier_detection_impl_test.cc"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         ":utility_lib",
+         "//envoy/common:time_interface",
+@@ -372,6 +367,7 @@ envoy_cc_test(
+         "//test/mocks/upstream:host_set_mocks",
+         "//test/test_common:simulated_time_system_lib",
+         "//test/test_common:utility_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/cluster/v3:pkg_cc_proto",
+         "@envoy_api//envoy/data/cluster/v3:pkg_cc_proto",
+     ],
+@@ -654,8 +650,8 @@ envoy_cc_test_library(
+     hdrs = [
+         "test_local_address_selector.h",
+     ],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/upstream:upstream_interface",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+diff --git a/test/common/watchdog/BUILD b/test/common/watchdog/BUILD
+index e5c085ccb..aed829e57 100644
+--- a/test/common/watchdog/BUILD
++++ b/test/common/watchdog/BUILD
+@@ -11,9 +11,6 @@ envoy_package()
+ envoy_cc_test(
+     name = "abort_action_test",
+     srcs = ["abort_action_test.cc"],
+-    external_deps = [
+-        "abseil_synchronization",
+-    ],
+     deps = [
+         "//envoy/common:time_interface",
+         "//envoy/registry",
+@@ -22,6 +19,7 @@ envoy_cc_test(
+         "//source/common/watchdog:abort_action_lib",
+         "//test/common/stats:stat_test_utility_lib",
+         "//test/test_common:utility_lib",
++        "@com_google_absl//absl/synchronization",
+         "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
+         "@envoy_api//envoy/watchdog/v3:pkg_cc_proto",
+     ],
+diff --git a/test/extensions/access_loggers/wasm/test_data/BUILD b/test/extensions/access_loggers/wasm/test_data/BUILD
+index d9b33eead..74e25a2c2 100644
+--- a/test/extensions/access_loggers/wasm/test_data/BUILD
++++ b/test/extensions/access_loggers/wasm/test_data/BUILD
+@@ -3,10 +3,9 @@ load(
+     "envoy_cc_test_library",
+     "envoy_package",
+ )
+-
+ load(
+-  "@envoy_build_config//:extensions_build_config.bzl",
+-  "LEGACY_ALWAYSLINK",
++    "@envoy_build_config//:extensions_build_config.bzl",
++    "LEGACY_ALWAYSLINK",
+ )
+ load("//bazel/wasm:wasm.bzl", "envoy_wasm_cc_binary")
+ 
+@@ -22,11 +21,11 @@ envoy_cc_test_library(
+     ],
+     copts = ["-DNULL_PLUGIN=1"],
+     deps = [
+-        "//external:abseil_node_hash_map",
+         "//source/common/common:assert_lib",
+         "//source/common/common:c_smart_ptr_lib",
+         "//source/extensions/common/wasm:wasm_hdr",
+         "//source/extensions/common/wasm:wasm_lib",
++        "@com_google_absl//absl/container:node_hash_map",
+     ],
+ )
+ 
+diff --git a/test/extensions/bootstrap/wasm/BUILD b/test/extensions/bootstrap/wasm/BUILD
+index c655f032d..fd5428403 100644
+--- a/test/extensions/bootstrap/wasm/BUILD
++++ b/test/extensions/bootstrap/wasm/BUILD
+@@ -31,7 +31,6 @@ envoy_extension_cc_test(
+         "//test/extensions/bootstrap/wasm/test_data:logging_rust.wasm",
+     ]),
+     extension_names = ["envoy.bootstrap.wasm"],
+-    external_deps = ["abseil_optional"],
+     tags = ["skip_on_windows"],
+     deps = [
+         "//source/common/event:dispatcher_lib",
+@@ -45,6 +44,7 @@ envoy_extension_cc_test(
+         "//test/mocks/upstream:upstream_mocks",
+         "//test/test_common:environment_lib",
+         "//test/test_common:simulated_time_system_lib",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+@@ -98,7 +98,6 @@ envoy_extension_cc_test_binary(
+     ]),
+     extension_names = ["envoy.bootstrap.wasm"],
+     external_deps = [
+-        "abseil_optional",
+         "benchmark",
+     ],
+     tags = ["skip_on_windows"],
+@@ -114,5 +113,6 @@ envoy_extension_cc_test_binary(
+         "//test/mocks/upstream:upstream_mocks",
+         "//test/test_common:environment_lib",
+         "//test/test_common:simulated_time_system_lib",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+diff --git a/test/extensions/bootstrap/wasm/test_data/BUILD b/test/extensions/bootstrap/wasm/test_data/BUILD
+index e5fca0841..e0003964e 100644
+--- a/test/extensions/bootstrap/wasm/test_data/BUILD
++++ b/test/extensions/bootstrap/wasm/test_data/BUILD
+@@ -27,10 +27,10 @@ envoy_cc_test_library(
+     ],
+     copts = ["-DNULL_PLUGIN=1"],
+     deps = [
+-        "//external:abseil_node_hash_map",
+         "//source/common/common:assert_lib",
+         "//source/common/common:c_smart_ptr_lib",
+         "//source/extensions/common/wasm:wasm_lib",
++        "@com_google_absl//absl/container:node_hash_map",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+     ],
+ )
+@@ -43,11 +43,11 @@ envoy_cc_test_library(
+     ],
+     copts = ["-DNULL_PLUGIN=1"],
+     deps = [
+-        "//external:abseil_node_hash_map",
+         "//source/common/common:assert_lib",
+         "//source/common/common:c_smart_ptr_lib",
+         "//source/extensions/common/wasm:wasm_hdr",
+         "//source/extensions/common/wasm:wasm_lib",
++        "@com_google_absl//absl/container:node_hash_map",
+     ],
+ )
+ 
+@@ -59,11 +59,11 @@ envoy_cc_test_library(
+     ],
+     copts = ["-DNULL_PLUGIN=1"],
+     deps = [
+-        "//external:abseil_node_hash_map",
+         "//source/common/common:assert_lib",
+         "//source/common/common:c_smart_ptr_lib",
+         "//source/extensions/common/wasm:wasm_hdr",
+         "//source/extensions/common/wasm:wasm_lib",
++        "@com_google_absl//absl/container:node_hash_map",
+     ],
+ )
+ 
+diff --git a/test/extensions/common/wasm/BUILD b/test/extensions/common/wasm/BUILD
+index cbd4bb7ad..f46b84d59 100644
+--- a/test/extensions/common/wasm/BUILD
++++ b/test/extensions/common/wasm/BUILD
+@@ -40,7 +40,6 @@ envoy_cc_test(
+         "//test/extensions/common/wasm/test_data:test_cpp.wasm",
+         "//test/extensions/common/wasm/test_data:test_restriction_cpp.wasm",
+     ]),
+-    external_deps = ["abseil_optional"],
+     tags = ["skip_on_windows"],
+     deps = [
+         "//source/common/common:hex_lib",
+@@ -59,6 +58,7 @@ envoy_cc_test(
+         "//test/test_common:registry_lib",
+         "//test/test_common:simulated_time_system_lib",
+         "//test/test_common:wasm_lib",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+@@ -76,7 +76,6 @@ envoy_cc_test_binary(
+     name = "wasm_speed_test",
+     srcs = ["wasm_speed_test.cc"],
+     external_deps = [
+-        "abseil_optional",
+         "benchmark",
+     ],
+     tags = ["skip_on_windows"],
+@@ -87,6 +86,7 @@ envoy_cc_test_binary(
+         "//test/mocks/server:server_mocks",
+         "//test/mocks/upstream:upstream_mocks",
+         "//test/test_common:environment_lib",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+diff --git a/test/extensions/common/wasm/test_data/BUILD b/test/extensions/common/wasm/test_data/BUILD
+index 4a3760381..e83f8a601 100644
+--- a/test/extensions/common/wasm/test_data/BUILD
++++ b/test/extensions/common/wasm/test_data/BUILD
+@@ -25,11 +25,11 @@ envoy_cc_test_library(
+     ],
+     copts = ["-DNULL_PLUGIN=1"],
+     deps = [
+-        "//external:abseil_node_hash_map",
+         "//source/common/common:assert_lib",
+         "//source/common/common:c_smart_ptr_lib",
+         "//source/extensions/common/wasm:wasm_hdr",
+         "//source/extensions/common/wasm:wasm_lib",
++        "@com_google_absl//absl/container:node_hash_map",
+     ],
+ )
+ 
+@@ -41,12 +41,12 @@ envoy_cc_test_library(
+     ],
+     copts = ["-DNULL_PLUGIN=1"],
+     deps = [
+-        "//external:abseil_node_hash_map",
+         "//source/common/common:assert_lib",
+         "//source/common/common:c_smart_ptr_lib",
+         "//source/extensions/common/wasm:wasm_hdr",
+         "//source/extensions/common/wasm:wasm_lib",
+         "//source/extensions/common/wasm/ext:envoy_null_plugin",
++        "@com_google_absl//absl/container:node_hash_map",
+     ],
+ )
+ 
+@@ -58,12 +58,12 @@ envoy_cc_test_library(
+     ],
+     copts = ["-DNULL_PLUGIN=1"],
+     deps = [
+-        "//external:abseil_node_hash_map",
+         "//source/common/common:assert_lib",
+         "//source/common/common:c_smart_ptr_lib",
+         "//source/extensions/common/wasm:wasm_hdr",
+         "//source/extensions/common/wasm:wasm_lib",
+         "//source/extensions/common/wasm/ext:envoy_null_plugin",
++        "@com_google_absl//absl/container:node_hash_map",
+     ],
+ )
+ 
+diff --git a/test/extensions/config_subscription/grpc/BUILD b/test/extensions/config_subscription/grpc/BUILD
+index b3f06ff1c..047433888 100644
+--- a/test/extensions/config_subscription/grpc/BUILD
++++ b/test/extensions/config_subscription/grpc/BUILD
+@@ -136,7 +136,6 @@ envoy_cc_test_library(
+ envoy_cc_test(
+     name = "sotw_subscription_state_test",
+     srcs = ["sotw_subscription_state_test.cc"],
+-    external_deps = ["abseil_flat_hash_set"],
+     deps = [
+         "//source/common/config:resource_name_lib",
+         "//source/common/stats:isolated_store_lib",
+@@ -149,6 +148,7 @@ envoy_cc_test(
+         "//test/mocks/runtime:runtime_mocks",
+         "//test/test_common:logging_lib",
+         "//test/test_common:utility_lib",
++        "@com_google_absl//absl/container:flat_hash_set",
+         "@envoy_api//envoy/config/endpoint/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/test/extensions/filters/http/wasm/test_data/BUILD b/test/extensions/filters/http/wasm/test_data/BUILD
+index c9e28cd8d..3cebdbc4f 100644
+--- a/test/extensions/filters/http/wasm/test_data/BUILD
++++ b/test/extensions/filters/http/wasm/test_data/BUILD
+@@ -129,12 +129,12 @@ envoy_cc_test_library(
+     copts = ["-DNULL_PLUGIN=1"],
+     deps = [
+         ":test_cc_proto",
+-        "//external:abseil_node_hash_map",
+         "//source/common/common:assert_lib",
+         "//source/common/common:c_smart_ptr_lib",
+         "//source/extensions/common/wasm:wasm_hdr",
+         "//source/extensions/common/wasm:wasm_lib",
+         "//source/extensions/common/wasm/ext:envoy_null_plugin",
++        "@com_google_absl//absl/container:node_hash_map",
+         "@proxy_wasm_cpp_sdk//contrib:contrib_lib",
+     ],
+ )
+diff --git a/test/extensions/filters/network/wasm/test_data/BUILD b/test/extensions/filters/network/wasm/test_data/BUILD
+index ba975cbba..7095acc43 100644
+--- a/test/extensions/filters/network/wasm/test_data/BUILD
++++ b/test/extensions/filters/network/wasm/test_data/BUILD
+@@ -55,11 +55,11 @@ envoy_cc_test_library(
+     ],
+     copts = ["-DNULL_PLUGIN=1"],
+     deps = [
+-        "//external:abseil_node_hash_map",
+         "//source/common/common:assert_lib",
+         "//source/common/common:c_smart_ptr_lib",
+         "//source/extensions/common/wasm:wasm_hdr",
+         "//source/extensions/common/wasm:wasm_lib",
++        "@com_google_absl//absl/container:node_hash_map",
+     ],
+ )
+ 
+diff --git a/test/extensions/network/dns_resolver/apple/BUILD b/test/extensions/network/dns_resolver/apple/BUILD
+index 8f0aa1689..ba3373879 100644
+--- a/test/extensions/network/dns_resolver/apple/BUILD
++++ b/test/extensions/network/dns_resolver/apple/BUILD
+@@ -14,7 +14,6 @@ envoy_cc_test(
+         "//bazel:apple": ["apple_dns_impl_test.cc"],
+         "//conditions:default": [],
+     }),
+-    external_deps = ["abseil_synchronization"],
+     deps = [
+         "//envoy/event:dispatcher_interface",
+         "//envoy/event:file_event_interface",
+@@ -30,6 +29,7 @@ envoy_cc_test(
+         "//test/test_common:network_utility_lib",
+         "//test/test_common:threadsafe_singleton_injector_lib",
+         "//test/test_common:utility_lib",
++        "@com_google_absl//absl/synchronization",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+     ] + select({
+         "//bazel:apple": [
+diff --git a/test/extensions/resource_monitors/cpu_utilization/BUILD b/test/extensions/resource_monitors/cpu_utilization/BUILD
+index 22d752a5f..b20bff2da 100644
+--- a/test/extensions/resource_monitors/cpu_utilization/BUILD
++++ b/test/extensions/resource_monitors/cpu_utilization/BUILD
+@@ -15,11 +15,11 @@ envoy_extension_cc_test(
+     name = "cpu_utilization_monitor_test",
+     srcs = ["cpu_utilization_monitor_test.cc"],
+     extension_names = ["envoy.resource_monitors.cpu_utilization"],
+-    external_deps = ["abseil_optional"],
+     tags = ["skip_on_windows"],
+     deps = [
+         "//source/extensions/resource_monitors/cpu_utilization:cpu_utilization_monitor",
+         "//source/extensions/resource_monitors/cpu_utilization:linux_cpu_stats_reader",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/extensions/resource_monitors/cpu_utilization/v3:pkg_cc_proto",
+     ],
+ )
+@@ -28,11 +28,11 @@ envoy_extension_cc_test(
+     name = "linux_cpu_stats_reader_test",
+     srcs = ["linux_cpu_stats_reader_test.cc"],
+     extension_names = ["envoy.resource_monitors.cpu_utilization"],
+-    external_deps = ["abseil_optional"],
+     tags = ["skip_on_windows"],
+     deps = [
+         "//source/extensions/resource_monitors/cpu_utilization:linux_cpu_stats_reader",
+         "//test/test_common:environment_lib",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+diff --git a/test/extensions/resource_monitors/downstream_connections/BUILD b/test/extensions/resource_monitors/downstream_connections/BUILD
+index e6f9535d0..8b8c603df 100644
+--- a/test/extensions/resource_monitors/downstream_connections/BUILD
++++ b/test/extensions/resource_monitors/downstream_connections/BUILD
+@@ -16,9 +16,9 @@ envoy_extension_cc_test(
+     name = "downstream_connections_monitor_test",
+     srcs = ["downstream_connections_monitor_test.cc"],
+     extension_names = ["envoy.resource_monitors.global_downstream_max_connections"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//source/extensions/resource_monitors/downstream_connections:downstream_connections_monitor",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/extensions/resource_monitors/downstream_connections/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/test/extensions/resource_monitors/fixed_heap/BUILD b/test/extensions/resource_monitors/fixed_heap/BUILD
+index 47d8d0c32..7bd529584 100644
+--- a/test/extensions/resource_monitors/fixed_heap/BUILD
++++ b/test/extensions/resource_monitors/fixed_heap/BUILD
+@@ -15,9 +15,9 @@ envoy_extension_cc_test(
+     name = "fixed_heap_monitor_test",
+     srcs = ["fixed_heap_monitor_test.cc"],
+     extension_names = ["envoy.resource_monitors.fixed_heap"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//source/extensions/resource_monitors/fixed_heap:fixed_heap_monitor",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/extensions/resource_monitors/fixed_heap/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/test/extensions/stats_sinks/wasm/BUILD b/test/extensions/stats_sinks/wasm/BUILD
+index 9ad8c633c..eca515eeb 100644
+--- a/test/extensions/stats_sinks/wasm/BUILD
++++ b/test/extensions/stats_sinks/wasm/BUILD
+@@ -39,7 +39,6 @@ envoy_extension_cc_test(
+         "//test/extensions/stats_sinks/wasm/test_data:test_context_cpp.wasm",
+     ]),
+     extension_names = ["envoy.stat_sinks.wasm"],
+-    external_deps = ["abseil_optional"],
+     tags = ["skip_on_windows"],
+     deps = [
+         "//source/common/stats:stats_lib",
+@@ -49,5 +48,6 @@ envoy_extension_cc_test(
+         "//test/extensions/stats_sinks/wasm/test_data:test_context_cpp_plugin",
+         "//test/mocks/stats:stats_mocks",
+         "//test/test_common:wasm_lib",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+diff --git a/test/extensions/tracers/opentelemetry/BUILD b/test/extensions/tracers/opentelemetry/BUILD
+index c336cc911..8aa5bb003 100644
+--- a/test/extensions/tracers/opentelemetry/BUILD
++++ b/test/extensions/tracers/opentelemetry/BUILD
+@@ -23,7 +23,6 @@ envoy_extension_cc_test(
+     ],
+     extension_names = ["envoy.tracers.opentelemetry"],
+     external_deps = [
+-        "abseil_optional",
+         "opentelemetry_api",
+     ],
+     deps = [
+@@ -49,6 +48,7 @@ envoy_extension_cc_test(
+         "//test/mocks/upstream:thread_local_cluster_mocks",
+         "//test/test_common:simulated_time_system_lib",
+         "//test/test_common:utility_lib",
++        "@com_google_absl//absl/types:optional",
+     ],
+ )
+ 
+diff --git a/test/extensions/tracers/zipkin/BUILD b/test/extensions/tracers/zipkin/BUILD
+index 68e5a6d8a..f83810b16 100644
+--- a/test/extensions/tracers/zipkin/BUILD
++++ b/test/extensions/tracers/zipkin/BUILD
+@@ -21,7 +21,6 @@ envoy_extension_cc_test(
+         "zipkin_tracer_impl_test.cc",
+     ],
+     extension_names = ["envoy.tracers.zipkin"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/common:time_interface",
+         "//envoy/runtime:runtime_interface",
+@@ -44,6 +43,7 @@ envoy_extension_cc_test(
+         "//test/mocks/upstream:thread_local_cluster_mocks",
+         "//test/test_common:simulated_time_system_lib",
+         "//test/test_common:utility_lib",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/config/trace/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/test/extensions/watchdog/profile_action/BUILD b/test/extensions/watchdog/profile_action/BUILD
+index 18b1f5f93..ccf98b33d 100644
+--- a/test/extensions/watchdog/profile_action/BUILD
++++ b/test/extensions/watchdog/profile_action/BUILD
+@@ -15,9 +15,6 @@ envoy_extension_cc_test(
+     name = "profile_action_test",
+     srcs = ["profile_action_test.cc"],
+     extension_names = ["envoy.watchdog.profile_action"],
+-    external_deps = [
+-        "abseil_synchronization",
+-    ],
+     deps = [
+         "//envoy/common:time_interface",
+         "//envoy/registry",
+@@ -31,6 +28,7 @@ envoy_extension_cc_test(
+         "//test/test_common:environment_lib",
+         "//test/test_common:simulated_time_system_lib",
+         "//test/test_common:utility_lib",
++        "@com_google_absl//absl/synchronization",
+         "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
+         "@envoy_api//envoy/extensions/watchdog/profile_action/v3:pkg_cc_proto",
+     ],
+diff --git a/test/fuzz/BUILD b/test/fuzz/BUILD
+index 8a613fd72..4de7a506c 100644
+--- a/test/fuzz/BUILD
++++ b/test/fuzz/BUILD
+@@ -26,9 +26,6 @@ exports_files(["headers.dict"])
+ envoy_cc_test_library(
+     name = "main",
+     srcs = ["main.cc"],
+-    external_deps = [
+-        "abseil_symbolize",
+-    ],
+     deps = [
+         ":fuzz_runner_lib",
+         "//source/common/common:assert_lib",
+@@ -37,6 +34,7 @@ envoy_cc_test_library(
+         "//test:test_listener_lib",
+         "//test/test_common:environment_lib",
+         "//test/test_common:utility_lib",
++        "@com_google_absl//absl/synchronization",
+     ] + envoy_select_signal_trace(["//source/common/signal:sigaction_lib"]),
+ )
+ 
+diff --git a/test/integration/BUILD b/test/integration/BUILD
+index fdfa59a6c..2de4af651 100644
+--- a/test/integration/BUILD
++++ b/test/integration/BUILD
+@@ -343,9 +343,6 @@ exports_files(["test_utility.sh"])
+ envoy_cc_test_binary(
+     name = "hotrestart_main",
+     srcs = ["hotrestart_main.cc"],
+-    external_deps = [
+-        "abseil_symbolize",
+-    ],
+     deps = [
+         ":common_extensions_lib",
+         "//source/common/http:rds_lib",
+@@ -359,15 +356,13 @@ envoy_cc_test_binary(
+         "//source/extensions/load_balancing_policies/ring_hash:config",
+         "//source/extensions/load_balancing_policies/round_robin:config",
+         "//source/extensions/transport_sockets/tls:config",
++        "@com_google_absl//absl/debugging:symbolize",
+     ],
+ )
+ 
+ envoy_cc_test_binary(
+     name = "hotrestart_small_main",
+     srcs = ["hotrestart_main.cc"],
+-    external_deps = [
+-        "abseil_symbolize",
+-    ],
+     linkstatic = envoy_select_linkstatic(),
+     deps = [
+         ":common_extensions_lib",
+@@ -377,6 +372,7 @@ envoy_cc_test_binary(
+         "//source/exe:stripped_main_base_lib",
+         "//source/extensions/listener_managers/validation_listener_manager:validation_listener_manager_lib",
+         "//source/extensions/transport_sockets/tls:config",
++        "@com_google_absl//absl/debugging:symbolize",
+     ],
+ )
+ 
+@@ -2614,7 +2610,6 @@ envoy_cc_test(
+     srcs = envoy_select_admin_functionality([
+         "xds_delegate_extension_integration_test.cc",
+     ]),
+-    external_deps = ["abseil_strings"],
+     tags = [
+         "cpu:3",
+     ],
+@@ -2625,6 +2620,7 @@ envoy_cc_test(
+         "//test/common/grpc:grpc_client_integration_lib",
+         "//test/config:v2_link_hacks",
+         "//test/test_common:registry_lib",
++        "@com_google_absl//absl/strings",
+         "@envoy_api//envoy/service/discovery/v3:pkg_cc_proto",
+         "@envoy_api//envoy/service/runtime/v3:pkg_cc_proto",
+     ],
+@@ -2639,7 +2635,6 @@ envoy_cc_test(
+     name = "xds_config_tracker_integration_test",
+     size = "large",
+     srcs = ["xds_config_tracker_integration_test.cc"],
+-    external_deps = ["abseil_strings"],
+     tags = [
+         "cpu:3",
+     ],
+@@ -2652,6 +2647,7 @@ envoy_cc_test(
+         "//test/common/grpc:grpc_client_integration_lib",
+         "//test/config:v2_link_hacks",
+         "//test/test_common:registry_lib",
++        "@com_google_absl//absl/strings",
+         "@envoy_api//envoy/config/route/v3:pkg_cc_proto",
+         "@envoy_api//envoy/service/discovery/v3:pkg_cc_proto",
+         "@envoy_api//envoy/service/runtime/v3:pkg_cc_proto",
+diff --git a/test/integration/admin_html/BUILD b/test/integration/admin_html/BUILD
+index bf4e9b8aa..e633f407d 100644
+--- a/test/integration/admin_html/BUILD
++++ b/test/integration/admin_html/BUILD
+@@ -13,9 +13,6 @@ envoy_package()
+ envoy_cc_test_binary(
+     name = "test_server",
+     srcs = ["test_server.cc"],
+-    external_deps = [
+-        "abseil_symbolize",
+-    ],
+     deps = [
+         "//source/common/formatter:formatter_extension_lib",
+         "//source/exe:envoy_main_common_with_core_extensions_lib",
+@@ -23,6 +20,7 @@ envoy_cc_test_binary(
+         "//source/extensions/clusters/logical_dns:logical_dns_cluster_lib",
+         "//source/extensions/clusters/static:static_cluster_lib",
+         "//source/server/admin:admin_html_util",
++        "@com_google_absl//absl/debugging:symbolize",
+     ],
+ )
+ 
+diff --git a/test/integration/filters/BUILD b/test/integration/filters/BUILD
+index dfebb8f11..35e062867 100644
+--- a/test/integration/filters/BUILD
++++ b/test/integration/filters/BUILD
+@@ -129,7 +129,6 @@ envoy_cc_test_library(
+     hdrs = [
+         "tee_filter.h",
+     ],
+-    external_deps = ["abseil_synchronization"],
+     deps = [
+         "//envoy/http:filter_interface",
+         "//envoy/registry",
+@@ -139,6 +138,7 @@ envoy_cc_test_library(
+         "//source/common/http:header_map_lib",
+         "//source/extensions/filters/http/common:pass_through_filter_lib",
+         "//test/extensions/filters/http/common:empty_http_filter_config_lib",
++        "@com_google_absl//absl/synchronization",
+     ],
+ )
+ 
+diff --git a/test/mocks/http/BUILD b/test/mocks/http/BUILD
+index 7fa206749..9afca0053 100644
+--- a/test/mocks/http/BUILD
++++ b/test/mocks/http/BUILD
+@@ -51,9 +51,6 @@ envoy_cc_mock(
+     name = "http_mocks",
+     srcs = ["mocks.cc"],
+     hdrs = ["mocks.h"],
+-    external_deps = [
+-        "abseil_strings",
+-    ],
+     deps = [
+         ":conn_pool_mocks",
+         ":stream_decoder_mock",
+@@ -76,6 +73,7 @@ envoy_cc_mock(
+         "//test/mocks/stream_info:stream_info_mocks",
+         "//test/mocks/tracing:tracing_mocks",
+         "//test/mocks/upstream:host_mocks",
++        "@com_google_absl//absl/strings",
+     ],
+ )
+ 
+diff --git a/test/mocks/runtime/BUILD b/test/mocks/runtime/BUILD
+index 180056c3d..87b8a4884 100644
+--- a/test/mocks/runtime/BUILD
++++ b/test/mocks/runtime/BUILD
+@@ -12,12 +12,12 @@ envoy_cc_mock(
+     name = "runtime_mocks",
+     srcs = ["mocks.cc"],
+     hdrs = ["mocks.h"],
+-    external_deps = ["abseil_optional"],
+     deps = [
+         "//envoy/runtime:runtime_interface",
+         "//envoy/upstream:cluster_manager_interface",
+         "//test/mocks:common_lib",
+         "//test/mocks/stats:stats_mocks",
++        "@com_google_absl//absl/types:optional",
+         "@envoy_api//envoy/type/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/test/test_common/BUILD b/test/test_common/BUILD
+index 61fdf0617..f218ddd51 100644
+--- a/test/test_common/BUILD
++++ b/test/test_common/BUILD
+@@ -18,8 +18,6 @@ envoy_cc_test_library(
+     srcs = ["environment.cc"],
+     hdrs = ["environment.h"],
+     external_deps = [
+-        "abseil_optional",
+-        "abseil_symbolize",
+         "bazel_runfiles",
+     ],
+     deps = [
+@@ -33,6 +31,8 @@ envoy_cc_test_library(
+         "//source/common/json:json_loader_lib",
+         "//source/common/network:utility_lib",
+         "//source/server:options_base",
++        "@com_google_absl//absl/debugging:symbolize",
++        "@com_google_absl//absl/types:optional",
+     ] + envoy_select_signal_trace(["//source/common/signal:sigaction_lib"]) + envoy_select_enable_exceptions([
+         "//source/server:options_lib",
+     ]),
+@@ -126,9 +126,6 @@ envoy_cc_test_library(
+     name = "utility_lib",
+     srcs = ["utility.cc"],
+     hdrs = ["utility.h"],
+-    external_deps = [
+-        "abseil_strings",
+-    ],
+     deps = [
+         ":file_system_for_test_lib",
+         ":logging_lib",
+@@ -158,6 +155,7 @@ envoy_cc_test_library(
+         "//source/common/protobuf:utility_lib",
+         "//source/common/stats:stats_lib",
+         "//test/mocks/stats:stats_mocks",
++        "@com_google_absl//absl/strings",
+         "@envoy_api//envoy/config/bootstrap/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/cluster/v3:pkg_cc_proto",
+         "@envoy_api//envoy/config/endpoint/v3:pkg_cc_proto",

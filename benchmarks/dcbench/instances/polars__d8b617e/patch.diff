@@ -1,0 +1,1708 @@
+From d8b617e4ce7b6fb34e842e5a6a9bc2a3152c8371 Mon Sep 17 00:00:00 2001
+From: Stijn de Gooijer <stijndegooijer@gmail.com>
+Date: Fri, 16 Aug 2024 11:19:38 +0200
+Subject: [PATCH] refactor: Split `py-polars` crate (#18204)
+
+---
+ Cargo.lock                                    |  60 ++--
+ Cargo.toml                                    |   2 +
+ crates/polars-plan/README.md                  |   2 +-
+ crates/polars-python/Cargo.toml               | 254 ++++++++++++++
+ crates/polars-python/LICENSE                  |   1 +
+ crates/polars-python/README.md                |   6 +
+ crates/polars-python/build.rs                 |   7 +
+ .../polars-python}/src/batched_csv.rs         |   0
+ .../polars-python}/src/cloud.rs               |   0
+ .../src/conversion/any_value.rs               |   0
+ .../src/conversion/chunked_array.rs           |   0
+ .../polars-python}/src/conversion/datetime.rs |   0
+ .../polars-python}/src/conversion/mod.rs      |   0
+ .../src/dataframe/construction.rs             |   0
+ .../polars-python}/src/dataframe/export.rs    |   0
+ .../polars-python}/src/dataframe/general.rs   |   1 +
+ .../polars-python}/src/dataframe/io.rs        |   0
+ .../polars-python}/src/dataframe/mod.rs       |   0
+ .../polars-python}/src/dataframe/serde.rs     |   0
+ .../polars-python}/src/datatypes.rs           |   0
+ .../polars-python}/src/error.rs               |   0
+ .../polars-python}/src/exceptions.rs          |   0
+ .../polars-python}/src/expr/array.rs          |   0
+ .../polars-python}/src/expr/binary.rs         |   0
+ .../polars-python}/src/expr/categorical.rs    |   0
+ .../polars-python}/src/expr/datetime.rs       |   0
+ .../polars-python}/src/expr/general.rs        |   0
+ .../polars-python}/src/expr/list.rs           |   0
+ .../polars-python}/src/expr/meta.rs           |   0
+ .../polars-python}/src/expr/mod.rs            |   0
+ .../polars-python}/src/expr/name.rs           |   0
+ .../polars-python}/src/expr/rolling.rs        |   0
+ .../polars-python}/src/expr/serde.rs          |   0
+ .../polars-python}/src/expr/string.rs         |   0
+ .../polars-python}/src/expr/struct.rs         |   0
+ .../polars-python}/src/file.rs                |   0
+ .../src/functions/aggregation.rs              |   0
+ .../polars-python}/src/functions/business.rs  |   0
+ .../polars-python}/src/functions/eager.rs     |   0
+ .../polars-python}/src/functions/io.rs        |   0
+ .../polars-python}/src/functions/lazy.rs      |   0
+ .../polars-python}/src/functions/meta.rs      |   0
+ .../polars-python}/src/functions/misc.rs      |   0
+ .../polars-python}/src/functions/mod.rs       |   0
+ .../polars-python}/src/functions/random.rs    |   0
+ .../polars-python}/src/functions/range.rs     |   0
+ .../src/functions/string_cache.rs             |   0
+ .../polars-python}/src/functions/whenthen.rs  |   0
+ .../polars-python}/src/gil_once_cell.rs       |   1 +
+ .../polars-python}/src/interop/arrow/mod.rs   |   0
+ .../polars-python}/src/interop/arrow/to_py.rs |   0
+ .../src/interop/arrow/to_rust.rs              |   0
+ .../polars-python}/src/interop/mod.rs         |   0
+ .../polars-python}/src/interop/numpy/mod.rs   |   0
+ .../src/interop/numpy/to_numpy_df.rs          |   0
+ .../src/interop/numpy/to_numpy_series.rs      |   0
+ .../polars-python}/src/interop/numpy/utils.rs |   0
+ .../polars-python}/src/lazyframe/exitable.rs  |   0
+ .../polars-python/src/lazyframe/general.rs    |  20 +-
+ crates/polars-python/src/lazyframe/mod.rs     |  27 ++
+ .../polars-python}/src/lazyframe/serde.rs     |   0
+ .../polars-python}/src/lazyframe/visit.rs     |   2 +-
+ .../src/lazyframe/visitor/expr_nodes.rs       |   0
+ .../src/lazyframe/visitor/mod.rs              |   2 +
+ .../src/lazyframe/visitor/nodes.rs            |   0
+ .../polars-python}/src/lazygroupby.rs         |   0
+ crates/polars-python/src/lib.rs               |  41 +++
+ .../polars-python}/src/map/dataframe.rs       |   0
+ .../polars-python}/src/map/lazy.rs            |   0
+ .../polars-python}/src/map/mod.rs             |   0
+ .../polars-python}/src/map/series.rs          |   0
+ .../polars-python}/src/object.rs              |   0
+ .../polars-python}/src/on_startup.rs          |   0
+ .../polars-python}/src/prelude.rs             |   0
+ .../polars-python}/src/py_modules.rs          |   0
+ .../polars-python}/src/series/aggregation.rs  |   0
+ .../polars-python}/src/series/arithmetic.rs   |   0
+ .../polars-python}/src/series/buffers.rs      |   0
+ .../polars-python}/src/series/c_interface.rs  |   0
+ .../polars-python}/src/series/comparison.rs   |   0
+ .../polars-python}/src/series/construction.rs |   0
+ .../polars-python}/src/series/export.rs       |   0
+ .../polars-python/src/series/general.rs       |  71 +---
+ .../polars-python}/src/series/import.rs       |   0
+ crates/polars-python/src/series/mod.rs        |  70 ++++
+ .../polars-python}/src/series/numpy_ufunc.rs  |   0
+ .../polars-python}/src/series/scatter.rs      |   0
+ .../polars-python}/src/sql.rs                 |   0
+ .../polars-python}/src/utils.rs               |   0
+ .../polars/tests/it/io/parquet/read/file.rs   |   5 -
+ py-polars/Cargo.toml                          | 309 +++++-------------
+ py-polars/src/lazyframe/visitor/mod.rs        |   2 -
+ py-polars/src/lib.rs                          |  61 ++--
+ 93 files changed, 552 insertions(+), 392 deletions(-)
+ create mode 100644 crates/polars-python/Cargo.toml
+ create mode 120000 crates/polars-python/LICENSE
+ create mode 100644 crates/polars-python/README.md
+ create mode 100644 crates/polars-python/build.rs
+ rename {py-polars => crates/polars-python}/src/batched_csv.rs (100%)
+ rename {py-polars => crates/polars-python}/src/cloud.rs (100%)
+ rename {py-polars => crates/polars-python}/src/conversion/any_value.rs (100%)
+ rename {py-polars => crates/polars-python}/src/conversion/chunked_array.rs (100%)
+ rename {py-polars => crates/polars-python}/src/conversion/datetime.rs (100%)
+ rename {py-polars => crates/polars-python}/src/conversion/mod.rs (100%)
+ rename {py-polars => crates/polars-python}/src/dataframe/construction.rs (100%)
+ rename {py-polars => crates/polars-python}/src/dataframe/export.rs (100%)
+ rename {py-polars => crates/polars-python}/src/dataframe/general.rs (99%)
+ rename {py-polars => crates/polars-python}/src/dataframe/io.rs (100%)
+ rename {py-polars => crates/polars-python}/src/dataframe/mod.rs (100%)
+ rename {py-polars => crates/polars-python}/src/dataframe/serde.rs (100%)
+ rename {py-polars => crates/polars-python}/src/datatypes.rs (100%)
+ rename {py-polars => crates/polars-python}/src/error.rs (100%)
+ rename {py-polars => crates/polars-python}/src/exceptions.rs (100%)
+ rename {py-polars => crates/polars-python}/src/expr/array.rs (100%)
+ rename {py-polars => crates/polars-python}/src/expr/binary.rs (100%)
+ rename {py-polars => crates/polars-python}/src/expr/categorical.rs (100%)
+ rename {py-polars => crates/polars-python}/src/expr/datetime.rs (100%)
+ rename {py-polars => crates/polars-python}/src/expr/general.rs (100%)
+ rename {py-polars => crates/polars-python}/src/expr/list.rs (100%)
+ rename {py-polars => crates/polars-python}/src/expr/meta.rs (100%)
+ rename {py-polars => crates/polars-python}/src/expr/mod.rs (100%)
+ rename {py-polars => crates/polars-python}/src/expr/name.rs (100%)
+ rename {py-polars => crates/polars-python}/src/expr/rolling.rs (100%)
+ rename {py-polars => crates/polars-python}/src/expr/serde.rs (100%)
+ rename {py-polars => crates/polars-python}/src/expr/string.rs (100%)
+ rename {py-polars => crates/polars-python}/src/expr/struct.rs (100%)
+ rename {py-polars => crates/polars-python}/src/file.rs (100%)
+ rename {py-polars => crates/polars-python}/src/functions/aggregation.rs (100%)
+ rename {py-polars => crates/polars-python}/src/functions/business.rs (100%)
+ rename {py-polars => crates/polars-python}/src/functions/eager.rs (100%)
+ rename {py-polars => crates/polars-python}/src/functions/io.rs (100%)
+ rename {py-polars => crates/polars-python}/src/functions/lazy.rs (100%)
+ rename {py-polars => crates/polars-python}/src/functions/meta.rs (100%)
+ rename {py-polars => crates/polars-python}/src/functions/misc.rs (100%)
+ rename {py-polars => crates/polars-python}/src/functions/mod.rs (100%)
+ rename {py-polars => crates/polars-python}/src/functions/random.rs (100%)
+ rename {py-polars => crates/polars-python}/src/functions/range.rs (100%)
+ rename {py-polars => crates/polars-python}/src/functions/string_cache.rs (100%)
+ rename {py-polars => crates/polars-python}/src/functions/whenthen.rs (100%)
+ rename {py-polars => crates/polars-python}/src/gil_once_cell.rs (97%)
+ rename {py-polars => crates/polars-python}/src/interop/arrow/mod.rs (100%)
+ rename {py-polars => crates/polars-python}/src/interop/arrow/to_py.rs (100%)
+ rename {py-polars => crates/polars-python}/src/interop/arrow/to_rust.rs (100%)
+ rename {py-polars => crates/polars-python}/src/interop/mod.rs (100%)
+ rename {py-polars => crates/polars-python}/src/interop/numpy/mod.rs (100%)
+ rename {py-polars => crates/polars-python}/src/interop/numpy/to_numpy_df.rs (100%)
+ rename {py-polars => crates/polars-python}/src/interop/numpy/to_numpy_series.rs (100%)
+ rename {py-polars => crates/polars-python}/src/interop/numpy/utils.rs (100%)
+ rename {py-polars => crates/polars-python}/src/lazyframe/exitable.rs (100%)
+ rename py-polars/src/lazyframe/mod.rs => crates/polars-python/src/lazyframe/general.rs (99%)
+ create mode 100644 crates/polars-python/src/lazyframe/mod.rs
+ rename {py-polars => crates/polars-python}/src/lazyframe/serde.rs (100%)
+ rename {py-polars => crates/polars-python}/src/lazyframe/visit.rs (99%)
+ rename {py-polars => crates/polars-python}/src/lazyframe/visitor/expr_nodes.rs (100%)
+ create mode 100644 crates/polars-python/src/lazyframe/visitor/mod.rs
+ rename {py-polars => crates/polars-python}/src/lazyframe/visitor/nodes.rs (100%)
+ rename {py-polars => crates/polars-python}/src/lazygroupby.rs (100%)
+ create mode 100644 crates/polars-python/src/lib.rs
+ rename {py-polars => crates/polars-python}/src/map/dataframe.rs (100%)
+ rename {py-polars => crates/polars-python}/src/map/lazy.rs (100%)
+ rename {py-polars => crates/polars-python}/src/map/mod.rs (100%)
+ rename {py-polars => crates/polars-python}/src/map/series.rs (100%)
+ rename {py-polars => crates/polars-python}/src/object.rs (100%)
+ rename {py-polars => crates/polars-python}/src/on_startup.rs (100%)
+ rename {py-polars => crates/polars-python}/src/prelude.rs (100%)
+ rename {py-polars => crates/polars-python}/src/py_modules.rs (100%)
+ rename {py-polars => crates/polars-python}/src/series/aggregation.rs (100%)
+ rename {py-polars => crates/polars-python}/src/series/arithmetic.rs (100%)
+ rename {py-polars => crates/polars-python}/src/series/buffers.rs (100%)
+ rename {py-polars => crates/polars-python}/src/series/c_interface.rs (100%)
+ rename {py-polars => crates/polars-python}/src/series/comparison.rs (100%)
+ rename {py-polars => crates/polars-python}/src/series/construction.rs (100%)
+ rename {py-polars => crates/polars-python}/src/series/export.rs (100%)
+ rename py-polars/src/series/mod.rs => crates/polars-python/src/series/general.rs (94%)
+ rename {py-polars => crates/polars-python}/src/series/import.rs (100%)
+ create mode 100644 crates/polars-python/src/series/mod.rs
+ rename {py-polars => crates/polars-python}/src/series/numpy_ufunc.rs (100%)
+ rename {py-polars => crates/polars-python}/src/series/scatter.rs (100%)
+ rename {py-polars => crates/polars-python}/src/sql.rs (100%)
+ rename {py-polars => crates/polars-python}/src/utils.rs (100%)
+ delete mode 100644 py-polars/src/lazyframe/visitor/mod.rs
+
+diff --git a/Cargo.lock b/Cargo.lock
+index dc152c0ce..97bffdb06 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -3335,6 +3335,40 @@ dependencies = [
+  "version_check",
+ ]
+ 
++[[package]]
++name = "polars-python"
++version = "0.42.0"
++dependencies = [
++ "ahash",
++ "arboard",
++ "bytemuck",
++ "ciborium",
++ "either",
++ "itoa",
++ "libc",
++ "ndarray",
++ "num-traits",
++ "numpy",
++ "once_cell",
++ "polars",
++ "polars-core",
++ "polars-error",
++ "polars-io",
++ "polars-lazy",
++ "polars-ops",
++ "polars-parquet",
++ "polars-plan",
++ "polars-stream",
++ "polars-time",
++ "polars-utils",
++ "pyo3",
++ "recursive",
++ "serde_json",
++ "smartstring",
++ "thiserror",
++ "version_check",
++]
++
+ [[package]]
+ name = "polars-row"
+ version = "0.42.0"
+@@ -3512,36 +3546,12 @@ dependencies = [
+ name = "py-polars"
+ version = "1.5.0"
+ dependencies = [
+- "ahash",
+- "arboard",
+  "built",
+- "bytemuck",
+- "ciborium",
+- "either",
+- "itoa",
+  "jemallocator",
+  "libc",
+  "mimalloc",
+- "ndarray",
+- "num-traits",
+- "numpy",
+- "once_cell",
+- "polars",
+- "polars-core",
+- "polars-error",
+- "polars-io",
+- "polars-lazy",
+- "polars-ops",
+- "polars-parquet",
+- "polars-plan",
+- "polars-stream",
+- "polars-time",
+- "polars-utils",
++ "polars-python",
+  "pyo3",
+- "recursive",
+- "serde_json",
+- "smartstring",
+- "thiserror",
+ ]
+ 
+ [[package]]
+diff --git a/Cargo.toml b/Cargo.toml
+index fb8549291..44ba246bc 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -55,6 +55,7 @@ hex = "0.4.3"
+ indexmap = { version = "2", features = ["std"] }
+ itoa = "1.0.6"
+ itoap = { version = "1", features = ["simd"] }
++libc = "0.2"
+ memchr = "2.6"
+ memmap = { package = "memmap2", version = "0.7" }
+ multiversion = "0.7"
+@@ -109,6 +110,7 @@ polars-ops = { version = "0.42.0", path = "crates/polars-ops", default-features
+ polars-parquet = { version = "0.42.0", path = "crates/polars-parquet", default-features = false }
+ polars-pipe = { version = "0.42.0", path = "crates/polars-pipe", default-features = false }
+ polars-plan = { version = "0.42.0", path = "crates/polars-plan", default-features = false }
++polars-python = { version = "0.42.0", path = "crates/polars-python", default-features = false }
+ polars-row = { version = "0.42.0", path = "crates/polars-row", default-features = false }
+ polars-sql = { version = "0.42.0", path = "crates/polars-sql", default-features = false }
+ polars-stream = { version = "0.42.0", path = "crates/polars-stream", default-features = false }
+diff --git a/crates/polars-plan/README.md b/crates/polars-plan/README.md
+index 23d78053d..59fce1861 100644
+--- a/crates/polars-plan/README.md
++++ b/crates/polars-plan/README.md
+@@ -1,4 +1,4 @@
+-# polars-plan-
++# polars-plan
+ 
+ `polars-plan` is an **internal sub-crate** of the [Polars](https://crates.io/crates/polars) library, that provides source code responsible for Polars logical planning.
+ 
+diff --git a/crates/polars-python/Cargo.toml b/crates/polars-python/Cargo.toml
+new file mode 100644
+index 000000000..99d4ec1a0
+--- /dev/null
++++ b/crates/polars-python/Cargo.toml
+@@ -0,0 +1,254 @@
++[package]
++name = "polars-python"
++version = { workspace = true }
++authors = { workspace = true }
++edition = { workspace = true }
++homepage = { workspace = true }
++license = { workspace = true }
++repository = { workspace = true }
++description = "Enable running Polars workloads in Python"
++
++[dependencies]
++polars-core = { workspace = true, features = ["python"] }
++polars-error = { workspace = true }
++polars-io = { workspace = true }
++polars-lazy = { workspace = true, features = ["python"] }
++polars-ops = { workspace = true }
++polars-parquet = { workspace = true, optional = true }
++polars-plan = { workspace = true }
++polars-time = { workspace = true }
++polars-utils = { workspace = true }
++
++# TODO! remove this once truly activated. This is required to make sdist building work
++polars-stream = { workspace = true }
++
++ahash = { workspace = true }
++arboard = { workspace = true, optional = true }
++bytemuck = { workspace = true }
++ciborium = { workspace = true }
++either = { workspace = true }
++itoa = { workspace = true }
++libc = { workspace = true }
++ndarray = { workspace = true }
++num-traits = { workspace = true }
++# TODO: Pin to released version once NumPy 2.0 support is merged
++# https://github.com/PyO3/rust-numpy/issues/409
++numpy = { git = "https://github.com/stinodego/rust-numpy.git", rev = "9ba9962ae57ba26e35babdce6f179edf5fe5b9c8", default-features = false }
++once_cell = { workspace = true }
++pyo3 = { workspace = true, features = ["abi3-py38", "chrono", "extension-module", "multiple-pymethods"] }
++recursive = { workspace = true }
++serde_json = { workspace = true, optional = true }
++smartstring = { workspace = true }
++thiserror = { workspace = true }
++
++[dependencies.polars]
++workspace = true
++features = [
++  "abs",
++  "approx_unique",
++  "array_any_all",
++  "arg_where",
++  "business",
++  "concat_str",
++  "cum_agg",
++  "cumulative_eval",
++  "dataframe_arithmetic",
++  "month_start",
++  "month_end",
++  "offset_by",
++  "diagonal_concat",
++  "diff",
++  "dot_diagram",
++  "dot_product",
++  "dtype-categorical",
++  "dtype-full",
++  "dynamic_group_by",
++  "ewma",
++  "ewma_by",
++  "fmt",
++  "fused",
++  "interpolate",
++  "interpolate_by",
++  "is_first_distinct",
++  "is_last_distinct",
++  "is_unique",
++  "is_between",
++  "lazy",
++  "list_eval",
++  "list_to_struct",
++  "array_to_struct",
++  "log",
++  "mode",
++  "moment",
++  "ndarray",
++  "partition_by",
++  "product",
++  "random",
++  "range",
++  "rank",
++  "reinterpret",
++  "replace",
++  "rolling_window",
++  "rolling_window_by",
++  "round_series",
++  "row_hash",
++  "rows",
++  "semi_anti_join",
++  "serde-lazy",
++  "string_encoding",
++  "string_reverse",
++  "string_to_integer",
++  "string_pad",
++  "strings",
++  "temporal",
++  "to_dummies",
++  "true_div",
++  "unique_counts",
++  "zip_with",
++  "cov",
++]
++
++[build-dependencies]
++version_check = { workspace = true }
++
++[features]
++# Features below are only there to enable building a slim binary during development.
++avro = ["polars/avro"]
++parquet = ["polars/parquet", "polars-parquet"]
++ipc = ["polars/ipc"]
++ipc_streaming = ["polars/ipc_streaming"]
++is_in = ["polars/is_in"]
++json = ["polars/serde", "serde_json", "polars/json"]
++trigonometry = ["polars/trigonometry"]
++sign = ["polars/sign"]
++asof_join = ["polars/asof_join"]
++cross_join = ["polars/cross_join"]
++pct_change = ["polars/pct_change"]
++repeat_by = ["polars/repeat_by"]
++
++streaming = ["polars/streaming"]
++meta = ["polars/meta"]
++search_sorted = ["polars/search_sorted"]
++decompress = ["polars/decompress-fast"]
++regex = ["polars/regex"]
++csv = ["polars/csv"]
++clipboard = ["arboard"]
++extract_jsonpath = ["polars/extract_jsonpath"]
++pivot = ["polars/pivot"]
++top_k = ["polars/top_k"]
++propagate_nans = ["polars/propagate_nans"]
++sql = ["polars/sql"]
++performant = ["polars/performant"]
++timezones = ["polars/timezones"]
++cse = ["polars/cse"]
++merge_sorted = ["polars/merge_sorted"]
++list_gather = ["polars/list_gather"]
++list_count = ["polars/list_count"]
++array_count = ["polars/array_count", "polars/dtype-array"]
++binary_encoding = ["polars/binary_encoding"]
++list_sets = ["polars-lazy/list_sets"]
++list_any_all = ["polars/list_any_all"]
++array_any_all = ["polars/array_any_all", "polars/dtype-array"]
++list_drop_nulls = ["polars/list_drop_nulls"]
++list_sample = ["polars/list_sample"]
++cutqcut = ["polars/cutqcut"]
++rle = ["polars/rle"]
++extract_groups = ["polars/extract_groups"]
++ffi_plugin = ["polars-plan/ffi_plugin"]
++cloud = ["polars/cloud", "polars/aws", "polars/gcp", "polars/azure", "polars/http"]
++peaks = ["polars/peaks"]
++hist = ["polars/hist"]
++find_many = ["polars/find_many"]
++new_streaming = ["polars-lazy/new_streaming"]
++
++dtype-i8 = []
++dtype-i16 = []
++dtype-u8 = []
++dtype-u16 = []
++dtype-array = []
++object = ["polars/object"]
++
++dtypes = [
++  "dtype-array",
++  "dtype-i16",
++  "dtype-i8",
++  "dtype-u16",
++  "dtype-u8",
++  "object",
++]
++
++operations = [
++  "array_any_all",
++  "array_count",
++  "is_in",
++  "repeat_by",
++  "trigonometry",
++  "sign",
++  "performant",
++  "list_gather",
++  "list_count",
++  "list_sets",
++  "list_any_all",
++  "list_drop_nulls",
++  "list_sample",
++  "cutqcut",
++  "rle",
++  "extract_groups",
++  "pivot",
++  "extract_jsonpath",
++  "asof_join",
++  "cross_join",
++  "pct_change",
++  "search_sorted",
++  "merge_sorted",
++  "top_k",
++  "propagate_nans",
++  "timezones",
++  "peaks",
++  "hist",
++  "find_many",
++]
++
++io = [
++  "json",
++  "parquet",
++  "ipc",
++  "ipc_streaming",
++  "avro",
++  "csv",
++  "cloud",
++  "clipboard",
++]
++
++optimizations = [
++  "cse",
++  "polars/fused",
++  "streaming",
++]
++
++polars_cloud = ["polars/polars_cloud"]
++# also includes simd
++nightly = ["polars/nightly"]
++
++all = [
++  "optimizations",
++  "io",
++  "operations",
++  "dtypes",
++  "meta",
++  "decompress",
++  "regex",
++  "sql",
++  "binary_encoding",
++  "ffi_plugin",
++  "polars_cloud",
++  # "new_streaming",
++]
++
++# we cannot conditionally activate simd
++# https://github.com/rust-lang/cargo/issues/1197
++# so we have an indirection and compile
++# with --no-default-features --features=all for targets without simd
++default = [
++  "all",
++]
+diff --git a/crates/polars-python/LICENSE b/crates/polars-python/LICENSE
+new file mode 120000
+index 000000000..30cff7403
+--- /dev/null
++++ b/crates/polars-python/LICENSE
+@@ -0,0 +1 @@
++../../LICENSE
+\ No newline at end of file
+diff --git a/crates/polars-python/README.md b/crates/polars-python/README.md
+new file mode 100644
+index 000000000..3a68700e3
+--- /dev/null
++++ b/crates/polars-python/README.md
+@@ -0,0 +1,6 @@
++# polars-python
++
++`polars-python` is an **internal sub-crate** of the [Polars](https://crates.io/crates/polars) library.
++It enables running Polars workloads in Python.
++
++**Important Note**: This crate is **not intended for external usage**. Please refer to the main [Polars crate](https://crates.io/crates/polars) for intended usage.
+diff --git a/crates/polars-python/build.rs b/crates/polars-python/build.rs
+new file mode 100644
+index 000000000..3e4ab6462
+--- /dev/null
++++ b/crates/polars-python/build.rs
+@@ -0,0 +1,7 @@
++fn main() {
++    println!("cargo:rerun-if-changed=build.rs");
++    let channel = version_check::Channel::read().unwrap();
++    if channel.is_nightly() {
++        println!("cargo:rustc-cfg=feature=\"nightly\"");
++    }
++}
+diff --git a/py-polars/src/batched_csv.rs b/crates/polars-python/src/batched_csv.rs
+similarity index 100%
+rename from py-polars/src/batched_csv.rs
+rename to crates/polars-python/src/batched_csv.rs
+diff --git a/py-polars/src/cloud.rs b/crates/polars-python/src/cloud.rs
+similarity index 100%
+rename from py-polars/src/cloud.rs
+rename to crates/polars-python/src/cloud.rs
+diff --git a/py-polars/src/conversion/any_value.rs b/crates/polars-python/src/conversion/any_value.rs
+similarity index 100%
+rename from py-polars/src/conversion/any_value.rs
+rename to crates/polars-python/src/conversion/any_value.rs
+diff --git a/py-polars/src/conversion/chunked_array.rs b/crates/polars-python/src/conversion/chunked_array.rs
+similarity index 100%
+rename from py-polars/src/conversion/chunked_array.rs
+rename to crates/polars-python/src/conversion/chunked_array.rs
+diff --git a/py-polars/src/conversion/datetime.rs b/crates/polars-python/src/conversion/datetime.rs
+similarity index 100%
+rename from py-polars/src/conversion/datetime.rs
+rename to crates/polars-python/src/conversion/datetime.rs
+diff --git a/py-polars/src/conversion/mod.rs b/crates/polars-python/src/conversion/mod.rs
+similarity index 100%
+rename from py-polars/src/conversion/mod.rs
+rename to crates/polars-python/src/conversion/mod.rs
+diff --git a/py-polars/src/dataframe/construction.rs b/crates/polars-python/src/dataframe/construction.rs
+similarity index 100%
+rename from py-polars/src/dataframe/construction.rs
+rename to crates/polars-python/src/dataframe/construction.rs
+diff --git a/py-polars/src/dataframe/export.rs b/crates/polars-python/src/dataframe/export.rs
+similarity index 100%
+rename from py-polars/src/dataframe/export.rs
+rename to crates/polars-python/src/dataframe/export.rs
+diff --git a/py-polars/src/dataframe/general.rs b/crates/polars-python/src/dataframe/general.rs
+similarity index 99%
+rename from py-polars/src/dataframe/general.rs
+rename to crates/polars-python/src/dataframe/general.rs
+index 6352053a2..5edb77be9 100644
+--- a/py-polars/src/dataframe/general.rs
++++ b/crates/polars-python/src/dataframe/general.rs
+@@ -368,6 +368,7 @@ impl PyDataFrame {
+         Ok(df.into())
+     }
+ 
++    #[allow(clippy::should_implement_trait)]
+     pub fn clone(&self) -> Self {
+         PyDataFrame::new(self.df.clone())
+     }
+diff --git a/py-polars/src/dataframe/io.rs b/crates/polars-python/src/dataframe/io.rs
+similarity index 100%
+rename from py-polars/src/dataframe/io.rs
+rename to crates/polars-python/src/dataframe/io.rs
+diff --git a/py-polars/src/dataframe/mod.rs b/crates/polars-python/src/dataframe/mod.rs
+similarity index 100%
+rename from py-polars/src/dataframe/mod.rs
+rename to crates/polars-python/src/dataframe/mod.rs
+diff --git a/py-polars/src/dataframe/serde.rs b/crates/polars-python/src/dataframe/serde.rs
+similarity index 100%
+rename from py-polars/src/dataframe/serde.rs
+rename to crates/polars-python/src/dataframe/serde.rs
+diff --git a/py-polars/src/datatypes.rs b/crates/polars-python/src/datatypes.rs
+similarity index 100%
+rename from py-polars/src/datatypes.rs
+rename to crates/polars-python/src/datatypes.rs
+diff --git a/py-polars/src/error.rs b/crates/polars-python/src/error.rs
+similarity index 100%
+rename from py-polars/src/error.rs
+rename to crates/polars-python/src/error.rs
+diff --git a/py-polars/src/exceptions.rs b/crates/polars-python/src/exceptions.rs
+similarity index 100%
+rename from py-polars/src/exceptions.rs
+rename to crates/polars-python/src/exceptions.rs
+diff --git a/py-polars/src/expr/array.rs b/crates/polars-python/src/expr/array.rs
+similarity index 100%
+rename from py-polars/src/expr/array.rs
+rename to crates/polars-python/src/expr/array.rs
+diff --git a/py-polars/src/expr/binary.rs b/crates/polars-python/src/expr/binary.rs
+similarity index 100%
+rename from py-polars/src/expr/binary.rs
+rename to crates/polars-python/src/expr/binary.rs
+diff --git a/py-polars/src/expr/categorical.rs b/crates/polars-python/src/expr/categorical.rs
+similarity index 100%
+rename from py-polars/src/expr/categorical.rs
+rename to crates/polars-python/src/expr/categorical.rs
+diff --git a/py-polars/src/expr/datetime.rs b/crates/polars-python/src/expr/datetime.rs
+similarity index 100%
+rename from py-polars/src/expr/datetime.rs
+rename to crates/polars-python/src/expr/datetime.rs
+diff --git a/py-polars/src/expr/general.rs b/crates/polars-python/src/expr/general.rs
+similarity index 100%
+rename from py-polars/src/expr/general.rs
+rename to crates/polars-python/src/expr/general.rs
+diff --git a/py-polars/src/expr/list.rs b/crates/polars-python/src/expr/list.rs
+similarity index 100%
+rename from py-polars/src/expr/list.rs
+rename to crates/polars-python/src/expr/list.rs
+diff --git a/py-polars/src/expr/meta.rs b/crates/polars-python/src/expr/meta.rs
+similarity index 100%
+rename from py-polars/src/expr/meta.rs
+rename to crates/polars-python/src/expr/meta.rs
+diff --git a/py-polars/src/expr/mod.rs b/crates/polars-python/src/expr/mod.rs
+similarity index 100%
+rename from py-polars/src/expr/mod.rs
+rename to crates/polars-python/src/expr/mod.rs
+diff --git a/py-polars/src/expr/name.rs b/crates/polars-python/src/expr/name.rs
+similarity index 100%
+rename from py-polars/src/expr/name.rs
+rename to crates/polars-python/src/expr/name.rs
+diff --git a/py-polars/src/expr/rolling.rs b/crates/polars-python/src/expr/rolling.rs
+similarity index 100%
+rename from py-polars/src/expr/rolling.rs
+rename to crates/polars-python/src/expr/rolling.rs
+diff --git a/py-polars/src/expr/serde.rs b/crates/polars-python/src/expr/serde.rs
+similarity index 100%
+rename from py-polars/src/expr/serde.rs
+rename to crates/polars-python/src/expr/serde.rs
+diff --git a/py-polars/src/expr/string.rs b/crates/polars-python/src/expr/string.rs
+similarity index 100%
+rename from py-polars/src/expr/string.rs
+rename to crates/polars-python/src/expr/string.rs
+diff --git a/py-polars/src/expr/struct.rs b/crates/polars-python/src/expr/struct.rs
+similarity index 100%
+rename from py-polars/src/expr/struct.rs
+rename to crates/polars-python/src/expr/struct.rs
+diff --git a/py-polars/src/file.rs b/crates/polars-python/src/file.rs
+similarity index 100%
+rename from py-polars/src/file.rs
+rename to crates/polars-python/src/file.rs
+diff --git a/py-polars/src/functions/aggregation.rs b/crates/polars-python/src/functions/aggregation.rs
+similarity index 100%
+rename from py-polars/src/functions/aggregation.rs
+rename to crates/polars-python/src/functions/aggregation.rs
+diff --git a/py-polars/src/functions/business.rs b/crates/polars-python/src/functions/business.rs
+similarity index 100%
+rename from py-polars/src/functions/business.rs
+rename to crates/polars-python/src/functions/business.rs
+diff --git a/py-polars/src/functions/eager.rs b/crates/polars-python/src/functions/eager.rs
+similarity index 100%
+rename from py-polars/src/functions/eager.rs
+rename to crates/polars-python/src/functions/eager.rs
+diff --git a/py-polars/src/functions/io.rs b/crates/polars-python/src/functions/io.rs
+similarity index 100%
+rename from py-polars/src/functions/io.rs
+rename to crates/polars-python/src/functions/io.rs
+diff --git a/py-polars/src/functions/lazy.rs b/crates/polars-python/src/functions/lazy.rs
+similarity index 100%
+rename from py-polars/src/functions/lazy.rs
+rename to crates/polars-python/src/functions/lazy.rs
+diff --git a/py-polars/src/functions/meta.rs b/crates/polars-python/src/functions/meta.rs
+similarity index 100%
+rename from py-polars/src/functions/meta.rs
+rename to crates/polars-python/src/functions/meta.rs
+diff --git a/py-polars/src/functions/misc.rs b/crates/polars-python/src/functions/misc.rs
+similarity index 100%
+rename from py-polars/src/functions/misc.rs
+rename to crates/polars-python/src/functions/misc.rs
+diff --git a/py-polars/src/functions/mod.rs b/crates/polars-python/src/functions/mod.rs
+similarity index 100%
+rename from py-polars/src/functions/mod.rs
+rename to crates/polars-python/src/functions/mod.rs
+diff --git a/py-polars/src/functions/random.rs b/crates/polars-python/src/functions/random.rs
+similarity index 100%
+rename from py-polars/src/functions/random.rs
+rename to crates/polars-python/src/functions/random.rs
+diff --git a/py-polars/src/functions/range.rs b/crates/polars-python/src/functions/range.rs
+similarity index 100%
+rename from py-polars/src/functions/range.rs
+rename to crates/polars-python/src/functions/range.rs
+diff --git a/py-polars/src/functions/string_cache.rs b/crates/polars-python/src/functions/string_cache.rs
+similarity index 100%
+rename from py-polars/src/functions/string_cache.rs
+rename to crates/polars-python/src/functions/string_cache.rs
+diff --git a/py-polars/src/functions/whenthen.rs b/crates/polars-python/src/functions/whenthen.rs
+similarity index 100%
+rename from py-polars/src/functions/whenthen.rs
+rename to crates/polars-python/src/functions/whenthen.rs
+diff --git a/py-polars/src/gil_once_cell.rs b/crates/polars-python/src/gil_once_cell.rs
+similarity index 97%
+rename from py-polars/src/gil_once_cell.rs
+rename to crates/polars-python/src/gil_once_cell.rs
+index 5608283a2..17a793345 100644
+--- a/py-polars/src/gil_once_cell.rs
++++ b/crates/polars-python/src/gil_once_cell.rs
+@@ -14,6 +14,7 @@ unsafe impl<T: Send> Send for GILOnceCell<T> {}
+ 
+ impl<T> GILOnceCell<T> {
+     /// Create a `GILOnceCell` which does not yet contain a value.
++    #[allow(clippy::new_without_default)]
+     pub const fn new() -> Self {
+         Self(UnsafeCell::new(None))
+     }
+diff --git a/py-polars/src/interop/arrow/mod.rs b/crates/polars-python/src/interop/arrow/mod.rs
+similarity index 100%
+rename from py-polars/src/interop/arrow/mod.rs
+rename to crates/polars-python/src/interop/arrow/mod.rs
+diff --git a/py-polars/src/interop/arrow/to_py.rs b/crates/polars-python/src/interop/arrow/to_py.rs
+similarity index 100%
+rename from py-polars/src/interop/arrow/to_py.rs
+rename to crates/polars-python/src/interop/arrow/to_py.rs
+diff --git a/py-polars/src/interop/arrow/to_rust.rs b/crates/polars-python/src/interop/arrow/to_rust.rs
+similarity index 100%
+rename from py-polars/src/interop/arrow/to_rust.rs
+rename to crates/polars-python/src/interop/arrow/to_rust.rs
+diff --git a/py-polars/src/interop/mod.rs b/crates/polars-python/src/interop/mod.rs
+similarity index 100%
+rename from py-polars/src/interop/mod.rs
+rename to crates/polars-python/src/interop/mod.rs
+diff --git a/py-polars/src/interop/numpy/mod.rs b/crates/polars-python/src/interop/numpy/mod.rs
+similarity index 100%
+rename from py-polars/src/interop/numpy/mod.rs
+rename to crates/polars-python/src/interop/numpy/mod.rs
+diff --git a/py-polars/src/interop/numpy/to_numpy_df.rs b/crates/polars-python/src/interop/numpy/to_numpy_df.rs
+similarity index 100%
+rename from py-polars/src/interop/numpy/to_numpy_df.rs
+rename to crates/polars-python/src/interop/numpy/to_numpy_df.rs
+diff --git a/py-polars/src/interop/numpy/to_numpy_series.rs b/crates/polars-python/src/interop/numpy/to_numpy_series.rs
+similarity index 100%
+rename from py-polars/src/interop/numpy/to_numpy_series.rs
+rename to crates/polars-python/src/interop/numpy/to_numpy_series.rs
+diff --git a/py-polars/src/interop/numpy/utils.rs b/crates/polars-python/src/interop/numpy/utils.rs
+similarity index 100%
+rename from py-polars/src/interop/numpy/utils.rs
+rename to crates/polars-python/src/interop/numpy/utils.rs
+diff --git a/py-polars/src/lazyframe/exitable.rs b/crates/polars-python/src/lazyframe/exitable.rs
+similarity index 100%
+rename from py-polars/src/lazyframe/exitable.rs
+rename to crates/polars-python/src/lazyframe/exitable.rs
+diff --git a/py-polars/src/lazyframe/mod.rs b/crates/polars-python/src/lazyframe/general.rs
+similarity index 99%
+rename from py-polars/src/lazyframe/mod.rs
+rename to crates/polars-python/src/lazyframe/general.rs
+index 5ee140c38..7ec2c392c 100644
+--- a/py-polars/src/lazyframe/mod.rs
++++ b/crates/polars-python/src/lazyframe/general.rs
+@@ -1,12 +1,7 @@
+-mod exitable;
+-mod visit;
+-pub(crate) mod visitor;
+ use std::collections::HashMap;
+ use std::num::NonZeroUsize;
+ use std::path::PathBuf;
+-mod serde;
+ 
+-pub use exitable::PyInProcessQuery;
+ use polars::io::{HiveOptions, RowIndex};
+ use polars::time::*;
+ use polars_core::prelude::*;
+@@ -16,8 +11,8 @@ use pyo3::exceptions::PyValueError;
+ use pyo3::prelude::*;
+ use pyo3::pybacked::PyBackedStr;
+ use pyo3::types::{PyDict, PyList};
+-pub(crate) use visit::PyExprIR;
+ 
++use super::PyLazyFrame;
+ use crate::error::PyPolarsErr;
+ use crate::expr::ToExprs;
+ use crate::interop::arrow::to_rust::pyarrow_schema_to_rust;
+@@ -25,19 +20,6 @@ use crate::lazyframe::visit::NodeTraverser;
+ use crate::prelude::*;
+ use crate::{PyDataFrame, PyExpr, PyLazyGroupBy};
+ 
+-#[pyclass]
+-#[repr(transparent)]
+-#[derive(Clone)]
+-pub struct PyLazyFrame {
+-    pub ldf: LazyFrame,
+-}
+-
+-impl From<LazyFrame> for PyLazyFrame {
+-    fn from(ldf: LazyFrame) -> Self {
+-        PyLazyFrame { ldf }
+-    }
+-}
+-
+ #[pymethods]
+ #[allow(clippy::should_implement_trait)]
+ impl PyLazyFrame {
+diff --git a/crates/polars-python/src/lazyframe/mod.rs b/crates/polars-python/src/lazyframe/mod.rs
+new file mode 100644
+index 000000000..6c4f695b4
+--- /dev/null
++++ b/crates/polars-python/src/lazyframe/mod.rs
+@@ -0,0 +1,27 @@
++mod exitable;
++mod general;
++mod serde;
++pub mod visit;
++pub mod visitor;
++
++pub use exitable::PyInProcessQuery;
++use polars_core::prelude::*;
++use pyo3::prelude::*;
++use pyo3::types::PyList;
++
++use crate::error::PyPolarsErr;
++use crate::prelude::*;
++use crate::{PyDataFrame, PyExpr};
++
++#[pyclass]
++#[repr(transparent)]
++#[derive(Clone)]
++pub struct PyLazyFrame {
++    pub ldf: LazyFrame,
++}
++
++impl From<LazyFrame> for PyLazyFrame {
++    fn from(ldf: LazyFrame) -> Self {
++        PyLazyFrame { ldf }
++    }
++}
+diff --git a/py-polars/src/lazyframe/serde.rs b/crates/polars-python/src/lazyframe/serde.rs
+similarity index 100%
+rename from py-polars/src/lazyframe/serde.rs
+rename to crates/polars-python/src/lazyframe/serde.rs
+diff --git a/py-polars/src/lazyframe/visit.rs b/crates/polars-python/src/lazyframe/visit.rs
+similarity index 99%
+rename from py-polars/src/lazyframe/visit.rs
+rename to crates/polars-python/src/lazyframe/visit.rs
+index 5909c628d..c5ef3b8ad 100644
+--- a/py-polars/src/lazyframe/visit.rs
++++ b/crates/polars-python/src/lazyframe/visit.rs
+@@ -12,7 +12,7 @@ use crate::raise_err;
+ 
+ #[derive(Clone)]
+ #[pyclass]
+-pub(crate) struct PyExprIR {
++pub struct PyExprIR {
+     #[pyo3(get)]
+     node: usize,
+     #[pyo3(get)]
+diff --git a/py-polars/src/lazyframe/visitor/expr_nodes.rs b/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+similarity index 100%
+rename from py-polars/src/lazyframe/visitor/expr_nodes.rs
+rename to crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+diff --git a/crates/polars-python/src/lazyframe/visitor/mod.rs b/crates/polars-python/src/lazyframe/visitor/mod.rs
+new file mode 100644
+index 000000000..39af9e064
+--- /dev/null
++++ b/crates/polars-python/src/lazyframe/visitor/mod.rs
+@@ -0,0 +1,2 @@
++pub mod expr_nodes;
++pub mod nodes;
+diff --git a/py-polars/src/lazyframe/visitor/nodes.rs b/crates/polars-python/src/lazyframe/visitor/nodes.rs
+similarity index 100%
+rename from py-polars/src/lazyframe/visitor/nodes.rs
+rename to crates/polars-python/src/lazyframe/visitor/nodes.rs
+diff --git a/py-polars/src/lazygroupby.rs b/crates/polars-python/src/lazygroupby.rs
+similarity index 100%
+rename from py-polars/src/lazygroupby.rs
+rename to crates/polars-python/src/lazygroupby.rs
+diff --git a/crates/polars-python/src/lib.rs b/crates/polars-python/src/lib.rs
+new file mode 100644
+index 000000000..40d975dc7
+--- /dev/null
++++ b/crates/polars-python/src/lib.rs
+@@ -0,0 +1,41 @@
++#![allow(clippy::nonstandard_macro_braces)] // Needed because clippy does not understand proc macro of PyO3
++#![allow(clippy::transmute_undefined_repr)]
++#![allow(non_local_definitions)]
++#![allow(clippy::too_many_arguments)] // Python functions can have many arguments due to default arguments
++#![allow(clippy::disallowed_types)]
++
++#[cfg(feature = "csv")]
++pub mod batched_csv;
++#[cfg(feature = "polars_cloud")]
++pub mod cloud;
++pub mod conversion;
++pub mod dataframe;
++pub mod datatypes;
++pub mod error;
++pub mod exceptions;
++pub mod expr;
++pub mod file;
++pub mod functions;
++pub mod gil_once_cell;
++pub mod interop;
++pub mod lazyframe;
++pub mod lazygroupby;
++pub mod map;
++
++#[cfg(feature = "object")]
++pub mod object;
++#[cfg(feature = "object")]
++pub mod on_startup;
++pub mod prelude;
++pub mod py_modules;
++pub mod series;
++#[cfg(feature = "sql")]
++pub mod sql;
++pub mod utils;
++
++use crate::conversion::Wrap;
++use crate::dataframe::PyDataFrame;
++use crate::expr::PyExpr;
++use crate::lazyframe::PyLazyFrame;
++use crate::lazygroupby::PyLazyGroupBy;
++use crate::series::PySeries;
+diff --git a/py-polars/src/map/dataframe.rs b/crates/polars-python/src/map/dataframe.rs
+similarity index 100%
+rename from py-polars/src/map/dataframe.rs
+rename to crates/polars-python/src/map/dataframe.rs
+diff --git a/py-polars/src/map/lazy.rs b/crates/polars-python/src/map/lazy.rs
+similarity index 100%
+rename from py-polars/src/map/lazy.rs
+rename to crates/polars-python/src/map/lazy.rs
+diff --git a/py-polars/src/map/mod.rs b/crates/polars-python/src/map/mod.rs
+similarity index 100%
+rename from py-polars/src/map/mod.rs
+rename to crates/polars-python/src/map/mod.rs
+diff --git a/py-polars/src/map/series.rs b/crates/polars-python/src/map/series.rs
+similarity index 100%
+rename from py-polars/src/map/series.rs
+rename to crates/polars-python/src/map/series.rs
+diff --git a/py-polars/src/object.rs b/crates/polars-python/src/object.rs
+similarity index 100%
+rename from py-polars/src/object.rs
+rename to crates/polars-python/src/object.rs
+diff --git a/py-polars/src/on_startup.rs b/crates/polars-python/src/on_startup.rs
+similarity index 100%
+rename from py-polars/src/on_startup.rs
+rename to crates/polars-python/src/on_startup.rs
+diff --git a/py-polars/src/prelude.rs b/crates/polars-python/src/prelude.rs
+similarity index 100%
+rename from py-polars/src/prelude.rs
+rename to crates/polars-python/src/prelude.rs
+diff --git a/py-polars/src/py_modules.rs b/crates/polars-python/src/py_modules.rs
+similarity index 100%
+rename from py-polars/src/py_modules.rs
+rename to crates/polars-python/src/py_modules.rs
+diff --git a/py-polars/src/series/aggregation.rs b/crates/polars-python/src/series/aggregation.rs
+similarity index 100%
+rename from py-polars/src/series/aggregation.rs
+rename to crates/polars-python/src/series/aggregation.rs
+diff --git a/py-polars/src/series/arithmetic.rs b/crates/polars-python/src/series/arithmetic.rs
+similarity index 100%
+rename from py-polars/src/series/arithmetic.rs
+rename to crates/polars-python/src/series/arithmetic.rs
+diff --git a/py-polars/src/series/buffers.rs b/crates/polars-python/src/series/buffers.rs
+similarity index 100%
+rename from py-polars/src/series/buffers.rs
+rename to crates/polars-python/src/series/buffers.rs
+diff --git a/py-polars/src/series/c_interface.rs b/crates/polars-python/src/series/c_interface.rs
+similarity index 100%
+rename from py-polars/src/series/c_interface.rs
+rename to crates/polars-python/src/series/c_interface.rs
+diff --git a/py-polars/src/series/comparison.rs b/crates/polars-python/src/series/comparison.rs
+similarity index 100%
+rename from py-polars/src/series/comparison.rs
+rename to crates/polars-python/src/series/comparison.rs
+diff --git a/py-polars/src/series/construction.rs b/crates/polars-python/src/series/construction.rs
+similarity index 100%
+rename from py-polars/src/series/construction.rs
+rename to crates/polars-python/src/series/construction.rs
+diff --git a/py-polars/src/series/export.rs b/crates/polars-python/src/series/export.rs
+similarity index 100%
+rename from py-polars/src/series/export.rs
+rename to crates/polars-python/src/series/export.rs
+diff --git a/py-polars/src/series/mod.rs b/crates/polars-python/src/series/general.rs
+similarity index 94%
+rename from py-polars/src/series/mod.rs
+rename to crates/polars-python/src/series/general.rs
+index 153a2dc12..917780577 100644
+--- a/py-polars/src/series/mod.rs
++++ b/crates/polars-python/src/series/general.rs
+@@ -1,73 +1,11 @@
+-mod aggregation;
+-mod arithmetic;
+-mod buffers;
+-mod c_interface;
+-mod comparison;
+-mod construction;
+-mod export;
+-mod import;
+-mod numpy_ufunc;
+-mod scatter;
+-
+-use std::io::Cursor;
+-
+-use polars_core::chunked_array::cast::CastOptions;
+-use polars_core::series::IsSorted;
+-use polars_core::utils::flatten::flatten_series;
+-use polars_core::{with_match_physical_numeric_polars_type, with_match_physical_numeric_type};
+-use pyo3::exceptions::{PyIndexError, PyRuntimeError, PyValueError};
+ use pyo3::prelude::*;
+-use pyo3::types::PyBytes;
+ use pyo3::Python;
+ 
+-use crate::dataframe::PyDataFrame;
++use super::{PySeries, *};
+ use crate::error::PyPolarsErr;
+-use crate::map::series::{call_lambda_and_extract, ApplyLambda};
+ use crate::prelude::*;
+-use crate::py_modules::POLARS;
+ use crate::{apply_method_all_arrow_series2, raise_err};
+ 
+-#[pyclass]
+-#[repr(transparent)]
+-#[derive(Clone)]
+-pub struct PySeries {
+-    pub series: Series,
+-}
+-
+-impl From<Series> for PySeries {
+-    fn from(series: Series) -> Self {
+-        PySeries { series }
+-    }
+-}
+-
+-impl PySeries {
+-    pub(crate) fn new(series: Series) -> Self {
+-        PySeries { series }
+-    }
+-}
+-
+-pub(crate) trait ToSeries {
+-    fn to_series(self) -> Vec<Series>;
+-}
+-
+-impl ToSeries for Vec<PySeries> {
+-    fn to_series(self) -> Vec<Series> {
+-        // SAFETY: repr is transparent.
+-        unsafe { std::mem::transmute(self) }
+-    }
+-}
+-
+-pub(crate) trait ToPySeries {
+-    fn to_pyseries(self) -> Vec<PySeries>;
+-}
+-
+-impl ToPySeries for Vec<Series> {
+-    fn to_pyseries(self) -> Vec<PySeries> {
+-        // SAFETY: repr is transparent.
+-        unsafe { std::mem::transmute(self) }
+-    }
+-}
+-
+ #[pymethods]
+ impl PySeries {
+     fn struct_unnest(&self) -> PyResult<PyDataFrame> {
+@@ -162,7 +100,7 @@ impl PySeries {
+         }
+     }
+ 
+-    fn rechunk(&mut self, in_place: bool) -> Option<Self> {
++    pub fn rechunk(&mut self, in_place: bool) -> Option<Self> {
+         let series = self.series.rechunk();
+         if in_place {
+             self.series = series;
+@@ -242,7 +180,7 @@ impl PySeries {
+         self.series.chunk_lengths().collect()
+     }
+ 
+-    fn name(&self) -> &str {
++    pub fn name(&self) -> &str {
+         self.series.name()
+     }
+ 
+@@ -351,7 +289,8 @@ impl PySeries {
+         Ok(format!("{:?}", self.series))
+     }
+ 
+-    fn len(&self) -> usize {
++    #[allow(clippy::len_without_is_empty)]
++    pub fn len(&self) -> usize {
+         self.series.len()
+     }
+ 
+diff --git a/py-polars/src/series/import.rs b/crates/polars-python/src/series/import.rs
+similarity index 100%
+rename from py-polars/src/series/import.rs
+rename to crates/polars-python/src/series/import.rs
+diff --git a/crates/polars-python/src/series/mod.rs b/crates/polars-python/src/series/mod.rs
+new file mode 100644
+index 000000000..7f673e192
+--- /dev/null
++++ b/crates/polars-python/src/series/mod.rs
+@@ -0,0 +1,70 @@
++mod aggregation;
++mod arithmetic;
++mod buffers;
++mod c_interface;
++mod comparison;
++mod construction;
++mod export;
++mod general;
++mod import;
++mod numpy_ufunc;
++mod scatter;
++
++use std::io::Cursor;
++
++use polars_core::chunked_array::cast::CastOptions;
++use polars_core::series::IsSorted;
++use polars_core::utils::flatten::flatten_series;
++use polars_core::{with_match_physical_numeric_polars_type, with_match_physical_numeric_type};
++use pyo3::exceptions::{PyIndexError, PyRuntimeError, PyValueError};
++use pyo3::prelude::*;
++use pyo3::types::PyBytes;
++use pyo3::Python;
++
++use crate::dataframe::PyDataFrame;
++use crate::error::PyPolarsErr;
++use crate::map::series::{call_lambda_and_extract, ApplyLambda};
++use crate::prelude::*;
++use crate::py_modules::POLARS;
++use crate::raise_err;
++
++#[pyclass]
++#[repr(transparent)]
++#[derive(Clone)]
++pub struct PySeries {
++    pub series: Series,
++}
++
++impl From<Series> for PySeries {
++    fn from(series: Series) -> Self {
++        PySeries { series }
++    }
++}
++
++impl PySeries {
++    pub(crate) fn new(series: Series) -> Self {
++        PySeries { series }
++    }
++}
++
++pub(crate) trait ToSeries {
++    fn to_series(self) -> Vec<Series>;
++}
++
++impl ToSeries for Vec<PySeries> {
++    fn to_series(self) -> Vec<Series> {
++        // SAFETY: repr is transparent.
++        unsafe { std::mem::transmute(self) }
++    }
++}
++
++pub(crate) trait ToPySeries {
++    fn to_pyseries(self) -> Vec<PySeries>;
++}
++
++impl ToPySeries for Vec<Series> {
++    fn to_pyseries(self) -> Vec<PySeries> {
++        // SAFETY: repr is transparent.
++        unsafe { std::mem::transmute(self) }
++    }
++}
+diff --git a/py-polars/src/series/numpy_ufunc.rs b/crates/polars-python/src/series/numpy_ufunc.rs
+similarity index 100%
+rename from py-polars/src/series/numpy_ufunc.rs
+rename to crates/polars-python/src/series/numpy_ufunc.rs
+diff --git a/py-polars/src/series/scatter.rs b/crates/polars-python/src/series/scatter.rs
+similarity index 100%
+rename from py-polars/src/series/scatter.rs
+rename to crates/polars-python/src/series/scatter.rs
+diff --git a/py-polars/src/sql.rs b/crates/polars-python/src/sql.rs
+similarity index 100%
+rename from py-polars/src/sql.rs
+rename to crates/polars-python/src/sql.rs
+diff --git a/py-polars/src/utils.rs b/crates/polars-python/src/utils.rs
+similarity index 100%
+rename from py-polars/src/utils.rs
+rename to crates/polars-python/src/utils.rs
+diff --git a/crates/polars/tests/it/io/parquet/read/file.rs b/crates/polars/tests/it/io/parquet/read/file.rs
+index 1f069d651..d2ff7ee65 100644
+--- a/crates/polars/tests/it/io/parquet/read/file.rs
++++ b/crates/polars/tests/it/io/parquet/read/file.rs
+@@ -52,11 +52,6 @@ impl<R: Read + Seek> FileReader<R> {
+         }
+         Ok(result)
+     }
+-
+-    /// Returns the [`ArrowSchema`] associated to this file.
+-    pub fn schema(&self) -> &ArrowSchema {
+-        &self.row_groups.schema
+-    }
+ }
+ 
+ impl<R: Read + Seek> Iterator for FileReader<R> {
+diff --git a/py-polars/Cargo.toml b/py-polars/Cargo.toml
+index 0d01dccfb..4ec3e69d5 100644
+--- a/py-polars/Cargo.toml
++++ b/py-polars/Cargo.toml
+@@ -8,104 +8,9 @@ name = "polars"
+ crate-type = ["cdylib"]
+ 
+ [dependencies]
+-polars-core = { workspace = true, features = ["python"] }
+-polars-error = { workspace = true }
+-polars-io = { workspace = true }
+-polars-lazy = { workspace = true, features = ["python"] }
+-polars-ops = { workspace = true }
+-polars-parquet = { workspace = true, optional = true }
+-polars-plan = { workspace = true }
+-polars-time = { workspace = true }
+-polars-utils = { workspace = true }
+-
+-# TODO! remove this once truly activated. This is required to make sdist building work
+-polars-stream = { workspace = true }
+-
+-ahash = { workspace = true }
+-arboard = { workspace = true, optional = true }
+-bytemuck = { workspace = true }
+-ciborium = { workspace = true }
+-either = { workspace = true }
+-itoa = { workspace = true }
+-libc = "0.2"
+-ndarray = { workspace = true }
+-num-traits = { workspace = true }
+-# TODO: Pin to released version once NumPy 2.0 support is merged
+-# https://github.com/PyO3/rust-numpy/issues/409
+-numpy = { git = "https://github.com/stinodego/rust-numpy.git", rev = "9ba9962ae57ba26e35babdce6f179edf5fe5b9c8", default-features = false }
+-once_cell = { workspace = true }
++libc = { workspace = true }
++polars-python = { workspace = true }
+ pyo3 = { workspace = true, features = ["abi3-py38", "chrono", "extension-module", "multiple-pymethods"] }
+-recursive = { workspace = true }
+-serde_json = { workspace = true, optional = true }
+-smartstring = { workspace = true }
+-thiserror = { workspace = true }
+-
+-[dependencies.polars]
+-workspace = true
+-features = [
+-  "abs",
+-  "approx_unique",
+-  "array_any_all",
+-  "arg_where",
+-  "business",
+-  "concat_str",
+-  "cum_agg",
+-  "cumulative_eval",
+-  "dataframe_arithmetic",
+-  "month_start",
+-  "month_end",
+-  "offset_by",
+-  "diagonal_concat",
+-  "diff",
+-  "dot_diagram",
+-  "dot_product",
+-  "dtype-categorical",
+-  "dtype-full",
+-  "dynamic_group_by",
+-  "ewma",
+-  "ewma_by",
+-  "fmt",
+-  "fused",
+-  "interpolate",
+-  "interpolate_by",
+-  "is_first_distinct",
+-  "is_last_distinct",
+-  "is_unique",
+-  "is_between",
+-  "lazy",
+-  "list_eval",
+-  "list_to_struct",
+-  "array_to_struct",
+-  "log",
+-  "mode",
+-  "moment",
+-  "ndarray",
+-  "partition_by",
+-  "product",
+-  "random",
+-  "range",
+-  "rank",
+-  "reinterpret",
+-  "replace",
+-  "rolling_window",
+-  "rolling_window_by",
+-  "round_series",
+-  "row_hash",
+-  "rows",
+-  "semi_anti_join",
+-  "serde-lazy",
+-  "string_encoding",
+-  "string_reverse",
+-  "string_to_integer",
+-  "string_pad",
+-  "strings",
+-  "temporal",
+-  "to_dummies",
+-  "true_div",
+-  "unique_counts",
+-  "zip_with",
+-  "cov",
+-]
+ 
+ [build-dependencies]
+ built = { version = "0.7", features = ["chrono", "git2", "cargo-lock"], optional = true }
+@@ -121,145 +26,87 @@ jemallocator = { version = "0.5", features = ["disable_initial_exec_tls", "backg
+ jemallocator = { version = "0.5", features = ["disable_initial_exec_tls"] }
+ 
+ [features]
+-# Features below are only there to enable building a slim binary during development.
+-avro = ["polars/avro"]
+-parquet = ["polars/parquet", "polars-parquet"]
+-ipc = ["polars/ipc"]
+-ipc_streaming = ["polars/ipc_streaming"]
+-is_in = ["polars/is_in"]
+-json = ["polars/serde", "serde_json", "polars/json"]
+-trigonometry = ["polars/trigonometry"]
+-sign = ["polars/sign"]
+-asof_join = ["polars/asof_join"]
+-cross_join = ["polars/cross_join"]
+-pct_change = ["polars/pct_change"]
+-repeat_by = ["polars/repeat_by"]
+-# also includes simd
+-nightly = ["polars/nightly"]
+-streaming = ["polars/streaming"]
+-meta = ["polars/meta"]
+-search_sorted = ["polars/search_sorted"]
+-decompress = ["polars/decompress-fast"]
+-regex = ["polars/regex"]
+-csv = ["polars/csv"]
+-clipboard = ["arboard"]
+-extract_jsonpath = ["polars/extract_jsonpath"]
+-pivot = ["polars/pivot"]
+-top_k = ["polars/top_k"]
+-propagate_nans = ["polars/propagate_nans"]
+-sql = ["polars/sql"]
++# Features used in this crate
+ build_info = ["dep:built"]
+-performant = ["polars/performant"]
+-timezones = ["polars/timezones"]
+-cse = ["polars/cse"]
+-merge_sorted = ["polars/merge_sorted"]
+-list_gather = ["polars/list_gather"]
+-list_count = ["polars/list_count"]
+-array_count = ["polars/array_count", "polars/dtype-array"]
+-binary_encoding = ["polars/binary_encoding"]
+-list_sets = ["polars-lazy/list_sets"]
+-list_any_all = ["polars/list_any_all"]
+-array_any_all = ["polars/array_any_all", "polars/dtype-array"]
+-list_drop_nulls = ["polars/list_drop_nulls"]
+-list_sample = ["polars/list_sample"]
+-cutqcut = ["polars/cutqcut"]
+-rle = ["polars/rle"]
+-extract_groups = ["polars/extract_groups"]
+-ffi_plugin = ["polars-plan/ffi_plugin"]
+-cloud = ["polars/cloud", "polars/aws", "polars/gcp", "polars/azure", "polars/http"]
+-peaks = ["polars/peaks"]
+-hist = ["polars/hist"]
+-find_many = ["polars/find_many"]
+-new_streaming = ["polars-lazy/new_streaming"]
+-
+-dtype-i8 = []
+-dtype-i16 = []
+-dtype-u8 = []
+-dtype-u16 = []
+-dtype-array = []
+-object = ["polars/object"]
+-
+-dtypes = [
+-  "dtype-array",
+-  "dtype-i16",
+-  "dtype-i8",
+-  "dtype-u16",
+-  "dtype-u8",
+-  "object",
+-]
+-
+-operations = [
+-  "array_any_all",
+-  "array_count",
+-  "is_in",
+-  "repeat_by",
+-  "trigonometry",
+-  "sign",
+-  "performant",
+-  "list_gather",
+-  "list_count",
+-  "list_sets",
+-  "list_any_all",
+-  "list_drop_nulls",
+-  "list_sample",
+-  "cutqcut",
+-  "rle",
+-  "extract_groups",
+-  "pivot",
+-  "extract_jsonpath",
+-  "asof_join",
+-  "cross_join",
+-  "pct_change",
+-  "search_sorted",
+-  "merge_sorted",
+-  "top_k",
+-  "propagate_nans",
+-  "timezones",
+-  "peaks",
+-  "hist",
+-  "find_many",
+-]
+-
+-io = [
+-  "json",
+-  "parquet",
+-  "ipc",
+-  "ipc_streaming",
+-  "avro",
+-  "csv",
+-  "cloud",
+-  "clipboard",
+-]
+-
+-optimizations = [
+-  "cse",
+-  "polars/fused",
+-  "streaming",
+-]
+-
+-polars_cloud = ["polars/polars_cloud"]
++ffi_plugin = ["polars-python/ffi_plugin"]
++csv = ["polars-python/csv"]
++polars_cloud = ["polars-python/polars_cloud"]
++object = ["polars-python/object"]
++clipboard = ["polars-python/clipboard"]
++sql = ["polars-python/sql"]
++trigonometry = ["polars-python/trigonometry"]
++parquet = ["polars-python/parquet"]
++ipc = ["polars-python/ipc"]
++
++# Features passed through to the polars-python crate
++avro = ["polars-python/avro"]
++ipc_streaming = ["polars-python/ipc_streaming"]
++is_in = ["polars-python/is_in"]
++json = ["polars-python/json"]
++sign = ["polars-python/sign"]
++asof_join = ["polars-python/asof_join"]
++cross_join = ["polars-python/cross_join"]
++pct_change = ["polars-python/pct_change"]
++repeat_by = ["polars-python/repeat_by"]
++# also includes simd
++nightly = ["polars-python/nightly"]
++streaming = ["polars-python/streaming"]
++meta = ["polars-python/meta"]
++search_sorted = ["polars-python/search_sorted"]
++decompress = ["polars-python/decompress"]
++regex = ["polars-python/regex"]
++extract_jsonpath = ["polars-python/extract_jsonpath"]
++pivot = ["polars-python/pivot"]
++top_k = ["polars-python/top_k"]
++propagate_nans = ["polars-python/propagate_nans"]
++performant = ["polars-python/performant"]
++timezones = ["polars-python/timezones"]
++cse = ["polars-python/cse"]
++merge_sorted = ["polars-python/merge_sorted"]
++list_gather = ["polars-python/list_gather"]
++list_count = ["polars-python/list_count"]
++array_count = ["polars-python/array_count"]
++binary_encoding = ["polars-python/binary_encoding"]
++list_sets = ["polars-python/list_sets"]
++list_any_all = ["polars-python/list_any_all"]
++array_any_all = ["polars-python/array_any_all"]
++list_drop_nulls = ["polars-python/list_drop_nulls"]
++list_sample = ["polars-python/list_sample"]
++cutqcut = ["polars-python/cutqcut"]
++rle = ["polars-python/rle"]
++extract_groups = ["polars-python/extract_groups"]
++cloud = ["polars-python/cloud"]
++peaks = ["polars-python/peaks"]
++hist = ["polars-python/hist"]
++find_many = ["polars-python/find_many"]
++new_streaming = ["polars-python/new_streaming"]
++
++dtype-i8 = ["polars-python/dtype-i8"]
++dtype-i16 = ["polars-python/dtype-i16"]
++dtype-u8 = ["polars-python/dtype-u8"]
++dtype-u16 = ["polars-python/dtype-u16"]
++dtype-array = ["polars-python/dtype-array"]
++
++dtypes = ["polars-python/dtypes"]
++
++operations = ["polars-python/operations"]
++
++io = ["polars-python/io"]
++
++optimizations = ["polars-python/optimizations"]
+ 
+ all = [
+-  "optimizations",
+-  "io",
+-  "operations",
+-  "dtypes",
+-  "meta",
+-  "decompress",
+-  "regex",
+   "build_info",
+-  "sql",
+-  "binary_encoding",
+   "ffi_plugin",
++  "csv",
+   "polars_cloud",
+-  # "new_streaming",
++  "object",
++  "clipboard",
++  "sql",
++  "trigonometry",
++  "parquet",
++  "ipc",
++  "polars-python/all",
+ ]
+ 
+-# we cannot conditionally activate simd
+-# https://github.com/rust-lang/cargo/issues/1197
+-# so we have an indirection and compile
+-# with --no-default-features --features=all for targets without simd
+-default = [
+-  "all",
+-  "nightly",
+-]
++default = ["all", "nightly"]
+diff --git a/py-polars/src/lazyframe/visitor/mod.rs b/py-polars/src/lazyframe/visitor/mod.rs
+deleted file mode 100644
+index 674049b9b..000000000
+--- a/py-polars/src/lazyframe/visitor/mod.rs
++++ /dev/null
+@@ -1,2 +0,0 @@
+-pub(crate) mod expr_nodes;
+-pub(crate) mod nodes;
+diff --git a/py-polars/src/lib.rs b/py-polars/src/lib.rs
+index 2f597c9b4..8f05386d6 100644
+--- a/py-polars/src/lib.rs
++++ b/py-polars/src/lib.rs
+@@ -10,55 +10,31 @@ mod build {
+ }
+ 
+ mod allocator;
+-#[cfg(feature = "csv")]
+-mod batched_csv;
+-#[cfg(feature = "polars_cloud")]
+-mod cloud;
+-mod conversion;
+-mod dataframe;
+-mod datatypes;
+-mod error;
+-mod exceptions;
+-mod expr;
+-mod file;
+-mod functions;
+-mod gil_once_cell;
+-mod interop;
+-mod lazyframe;
+-mod lazygroupby;
+-mod map;
+ #[cfg(debug_assertions)]
+ mod memory;
++
++use allocator::create_allocator_capsule;
++#[cfg(feature = "csv")]
++use polars_python::batched_csv::PyBatchedCsv;
++#[cfg(feature = "polars_cloud")]
++use polars_python::cloud;
++use polars_python::dataframe::PyDataFrame;
++use polars_python::expr::PyExpr;
++use polars_python::functions::PyStringCacheHolder;
++use polars_python::lazyframe::{PyInProcessQuery, PyLazyFrame};
++use polars_python::lazygroupby::PyLazyGroupBy;
+ #[cfg(feature = "object")]
+-mod object;
+-#[cfg(feature = "object")]
+-mod on_startup;
+-mod prelude;
+-mod py_modules;
+-mod series;
++use polars_python::on_startup;
++use polars_python::series::PySeries;
+ #[cfg(feature = "sql")]
+-mod sql;
+-mod utils;
+-
++use polars_python::sql::PySQLContext;
++use polars_python::{exceptions, functions};
+ use pyo3::prelude::*;
+ use pyo3::{wrap_pyfunction, wrap_pymodule};
+ 
+-use crate::allocator::create_allocator_capsule;
+-#[cfg(feature = "csv")]
+-use crate::batched_csv::PyBatchedCsv;
+-use crate::conversion::Wrap;
+-use crate::dataframe::PyDataFrame;
+-use crate::expr::PyExpr;
+-use crate::functions::PyStringCacheHolder;
+-use crate::lazyframe::{PyInProcessQuery, PyLazyFrame};
+-use crate::lazygroupby::PyLazyGroupBy;
+-use crate::series::PySeries;
+-#[cfg(feature = "sql")]
+-use crate::sql::PySQLContext;
+-
+ #[pymodule]
+ fn _ir_nodes(_py: Python, m: &Bound<PyModule>) -> PyResult<()> {
+-    use crate::lazyframe::visitor::nodes::*;
++    use polars_python::lazyframe::visitor::nodes::*;
+     m.add_class::<PythonScan>().unwrap();
+     m.add_class::<Slice>().unwrap();
+     m.add_class::<Filter>().unwrap();
+@@ -83,8 +59,8 @@ fn _ir_nodes(_py: Python, m: &Bound<PyModule>) -> PyResult<()> {
+ 
+ #[pymodule]
+ fn _expr_nodes(_py: Python, m: &Bound<PyModule>) -> PyResult<()> {
+-    use crate::lazyframe::visitor::expr_nodes::*;
+-    use crate::lazyframe::PyExprIR;
++    use polars_python::lazyframe::visit::PyExprIR;
++    use polars_python::lazyframe::visitor::expr_nodes::*;
+     // Expressions
+     m.add_class::<PyExprIR>().unwrap();
+     m.add_class::<Alias>().unwrap();
+@@ -133,6 +109,7 @@ fn polars(py: Python, m: &Bound<PyModule>) -> PyResult<()> {
+     m.add_wrapped(wrap_pymodule!(_ir_nodes))?;
+     // Expr objects
+     m.add_wrapped(wrap_pymodule!(_expr_nodes))?;
++
+     // Functions - eager
+     m.add_wrapped(wrap_pyfunction!(functions::concat_df))
+         .unwrap();

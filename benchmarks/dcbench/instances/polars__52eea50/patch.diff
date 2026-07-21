@@ -1,0 +1,550 @@
+From 52eea50752d0d65298aad5b6b33e61449e792620 Mon Sep 17 00:00:00 2001
+From: Kenta Murata <3959+mrkn@users.noreply.github.com>
+Date: Sun, 3 Aug 2025 21:34:40 +0900
+Subject: [PATCH] feat: Implement `dt.days_in_month` function (#23119)
+
+Co-authored-by: coastalwhite <me@gburghoorn.com>
+---
+ crates/polars-plan/dsl-schema-hashes.json     |  2 +-
+ crates/polars-plan/src/dsl/dt.rs              |  6 ++
+ .../src/dsl/function_expr/datetime.rs         |  2 +
+ .../src/plans/aexpr/function_expr/datetime.rs | 10 ++-
+ .../src/plans/aexpr/function_expr/temporal.rs |  1 +
+ .../plans/conversion/dsl_to_ir/functions.rs   |  1 +
+ .../src/plans/conversion/ir_to_dsl.rs         |  1 +
+ crates/polars-python/src/expr/datetime.rs     |  3 +
+ .../src/lazyframe/visitor/expr_nodes.rs       |  4 ++
+ crates/polars-time/src/chunkedarray/date.rs   |  8 +++
+ .../polars-time/src/chunkedarray/datetime.rs  | 23 ++++++
+ .../polars-time/src/chunkedarray/kernels.rs   | 60 ++++++++++++++++
+ crates/polars-time/src/series/mod.rs          | 13 ++++
+ crates/polars-time/src/windows/calendar.rs    |  6 ++
+ py-polars/polars/expr/datetime.py             | 39 +++++++++++
+ py-polars/polars/series/datetime.py           | 35 ++++++++++
+ .../namespaces/temporal/test_datetime.py      | 70 +++++++++++++++++++
+ 17 files changed, 282 insertions(+), 2 deletions(-)
+
+diff --git a/crates/polars-plan/dsl-schema-hashes.json b/crates/polars-plan/dsl-schema-hashes.json
+index 160c22227..a5ba1f5fa 100644
+--- a/crates/polars-plan/dsl-schema-hashes.json
++++ b/crates/polars-plan/dsl-schema-hashes.json
+@@ -158,7 +158,7 @@
+   "StructDataTypeFunction": "c381723477ae3cb090869764e8e20a68efadd534c9aa214aa8a84ca8241b0e58",
+   "StructFunction": "f148dc553b6679a6df622c67dfa7c4c19690a40c571fa8b813d7810a8aba05a7",
+   "SyncOnCloseType": "e5312408b12c87ac4966d9e01f17c36946b42bf23cea0f820d20d3924cd45d06",
+-  "TemporalFunction": "7fd3bc38675e86ea03586fd4f3a7acaadec55da04943c0d19413f8baccb63f7e",
++  "TemporalFunction": "0a7a7f2c29c2cf8b5ef1f7a4c40ec37b9731189fba21ec560ae1e73d58d40871",
+   "TimeUnit": "95845642cb5974adf84e1812c1a173ed59c628f19b960cccfb9e4ccd046fc52a",
+   "TimeUnitSet": "3c603b7ef046a1258352af0a2115f8260c43b3561a75274516dca28e574afd97",
+   "TimeZone": "768ca424b8ce673571b537a2762964f7269d989276702a897eff07019316026d",
+diff --git a/crates/polars-plan/src/dsl/dt.rs b/crates/polars-plan/src/dsl/dt.rs
+index 90963f48a..29d2216ea 100644
+--- a/crates/polars-plan/src/dsl/dt.rs
++++ b/crates/polars-plan/src/dsl/dt.rs
+@@ -112,6 +112,12 @@ impl DateLikeNameSpace {
+             .map_unary(FunctionExpr::TemporalExpr(TemporalFunction::Month))
+     }
+ 
++    /// Get the number of days in the month of a Date/Datetime.
++    pub fn days_in_month(self) -> Expr {
++        self.0
++            .map_unary(FunctionExpr::TemporalExpr(TemporalFunction::DaysInMonth))
++    }
++
+     /// Extract quarter from underlying NaiveDateTime representation.
+     /// Quarters range from 1 to 4.
+     pub fn quarter(self) -> Expr {
+diff --git a/crates/polars-plan/src/dsl/function_expr/datetime.rs b/crates/polars-plan/src/dsl/function_expr/datetime.rs
+index d7287df5b..af4abce7f 100644
+--- a/crates/polars-plan/src/dsl/function_expr/datetime.rs
++++ b/crates/polars-plan/src/dsl/function_expr/datetime.rs
+@@ -11,6 +11,7 @@ pub enum TemporalFunction {
+     IsoYear,
+     Quarter,
+     Month,
++    DaysInMonth,
+     Week,
+     WeekDay,
+     Day,
+@@ -79,6 +80,7 @@ impl Display for TemporalFunction {
+             IsoYear => "iso_year",
+             Quarter => "quarter",
+             Month => "month",
++            DaysInMonth => "days_in_month",
+             Week => "week",
+             WeekDay => "weekday",
+             Day => "day",
+diff --git a/crates/polars-plan/src/plans/aexpr/function_expr/datetime.rs b/crates/polars-plan/src/plans/aexpr/function_expr/datetime.rs
+index 85a5ffa65..258c21f40 100644
+--- a/crates/polars-plan/src/plans/aexpr/function_expr/datetime.rs
++++ b/crates/polars-plan/src/plans/aexpr/function_expr/datetime.rs
+@@ -21,6 +21,7 @@ pub enum IRTemporalFunction {
+     IsoYear,
+     Quarter,
+     Month,
++    DaysInMonth,
+     Week,
+     WeekDay,
+     Day,
+@@ -84,7 +85,7 @@ impl IRTemporalFunction {
+         match self {
+             Millennium | Century | Year | IsoYear => mapper.with_dtype(DataType::Int32),
+             OrdinalDay => mapper.with_dtype(DataType::Int16),
+-            Month | Quarter | Week | WeekDay | Day | Hour | Minute | Second => {
++            Month | DaysInMonth | Quarter | Week | WeekDay | Day | Hour | Minute | Second => {
+                 mapper.with_dtype(DataType::Int8)
+             },
+             Millisecond | Microsecond | Nanosecond => mapper.with_dtype(DataType::Int32),
+@@ -154,6 +155,7 @@ impl IRTemporalFunction {
+             | T::IsoYear
+             | T::Quarter
+             | T::Month
++            | T::DaysInMonth
+             | T::Week
+             | T::WeekDay
+             | T::Day
+@@ -215,6 +217,7 @@ impl Display for IRTemporalFunction {
+             IsoYear => "iso_year",
+             Quarter => "quarter",
+             Month => "month",
++            DaysInMonth => "days_in_month",
+             Week => "week",
+             WeekDay => "weekday",
+             Day => "day",
+@@ -300,6 +303,11 @@ pub(super) fn month(s: &Column) -> PolarsResult<Column> {
+         .month()
+         .map(|ca| ca.into_column())
+ }
++pub(super) fn days_in_month(s: &Column) -> PolarsResult<Column> {
++    s.as_materialized_series()
++        .days_in_month()
++        .map(|ca| ca.into_column())
++}
+ pub(super) fn quarter(s: &Column) -> PolarsResult<Column> {
+     s.as_materialized_series()
+         .quarter()
+diff --git a/crates/polars-plan/src/plans/aexpr/function_expr/temporal.rs b/crates/polars-plan/src/plans/aexpr/function_expr/temporal.rs
+index 48730a224..09b44875b 100644
+--- a/crates/polars-plan/src/plans/aexpr/function_expr/temporal.rs
++++ b/crates/polars-plan/src/plans/aexpr/function_expr/temporal.rs
+@@ -11,6 +11,7 @@ impl From<IRTemporalFunction> for SpecialEq<Arc<dyn ColumnsUdf>> {
+             IsLeapYear => map!(datetime::is_leap_year),
+             IsoYear => map!(datetime::iso_year),
+             Month => map!(datetime::month),
++            DaysInMonth => map!(datetime::days_in_month),
+             Quarter => map!(datetime::quarter),
+             Week => map!(datetime::week),
+             WeekDay => map!(datetime::weekday),
+diff --git a/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs b/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
+index d926c9a54..8da365432 100644
+--- a/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
++++ b/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
+@@ -366,6 +366,7 @@ pub(super) fn convert_functions(
+                 T::IsoYear => IT::IsoYear,
+                 T::Quarter => IT::Quarter,
+                 T::Month => IT::Month,
++                T::DaysInMonth => IT::DaysInMonth,
+                 T::Week => IT::Week,
+                 T::WeekDay => IT::WeekDay,
+                 T::Day => IT::Day,
+diff --git a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+index 3954d80c1..e9395ac1d 100644
+--- a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
++++ b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+@@ -520,6 +520,7 @@ pub fn ir_function_to_dsl(input: Vec<Expr>, function: IRFunctionExpr) -> Expr {
+                 IB::IsoYear => B::IsoYear,
+                 IB::Quarter => B::Quarter,
+                 IB::Month => B::Month,
++                IB::DaysInMonth => B::DaysInMonth,
+                 IB::Week => B::Week,
+                 IB::WeekDay => B::WeekDay,
+                 IB::Day => B::Day,
+diff --git a/crates/polars-python/src/expr/datetime.rs b/crates/polars-python/src/expr/datetime.rs
+index b6ffbcb80..9b8c29a7f 100644
+--- a/crates/polars-python/src/expr/datetime.rs
++++ b/crates/polars-python/src/expr/datetime.rs
+@@ -175,6 +175,9 @@ impl PyExpr {
+     fn dt_month(&self) -> Self {
+         self.inner.clone().dt().month().into()
+     }
++    fn dt_days_in_month(&self) -> Self {
++        self.inner.clone().dt().days_in_month().into()
++    }
+     fn dt_week(&self) -> Self {
+         self.inner.clone().dt().week().into()
+     }
+diff --git a/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs b/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+index ee30b7d83..ac14d894a 100644
+--- a/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
++++ b/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+@@ -225,6 +225,7 @@ pub enum PyTemporalFunction {
+     IsoYear,
+     Quarter,
+     Month,
++    DaysInMonth,
+     Week,
+     WeekDay,
+     Day,
+@@ -971,6 +972,9 @@ pub(crate) fn into_py(py: Python<'_>, expr: &AExpr) -> PyResult<PyObject> {
+                     IRTemporalFunction::Nanosecond => {
+                         (PyTemporalFunction::Nanosecond,).into_py_any(py)
+                     },
++                    IRTemporalFunction::DaysInMonth => {
++                        (PyTemporalFunction::DaysInMonth,).into_py_any(py)
++                    },
+                     IRTemporalFunction::TotalDays => {
+                         (PyTemporalFunction::TotalDays,).into_py_any(py)
+                     },
+diff --git a/crates/polars-time/src/chunkedarray/date.rs b/crates/polars-time/src/chunkedarray/date.rs
+index f1f154754..b41c37735 100644
+--- a/crates/polars-time/src/chunkedarray/date.rs
++++ b/crates/polars-time/src/chunkedarray/date.rs
+@@ -52,6 +52,14 @@ pub trait DateMethods: AsDate {
+         ca.physical().apply_kernel_cast::<Int8Type>(&date_to_month)
+     }
+ 
++    /// Returns the number of days in the month of the underlying NaiveDate
++    /// representation.
++    fn days_in_month(&self) -> Int8Chunked {
++        let ca = self.as_date();
++        ca.physical()
++            .apply_kernel_cast::<Int8Type>(&date_to_days_in_month)
++    }
++
+     /// Returns the ISO week number starting from 1.
+     /// The return value ranges from 1 to 53. (The last week of year differs by years.)
+     fn week(&self) -> Int8Chunked {
+diff --git a/crates/polars-time/src/chunkedarray/datetime.rs b/crates/polars-time/src/chunkedarray/datetime.rs
+index a7911d8e7..dd2a1d71d 100644
+--- a/crates/polars-time/src/chunkedarray/datetime.rs
++++ b/crates/polars-time/src/chunkedarray/datetime.rs
+@@ -96,6 +96,29 @@ pub trait DatetimeMethods: AsDatetime {
+         cast_and_apply(self.as_datetime(), temporal::month)
+     }
+ 
++    /// Returns the number of days in the month of the underlying NaiveDateTime
++    /// representation.
++    fn days_in_month(&self) -> Int8Chunked {
++        let ca = self.as_datetime();
++        let f = match ca.time_unit() {
++            TimeUnit::Nanoseconds => datetime_to_days_in_month_ns,
++            TimeUnit::Microseconds => datetime_to_days_in_month_us,
++            TimeUnit::Milliseconds => datetime_to_days_in_month_ms,
++        };
++        let ca_local = match ca.dtype() {
++            #[cfg(feature = "timezones")]
++            DataType::Datetime(_, Some(_)) => &polars_ops::chunked_array::replace_time_zone(
++                ca,
++                None,
++                &StringChunked::new("".into(), ["raise"]),
++                NonExistent::Raise,
++            )
++            .expect("Removing time zone is infallible"),
++            _ => ca,
++        };
++        ca_local.physical().apply_kernel_cast::<Int8Type>(&f)
++    }
++
+     /// Extract ISO weekday from underlying NaiveDateTime representation.
+     /// Returns the weekday number where monday = 1 and sunday = 7
+     fn weekday(&self) -> Int8Chunked {
+diff --git a/crates/polars-time/src/chunkedarray/kernels.rs b/crates/polars-time/src/chunkedarray/kernels.rs
+index 2a33a0b4d..5c6fe9001 100644
+--- a/crates/polars-time/src/chunkedarray/kernels.rs
++++ b/crates/polars-time/src/chunkedarray/kernels.rs
+@@ -76,6 +76,25 @@ macro_rules! to_boolean_temporal_unit {
+     };
+ }
+ 
++macro_rules! to_calendar_value {
++    ($name: ident, $dt: ident, $expr: expr, $to_datetime_fn: expr,
++    $primitive_in: ty,
++    $primitive_out: ty,
++    $dtype_out:expr) => {
++        pub(crate) fn $name(arr: &PrimitiveArray<$primitive_in>) -> ArrayRef {
++            Box::new(unary(
++                arr,
++                |value| {
++                    $to_datetime_fn(value)
++                        .map(|$dt| $expr as $primitive_out)
++                        .unwrap_or(value as $primitive_out)
++                },
++                $dtype_out,
++            )) as ArrayRef
++        }
++    };
++}
++
+ // Dates
+ #[cfg(feature = "dtype-date")]
+ to_temporal_unit!(
+@@ -139,6 +158,16 @@ to_temporal_unit!(
+     i16,
+     ArrowDataType::Int16
+ );
++#[cfg(feature = "dtype-date")]
++to_calendar_value!(
++    date_to_days_in_month,
++    dt,
++    days_in_month(dt.year(), dt.month() as u8),
++    date32_to_datetime_opt,
++    i32,
++    i8,
++    ArrowDataType::Int8
++);
+ 
+ // Times
+ #[cfg(feature = "dtype-time")]
+@@ -260,3 +289,34 @@ to_boolean_temporal_unit!(
+     timestamp_ms_to_datetime_opt,
+     i64
+ );
++
++#[cfg(feature = "dtype-datetime")]
++to_calendar_value!(
++    datetime_to_days_in_month_ns,
++    dt,
++    days_in_month(dt.year(), dt.month() as u8),
++    timestamp_ns_to_datetime_opt,
++    i64,
++    i8,
++    ArrowDataType::Int8
++);
++#[cfg(feature = "dtype-datetime")]
++to_calendar_value!(
++    datetime_to_days_in_month_us,
++    dt,
++    days_in_month(dt.year(), dt.month() as u8),
++    timestamp_us_to_datetime_opt,
++    i64,
++    i8,
++    ArrowDataType::Int8
++);
++#[cfg(feature = "dtype-datetime")]
++to_calendar_value!(
++    datetime_to_days_in_month_ms,
++    dt,
++    days_in_month(dt.year(), dt.month() as u8),
++    timestamp_ms_to_datetime_opt,
++    i64,
++    i8,
++    ArrowDataType::Int8
++);
+diff --git a/crates/polars-time/src/series/mod.rs b/crates/polars-time/src/series/mod.rs
+index b075d8383..af65be94b 100644
+--- a/crates/polars-time/src/series/mod.rs
++++ b/crates/polars-time/src/series/mod.rs
+@@ -251,6 +251,19 @@ pub trait TemporalMethods: AsSeries {
+         }
+     }
+ 
++    /// Returns the number of days in the month of the underlying NaiveDateTime
++    /// representation.
++    fn days_in_month(&self) -> PolarsResult<Int8Chunked> {
++        let s = self.as_series();
++        match s.dtype() {
++            #[cfg(feature = "dtype-date")]
++            DataType::Date => s.date().map(|ca| ca.days_in_month()),
++            #[cfg(feature = "dtype-datetime")]
++            DataType::Datetime(_, _) => s.datetime().map(|ca| ca.days_in_month()),
++            dt => polars_bail!(opq = days_in_month, dt),
++        }
++    }
++
+     /// Convert Time into String with the given format.
+     /// See [chrono strftime/strptime](https://docs.rs/chrono/0.4.19/chrono/format/strftime/index.html).
+     fn to_string(&self, format: &str) -> PolarsResult<Series> {
+diff --git a/crates/polars-time/src/windows/calendar.rs b/crates/polars-time/src/windows/calendar.rs
+index c0ec1b5fc..af9e3e49b 100644
+--- a/crates/polars-time/src/windows/calendar.rs
++++ b/crates/polars-time/src/windows/calendar.rs
+@@ -7,6 +7,12 @@ pub(crate) const DAYS_PER_MONTH: [[i64; 12]; 2] = [
+ pub(crate) const fn is_leap_year(year: i32) -> bool {
+     year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)
+ }
++
++/// Get the number of days in the given month of the given year
++pub(crate) const fn days_in_month(year: i32, month: u8) -> u8 {
++    DAYS_PER_MONTH[is_leap_year(year) as usize][(month - 1) as usize] as u8
++}
++
+ /// nanoseconds per unit
+ pub const NS_MICROSECOND: i64 = 1_000;
+ pub const NS_MILLISECOND: i64 = 1_000_000;
+diff --git a/py-polars/polars/expr/datetime.py b/py-polars/polars/expr/datetime.py
+index af9f833f0..835372a56 100644
+--- a/py-polars/polars/expr/datetime.py
++++ b/py-polars/polars/expr/datetime.py
+@@ -1131,6 +1131,45 @@ class ExprDateTimeNameSpace:
+         """
+         return wrap_expr(self._pyexpr.dt_month())
+ 
++    def days_in_month(self) -> Expr:
++        """
++        Extract the number of days in the month from the underlying Date representation.
++
++        Applies to Date and Datetime columns.
++
++        Returns the number of days in the month.
++        The return value ranges from 28 to 31.
++
++        Returns
++        -------
++        Expr
++            Expression of data type :class:`Int8`.
++
++        See Also
++        --------
++        month
++        is_leap_year
++
++        Examples
++        --------
++        >>> from datetime import date
++        >>> df = pl.DataFrame(
++        ...     {"date": [date(2001, 1, 1), date(2001, 2, 1), date(2000, 2, 1)]}
++        ... )
++        >>> df.with_columns(pl.col("date").dt.days_in_month().alias("days_in_month"))
++        shape: (3, 2)
++        ┌────────────┬───────────────┐
++        │ date       ┆ days_in_month │
++        │ ---        ┆ ---           │
++        │ date       ┆ i8            │
++        ╞════════════╪═══════════════╡
++        │ 2001-01-01 ┆ 31            │
++        │ 2001-02-01 ┆ 28            │
++        │ 2000-02-01 ┆ 29            │
++        └────────────┴───────────────┘
++        """
++        return wrap_expr(self._pyexpr.dt_days_in_month())
++
+     def week(self) -> Expr:
+         """
+         Extract the week from the underlying Date representation.
+diff --git a/py-polars/polars/series/datetime.py b/py-polars/polars/series/datetime.py
+index 501f199ed..d7e63949e 100644
+--- a/py-polars/polars/series/datetime.py
++++ b/py-polars/polars/series/datetime.py
+@@ -679,6 +679,41 @@ class DateTimeNameSpace:
+         ]
+         """
+ 
++    def days_in_month(self) -> Series:
++        """
++        Extract the number of days in the month from the underlying date representation.
++
++        Applies to Date and Datetime columns.
++
++        Returns the number of days in the month.
++        The return value ranges from 28 to 31.
++
++        Returns
++        -------
++        Series
++            Series of data type :class:`Int8`.
++
++        See Also
++        --------
++        month
++        is_leap_year
++
++        Examples
++        --------
++        >>> from datetime import date
++        >>> s = pl.Series(
++        ...     "date", [date(2001, 1, 1), date(2001, 2, 1), date(2000, 2, 1)]
++        ... )
++        >>> s.dt.days_in_month()
++        shape: (3,)
++        Series: 'date' [i8]
++        [
++                31
++                28
++                29
++        ]
++        """
++
+     def week(self) -> Series:
+         """
+         Extract the week from the underlying date representation.
+diff --git a/py-polars/tests/unit/operations/namespaces/temporal/test_datetime.py b/py-polars/tests/unit/operations/namespaces/temporal/test_datetime.py
+index 438a4e708..12fe039e8 100644
+--- a/py-polars/tests/unit/operations/namespaces/temporal/test_datetime.py
++++ b/py-polars/tests/unit/operations/namespaces/temporal/test_datetime.py
+@@ -861,6 +861,76 @@ def test_is_leap_year(
+     ]
+ 
+ 
++@pytest.mark.parametrize(
++    ("value_type", "time_unit", "time_zone"),
++    [
++        (date, None, None),
++        (datetime, "ns", None),
++        (
++            datetime,
++            "ns",
++            "Asia/Kathmandu",
++        ),
++        (datetime, "us", None),
++        (
++            datetime,
++            "us",
++            "Asia/Kathmandu",
++        ),
++        (datetime, "ms", None),
++        (
++            datetime,
++            "ms",
++            "Asia/Kathmandu",
++        ),
++    ],
++)
++@pytest.mark.parametrize(
++    ("start_ymd", "end_ymd", "feb_days"),
++    [
++        # Non-leap year cases
++        ((1900, 1, 1), (1900, 12, 1), 28),  # 1900 can be divided by 100 but not by 400
++        ((2025, 1, 1), (2025, 12, 1), 28),  # 2025 cannot be divided by 4
++        # Leap year cases
++        ((2000, 1, 1), (2000, 12, 1), 29),  # 2000 can be divided by 400
++        ((2004, 1, 1), (2004, 12, 1), 29),  # 2004 can be divided by 4 but not by 100
++    ],
++)
++def test_days_in_month(
++    value_type: type,
++    time_unit: str | None,
++    time_zone: str | None,
++    start_ymd: tuple[int, int, int],
++    end_ymd: tuple[int, int, int],
++    feb_days: int,
++) -> None:
++    assert value_type in (date, datetime)
++    range_fn: Callable[..., pl.Series] = (
++        pl.date_range if value_type is date else pl.datetime_range
++    )
++    kwargs: dict[str, str] = {}
++    if time_unit is not None:
++        kwargs["time_unit"] = time_unit
++    if time_zone is not None:
++        kwargs["time_zone"] = time_zone
++    assert range_fn(
++        value_type(*start_ymd), value_type(*end_ymd), "1mo", **kwargs, eager=True
++    ).dt.days_in_month().to_list() == [
++        31,
++        feb_days,
++        31,
++        30,
++        31,
++        30,
++        31,
++        31,
++        30,
++        31,
++        30,
++        31,
++    ]
++
++
+ def test_quarter() -> None:
+     assert pl.datetime_range(
+         datetime(2022, 1, 1), datetime(2022, 12, 1), "1mo", eager=True

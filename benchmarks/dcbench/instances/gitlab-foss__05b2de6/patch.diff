@@ -1,0 +1,308 @@
+From 05b2de630463d5e724197e5554bc7c022fcdafaf Mon Sep 17 00:00:00 2001
+From: Jacques Erasmus <jerasmus@gitlab.com>
+Date: Wed, 4 Sep 2019 17:03:05 +0000
+Subject: [PATCH] Add ability see deployments using a group cluster
+
+Added the ability to see project deployments using a group cluster
+---
+ .../javascripts/clusters/clusters_bundle.js   | 49 ++++++++++++++++++-
+ .../clusters/stores/clusters_store.js         | 29 ++++++++++-
+ app/assets/stylesheets/pages/clusters.scss    |  9 ++++
+ .../clusters/clusters/_configure.html.haml    | 26 ++++++++++
+ app/views/clusters/clusters/show.html.haml    | 35 +++----------
+ .../je-add-group-deployments-page-fe.yml      |  5 ++
+ .../clusters/stores/clusters_store_spec.js    |  4 ++
+ 7 files changed, 127 insertions(+), 30 deletions(-)
+ create mode 100644 app/views/clusters/clusters/_configure.html.haml
+ create mode 100644 changelogs/unreleased/je-add-group-deployments-page-fe.yml
+
+diff --git a/app/assets/javascripts/clusters/clusters_bundle.js b/app/assets/javascripts/clusters/clusters_bundle.js
+index 5f5c8044b4..1f213d5aaf 100644
+--- a/app/assets/javascripts/clusters/clusters_bundle.js
++++ b/app/assets/javascripts/clusters/clusters_bundle.js
+@@ -14,6 +14,8 @@ import ClustersStore from './stores/clusters_store';
+ import Applications from './components/applications.vue';
+ import setupToggleButtons from '../toggle_buttons';
+ 
++const Environments = () => import('ee_component/clusters/components/environments.vue');
++
+ Vue.use(GlToast);
+ 
+ /**
+@@ -44,6 +46,9 @@ export default class Clusters {
+       helpPath,
+       ingressHelpPath,
+       ingressDnsHelpPath,
++      environmentsHelpPath,
++      clustersHelpPath,
++      deployBoardsHelpPath,
+       clusterId,
+     } = document.querySelector('.js-edit-cluster-form').dataset;
+ 
+@@ -52,7 +57,14 @@ export default class Clusters {
+     this.clusterBannerDismissedKey = `cluster_${this.clusterId}_banner_dismissed`;
+ 
+     this.store = new ClustersStore();
+-    this.store.setHelpPaths(helpPath, ingressHelpPath, ingressDnsHelpPath);
++    this.store.setHelpPaths(
++      helpPath,
++      ingressHelpPath,
++      ingressDnsHelpPath,
++      environmentsHelpPath,
++      clustersHelpPath,
++      deployBoardsHelpPath,
++    );
+     this.store.setManagePrometheusPath(managePrometheusPath);
+     this.store.updateStatus(clusterStatus);
+     this.store.updateStatusReason(clusterStatusReason);
+@@ -95,11 +107,12 @@ export default class Clusters {
+       setupToggleButtons(toggleButtonsContainer);
+     }
+     this.initApplications(clusterType);
++    this.initEnvironments();
+ 
+     this.updateContainer(null, this.store.state.status, this.store.state.statusReason);
+ 
+     this.addListeners();
+-    if (statusPath) {
++    if (statusPath && !this.environments) {
+       this.initPolling();
+     }
+   }
+@@ -131,6 +144,34 @@ export default class Clusters {
+     });
+   }
+ 
++  initEnvironments() {
++    const { store } = this;
++    const el = document.querySelector('#js-cluster-environments');
++
++    if (!el) {
++      return;
++    }
++
++    this.environments = new Vue({
++      el,
++      data() {
++        return {
++          state: store.state,
++        };
++      },
++      render(createElement) {
++        return createElement(Environments, {
++          props: {
++            environments: this.state.environments,
++            environmentsHelpPath: this.state.environmentsHelpPath,
++            clustersHelpPath: this.state.clustersHelpPath,
++            deployBoardsHelpPath: this.state.deployBoardsHelpPath,
++          },
++        });
++      },
++    });
++  }
++
+   static initDismissableCallout() {
+     const callout = document.querySelector('.js-cluster-security-warning');
+     PersistentUserCallout.factory(callout);
+@@ -390,6 +431,10 @@ export default class Clusters {
+       this.poll.stop();
+     }
+ 
++    if (this.environments) {
++      this.environments.$destroy();
++    }
++
+     this.applications.$destroy();
+   }
+ }
+diff --git a/app/assets/javascripts/clusters/stores/clusters_store.js b/app/assets/javascripts/clusters/stores/clusters_store.js
+index 772f16cab4..83533c88f6 100644
+--- a/app/assets/javascripts/clusters/stores/clusters_store.js
++++ b/app/assets/javascripts/clusters/stores/clusters_store.js
+@@ -32,6 +32,9 @@ export default class ClusterStore {
+     this.state = {
+       helpPath: null,
+       ingressHelpPath: null,
++      environmentsHelpPath: null,
++      clustersHelpPath: null,
++      deployBoardsHelpPath: null,
+       status: null,
+       rbac: false,
+       statusReason: null,
+@@ -80,13 +83,24 @@ export default class ClusterStore {
+           updateFailed: false,
+         },
+       },
++      environments: [],
+     };
+   }
+ 
+-  setHelpPaths(helpPath, ingressHelpPath, ingressDnsHelpPath) {
++  setHelpPaths(
++    helpPath,
++    ingressHelpPath,
++    ingressDnsHelpPath,
++    environmentsHelpPath,
++    clustersHelpPath,
++    deployBoardsHelpPath,
++  ) {
+     this.state.helpPath = helpPath;
+     this.state.ingressHelpPath = ingressHelpPath;
+     this.state.ingressDnsHelpPath = ingressDnsHelpPath;
++    this.state.environmentsHelpPath = environmentsHelpPath;
++    this.state.clustersHelpPath = clustersHelpPath;
++    this.state.deployBoardsHelpPath = deployBoardsHelpPath;
+   }
+ 
+   setManagePrometheusPath(managePrometheusPath) {
+@@ -191,4 +205,17 @@ export default class ClusterStore {
+       }
+     });
+   }
++
++  updateEnvironments(environments = []) {
++    this.state.environments = environments.map(environment => ({
++      name: environment.name,
++      project: environment.project,
++      environmentPath: environment.environment_path,
++      lastDeployment: environment.last_deployment,
++      rolloutStatus: {
++        instances: environment.rollout_status ? environment.rollout_status.instances : [],
++      },
++      updatedAt: environment.updatedAt,
++    }));
++  }
+ }
+diff --git a/app/assets/stylesheets/pages/clusters.scss b/app/assets/stylesheets/pages/clusters.scss
+index 255383d89c..88d6b0d374 100644
+--- a/app/assets/stylesheets/pages/clusters.scss
++++ b/app/assets/stylesheets/pages/clusters.scss
+@@ -154,3 +154,12 @@
+     }
+   }
+ }
++
++.cluster-deployments-warning {
++  color: $orange-600;
++}
++
++.badge.pods-badge {
++  color: $black;
++  font-weight: $gl-font-weight-bold;
++}
+diff --git a/app/views/clusters/clusters/_configure.html.haml b/app/views/clusters/clusters/_configure.html.haml
+new file mode 100644
+index 0000000000..4ce00c6786
+--- /dev/null
++++ b/app/views/clusters/clusters/_configure.html.haml
+@@ -0,0 +1,26 @@
++%section#cluster-integration
++  - unless @cluster.status_name.in? %i/scheduled creating/
++    = render 'form'
++
++- unless @cluster.status_name.in? %i/scheduled creating/
++  = render_if_exists 'projects/clusters/prometheus_graphs'
++
++  .cluster-applications-table#js-cluster-applications
++
++  %section.settings#js-cluster-details{ class: ('expanded' if expanded) }
++    .settings-header
++      %h4= s_('ClusterIntegration|Kubernetes cluster details')
++      %button.btn.js-settings-toggle{ type: 'button' }
++        = expanded ? _('Collapse') : _('Expand')
++      %p= s_('ClusterIntegration|See and edit the details for your Kubernetes cluster')
++    .settings-content
++      = render 'clusters/platforms/kubernetes/form', cluster: @cluster, platform: @cluster.platform_kubernetes, update_cluster_url_path: clusterable.cluster_path(@cluster)
++
++  %section.settings.no-animate#js-cluster-advanced-settings{ class: ('expanded' if expanded) }
++    .settings-header
++      %h4= _('Advanced settings')
++      %button.btn.js-settings-toggle{ type: 'button' }
++        = expanded ? _('Collapse') : _('Expand')
++      %p= s_("ClusterIntegration|Advanced options on this Kubernetes cluster's integration")
++    .settings-content#advanced-settings-section
++      = render 'advanced_settings'
+diff --git a/app/views/clusters/clusters/show.html.haml b/app/views/clusters/clusters/show.html.haml
+index 913d4caa0b..6052e5d96f 100644
+--- a/app/views/clusters/clusters/show.html.haml
++++ b/app/views/clusters/clusters/show.html.haml
+@@ -24,38 +24,19 @@
+   help_path: help_page_path('user/project/clusters/index.md', anchor: 'installing-applications'),
+   ingress_help_path: help_page_path('user/project/clusters/index.md', anchor: 'getting-the-external-endpoint'),
+   ingress_dns_help_path: help_page_path('user/project/clusters/index.md', anchor: 'manually-determining-the-external-endpoint'),
++  environments_help_path: help_page_path('ci/environments', anchor: 'defining-environments'),
++  clusters_help_path: help_page_path('user/project/clusters/index.md', anchor: 'deploying-to-a-kubernetes-cluster'),
++  deploy_boards_help_path: help_page_path('user/project/deploy_boards.html', anchor: 'enabling-deploy-boards'),
+   manage_prometheus_path: manage_prometheus_path,
+   cluster_id: @cluster.id } }
+ 
+   .js-cluster-application-notice
+     .flash-container
+ 
+-  %section#cluster-integration
+-    %h4= @cluster.name
+-    = render 'banner'
++  %h4= @cluster.name
++  = render 'banner'
+ 
+-    - unless @cluster.status_name.in? %i/scheduled creating/
+-      = render 'form'
++  = render_if_exists 'clusters/clusters/group_cluster_environments', expanded: expanded
+ 
+-  - unless @cluster.status_name.in? %i/scheduled creating/
+-    = render_if_exists 'projects/clusters/prometheus_graphs'
+-
+-    .cluster-applications-table#js-cluster-applications
+-
+-    %section.settings#js-cluster-details{ class: ('expanded' if expanded) }
+-      .settings-header
+-        %h4= s_('ClusterIntegration|Kubernetes cluster details')
+-        %button.btn.js-settings-toggle{ type: 'button' }
+-          = expanded ? _('Collapse') : _('Expand')
+-        %p= s_('ClusterIntegration|See and edit the details for your Kubernetes cluster')
+-      .settings-content
+-        = render 'clusters/platforms/kubernetes/form', cluster: @cluster, platform: @cluster.platform_kubernetes, update_cluster_url_path: clusterable.cluster_path(@cluster)
+-
+-    %section.settings.no-animate#js-cluster-advanced-settings{ class: ('expanded' if expanded) }
+-      .settings-header
+-        %h4= _('Advanced settings')
+-        %button.btn.js-settings-toggle{ type: 'button' }
+-          = expanded ? _('Collapse') : _('Expand')
+-        %p= s_("ClusterIntegration|Advanced options on this Kubernetes cluster's integration")
+-      .settings-content#advanced-settings-section
+-        = render 'advanced_settings'
++  - unless Gitlab.ee?
++    = render 'configure', expanded: expanded
+diff --git a/changelogs/unreleased/je-add-group-deployments-page-fe.yml b/changelogs/unreleased/je-add-group-deployments-page-fe.yml
+new file mode 100644
+index 0000000000..91333087eb
+--- /dev/null
++++ b/changelogs/unreleased/je-add-group-deployments-page-fe.yml
+@@ -0,0 +1,5 @@
++---
++title: Add ability to see project deployments at cluster level (FE)
++merge_request: 31575
++author:
++type: added
+diff --git a/spec/frontend/clusters/stores/clusters_store_spec.js b/spec/frontend/clusters/stores/clusters_store_spec.js
+index c168bce7a4..9807749899 100644
+--- a/spec/frontend/clusters/stores/clusters_store_spec.js
++++ b/spec/frontend/clusters/stores/clusters_store_spec.js
+@@ -51,6 +51,9 @@ describe('Clusters Store', () => {
+       expect(store.state).toEqual({
+         helpPath: null,
+         ingressHelpPath: null,
++        environmentsHelpPath: null,
++        clustersHelpPath: null,
++        deployBoardsHelpPath: null,
+         status: mockResponseData.status,
+         statusReason: mockResponseData.status_reason,
+         rbac: false,
+@@ -148,6 +151,7 @@ describe('Clusters Store', () => {
+             uninstallFailed: false,
+           },
+         },
++        environments: [],
+       });
+     });
+ 

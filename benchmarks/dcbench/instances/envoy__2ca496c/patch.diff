@@ -1,0 +1,780 @@
+From 2ca496cdbea1b2015829d33a50affa600e76200c Mon Sep 17 00:00:00 2001
+From: phlax <phlax@users.noreply.github.com>
+Date: Sun, 1 Feb 2026 13:38:27 +0000
+Subject: [PATCH] deps: Rename to align with bzlmod names (#43254)
+
+Signed-off-by: Ryan Northey <ryan@synca.io>
+---
+ bazel/BUILD                                   |  2 +-
+ bazel/deps.yaml                               |  4 +-
+ bazel/external/zlib_ng.BUILD                  |  2 +-
+ bazel/repositories.bzl                        | 55 ++++++++++++++-----
+ bazel/repository_locations.bzl                |  2 +-
+ contrib/common/sqlutils/source/BUILD          |  2 +-
+ contrib/common/sqlutils/test/BUILD            |  2 +-
+ .../matching/input_matchers/source/BUILD      |  4 +-
+ .../mysql_proxy/filters/network/test/BUILD    |  2 +-
+ source/common/protobuf/BUILD                  |  2 +-
+ source/common/stats/BUILD                     |  2 +-
+ .../extensions/access_loggers/fluentd/BUILD   |  2 +-
+ source/extensions/common/dubbo/BUILD          |  4 +-
+ source/extensions/common/fluentd/BUILD        |  2 +-
+ .../adaptive_concurrency/controller/BUILD     |  2 +-
+ .../filters/http/grpc_field_extraction/BUILD  |  4 +-
+ .../message_converter/BUILD                   |  4 +-
+ .../filters/http/proto_api_scrubber/BUILD     |  2 +-
+ .../scrubbing_util_lib/BUILD                  |  2 +-
+ .../http/proto_message_extraction/BUILD       | 18 +++---
+ .../extraction_util/BUILD                     | 16 +++---
+ .../filters/network/dubbo_proxy/BUILD         |  4 +-
+ source/extensions/tracers/fluentd/BUILD       |  2 +-
+ source/extensions/tracers/opentelemetry/BUILD |  4 +-
+ source/extensions/tracers/skywalking/BUILD    |  4 +-
+ test/common/http/BUILD                        |  2 +-
+ test/extensions/access_loggers/fluentd/BUILD  |  2 +-
+ test/extensions/filters/http/ext_proc/BUILD   |  6 +-
+ .../message_converter/BUILD                   | 10 ++--
+ .../scrubbing_util_lib/BUILD                  |  2 +-
+ .../extraction_util/BUILD                     | 12 ++--
+ test/extensions/tracers/fluentd/BUILD         |  2 +-
+ test/extensions/tracers/opentelemetry/BUILD   |  2 +-
+ test/extensions/tracers/skywalking/BUILD      |  2 +-
+ 34 files changed, 109 insertions(+), 80 deletions(-)
+
+diff --git a/bazel/BUILD b/bazel/BUILD
+index 04ecf37db..40c6a72f7 100644
+--- a/bazel/BUILD
++++ b/bazel/BUILD
+@@ -528,7 +528,7 @@ selects.config_setting_group(
+ 
+ label_flag(
+     name = "zlib",
+-    build_setting_default = "@zlib_ng",
++    build_setting_default = "@zlib-ng",
+ )
+ 
+ config_setting(
+diff --git a/bazel/deps.yaml b/bazel/deps.yaml
+index 18740d0f5..341c2a3ed 100644
+--- a/bazel/deps.yaml
++++ b/bazel/deps.yaml
+@@ -488,7 +488,7 @@ com_github_nlohmann_json:
+   license: "MIT"
+   license_url: "https://github.com/nlohmann/json/blob/v{version}/LICENSE.MIT"
+ 
+-com_github_openhistogram_libcircllhist:
++libcircllhist:
+   project_name: "libcircllhist"
+   project_desc: "An implementation of OpenHistogram log-linear histograms"
+   project_url: "https://github.com/openhistogram/libcircllhist"
+@@ -738,7 +738,7 @@ com_google_protofieldextraction:
+   license_url: "https://github.com/grpc-ecosystem/proto-field-extraction/blob/{version}/LICENSE"
+ 
+ com_google_protoprocessinglib:
+-  project_name: "proto_processing_lib"
++  project_name: "proto-processing"
+   project_desc: "Library that provides utility functionality for proto field scrubbing"
+   project_url: "https://github.com/grpc-ecosystem/proto_processing_lib"
+   release_date: "2025-01-10"
+diff --git a/bazel/external/zlib_ng.BUILD b/bazel/external/zlib_ng.BUILD
+index fb1a9aeb8..52f2e7512 100644
+--- a/bazel/external/zlib_ng.BUILD
++++ b/bazel/external/zlib_ng.BUILD
+@@ -40,7 +40,7 @@ genrule(
+ )
+ 
+ cc_library(
+-    name = "zlib_ng",
++    name = "zlib-ng",
+     srcs = [
+         "adler32.c",
+         "compress.c",
+diff --git a/bazel/repositories.bzl b/bazel/repositories.bzl
+index ff5e30be5..cb4ab5645 100644
+--- a/bazel/repositories.bzl
++++ b/bazel/repositories.bzl
+@@ -78,9 +78,13 @@ def _cc_deps():
+         name = "grpc_httpjson_transcoding",
+         patch_args = ["-p1"],
+         patches = ["@envoy//bazel:grpc_httpjson_transcoding.patch"],
++        repo_mapping = {
++            "@com_google_protoconverter": "@proto-converter",
++        },
+     )
+     external_http_archive(
+-        name = "com_google_protoconverter",
++        "proto-converter",
++        location_name = "com_google_protoconverter",
+         patch_args = ["-p1"],
+         patches = ["@envoy//bazel:com_google_protoconverter.patch"],
+         patch_cmds = [
+@@ -91,13 +95,28 @@ def _cc_deps():
+             "rm src/google/protobuf/util/converter/port_undef.inc",
+         ],
+     )
+-    external_http_archive("com_google_protofieldextraction")
+     external_http_archive(
+-        "com_google_protoprocessinglib",
++        "proto-field-extraction",
++        location_name = "com_google_protofieldextraction",
++        repo_mapping = {
++            "@ocp": "@ocp-diag-core",
++        },
++    )
++    external_http_archive(
++        "proto-processing",
++        location_name = "com_google_protoprocessinglib",
+         patch_args = ["-p1"],
+         patches = ["@envoy//bazel:proto_processing_lib.patch"],
++        repo_mapping = {
++            "@ocp": "@ocp-diag-core",
++            "@com_google_protoconverter": "@proto-converter",
++            "@com_google_protofieldextraction": "@proto-field-extraction",
++        },
++    )
++    external_http_archive(
++        name = "ocp-diag-core",
++        location_name = "ocp",
+     )
+-    external_http_archive("ocp")
+ 
+ def _go_deps(skip_targets):
+     # Keep the skip_targets check around until Istio Proxy has stopped using
+@@ -292,7 +311,7 @@ def _aws_lc():
+ 
+ def _com_github_openhistogram_libcircllhist():
+     external_http_archive(
+-        name = "com_github_openhistogram_libcircllhist",
++        name = "libcircllhist",
+         build_file = "@envoy//bazel/external:libcircllhist.BUILD",
+     )
+ 
+@@ -333,7 +352,8 @@ def _com_github_cyan4973_xxhash():
+ 
+ def _com_github_envoyproxy_sqlparser():
+     external_http_archive(
+-        name = "com_github_envoyproxy_sqlparser",
++        name = "sql-parser",
++        location_name = "com_github_envoyproxy_sqlparser",
+         build_file = "@envoy//bazel/external:sqlparser.BUILD",
+     )
+ 
+@@ -464,7 +484,8 @@ def _net_colm_open_source_ragel():
+ 
+ def _zlib_ng():
+     external_http_archive(
+-        name = "zlib_ng",
++        name = "zlib-ng",
++        location_name = "zlib_ng",
+         build_file = "@envoy//bazel/external:zlib_ng.BUILD",
+     )
+ 
+@@ -556,13 +577,15 @@ def _com_github_nghttp2_nghttp2():
+ 
+ def _com_github_msgpack_cpp():
+     external_http_archive(
+-        name = "com_github_msgpack_cpp",
++        name = "msgpack-cxx",
++        location_name = "com_github_msgpack_cpp",
+         build_file = "@envoy//bazel/external:msgpack.BUILD",
+     )
+ 
+ def _io_hyperscan():
+     external_http_archive(
+-        name = "io_hyperscan",
++        name = "hyperscan",
++        location_name = "io_hyperscan",
+         build_file_content = BUILD_ALL_CONTENT,
+         patch_args = ["-p1"],
+         patches = ["@envoy//bazel/foreign_cc:hyperscan.patch"],
+@@ -570,7 +593,8 @@ def _io_hyperscan():
+ 
+ def _io_vectorscan():
+     external_http_archive(
+-        name = "io_vectorscan",
++        name = "vectorscan",
++        location_name = "io_vectorscan",
+         build_file_content = BUILD_ALL_CONTENT,
+         type = "tar.gz",
+         patch_args = ["-p1"],
+@@ -579,7 +603,8 @@ def _io_vectorscan():
+ 
+ def _io_opentelemetry_api_cpp():
+     external_http_archive(
+-        name = "io_opentelemetry_cpp",
++        name = "opentelemetry-cpp",
++        location_name = "io_opentelemetry_cpp",
+     )
+ 
+ def _com_github_datadog_dd_trace_cpp():
+@@ -587,7 +612,8 @@ def _com_github_datadog_dd_trace_cpp():
+ 
+ def _com_github_skyapm_cpp2sky():
+     external_http_archive(
+-        name = "com_github_skyapm_cpp2sky",
++        name = "cpp2sky",
++        location_name = "com_github_skyapm_cpp2sky",
+         patches = ["@envoy//bazel:com_github_skyapm_cpp2sky.patch"],
+         patch_args = ["-p1"],
+     )
+@@ -601,7 +627,10 @@ def _com_github_nlohmann_json():
+     )
+ 
+ def _com_github_alibaba_hessian2_codec():
+-    external_http_archive("com_github_alibaba_hessian2_codec")
++    external_http_archive(
++        name = "hessian2-codec",
++        location_name = "com_github_alibaba_hessian2_codec",
++    )
+ 
+ def _com_github_ncopa_suexec():
+     external_http_archive(
+diff --git a/bazel/repository_locations.bzl b/bazel/repository_locations.bzl
+index 8cdcf95d7..40b87a33e 100644
+--- a/bazel/repository_locations.bzl
++++ b/bazel/repository_locations.bzl
+@@ -122,7 +122,7 @@ REPOSITORY_LOCATIONS_SPEC = dict(
+         strip_prefix = "c-ares-{version}",
+         urls = ["https://github.com/c-ares/c-ares/releases/download/v{version}/c-ares-{version}.tar.gz"],
+     ),
+-    com_github_openhistogram_libcircllhist = dict(
++    libcircllhist = dict(
+         version = "0.3.2",
+         sha256 = "6dfbd649fde380f7a2256def43b9c6374c6d6fe768178b09e39eedf874b139f4",
+         strip_prefix = "libcircllhist-py-{version}",
+diff --git a/contrib/common/sqlutils/source/BUILD b/contrib/common/sqlutils/source/BUILD
+index fb660bbee..cdfab0ae7 100644
+--- a/contrib/common/sqlutils/source/BUILD
++++ b/contrib/common/sqlutils/source/BUILD
+@@ -14,6 +14,6 @@ envoy_cc_library(
+     hdrs = ["sqlutils.h"],
+     deps = [
+         "//source/common/protobuf:utility_lib",
+-        "@com_github_envoyproxy_sqlparser//:sqlparser",
++        "@sql-parser//:sqlparser",
+     ],
+ )
+diff --git a/contrib/common/sqlutils/test/BUILD b/contrib/common/sqlutils/test/BUILD
+index 087e44dcd..191f0988e 100644
+--- a/contrib/common/sqlutils/test/BUILD
++++ b/contrib/common/sqlutils/test/BUILD
+@@ -15,6 +15,6 @@ envoy_cc_test(
+     ],
+     deps = [
+         "//contrib/common/sqlutils/source:sqlutils_lib",
+-        "@com_github_envoyproxy_sqlparser//:sqlparser",
++        "@sql-parser//:sqlparser",
+     ],
+ )
+diff --git a/contrib/hyperscan/matching/input_matchers/source/BUILD b/contrib/hyperscan/matching/input_matchers/source/BUILD
+index 6d633ad26..7cf67bfa8 100644
+--- a/contrib/hyperscan/matching/input_matchers/source/BUILD
++++ b/contrib/hyperscan/matching/input_matchers/source/BUILD
+@@ -48,7 +48,7 @@ envoy_cmake(
+         "-G",
+         "Ninja",
+     ],
+-    lib_source = "@io_hyperscan//:all",
++    lib_source = "@hyperscan//:all",
+     out_static_libs = ["libhs.a"],
+     tags = ["skip_on_windows"],
+     target_compatible_with = envoy_contrib_linux_x86_64_constraints(),
+@@ -89,7 +89,7 @@ envoy_cmake(
+         "-G",
+         "Ninja",
+     ],
+-    lib_source = "@io_vectorscan//:all",
++    lib_source = "@vectorscan//:all",
+     out_static_libs = ["libhs.a"],
+     tags = ["skip_on_windows"],
+     target_compatible_with = envoy_contrib_linux_aarch64_constraints(),
+diff --git a/contrib/mysql_proxy/filters/network/test/BUILD b/contrib/mysql_proxy/filters/network/test/BUILD
+index fb147d843..a29546b61 100644
+--- a/contrib/mysql_proxy/filters/network/test/BUILD
++++ b/contrib/mysql_proxy/filters/network/test/BUILD
+@@ -117,6 +117,6 @@ envoy_cc_test(
+         "//source/common/tcp_proxy",
+         "//source/extensions/filters/network/tcp_proxy:config",
+         "//test/integration:integration_lib",
+-        "@com_github_envoyproxy_sqlparser//:sqlparser",
++        "@sql-parser//:sqlparser",
+     ],
+ )
+diff --git a/source/common/protobuf/BUILD b/source/common/protobuf/BUILD
+index 4a96005ba..c7292e190 100644
+--- a/source/common/protobuf/BUILD
++++ b/source/common/protobuf/BUILD
+@@ -53,7 +53,7 @@ envoy_cc_library(
+         ":cc_wkt_protos",
+         "//envoy/common:base_includes",
+         "@com_google_protobuf//:protobuf",
+-        "@com_google_protoconverter//:all",
++        "@proto-converter//:all",
+     ],
+ )
+ 
+diff --git a/source/common/stats/BUILD b/source/common/stats/BUILD
+index 2803609bf..124748d62 100644
+--- a/source/common/stats/BUILD
++++ b/source/common/stats/BUILD
+@@ -73,8 +73,8 @@ envoy_cc_library(
+         "//source/common/common:matchers_lib",
+         "//source/common/common:utility_lib",
+         "//source/common/protobuf:utility_lib",
+-        "@com_github_openhistogram_libcircllhist//:libcircllhist",
+         "@envoy_api//envoy/config/metrics/v3:pkg_cc_proto",
++        "@libcircllhist",
+     ],
+ )
+ 
+diff --git a/source/extensions/access_loggers/fluentd/BUILD b/source/extensions/access_loggers/fluentd/BUILD
+index f9d67cf87..391899fa1 100644
+--- a/source/extensions/access_loggers/fluentd/BUILD
++++ b/source/extensions/access_loggers/fluentd/BUILD
+@@ -29,8 +29,8 @@ envoy_cc_library(
+         "//source/common/access_log:access_log_lib",
+         "//source/extensions/access_loggers/common:access_log_base",
+         "//source/extensions/common/fluentd:fluentd_base_lib",
+-        "@com_github_msgpack_cpp//:msgpack",
+         "@envoy_api//envoy/extensions/access_loggers/fluentd/v3:pkg_cc_proto",
++        "@msgpack-cxx//:msgpack",
+     ],
+ )
+ 
+diff --git a/source/extensions/common/dubbo/BUILD b/source/extensions/common/dubbo/BUILD
+index e3e114a4e..5a5397adb 100644
+--- a/source/extensions/common/dubbo/BUILD
++++ b/source/extensions/common/dubbo/BUILD
+@@ -15,8 +15,8 @@ envoy_cc_library(
+     deps = [
+         "//envoy/buffer:buffer_interface",
+         "//source/common/singleton:const_singleton",
+-        "@com_github_alibaba_hessian2_codec//hessian2:codec_impl_lib",
+-        "@com_github_alibaba_hessian2_codec//hessian2/basic_codec:object_codec_lib",
++        "@hessian2-codec//hessian2:codec_impl_lib",
++        "@hessian2-codec//hessian2/basic_codec:object_codec_lib",
+     ],
+ )
+ 
+diff --git a/source/extensions/common/fluentd/BUILD b/source/extensions/common/fluentd/BUILD
+index 80eabf899..7fc79436b 100644
+--- a/source/extensions/common/fluentd/BUILD
++++ b/source/extensions/common/fluentd/BUILD
+@@ -15,6 +15,6 @@ envoy_cc_library(
+     deps = [
+         "//source/common/config:utility_lib",
+         "//source/common/tracing:http_tracer_lib",
+-        "@com_github_msgpack_cpp//:msgpack",
++        "@msgpack-cxx//:msgpack",
+     ],
+ )
+diff --git a/source/extensions/filters/http/adaptive_concurrency/controller/BUILD b/source/extensions/filters/http/adaptive_concurrency/controller/BUILD
+index abceffc52..c7097772a 100644
+--- a/source/extensions/filters/http/adaptive_concurrency/controller/BUILD
++++ b/source/extensions/filters/http/adaptive_concurrency/controller/BUILD
+@@ -27,7 +27,7 @@ envoy_cc_library(
+         "//source/common/runtime:runtime_lib",
+         "//source/common/stats:isolated_store_lib",
+         "//source/common/stats:stats_lib",
+-        "@com_github_openhistogram_libcircllhist//:libcircllhist",
+         "@envoy_api//envoy/extensions/filters/http/adaptive_concurrency/v3:pkg_cc_proto",
++        "@libcircllhist",
+     ],
+ )
+diff --git a/source/extensions/filters/http/grpc_field_extraction/BUILD b/source/extensions/filters/http/grpc_field_extraction/BUILD
+index 414ca28a9..275f123b2 100644
+--- a/source/extensions/filters/http/grpc_field_extraction/BUILD
++++ b/source/extensions/filters/http/grpc_field_extraction/BUILD
+@@ -15,8 +15,8 @@ envoy_cc_library(
+     external_deps = ["grpc_transcoding"],
+     deps = [
+         "@com_google_absl//absl/status",
+-        "@com_google_protofieldextraction//:all_libs",
+         "@envoy_api//envoy/extensions/filters/http/grpc_field_extraction/v3:pkg_cc_proto",
++        "@proto-field-extraction//:all_libs",
+     ],
+ )
+ 
+@@ -30,8 +30,8 @@ envoy_cc_library(
+         "//envoy/common:exception_lib",
+         "//source/common/common:minimal_logger_lib",
+         "@com_google_absl//absl/status",
+-        "@com_google_protofieldextraction//:all_libs",
+         "@envoy_api//envoy/extensions/filters/http/grpc_field_extraction/v3:pkg_cc_proto",
++        "@proto-field-extraction//:all_libs",
+     ],
+ )
+ 
+diff --git a/source/extensions/filters/http/grpc_field_extraction/message_converter/BUILD b/source/extensions/filters/http/grpc_field_extraction/message_converter/BUILD
+index 202671493..74e909b42 100644
+--- a/source/extensions/filters/http/grpc_field_extraction/message_converter/BUILD
++++ b/source/extensions/filters/http/grpc_field_extraction/message_converter/BUILD
+@@ -15,7 +15,7 @@ envoy_cc_library(
+     ],
+     deps = [
+         ":message_converter_utility_lib",
+-        "@com_google_protofieldextraction//:all_libs",
++        "@proto-field-extraction//:all_libs",
+     ],
+ )
+ 
+@@ -32,8 +32,8 @@ envoy_cc_library(
+         "//source/common/buffer:zero_copy_input_stream_lib",
+         "//source/common/common:logger_lib",
+         "@com_google_protobuf//:protobuf",
+-        "@com_google_protofieldextraction//:all_libs",
+         "@grpc_httpjson_transcoding//src:message_reader",
++        "@proto-field-extraction//:all_libs",
+     ],
+ )
+ 
+diff --git a/source/extensions/filters/http/proto_api_scrubber/BUILD b/source/extensions/filters/http/proto_api_scrubber/BUILD
+index fb1982e72..8494f250f 100644
+--- a/source/extensions/filters/http/proto_api_scrubber/BUILD
++++ b/source/extensions/filters/http/proto_api_scrubber/BUILD
+@@ -43,8 +43,8 @@ envoy_cc_library(
+         "//source/extensions/filters/http/common:pass_through_filter_lib",
+         "//source/extensions/filters/http/grpc_field_extraction/message_converter:message_converter_lib",
+         "//source/extensions/filters/http/proto_api_scrubber/scrubbing_util_lib",
+-        "@com_google_protoprocessinglib//proto_processing_lib/proto_scrubber",
+         "@envoy_api//envoy/extensions/filters/http/proto_api_scrubber/v3:pkg_cc_proto",
++        "@proto-processing//proto_processing_lib/proto_scrubber",
+     ],
+ )
+ 
+diff --git a/source/extensions/filters/http/proto_api_scrubber/scrubbing_util_lib/BUILD b/source/extensions/filters/http/proto_api_scrubber/scrubbing_util_lib/BUILD
+index ff0446e68..70fe71afa 100644
+--- a/source/extensions/filters/http/proto_api_scrubber/scrubbing_util_lib/BUILD
++++ b/source/extensions/filters/http/proto_api_scrubber/scrubbing_util_lib/BUILD
+@@ -22,6 +22,6 @@ envoy_cc_library(
+         "//source/common/http/matching:data_impl_lib",
+         "//source/common/protobuf",
+         "//source/extensions/filters/http/proto_api_scrubber:filter_config",
+-        "@com_google_protoprocessinglib//proto_processing_lib/proto_scrubber",
++        "@proto-processing//proto_processing_lib/proto_scrubber",
+     ],
+ )
+diff --git a/source/extensions/filters/http/proto_message_extraction/BUILD b/source/extensions/filters/http/proto_message_extraction/BUILD
+index bc57c1c2c..74916d62e 100644
+--- a/source/extensions/filters/http/proto_message_extraction/BUILD
++++ b/source/extensions/filters/http/proto_message_extraction/BUILD
+@@ -15,8 +15,8 @@ envoy_cc_library(
+     external_deps = ["grpc_transcoding"],
+     deps = [
+         "@com_google_absl//absl/status",
+-        "@com_google_protofieldextraction//:all_libs",
+         "@envoy_api//envoy/extensions/filters/http/proto_message_extraction/v3:pkg_cc_proto",
++        "@proto-field-extraction//:all_libs",
+     ],
+ )
+ 
+@@ -36,11 +36,11 @@ envoy_cc_library(
+         "@com_google_absl//absl/status:statusor",
+         "@com_google_absl//absl/strings",
+         "@com_google_absl//absl/strings:string_view",
+-        "@com_google_protoconverter//:all",
+-        "@com_google_protofieldextraction//:all_libs",
+-        "@com_google_protoprocessinglib//proto_processing_lib/proto_scrubber",
+-        "@com_google_protoprocessinglib//proto_processing_lib/proto_scrubber:field_mask_path_checker",
+         "@envoy_api//envoy/extensions/filters/http/proto_message_extraction/v3:pkg_cc_proto",
++        "@proto-converter//:all",
++        "@proto-field-extraction//:all_libs",
++        "@proto-processing//proto_processing_lib/proto_scrubber",
++        "@proto-processing//proto_processing_lib/proto_scrubber:field_mask_path_checker",
+     ],
+ )
+ 
+@@ -55,11 +55,11 @@ envoy_cc_extension(
+         "@com_google_absl//absl/container:flat_hash_map",
+         "@com_google_absl//absl/log",
+         "@com_google_absl//absl/strings:string_view",
+-        "@com_google_protoconverter//:all",
+-        "@com_google_protofieldextraction//:all_libs",
+-        "@com_google_protoprocessinglib//proto_processing_lib/proto_scrubber",
+-        "@com_google_protoprocessinglib//proto_processing_lib/proto_scrubber:field_mask_path_checker",
+         "@envoy_api//envoy/extensions/filters/http/proto_message_extraction/v3:pkg_cc_proto",
++        "@proto-converter//:all",
++        "@proto-field-extraction//:all_libs",
++        "@proto-processing//proto_processing_lib/proto_scrubber",
++        "@proto-processing//proto_processing_lib/proto_scrubber:field_mask_path_checker",
+     ],
+ )
+ 
+diff --git a/source/extensions/filters/http/proto_message_extraction/extraction_util/BUILD b/source/extensions/filters/http/proto_message_extraction/extraction_util/BUILD
+index e44f22d9a..a77439771 100644
+--- a/source/extensions/filters/http/proto_message_extraction/extraction_util/BUILD
++++ b/source/extensions/filters/http/proto_message_extraction/extraction_util/BUILD
+@@ -16,7 +16,7 @@ envoy_cc_library(
+     deps = [
+         "//source/common/protobuf",
+         "@com_google_absl//absl/container:flat_hash_map",
+-        "@com_google_protofieldextraction//:all_libs",
++        "@proto-field-extraction//:all_libs",
+     ],
+ )
+ 
+@@ -33,9 +33,9 @@ envoy_cc_library(
+         ":proto_extractor_interface",
+         "//source/common/common:regex_lib",
+         "//source/common/protobuf",
+-        "@com_google_protoconverter//:all",
+-        "@com_google_protofieldextraction//:all_libs",
+-        "@com_google_protoprocessinglib//proto_processing_lib/proto_scrubber",
++        "@proto-converter//:all",
++        "@proto-field-extraction//:all_libs",
++        "@proto-processing//proto_processing_lib/proto_scrubber",
+     ],
+ )
+ 
+@@ -52,9 +52,9 @@ envoy_cc_library(
+         ":proto_extractor_interface",
+         "//source/common/common:regex_lib",
+         "//source/common/protobuf",
+-        "@com_google_protoconverter//:all",
+-        "@com_google_protofieldextraction//:all_libs",
+-        "@com_google_protoprocessinglib//proto_processing_lib/proto_scrubber",
+-        "@com_google_protoprocessinglib//proto_processing_lib/proto_scrubber:field_mask_path_checker",
++        "@proto-converter//:all",
++        "@proto-field-extraction//:all_libs",
++        "@proto-processing//proto_processing_lib/proto_scrubber",
++        "@proto-processing//proto_processing_lib/proto_scrubber:field_mask_path_checker",
+     ],
+ )
+diff --git a/source/extensions/filters/network/dubbo_proxy/BUILD b/source/extensions/filters/network/dubbo_proxy/BUILD
+index 09edc7e35..e63e99e73 100644
+--- a/source/extensions/filters/network/dubbo_proxy/BUILD
++++ b/source/extensions/filters/network/dubbo_proxy/BUILD
+@@ -16,8 +16,8 @@ envoy_cc_library(
+     deps = [
+         "//envoy/buffer:buffer_interface",
+         "//source/common/singleton:const_singleton",
+-        "@com_github_alibaba_hessian2_codec//hessian2:codec_impl_lib",
+-        "@com_github_alibaba_hessian2_codec//hessian2/basic_codec:object_codec_lib",
++        "@hessian2-codec//hessian2:codec_impl_lib",
++        "@hessian2-codec//hessian2/basic_codec:object_codec_lib",
+     ],
+ )
+ 
+diff --git a/source/extensions/tracers/fluentd/BUILD b/source/extensions/tracers/fluentd/BUILD
+index 6cc125ab2..ff5a5dcc4 100644
+--- a/source/extensions/tracers/fluentd/BUILD
++++ b/source/extensions/tracers/fluentd/BUILD
+@@ -34,7 +34,7 @@ envoy_cc_library(
+         "//source/common/tracing:trace_context_lib",
+         "//source/extensions/common/fluentd:fluentd_base_lib",
+         "//source/extensions/tracers/common:factory_base_lib",
+-        "@com_github_msgpack_cpp//:msgpack",
+         "@envoy_api//envoy/extensions/tracers/fluentd/v3:pkg_cc_proto",
++        "@msgpack-cxx//:msgpack",
+     ],
+ )
+diff --git a/source/extensions/tracers/opentelemetry/BUILD b/source/extensions/tracers/opentelemetry/BUILD
+index ea8ac65c7..7d74e954a 100644
+--- a/source/extensions/tracers/opentelemetry/BUILD
++++ b/source/extensions/tracers/opentelemetry/BUILD
+@@ -49,7 +49,7 @@ envoy_cc_library(
+         "//source/extensions/tracers/opentelemetry/resource_detectors:resource_detector_lib",
+         "//source/extensions/tracers/opentelemetry/samplers:sampler_lib",
+         "@envoy_api//envoy/config/trace/v3:pkg_cc_proto",
+-        "@io_opentelemetry_cpp//api",
++        "@opentelemetry-cpp//api",
+         "@opentelemetry_proto//:trace_proto_cc",
+         "@opentelemetry_proto//:trace_service_proto_cc",
+     ],
+@@ -80,7 +80,7 @@ envoy_cc_library(
+         "//source/common/tracing:trace_context_lib",
+         "//source/common/version:version_lib",
+         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+-        "@io_opentelemetry_cpp//api",
++        "@opentelemetry-cpp//api",
+         "@opentelemetry_proto//:trace_proto_cc",
+         "@opentelemetry_proto//:trace_service_proto_cc",
+     ],
+diff --git a/source/extensions/tracers/skywalking/BUILD b/source/extensions/tracers/skywalking/BUILD
+index 2c376371a..d18cda31a 100644
+--- a/source/extensions/tracers/skywalking/BUILD
++++ b/source/extensions/tracers/skywalking/BUILD
+@@ -20,7 +20,7 @@ envoy_cc_library(
+         "//envoy/grpc:async_client_manager_interface",
+         "//source/common/common:backoff_lib",
+         "//source/common/grpc:async_client_lib",
+-        "@com_github_skyapm_cpp2sky//source:cpp2sky_data_lib",
++        "@cpp2sky//source:cpp2sky_data_lib",
+         "@envoy_api//envoy/config/trace/v3:pkg_cc_proto",
+     ],
+ )
+@@ -44,7 +44,7 @@ envoy_cc_library(
+         "//source/common/http:header_map_lib",
+         "//source/common/runtime:runtime_lib",
+         "//source/common/tracing:http_tracer_lib",
+-        "@com_github_skyapm_cpp2sky//source:cpp2sky_data_lib",
++        "@cpp2sky//source:cpp2sky_data_lib",
+         "@envoy_api//envoy/config/trace/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/test/common/http/BUILD b/test/common/http/BUILD
+index 017cd4af3..0ff27c836 100644
+--- a/test/common/http/BUILD
++++ b/test/common/http/BUILD
+@@ -730,6 +730,6 @@ envoy_cc_test(
+         "//test/test_common:status_utility_lib",
+         "//test/test_common:utility_lib",
+         "@com_google_absl//absl/status",
+-        "@ocp//ocpdiag/core/testing:status_matchers",
++        "@ocp-diag-core//ocpdiag/core/testing:status_matchers",
+     ],
+ )
+diff --git a/test/extensions/access_loggers/fluentd/BUILD b/test/extensions/access_loggers/fluentd/BUILD
+index 976945e51..afc4c0946 100644
+--- a/test/extensions/access_loggers/fluentd/BUILD
++++ b/test/extensions/access_loggers/fluentd/BUILD
+@@ -21,9 +21,9 @@ envoy_extension_cc_test(
+         "//test/mocks/server:factory_context_mocks",
+         "//test/test_common:environment_lib",
+         "//test/test_common:utility_lib",
+-        "@com_github_msgpack_cpp//:msgpack",
+         "@envoy_api//envoy/config/accesslog/v3:pkg_cc_proto",
+         "@envoy_api//envoy/extensions/access_loggers/fluentd/v3:pkg_cc_proto",
++        "@msgpack-cxx//:msgpack",
+     ],
+ )
+ 
+diff --git a/test/extensions/filters/http/ext_proc/BUILD b/test/extensions/filters/http/ext_proc/BUILD
+index 21184dd37..a41100c74 100644
+--- a/test/extensions/filters/http/ext_proc/BUILD
++++ b/test/extensions/filters/http/ext_proc/BUILD
+@@ -451,7 +451,7 @@ envoy_extension_cc_test(
+         "@envoy_api//envoy/extensions/http/ext_proc/processing_request_modifiers/mapped_attribute_builder/v3:pkg_cc_proto",
+         "@envoy_api//envoy/service/ext_proc/v3:pkg_cc_proto",
+         "@envoy_api//envoy/type/v3:pkg_cc_proto",
+-        "@ocp//ocpdiag/core/testing:status_matchers",
++        "@ocp-diag-core//ocpdiag/core/testing:status_matchers",
+     ],
+ )
+ 
+@@ -501,7 +501,7 @@ envoy_extension_cc_test(
+         "@envoy_api//envoy/extensions/filters/http/upstream_codec/v3:pkg_cc_proto",
+         "@envoy_api//envoy/service/ext_proc/v3:pkg_cc_proto",
+         "@envoy_api//envoy/type/v3:pkg_cc_proto",
+-        "@ocp//ocpdiag/core/testing:status_matchers",
++        "@ocp-diag-core//ocpdiag/core/testing:status_matchers",
+     ],
+ )
+ 
+@@ -551,7 +551,7 @@ envoy_extension_cc_test(
+         "@envoy_api//envoy/extensions/filters/http/upstream_codec/v3:pkg_cc_proto",
+         "@envoy_api//envoy/service/ext_proc/v3:pkg_cc_proto",
+         "@envoy_api//envoy/type/v3:pkg_cc_proto",
+-        "@ocp//ocpdiag/core/testing:status_matchers",
++        "@ocp-diag-core//ocpdiag/core/testing:status_matchers",
+     ],
+ )
+ 
+diff --git a/test/extensions/filters/http/grpc_field_extraction/message_converter/BUILD b/test/extensions/filters/http/grpc_field_extraction/message_converter/BUILD
+index 30ab4dd52..48e0a618e 100644
+--- a/test/extensions/filters/http/grpc_field_extraction/message_converter/BUILD
++++ b/test/extensions/filters/http/grpc_field_extraction/message_converter/BUILD
+@@ -17,7 +17,7 @@ envoy_cc_test_library(
+         "//source/common/grpc:codec_lib",
+         "//source/extensions/filters/http/grpc_field_extraction/message_converter:stream_message_lib",
+         "//test/proto:apikeys_proto_cc_proto",
+-        "@com_google_protofieldextraction//:all_libs",
++        "@proto-field-extraction//:all_libs",
+     ],
+ )
+ 
+@@ -30,8 +30,8 @@ envoy_cc_test(
+         "//source/extensions/filters/http/grpc_field_extraction/message_converter:message_converter_utility_lib",
+         "//test/proto:apikeys_proto_cc_proto",
+         "//test/test_common:status_utility_lib",
+-        "@com_google_protofieldextraction//:all_libs",
+-        "@ocp//ocpdiag/core/testing:status_matchers",
++        "@ocp-diag-core//ocpdiag/core/testing:status_matchers",
++        "@proto-field-extraction//:all_libs",
+     ],
+ )
+ 
+@@ -45,8 +45,8 @@ envoy_cc_test(
+         "//source/extensions/filters/http/grpc_field_extraction/message_converter:message_converter_utility_lib",
+         "//test/proto:apikeys_proto_cc_proto",
+         "//test/test_common:status_utility_lib",
+-        "@com_google_protofieldextraction//:all_libs",
+-        "@ocp//ocpdiag/core/testing:status_matchers",
++        "@ocp-diag-core//ocpdiag/core/testing:status_matchers",
++        "@proto-field-extraction//:all_libs",
+     ],
+ )
+ 
+diff --git a/test/extensions/filters/http/proto_api_scrubber/scrubbing_util_lib/BUILD b/test/extensions/filters/http/proto_api_scrubber/scrubbing_util_lib/BUILD
+index 2e6fbe9eb..8683aecf6 100644
+--- a/test/extensions/filters/http/proto_api_scrubber/scrubbing_util_lib/BUILD
++++ b/test/extensions/filters/http/proto_api_scrubber/scrubbing_util_lib/BUILD
+@@ -30,6 +30,6 @@ envoy_cc_test(
+         "//test/test_common:simulated_time_system_lib",
+         "//test/test_common:utility_lib",
+         "@com_github_cncf_xds//xds/type/matcher/v3:pkg_cc_proto",
+-        "@com_google_protoprocessinglib//proto_processing_lib/proto_scrubber",
++        "@proto-processing//proto_processing_lib/proto_scrubber",
+     ],
+ )
+diff --git a/test/extensions/filters/http/proto_message_extraction/extraction_util/BUILD b/test/extensions/filters/http/proto_message_extraction/extraction_util/BUILD
+index 69299211c..1658d47d2 100644
+--- a/test/extensions/filters/http/proto_message_extraction/extraction_util/BUILD
++++ b/test/extensions/filters/http/proto_message_extraction/extraction_util/BUILD
+@@ -25,11 +25,11 @@ envoy_cc_test(
+         "@com_google_absl//absl/status:statusor",
+         "@com_google_absl//absl/strings",
+         "@com_google_protobuf//:protobuf",
+-        "@com_google_protoconverter//:all",
+-        "@com_google_protofieldextraction//:all_libs",
+-        "@com_google_protofieldextraction//proto_field_extraction/test_utils:utils",
+-        "@com_google_protoprocessinglib//proto_processing_lib/proto_scrubber:field_mask_path_checker",
+-        "@ocp//ocpdiag/core/testing:parse_text_proto",
+-        "@ocp//ocpdiag/core/testing:status_matchers",
++        "@ocp-diag-core//ocpdiag/core/testing:parse_text_proto",
++        "@ocp-diag-core//ocpdiag/core/testing:status_matchers",
++        "@proto-converter//:all",
++        "@proto-field-extraction//:all_libs",
++        "@proto-field-extraction//proto_field_extraction/test_utils:utils",
++        "@proto-processing//proto_processing_lib/proto_scrubber:field_mask_path_checker",
+     ],
+ )
+diff --git a/test/extensions/tracers/fluentd/BUILD b/test/extensions/tracers/fluentd/BUILD
+index 961a09361..ed039ca72 100644
+--- a/test/extensions/tracers/fluentd/BUILD
++++ b/test/extensions/tracers/fluentd/BUILD
+@@ -25,7 +25,7 @@ envoy_extension_cc_test(
+         "//test/test_common:environment_lib",
+         "//test/test_common:status_utility_lib",
+         "//test/test_common:utility_lib",
+-        "@com_github_msgpack_cpp//:msgpack",
++        "@msgpack-cxx//:msgpack",
+     ],
+ )
+ 
+diff --git a/test/extensions/tracers/opentelemetry/BUILD b/test/extensions/tracers/opentelemetry/BUILD
+index 1ce545498..bb9fd3876 100644
+--- a/test/extensions/tracers/opentelemetry/BUILD
++++ b/test/extensions/tracers/opentelemetry/BUILD
+@@ -47,7 +47,7 @@ envoy_extension_cc_test(
+         "//test/test_common:simulated_time_system_lib",
+         "//test/test_common:utility_lib",
+         "@com_google_absl//absl/types:optional",
+-        "@io_opentelemetry_cpp//api",
++        "@opentelemetry-cpp//api",
+     ],
+ )
+ 
+diff --git a/test/extensions/tracers/skywalking/BUILD b/test/extensions/tracers/skywalking/BUILD
+index 379df7353..921b3caca 100644
+--- a/test/extensions/tracers/skywalking/BUILD
++++ b/test/extensions/tracers/skywalking/BUILD
+@@ -58,7 +58,7 @@ envoy_extension_cc_test(
+         "//source/common/common:base64_lib",
+         "//source/common/common:hex_lib",
+         "//test/test_common:utility_lib",
+-        "@com_github_skyapm_cpp2sky//source:cpp2sky_data_lib",
++        "@cpp2sky//source:cpp2sky_data_lib",
+     ],
+ )
+ 

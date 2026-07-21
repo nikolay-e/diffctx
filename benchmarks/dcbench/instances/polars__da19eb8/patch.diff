@@ -1,0 +1,293 @@
+From da19eb864177f0225c594907b1d3ead8e5dbdd6d Mon Sep 17 00:00:00 2001
+From: Donald Tolley <tolleybot@gmail.com>
+Date: Thu, 4 Jun 2026 04:05:49 -0400
+Subject: [PATCH] feat(python): Expose fixed-size rolling window expressions in
+ Python visitor (#27108)
+
+---
+ crates/polars-python/src/c_api/mod.rs         |   1 +
+ crates/polars-python/src/lazyframe/visit.rs   |   2 +-
+ .../src/lazyframe/visitor/expr_nodes.rs       |  75 +++++++++-
+ .../unit/lazyframe/cuda/test_node_visitor.py  | 133 +++++++++++++++++-
+ 4 files changed, 204 insertions(+), 7 deletions(-)
+
+diff --git a/crates/polars-python/src/c_api/mod.rs b/crates/polars-python/src/c_api/mod.rs
+index 86441e2f1..8fb8d3198 100644
+--- a/crates/polars-python/src/c_api/mod.rs
++++ b/crates/polars-python/src/c_api/mod.rs
+@@ -97,6 +97,7 @@ fn _expr_nodes(_py: Python, m: &Bound<PyModule>) -> PyResult<()> {
+     m.add_class::<PyBooleanFunction>().unwrap();
+     m.add_class::<PyTemporalFunction>().unwrap();
+     m.add_class::<PyStructFunction>().unwrap();
++    m.add_class::<PyRollingFunction>().unwrap();
+     // Options
+     m.add_class::<PyWindowMapping>().unwrap();
+     m.add_class::<PyRollingGroupOptions>().unwrap();
+diff --git a/crates/polars-python/src/lazyframe/visit.rs b/crates/polars-python/src/lazyframe/visit.rs
+index 3af0ceec3..51f218d27 100644
+--- a/crates/polars-python/src/lazyframe/visit.rs
++++ b/crates/polars-python/src/lazyframe/visit.rs
+@@ -58,7 +58,7 @@ impl NodeTraverser {
+     // Increment major on breaking changes to the IR (e.g. renaming
+     // fields, reordering tuples), minor on backwards compatible
+     // changes (e.g. exposing a new expression node).
+-    const VERSION: Version = (14, 1);
++    const VERSION: Version = (14, 2);
+ 
+     pub fn new(root: Node, lp_arena: Arena<IR>, expr_arena: Arena<AExpr>) -> Self {
+         Self {
+diff --git a/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs b/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+index 2729ef6a4..0a5ced6a0 100644
+--- a/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
++++ b/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+@@ -1,7 +1,7 @@
+ #[cfg(feature = "iejoin")]
+ use polars::prelude::InequalityOperator;
+ use polars::series::ops::NullBehavior;
+-use polars_compute::rolling::QuantileMethod;
++use polars_compute::rolling::{QuantileMethod, RollingFnParams};
+ use polars_core::chunked_array::ops::FillNullStrategy;
+ #[cfg(feature = "string_normalize")]
+ use polars_ops::chunked_array::UnicodeForm;
+@@ -10,8 +10,8 @@ use polars_ops::series::InterpolationMethod;
+ #[cfg(feature = "search_sorted")]
+ use polars_ops::series::SearchSortedSide;
+ use polars_plan::plans::{
+-    DynLiteralValue, IRBooleanFunction, IRFunctionExpr, IRPowFunction, IRRollingFunctionBy,
+-    IRStringFunction, IRStructFunction, IRTemporalFunction,
++    DynLiteralValue, IRBooleanFunction, IRFunctionExpr, IRPowFunction, IRRollingFunction,
++    IRRollingFunctionBy, IRStringFunction, IRStructFunction, IRTemporalFunction,
+ };
+ use polars_plan::prelude::{
+     AExpr, GroupbyOptions, IRAggExpr, LiteralValue, Operator, WindowMapping,
+@@ -294,6 +294,28 @@ impl PyStructFunction {
+     }
+ }
+ 
++#[pyclass(name = "RollingFunction", eq, frozen, skip_from_py_object)]
++#[derive(Copy, Clone, PartialEq)]
++pub enum PyRollingFunction {
++    Min,
++    Max,
++    Mean,
++    Sum,
++    Quantile,
++    Var,
++    Std,
++    Rank,
++    Skew,
++    Kurtosis,
++}
++
++#[pymethods]
++impl PyRollingFunction {
++    fn __hash__(&self) -> isize {
++        *self as isize
++    }
++}
++
+ #[pyclass(frozen)]
+ pub struct BinaryExpr {
+     #[pyo3(get)]
+@@ -1222,8 +1244,51 @@ pub(crate) fn into_py(py: Python<'_>, expr: &AExpr) -> PyResult<Py<PyAny>> {
+                 #[cfg(feature = "sign")]
+                 IRFunctionExpr::Sign => ("sign",).into_py_any(py),
+                 IRFunctionExpr::FillNull => ("fill_null",).into_py_any(py),
+-                IRFunctionExpr::RollingExpr { function, .. } => {
+-                    return Err(PyNotImplementedError::new_err(format!("{function}")));
++                IRFunctionExpr::RollingExpr { function, options } => {
++                    let py_function = match function {
++                        IRRollingFunction::Min => PyRollingFunction::Min,
++                        IRRollingFunction::Max => PyRollingFunction::Max,
++                        IRRollingFunction::Mean => PyRollingFunction::Mean,
++                        IRRollingFunction::Sum => PyRollingFunction::Sum,
++                        IRRollingFunction::Quantile => PyRollingFunction::Quantile,
++                        IRRollingFunction::Var => PyRollingFunction::Var,
++                        IRRollingFunction::Std => PyRollingFunction::Std,
++                        IRRollingFunction::Rank => PyRollingFunction::Rank,
++                        IRRollingFunction::Skew => PyRollingFunction::Skew,
++                        IRRollingFunction::Kurtosis => PyRollingFunction::Kurtosis,
++                        IRRollingFunction::CorrCov { .. } => {
++                            return Err(PyNotImplementedError::new_err("rolling corr/cov"));
++                        },
++                        IRRollingFunction::Map(_) => {
++                            return Err(PyNotImplementedError::new_err("rolling map"));
++                        },
++                    };
++                    let fn_params: Py<PyAny> = match &options.fn_params {
++                        None => ().into_py_any(py)?,
++                        Some(RollingFnParams::Quantile(q)) => {
++                            (q.prob, Into::<&str>::into(q.method)).into_py_any(py)?
++                        },
++                        Some(RollingFnParams::Var(v)) => (v.ddof,).into_py_any(py)?,
++                        Some(RollingFnParams::Rank { method, seed }) => {
++                            let method = Into::<&str>::into(method);
++                            (method, *seed).into_py_any(py)?
++                        },
++                        Some(RollingFnParams::Skew { bias }) => (*bias,).into_py_any(py)?,
++                        Some(RollingFnParams::Kurtosis { fisher, bias }) => {
++                            (*fisher, *bias).into_py_any(py)?
++                        },
++                    };
++                    // Tuple consumed by external engines (e.g., cudf-polars):
++                    // (RollingFunction, window_size, min_periods, weights, center, fn_params)
++                    (
++                        py_function,
++                        options.window_size,
++                        options.min_periods,
++                        &options.weights,
++                        options.center,
++                        fn_params,
++                    )
++                        .into_py_any(py)
+                 },
+                 IRFunctionExpr::RollingExprBy { function_by, .. } => match function_by {
+                     IRRollingFunctionBy::MinBy => {
+diff --git a/py-polars/tests/unit/lazyframe/cuda/test_node_visitor.py b/py-polars/tests/unit/lazyframe/cuda/test_node_visitor.py
+index 9960ec75f..af9076913 100644
+--- a/py-polars/tests/unit/lazyframe/cuda/test_node_visitor.py
++++ b/py-polars/tests/unit/lazyframe/cuda/test_node_visitor.py
+@@ -6,7 +6,7 @@ from functools import lru_cache, partial
+ from typing import TYPE_CHECKING, Any
+ 
+ import polars as pl
+-from polars._plr import _ir_nodes
++from polars._plr import _expr_nodes, _ir_nodes  # type: ignore[attr-defined]
+ from polars._utils.wrap import wrap_df
+ from tests.unit.io.conftest import format_file_uri
+ 
+@@ -168,3 +168,134 @@ def test_node_traverse_sink(tmp_path: Path) -> None:
+     q.collect(  # pyrefly: ignore[no-matching-overload]
+         post_opt_callback=callback  # type: ignore[call-overload]
+     )
++
++
++def _collect_rolling_function_data(
++    query: pl.LazyFrame,
++) -> list[tuple[Any, ...]]:
++    """Traverse a query's IR and return function_data tuples for rolling expressions."""
++    results: list[tuple[Any, ...]] = []
++
++    def callback(node_traverser: Any, query_start: int | None) -> None:
++        for expr_ir in node_traverser.get_exprs():
++            expr_node = node_traverser.view_expression(expr_ir.node)
++            if isinstance(expr_node, _expr_nodes.Function):
++                name, *options = expr_node.function_data
++                if isinstance(name, _expr_nodes.RollingFunction):
++                    results.append((name, *options))
++
++    query.collect(  # pyrefly: ignore[no-matching-overload]
++        post_opt_callback=callback  # type: ignore[call-overload]
++    )
++    return results
++
++
++def test_rolling_expr_visitor() -> None:
++    """Test that fixed-size rolling expressions are exposed via the visitor."""
++    q = pl.LazyFrame({"x": [1.0, 2.0, 3.0, 4.0, 5.0]}).with_columns(
++        pl.col("x").rolling_sum(window_size=3).alias("rolling_sum"),
++    )
++    rolling_exprs = _collect_rolling_function_data(q)
++    assert len(rolling_exprs) == 1
++    name, window_size, min_periods, weights, center, fn_params = rolling_exprs[0]
++    assert name == _expr_nodes.RollingFunction.Sum
++    assert window_size == 3
++    assert min_periods == 3
++    assert weights is None
++    assert center is False
++    assert fn_params == ()
++
++
++def test_rolling_expr_visitor_var() -> None:
++    """Test that rolling_var serializes ddof in fn_params."""
++    q = pl.LazyFrame({"x": [1.0, 2.0, 3.0, 4.0, 5.0]}).with_columns(
++        pl.col("x").rolling_var(window_size=3, ddof=2).alias("rolling_var"),
++    )
++    rolling_exprs = _collect_rolling_function_data(q)
++    assert len(rolling_exprs) == 1
++    name, window_size, min_periods, weights, center, fn_params = rolling_exprs[0]
++    assert name == _expr_nodes.RollingFunction.Var
++    assert window_size == 3
++    assert min_periods == 3
++    assert weights is None
++    assert center is False
++    assert fn_params == (2,)
++
++
++def test_rolling_expr_visitor_min_centered() -> None:
++    """Test rolling_min with center=True."""
++    q = pl.LazyFrame({"x": [1.0, 2.0, 3.0, 4.0, 5.0]}).with_columns(
++        pl.col("x").rolling_min(window_size=3, center=True).alias("rmin"),
++    )
++    rolling_exprs = _collect_rolling_function_data(q)
++    assert len(rolling_exprs) == 1
++    name, window_size, _, _, center, fn_params = rolling_exprs[0]
++    assert name == _expr_nodes.RollingFunction.Min
++    assert window_size == 3
++    assert center is True
++    assert fn_params == ()
++
++
++def test_rolling_expr_visitor_quantile() -> None:
++    """Test that rolling_quantile serializes probability and method."""
++    q = pl.LazyFrame({"x": [1.0, 2.0, 3.0, 4.0, 5.0]}).with_columns(
++        pl.col("x")
++        .rolling_quantile(0.75, window_size=3, interpolation="linear")
++        .alias("rq"),
++    )
++    rolling_exprs = _collect_rolling_function_data(q)
++    assert len(rolling_exprs) == 1
++    name, window_size, _, _, _, fn_params = rolling_exprs[0]
++    assert name == _expr_nodes.RollingFunction.Quantile
++    assert window_size == 3
++    assert fn_params == (0.75, "linear")
++
++
++def test_rolling_expr_visitor_std() -> None:
++    """Test that rolling_std serializes ddof in fn_params."""
++    q = pl.LazyFrame({"x": [1.0, 2.0, 3.0, 4.0, 5.0]}).with_columns(
++        pl.col("x").rolling_std(window_size=3, ddof=0).alias("rstd"),
++    )
++    rolling_exprs = _collect_rolling_function_data(q)
++    assert len(rolling_exprs) == 1
++    name, _, _, _, _, fn_params = rolling_exprs[0]
++    assert name == _expr_nodes.RollingFunction.Std
++    assert fn_params == (0,)
++
++
++def test_rolling_expr_visitor_skew() -> None:
++    """Test that rolling_skew serializes the bias parameter."""
++    q = pl.LazyFrame({"x": [1.0, 2.0, 3.0, 4.0, 5.0]}).with_columns(
++        pl.col("x").rolling_skew(window_size=3, bias=False).alias("rskew"),
++    )
++    rolling_exprs = _collect_rolling_function_data(q)
++    assert len(rolling_exprs) == 1
++    name, _, _, _, _, fn_params = rolling_exprs[0]
++    assert name == _expr_nodes.RollingFunction.Skew
++    assert fn_params == (False,)
++
++
++def test_rolling_expr_visitor_kurtosis() -> None:
++    """Test that rolling_kurtosis serializes fisher and bias parameters."""
++    q = pl.LazyFrame({"x": [1.0, 2.0, 3.0, 4.0, 5.0]}).with_columns(
++        pl.col("x")
++        .rolling_kurtosis(window_size=3, fisher=False, bias=True)
++        .alias("rkurt"),
++    )
++    rolling_exprs = _collect_rolling_function_data(q)
++    assert len(rolling_exprs) == 1
++    name, _, _, _, _, fn_params = rolling_exprs[0]
++    assert name == _expr_nodes.RollingFunction.Kurtosis
++    assert fn_params == (False, True)
++
++
++def test_rolling_expr_visitor_rank() -> None:
++    """Test that rolling_rank serializes method and seed parameters."""
++    q = pl.LazyFrame({"x": [1.0, 2.0, 3.0, 4.0, 5.0]}).with_columns(
++        pl.col("x").rolling_rank(window_size=3, method="dense", seed=42).alias("rrank"),
++    )
++    rolling_exprs = _collect_rolling_function_data(q)
++    assert len(rolling_exprs) == 1
++    name, _, _, _, _, fn_params = rolling_exprs[0]
++    assert name == _expr_nodes.RollingFunction.Rank
++    assert fn_params == ("dense", 42)

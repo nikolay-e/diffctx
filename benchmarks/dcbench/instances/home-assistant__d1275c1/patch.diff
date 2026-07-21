@@ -1,0 +1,131 @@
+From d1275c1128030cca53d16beafaed61d3c5a8a92f Mon Sep 17 00:00:00 2001
+From: epenet <6771947+epenet@users.noreply.github.com>
+Date: Tue, 30 Jun 2026 14:22:23 +0200
+Subject: [PATCH] Deprecate CONCENTRATION_* constants (#175189)
+
+---
+ .../components/prometheus/__init__.py         |  2 +-
+ homeassistant/const.py                        | 27 +++++++++------
+ tests/test_const.py                           | 34 +++++++++++++++++--
+ 3 files changed, 50 insertions(+), 13 deletions(-)
+
+diff --git a/homeassistant/components/prometheus/__init__.py b/homeassistant/components/prometheus/__init__.py
+index 00f93bcfa7..2904d9320f 100644
+--- a/homeassistant/components/prometheus/__init__.py
++++ b/homeassistant/components/prometheus/__init__.py
+@@ -1132,7 +1132,7 @@ class PrometheusMetrics:
+             PERCENTAGE: "percent",
+         }
+         default = unit.replace("/", "_per_")
+-        # Unit conversion for CONCENTRATION_MICROGRAMS_PER_CUBIC_METER "μg/m³"
++        # Unit conversion for UnitOfDensity.MICROGRAMS_PER_CUBIC_METER "μg/m³"
+         # "μ" == "\u03bc" but the API uses "\u00b5"
+         default = default.replace("\u03bc", "\u00b5")
+         default = default.lower()
+diff --git a/homeassistant/const.py b/homeassistant/const.py
+index 8749f8c50f..648f07b37f 100644
+--- a/homeassistant/const.py
++++ b/homeassistant/const.py
+@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Final
+ from .generated.entity_platforms import EntityPlatforms
+ from .helpers.deprecation import (
+     DeprecatedConstant,
++    DeprecatedConstantEnum,
+     all_with_deprecated_constants,
+     check_if_deprecated_constant,
+     dir_with_deprecated_constants,
+@@ -798,21 +799,27 @@ class UnitOfRatio(StrEnum):
+ 
+ 
+ # Concentration units
+-CONCENTRATION_GRAMS_PER_CUBIC_METER: Final = UnitOfDensity.GRAMS_PER_CUBIC_METER.value
+-CONCENTRATION_MILLIGRAMS_PER_CUBIC_METER: Final = (
+-    UnitOfDensity.MILLIGRAMS_PER_CUBIC_METER.value
++_DEPRECATED_CONCENTRATION_GRAMS_PER_CUBIC_METER = DeprecatedConstantEnum(
++    UnitOfDensity.GRAMS_PER_CUBIC_METER, "2027.8"
+ )
+-CONCENTRATION_MICROGRAMS_PER_CUBIC_METER: Final = (
+-    UnitOfDensity.MICROGRAMS_PER_CUBIC_METER.value
++_DEPRECATED_CONCENTRATION_MILLIGRAMS_PER_CUBIC_METER = DeprecatedConstantEnum(
++    UnitOfDensity.MILLIGRAMS_PER_CUBIC_METER, "2027.8"
+ )
+-CONCENTRATION_MICROGRAMS_PER_CUBIC_FOOT: Final = (
+-    UnitOfDensity.MICROGRAMS_PER_CUBIC_FOOT.value
++_DEPRECATED_CONCENTRATION_MICROGRAMS_PER_CUBIC_METER = DeprecatedConstantEnum(
++    UnitOfDensity.MICROGRAMS_PER_CUBIC_METER, "2027.8"
++)
++_DEPRECATED_CONCENTRATION_MICROGRAMS_PER_CUBIC_FOOT = DeprecatedConstantEnum(
++    UnitOfDensity.MICROGRAMS_PER_CUBIC_FOOT, "2027.8"
+ )
+ _DEPRECATED_CONCENTRATION_PARTS_PER_CUBIC_METER = DeprecatedConstant(
+-    "p/m³", "p/m³", "2027.7"
++    "p/m³", "p/m³", "2027.8"
++)
++_DEPRECATED_CONCENTRATION_PARTS_PER_MILLION = DeprecatedConstantEnum(
++    UnitOfRatio.PARTS_PER_MILLION, "2027.8"
++)
++_DEPRECATED_CONCENTRATION_PARTS_PER_BILLION = DeprecatedConstantEnum(
++    UnitOfRatio.PARTS_PER_BILLION, "2027.8"
+ )
+-CONCENTRATION_PARTS_PER_MILLION: Final = UnitOfRatio.PARTS_PER_MILLION.value
+-CONCENTRATION_PARTS_PER_BILLION: Final = UnitOfRatio.PARTS_PER_BILLION.value
+ PERCENTAGE: Final = UnitOfRatio.PERCENTAGE.value
+ 
+ 
+diff --git a/tests/test_const.py b/tests/test_const.py
+index db379f22cd..5407b1dc69 100644
+--- a/tests/test_const.py
++++ b/tests/test_const.py
+@@ -3,8 +3,13 @@
+ import pytest
+ 
+ from homeassistant import const
++from homeassistant.const import UnitOfDensity, UnitOfRatio
+ 
+-from .common import help_test_all, import_and_test_deprecated_constant
++from .common import (
++    help_test_all,
++    import_and_test_deprecated_constant,
++    import_and_test_deprecated_constant_enum,
++)
+ 
+ 
+ def test_all() -> None:
+@@ -18,7 +23,7 @@ def test_all() -> None:
+         (
+             "p/m³",
+             "CONCENTRATION_PARTS_PER_CUBIC_METER",
+-            "2027.7",
++            "2027.8",
+         ),
+     ],
+ )
+@@ -37,3 +42,28 @@ def test_deprecated_constant(
+         replacement,
+         breaks_in_version,
+     )
++
++
++@pytest.mark.parametrize(
++    "replacement",
++    [
++        UnitOfDensity.GRAMS_PER_CUBIC_METER,
++        UnitOfDensity.MILLIGRAMS_PER_CUBIC_METER,
++        UnitOfDensity.MICROGRAMS_PER_CUBIC_METER,
++        UnitOfDensity.MICROGRAMS_PER_CUBIC_FOOT,
++        UnitOfRatio.PARTS_PER_MILLION,
++        UnitOfRatio.PARTS_PER_BILLION,
++    ],
++)
++def test_deprecated_concentration_constant(
++    caplog: pytest.LogCaptureFixture,
++    replacement: UnitOfDensity | UnitOfRatio,
++) -> None:
++    """Test deprecated concentration constants replaced by an enum."""
++    import_and_test_deprecated_constant_enum(
++        caplog,
++        const,
++        replacement,
++        "CONCENTRATION_",
++        "2027.8",
++    )

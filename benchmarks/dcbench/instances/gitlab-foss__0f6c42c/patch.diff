@@ -1,0 +1,507 @@
+From 0f6c42c5ce165dadf1976ae15a043b87ca533618 Mon Sep 17 00:00:00 2001
+From: Alexandru Croitor <acroitor@gitlab.com>
+Date: Mon, 17 Jun 2019 15:58:48 +0300
+Subject: [PATCH] Move Multiple Issue Boards for Projects to Core
+
+Refactor code to allow multiple issue boards management for projects
+in CE
+---
+ app/controllers/concerns/boards_responses.rb  |  3 +-
+ .../concerns/multiple_boards_actions.rb       | 90 +++++++++++++++++++
+ app/controllers/projects/boards_controller.rb |  2 +-
+ app/finders/boards/visits_finder.rb           | 26 ++++++
+ app/helpers/boards_helper.rb                  | 17 +++-
+ app/models/project.rb                         |  3 +-
+ app/policies/project_policy.rb                |  3 +
+ app/serializers/board_simple_entity.rb        |  1 +
+ app/services/boards/create_service.rb         |  2 +-
+ app/services/boards/destroy_service.rb        | 11 +++
+ app/services/boards/update_service.rb         |  9 ++
+ app/services/boards/visits/latest_service.rb  | 19 ----
+ ...sue-boards-to-core-projects-backend-ce.yml |  5 ++
+ config/routes/project.rb                      |  6 +-
+ locale/gitlab.pot                             |  3 +
+ .../groups/boards_controller_spec.rb          |  2 +-
+ .../projects/boards_controller_spec.rb        |  2 +-
+ .../boards/visits_finder_spec.rb}             | 24 ++---
+ .../nav/sidebar/_project.html.haml_spec.rb    |  2 +-
+ 19 files changed, 188 insertions(+), 42 deletions(-)
+ create mode 100644 app/controllers/concerns/multiple_boards_actions.rb
+ create mode 100644 app/finders/boards/visits_finder.rb
+ create mode 100644 app/services/boards/destroy_service.rb
+ create mode 100644 app/services/boards/update_service.rb
+ delete mode 100644 app/services/boards/visits/latest_service.rb
+ create mode 100644 changelogs/unreleased/53811-issue-boards-to-core-projects-backend-ce.yml
+ rename spec/{services/boards/visits/latest_service_spec.rb => finders/boards/visits_finder_spec.rb} (65%)
+
+diff --git a/app/controllers/concerns/boards_responses.rb b/app/controllers/concerns/boards_responses.rb
+index 7625600e45..9da2f888ea 100644
+--- a/app/controllers/concerns/boards_responses.rb
++++ b/app/controllers/concerns/boards_responses.rb
+@@ -3,8 +3,9 @@
+ module BoardsResponses
+   include Gitlab::Utils::StrongMemoize
+ 
++  # Overridden on EE module
+   def board_params
+-    params.require(:board).permit(:name, :weight, :milestone_id, :assignee_id, label_ids: [])
++    params.require(:board).permit(:name)
+   end
+ 
+   def parent
+diff --git a/app/controllers/concerns/multiple_boards_actions.rb b/app/controllers/concerns/multiple_boards_actions.rb
+new file mode 100644
+index 0000000000..95a6800f55
+--- /dev/null
++++ b/app/controllers/concerns/multiple_boards_actions.rb
+@@ -0,0 +1,90 @@
++# frozen_string_literal: true
++
++module MultipleBoardsActions
++  include Gitlab::Utils::StrongMemoize
++  extend ActiveSupport::Concern
++
++  included do
++    include BoardsActions
++
++    before_action :redirect_to_recent_board, only: [:index]
++    before_action :authenticate_user!, only: [:recent]
++    before_action :authorize_create_board!, only: [:create]
++    before_action :authorize_admin_board!, only: [:create, :update, :destroy]
++  end
++
++  def recent
++    recent_visits = ::Boards::VisitsFinder.new(parent, current_user).latest(4)
++    recent_boards = recent_visits.map(&:board)
++
++    render json: serialize_as_json(recent_boards)
++  end
++
++  def create
++    board = Boards::CreateService.new(parent, current_user, board_params).execute
++
++    respond_to do |format|
++      format.json do
++        if board.persisted?
++          extra_json = { board_path: board_path(board) }
++          render json: serialize_as_json(board).merge(extra_json)
++        else
++          render json: board.errors, status: :unprocessable_entity
++        end
++      end
++    end
++  end
++
++  def update
++    service = Boards::UpdateService.new(parent, current_user, board_params)
++
++    respond_to do |format|
++      format.json do
++        if service.execute(board)
++          extra_json = { board_path: board_path(board) }
++          render json: serialize_as_json(board).merge(extra_json)
++        else
++          render json: board.errors, status: :unprocessable_entity
++        end
++      end
++    end
++  end
++
++  def destroy
++    service = Boards::DestroyService.new(parent, current_user)
++    service.execute(board)
++
++    respond_to do |format|
++      format.json { head :ok }
++      format.html { redirect_to boards_path, status: :found }
++    end
++  end
++
++  private
++
++  def redirect_to_recent_board
++    return if request.format.json? || !parent.multiple_issue_boards_available? || !latest_visited_board
++
++    redirect_to board_path(latest_visited_board.board)
++  end
++
++  def latest_visited_board
++    @latest_visited_board ||= Boards::VisitsFinder.new(parent, current_user).latest
++  end
++
++  def authorize_create_board!
++    check_multiple_group_issue_boards_available! if group?
++  end
++
++  def authorize_admin_board!
++    return render_404 unless can?(current_user, :admin_board, parent)
++  end
++
++  def serializer
++    BoardSerializer.new(current_user: current_user)
++  end
++
++  def serialize_as_json(resource)
++    serializer.represent(resource, serializer: 'board', include_full_project_path: board.group_board?)
++  end
++end
+diff --git a/app/controllers/projects/boards_controller.rb b/app/controllers/projects/boards_controller.rb
+index 95897aaf98..14b02993e6 100644
+--- a/app/controllers/projects/boards_controller.rb
++++ b/app/controllers/projects/boards_controller.rb
+@@ -1,7 +1,7 @@
+ # frozen_string_literal: true
+ 
+ class Projects::BoardsController < Projects::ApplicationController
+-  include BoardsActions
++  include MultipleBoardsActions
+   include IssuableCollections
+ 
+   before_action :check_issues_available!
+diff --git a/app/finders/boards/visits_finder.rb b/app/finders/boards/visits_finder.rb
+new file mode 100644
+index 0000000000..d17a27f72d
+--- /dev/null
++++ b/app/finders/boards/visits_finder.rb
+@@ -0,0 +1,26 @@
++# frozen_string_literal: true
++
++module Boards
++  class VisitsFinder
++    attr_accessor :params, :current_user, :parent
++
++    def initialize(parent, current_user)
++      @current_user = current_user
++      @parent = parent
++    end
++
++    def execute(count = nil)
++      return unless current_user
++
++      recent_visit_model.latest(current_user, parent, count: count)
++    end
++
++    alias_method :latest, :execute
++
++    private
++
++    def recent_visit_model
++      parent.is_a?(Group) ? BoardGroupRecentVisit : BoardProjectRecentVisit
++    end
++  end
++end
+diff --git a/app/helpers/boards_helper.rb b/app/helpers/boards_helper.rb
+index c5130b430b..8ef68018d2 100644
+--- a/app/helpers/boards_helper.rb
++++ b/app/helpers/boards_helper.rb
+@@ -15,7 +15,8 @@ def board_data
+       root_path: root_path,
+       bulk_update_path: @bulk_issues_path,
+       default_avatar: image_path(default_avatar),
+-      time_tracking_limit_to_hours: Gitlab::CurrentSettings.time_tracking_limit_to_hours.to_s
++      time_tracking_limit_to_hours: Gitlab::CurrentSettings.time_tracking_limit_to_hours.to_s,
++      recent_boards_endpoint: recent_boards_path
+     }
+   end
+ 
+@@ -87,6 +88,18 @@ def board_sidebar_user_data
+   end
+ 
+   def boards_link_text
+-    s_("IssueBoards|Board")
++    if current_board_parent.multiple_issue_boards_available?
++      s_("IssueBoards|Boards")
++    else
++      s_("IssueBoards|Board")
++    end
++  end
++
++  def recent_boards_path
++    recent_project_boards_path(@project) if current_board_parent.is_a?(Project)
++  end
++
++  def current_board_json
++    board.to_json
+   end
+ end
+diff --git a/app/models/project.rb b/app/models/project.rb
+index 351d08eaf6..c642b65f67 100644
+--- a/app/models/project.rb
++++ b/app/models/project.rb
+@@ -1949,9 +1949,8 @@ def default_merge_request_target
+     end
+   end
+ 
+-  # Overridden on EE module
+   def multiple_issue_boards_available?
+-    false
++    true
+   end
+ 
+   def full_path_before_last_save
+diff --git a/app/policies/project_policy.rb b/app/policies/project_policy.rb
+index 08bfe5d14e..3c9ffbb206 100644
+--- a/app/policies/project_policy.rb
++++ b/app/policies/project_policy.rb
+@@ -196,6 +196,7 @@ class ProjectPolicy < BasePolicy
+   rule { guest & can?(:read_container_image) }.enable :build_read_container_image
+ 
+   rule { can?(:reporter_access) }.policy do
++    enable :admin_board
+     enable :download_code
+     enable :read_statistics
+     enable :download_wiki_code
+@@ -240,6 +241,7 @@ class ProjectPolicy < BasePolicy
+   rule { can?(:developer_access) & can?(:create_issue) }.enable :import_issues
+ 
+   rule { can?(:developer_access) }.policy do
++    enable :admin_board
+     enable :admin_merge_request
+     enable :admin_milestone
+     enable :update_merge_request
+@@ -266,6 +268,7 @@ class ProjectPolicy < BasePolicy
+   end
+ 
+   rule { can?(:maintainer_access) }.policy do
++    enable :admin_board
+     enable :push_to_delete_protected_branch
+     enable :update_project_snippet
+     enable :update_environment
+diff --git a/app/serializers/board_simple_entity.rb b/app/serializers/board_simple_entity.rb
+index f297d993e2..029d3808e7 100644
+--- a/app/serializers/board_simple_entity.rb
++++ b/app/serializers/board_simple_entity.rb
+@@ -2,4 +2,5 @@
+ 
+ class BoardSimpleEntity < Grape::Entity
+   expose :id
++  expose :name
+ end
+diff --git a/app/services/boards/create_service.rb b/app/services/boards/create_service.rb
+index 1b796cef3e..dd9358913f 100644
+--- a/app/services/boards/create_service.rb
++++ b/app/services/boards/create_service.rb
+@@ -9,7 +9,7 @@ def execute
+     private
+ 
+     def can_create_board?
+-      parent.boards.empty?
++      parent.boards.empty? || parent.multiple_issue_boards_available?
+     end
+ 
+     def create_board!
+diff --git a/app/services/boards/destroy_service.rb b/app/services/boards/destroy_service.rb
+new file mode 100644
+index 0000000000..ea0c1394aa
+--- /dev/null
++++ b/app/services/boards/destroy_service.rb
+@@ -0,0 +1,11 @@
++# frozen_string_literal: true
++
++module Boards
++  class DestroyService < Boards::BaseService
++    def execute(board)
++      return false if parent.boards.size == 1
++
++      board.destroy
++    end
++  end
++end
+diff --git a/app/services/boards/update_service.rb b/app/services/boards/update_service.rb
+new file mode 100644
+index 0000000000..88aced01cc
+--- /dev/null
++++ b/app/services/boards/update_service.rb
+@@ -0,0 +1,9 @@
++# frozen_string_literal: true
++
++module Boards
++  class UpdateService < Boards::BaseService
++    def execute(board)
++      board.update(params)
++    end
++  end
++end
+diff --git a/app/services/boards/visits/latest_service.rb b/app/services/boards/visits/latest_service.rb
+deleted file mode 100644
+index d13e25b4f1..0000000000
+--- a/app/services/boards/visits/latest_service.rb
++++ /dev/null
+@@ -1,19 +0,0 @@
+-# frozen_string_literal: true
+-
+-module Boards
+-  module Visits
+-    class LatestService < Boards::BaseService
+-      def execute
+-        return unless current_user
+-
+-        recent_visit_model.latest(current_user, parent, count: params[:count])
+-      end
+-
+-      private
+-
+-      def recent_visit_model
+-        parent.is_a?(Group) ? BoardGroupRecentVisit : BoardProjectRecentVisit
+-      end
+-    end
+-  end
+-end
+diff --git a/changelogs/unreleased/53811-issue-boards-to-core-projects-backend-ce.yml b/changelogs/unreleased/53811-issue-boards-to-core-projects-backend-ce.yml
+new file mode 100644
+index 0000000000..d8fbd7ec36
+--- /dev/null
++++ b/changelogs/unreleased/53811-issue-boards-to-core-projects-backend-ce.yml
+@@ -0,0 +1,5 @@
++---
++title: Move Multiple Issue Boards for Projects to Core
++merge_request:
++author:
++type: added
+diff --git a/config/routes/project.rb b/config/routes/project.rb
+index 0e8e089c78..4d38fd0988 100644
+--- a/config/routes/project.rb
++++ b/config/routes/project.rb
+@@ -155,7 +155,11 @@
+           end
+         end
+ 
+-        resources :boards, only: [:index, :show], constraints: { id: /\d+/ }
++        resources :boards, only: [:index, :show, :create, :update, :destroy], constraints: { id: /\d+/ } do
++          collection do
++            get :recent
++          end
++        end
+         resources :releases, only: [:index]
+         resources :forks, only: [:index, :new, :create]
+         resources :group_links, only: [:index, :create, :update, :destroy], constraints: { id: /\d+/ }
+diff --git a/locale/gitlab.pot b/locale/gitlab.pot
+index 5245bfffb0..e63ccbc39c 100644
+--- a/locale/gitlab.pot
++++ b/locale/gitlab.pot
+@@ -5479,6 +5479,9 @@ msgstr ""
+ msgid "IssueBoards|Board"
+ msgstr ""
+ 
++msgid "IssueBoards|Boards"
++msgstr ""
++
+ msgid "Issues"
+ msgstr ""
+ 
+diff --git a/spec/controllers/groups/boards_controller_spec.rb b/spec/controllers/groups/boards_controller_spec.rb
+index 881d0018b7..5e0f64ccca 100644
+--- a/spec/controllers/groups/boards_controller_spec.rb
++++ b/spec/controllers/groups/boards_controller_spec.rb
+@@ -59,7 +59,7 @@
+       it 'return an array with one group board' do
+         create(:board, group: group)
+ 
+-        expect(Boards::Visits::LatestService).not_to receive(:new)
++        expect(Boards::VisitsFinder).not_to receive(:new)
+ 
+         list_boards format: :json
+ 
+diff --git a/spec/controllers/projects/boards_controller_spec.rb b/spec/controllers/projects/boards_controller_spec.rb
+index ae85000b4e..c07afc57ae 100644
+--- a/spec/controllers/projects/boards_controller_spec.rb
++++ b/spec/controllers/projects/boards_controller_spec.rb
+@@ -65,7 +65,7 @@
+       it 'returns a list of project boards' do
+         create_list(:board, 2, project: project)
+ 
+-        expect(Boards::Visits::LatestService).not_to receive(:new)
++        expect(Boards::VisitsFinder).not_to receive(:new)
+ 
+         list_boards format: :json
+ 
+diff --git a/spec/services/boards/visits/latest_service_spec.rb b/spec/finders/boards/visits_finder_spec.rb
+similarity index 65%
+rename from spec/services/boards/visits/latest_service_spec.rb
+rename to spec/finders/boards/visits_finder_spec.rb
+index c8a0a5e424..4d40f4826f 100644
+--- a/spec/services/boards/visits/latest_service_spec.rb
++++ b/spec/finders/boards/visits_finder_spec.rb
+@@ -2,32 +2,32 @@
+ 
+ require 'spec_helper'
+ 
+-describe Boards::Visits::LatestService do
+-  describe '#execute' do
++describe Boards::VisitsFinder do
++  describe '#latest' do
+     let(:user) { create(:user) }
+ 
+     context 'when a project board' do
+       let(:project)       { create(:project) }
+       let(:project_board) { create(:board, project: project) }
+ 
+-      subject(:service) { described_class.new(project_board.parent, user) }
++      subject(:finder) { described_class.new(project_board.parent, user) }
+ 
+       it 'returns nil when there is no user' do
+-        service.current_user = nil
++        finder.current_user = nil
+ 
+-        expect(service.execute).to eq nil
++        expect(finder.execute).to eq nil
+       end
+ 
+       it 'queries for most recent visit' do
+         expect(BoardProjectRecentVisit).to receive(:latest).once
+ 
+-        service.execute
++        finder.execute
+       end
+ 
+       it 'queries for last N visits' do
+         expect(BoardProjectRecentVisit).to receive(:latest).with(user, project, count: 5).once
+ 
+-        described_class.new(project_board.parent, user, count: 5).execute
++        described_class.new(project_board.parent, user).latest(5)
+       end
+     end
+ 
+@@ -35,24 +35,24 @@
+       let(:group)       { create(:group) }
+       let(:group_board) { create(:board, group: group) }
+ 
+-      subject(:service) { described_class.new(group_board.parent, user) }
++      subject(:finder) { described_class.new(group_board.parent, user) }
+ 
+       it 'returns nil when there is no user' do
+-        service.current_user = nil
++        finder.current_user = nil
+ 
+-        expect(service.execute).to eq nil
++        expect(finder.execute).to eq nil
+       end
+ 
+       it 'queries for most recent visit' do
+         expect(BoardGroupRecentVisit).to receive(:latest).once
+ 
+-        service.execute
++        finder.latest
+       end
+ 
+       it 'queries for last N visits' do
+         expect(BoardGroupRecentVisit).to receive(:latest).with(user, group, count: 5).once
+ 
+-        described_class.new(group_board.parent, user, count: 5).execute
++        described_class.new(group_board.parent, user).latest(5)
+       end
+     end
+   end
+diff --git a/spec/views/layouts/nav/sidebar/_project.html.haml_spec.rb b/spec/views/layouts/nav/sidebar/_project.html.haml_spec.rb
+index c6c10001bc..2befbcb337 100644
+--- a/spec/views/layouts/nav/sidebar/_project.html.haml_spec.rb
++++ b/spec/views/layouts/nav/sidebar/_project.html.haml_spec.rb
+@@ -17,7 +17,7 @@
+     it 'has board tab' do
+       render
+ 
+-      expect(rendered).to have_css('a[title="Board"]')
++      expect(rendered).to have_css('a[title="Boards"]')
+     end
+   end
+ 

@@ -1,0 +1,630 @@
+From 98f8224c1948fd8440f13f84f19a0adb78171fe4 Mon Sep 17 00:00:00 2001
+From: Yi Ming <ofseed@foxmail.com>
+Date: Sun, 3 Aug 2025 23:17:44 +0800
+Subject: [PATCH] feat(lua): `vim.pos`/`vim.range`
+
+---
+ runtime/doc/lua.txt                | 119 ++++++++++++++++++++++++
+ runtime/doc/news.txt               |   1 +
+ runtime/lua/vim/_editor.lua        |   2 +
+ runtime/lua/vim/_meta.lua          |   2 +
+ runtime/lua/vim/pos.lua            | 121 +++++++++++++++++++++++++
+ runtime/lua/vim/range.lua          | 141 +++++++++++++++++++++++++++++
+ src/gen/gen_vimdoc.lua             |   4 +
+ test/functional/lua/pos_spec.lua   |  70 ++++++++++++++
+ test/functional/lua/range_spec.lua |  63 +++++++++++++
+ 9 files changed, 523 insertions(+)
+ create mode 100644 runtime/lua/vim/pos.lua
+ create mode 100644 runtime/lua/vim/range.lua
+ create mode 100644 test/functional/lua/pos_spec.lua
+ create mode 100644 test/functional/lua/range_spec.lua
+
+diff --git a/runtime/doc/lua.txt b/runtime/doc/lua.txt
+index 794df90d9..bb73ef673 100644
+--- a/runtime/doc/lua.txt
++++ b/runtime/doc/lua.txt
+@@ -3949,6 +3949,125 @@ vim.net.request({url}, {opts}, {on_response})              *vim.net.request()*
+                        success.
+ 
+ 
++==============================================================================
++Lua module: vim.pos                                                  *vim.pos*
++
++WARNING: This module is under experimental support. Its semantics are not yet
++finalized, and the stability of this API is not guaranteed. Avoid using it
++outside of Nvim. You may subscribe to or participate in the tracking issue
++https://github.com/neovim/neovim/issues/25509 to stay updated or contribute to
++its development.
++
++Built on |vim.Pos| objects, this module offers operations that support
++comparisons and conversions between various types of positions.
++
++
++*vim.Pos*
++    Represents a well-defined position.
++
++    A |vim.Pos| object contains the {row} and {col} coordinates of a position.
++    To create a new |vim.Pos| object, call `vim.pos()`.
++
++    Example: >lua
++        local pos1 = vim.pos(3, 5)
++        local pos2 = vim.pos(4, 0)
++
++        -- Operators are overloaded for comparing two `vim.Pos` objects.
++        if pos1 < pos2 then
++          print("pos1 comes before pos2")
++        end
++
++        if pos1 ~= pos2 then
++          print("pos1 and pos2 are different positions")
++        end
++<
++
++    It may include optional fields that enable additional capabilities, such
++    as format conversions.
++
++    Fields: ~
++      • {row}   (`integer`) 0-based byte index.
++      • {col}   (`integer`) 0-based byte index.
++      • {buf}?  (`integer`) Optional buffer handle.
++
++                When specified, it indicates that this position belongs to a
++                specific buffer. This field is required when performing
++                position conversions.
++
++==============================================================================
++Lua module: vim.range                                              *vim.range*
++
++WARNING: This module is under experimental support. Its semantics are not yet
++finalized, and the stability of this API is not guaranteed. Avoid using it
++outside of Nvim. You may subscribe to or participate in the tracking issue
++https://github.com/neovim/neovim/issues/25509 to stay updated or contribute to
++its development.
++
++Built on |vim.Range| objects, this module offers operations that support
++comparisons as well as containment checks (for positions and for other
++ranges). conversions between various types of ranges is also provided.
++
++
++*vim.Range*
++    Represents a well-defined range.
++
++    A |vim.Range| object contains a {start} and a {end_} position(see
++    |vim.Pos|). Note that the {end_} position is exclusive. To create a new
++    |vim.Range| object, call `vim.range()`.
++
++    Example: >lua
++        local pos1 = vim.pos(3, 5)
++        local pos2 = vim.pos(4, 0)
++
++        -- Create a range from two positions.
++        local range1 = vim.range(pos1, pos2)
++        -- Or createa range from four integers representing start and end positions.
++        local range2 = vim.range(3, 5, 4, 0)
++
++        -- Because `vim.Range` is end exclusive, `range1` and `range2` both represent
++        -- a range starting at the row 3, column 5 and ending at where the row 3 ends.
++
++        -- Operators are overloaded for comparing two `vim.Pos` objects.
++        if range1 == range2 then
++          print("range1 and range2 are the same range")
++        end
++<
++
++    It may include optional fields that enable additional capabilities, such
++    as format conversions. Note that the {start} and {end_} positions need to
++    have the same optional fields.
++
++    Fields: ~
++      • {start}      (`vim.Pos`) Start position.
++      • {end_}       (`vim.Pos`) End position, exclusive.
++      • {has}        (`fun(outer: vim.Range, inner: vim.Range): boolean`) See
++                     |Range:has()|.
++      • {intersect}  (`fun(r1: vim.Range, r2: vim.Range): vim.Range?`) See
++                     |Range:intersect()|.
++
++
++Range:has({outer}, {inner})                                      *Range:has()*
++    Checks whether {outer} range contains {inner} range.
++
++    Parameters: ~
++      • {outer}  (`vim.Range`) See |vim.Range|.
++      • {inner}  (`vim.Range`) See |vim.Range|.
++
++    Return: ~
++        (`boolean`) `true` if {outer} range fully contains {inner} range.
++
++Range:intersect({r1}, {r2})                                *Range:intersect()*
++    Computes the common range shared by the given ranges.
++
++    Parameters: ~
++      • {r1}  (`vim.Range`) First range to intersect. See |vim.Range|.
++      • {r2}  (`vim.Range`) Second range to intersect. See |vim.Range|.
++
++    Return: ~
++        (`vim.Range?`) range that is present inside both `r1` and `r2`. `nil`
++        if such range does not exist. See |vim.Range|.
++
++
+ ==============================================================================
+ Lua module: vim.re                                                    *vim.re*
+ 
+diff --git a/runtime/doc/news.txt b/runtime/doc/news.txt
+index 33efc3ac4..af595427d 100644
+--- a/runtime/doc/news.txt
++++ b/runtime/doc/news.txt
+@@ -241,6 +241,7 @@ LUA
+ • Built-in plugin manager |vim.pack|
+ • |vim.list.unique()| to deduplicate lists.
+ • |vim.list.bisect()| for binary search.
++• Experimental `vim.pos` and `vim.range` for Position/Range abstraction.
+ 
+ OPTIONS
+ 
+diff --git a/runtime/lua/vim/_editor.lua b/runtime/lua/vim/_editor.lua
+index 50fac8cf9..78e264a2a 100644
+--- a/runtime/lua/vim/_editor.lua
++++ b/runtime/lua/vim/_editor.lua
+@@ -42,6 +42,8 @@ for k, v in pairs({
+   pack = true,
+   _watch = true,
+   net = true,
++  pos = true,
++  range = true,
+ }) do
+   vim._submodules[k] = v
+ end
+diff --git a/runtime/lua/vim/_meta.lua b/runtime/lua/vim/_meta.lua
+index 9d3daa20c..02f886cf9 100644
+--- a/runtime/lua/vim/_meta.lua
++++ b/runtime/lua/vim/_meta.lua
+@@ -21,6 +21,8 @@ vim.keymap = require('vim.keymap')
+ vim.loader = require('vim.loader')
+ vim.lsp = require('vim.lsp')
+ vim.pack = require('vim.pack')
++vim.pos = require('vim.pos')
++vim.range = require('vim.range')
+ vim.re = require('vim.re')
+ vim.secure = require('vim.secure')
+ vim.snippet = require('vim.snippet')
+diff --git a/runtime/lua/vim/pos.lua b/runtime/lua/vim/pos.lua
+new file mode 100644
+index 000000000..7bc57eaa2
+--- /dev/null
++++ b/runtime/lua/vim/pos.lua
+@@ -0,0 +1,121 @@
++---@brief
++---
++--- WARNING: This module is under experimental support.
++--- Its semantics are not yet finalized,
++--- and the stability of this API is not guaranteed.
++--- Avoid using it outside of Nvim.
++--- You may subscribe to or participate in the tracking issue
++--- https://github.com/neovim/neovim/issues/25509
++--- to stay updated or contribute to its development.
++---
++--- Built on |vim.Pos| objects, this module offers operations
++--- that support comparisons and conversions between various types of positions.
++
++local validate = vim.validate
++
++--- Represents a well-defined position.
++---
++--- A |vim.Pos| object contains the {row} and {col} coordinates of a position.
++--- To create a new |vim.Pos| object, call `vim.pos()`.
++---
++--- Example:
++--- ```lua
++--- local pos1 = vim.pos(3, 5)
++--- local pos2 = vim.pos(4, 0)
++---
++--- -- Operators are overloaded for comparing two `vim.Pos` objects.
++--- if pos1 < pos2 then
++---   print("pos1 comes before pos2")
++--- end
++---
++--- if pos1 ~= pos2 then
++---   print("pos1 and pos2 are different positions")
++--- end
++--- ```
++---
++--- It may include optional fields that enable additional capabilities,
++--- such as format conversions.
++---
++---@class vim.Pos
++---@field row integer 0-based byte index.
++---@field col integer 0-based byte index.
++---
++--- Optional buffer handle.
++---
++--- When specified, it indicates that this position belongs to a specific buffer.
++--- This field is required when performing position conversions.
++---@field buf? integer
++local Pos = {}
++Pos.__index = Pos
++
++---@class vim.Pos.Optional
++---@inlinedoc
++---@field buf? integer
++
++---@package
++---@param row integer
++---@param col integer
++---@param opts vim.Pos.Optional
++function Pos.new(row, col, opts)
++  validate('row', row, 'number')
++  validate('col', col, 'number')
++  validate('opts', opts, 'table', true)
++
++  opts = opts or {}
++
++  ---@type vim.Pos
++  local self = setmetatable({
++    row = row,
++    col = col,
++    buf = opts.buf,
++  }, Pos)
++
++  return self
++end
++
++---@param p1 vim.Pos First position to compare.
++---@param p2 vim.Pos Second position to compare.
++---@return integer
++--- 1: a > b
++--- 0: a == b
++--- -1: a < b
++local function cmp_pos(p1, p2)
++  if p1.row == p2.row then
++    if p1.col > p2.col then
++      return 1
++    elseif p1.col < p2.col then
++      return -1
++    else
++      return 0
++    end
++  elseif p1.row > p2.row then
++    return 1
++  end
++
++  return -1
++end
++
++---@private
++function Pos.__lt(...)
++  return cmp_pos(...) == -1
++end
++
++---@private
++function Pos.__le(...)
++  return cmp_pos(...) ~= 1
++end
++
++---@private
++function Pos.__eq(...)
++  return cmp_pos(...) == 0
++end
++
++-- Overload `Range.new` to allow calling this module as a function.
++setmetatable(Pos, {
++  __call = function(_, ...)
++    return Pos.new(...)
++  end,
++})
++---@cast Pos +fun(row: integer, col: integer, opts: vim.Pos.Optional?): vim.Pos
++
++return Pos
+diff --git a/runtime/lua/vim/range.lua b/runtime/lua/vim/range.lua
+new file mode 100644
+index 000000000..8302c7433
+--- /dev/null
++++ b/runtime/lua/vim/range.lua
+@@ -0,0 +1,141 @@
++---@brief
++---
++--- WARNING: This module is under experimental support.
++--- Its semantics are not yet finalized,
++--- and the stability of this API is not guaranteed.
++--- Avoid using it outside of Nvim.
++--- You may subscribe to or participate in the tracking issue
++--- https://github.com/neovim/neovim/issues/25509
++--- to stay updated or contribute to its development.
++---
++--- Built on |vim.Range| objects, this module offers operations
++--- that support comparisons as well as containment checks
++--- (for positions and for other ranges).
++--- conversions between various types of ranges is also provided.
++
++local validate = vim.validate
++
++--- Represents a well-defined range.
++---
++--- A |vim.Range| object contains a {start} and a {end_} position(see |vim.Pos|).
++--- Note that the {end_} position is exclusive.
++--- To create a new |vim.Range| object, call `vim.range()`.
++---
++--- Example:
++--- ```lua
++--- local pos1 = vim.pos(3, 5)
++--- local pos2 = vim.pos(4, 0)
++---
++--- -- Create a range from two positions.
++--- local range1 = vim.range(pos1, pos2)
++--- -- Or createa range from four integers representing start and end positions.
++--- local range2 = vim.range(3, 5, 4, 0)
++---
++--- -- Because `vim.Range` is end exclusive, `range1` and `range2` both represent
++--- -- a range starting at the row 3, column 5 and ending at where the row 3 ends.
++---
++--- -- Operators are overloaded for comparing two `vim.Pos` objects.
++--- if range1 == range2 then
++---   print("range1 and range2 are the same range")
++--- end
++--- ```
++---
++--- It may include optional fields that enable additional capabilities,
++--- such as format conversions. Note that the {start} and {end_} positions
++--- need to have the same optional fields.
++---
++---@class vim.Range
++---@field start vim.Pos Start position.
++---@field end_ vim.Pos End position, exclusive.
++local Range = {}
++Range.__index = Range
++
++---@package
++---@overload fun(self: vim.Range, start: vim.Pos, end_: vim.Pos): vim.Range
++---@overload fun(self: vim.Range, start_row: integer, start_col: integer, end_row: integer, end_col: integer, opts?: vim.Pos.Optional): vim.Range
++function Range.new(...)
++  ---@type vim.Pos, vim.Pos, vim.Pos.Optional
++  local start, end_
++
++  local nargs = select('#', ...)
++  if nargs == 2 then
++    ---@type vim.Pos, vim.Pos
++    start, end_ = ...
++    validate('start', start, 'table')
++    validate('end_', end_, 'table')
++
++    if start.buf ~= end_.buf then
++      error('start and end positions must belong to the same buffer')
++    end
++  elseif nargs == 4 or nargs == 5 then
++    ---@type integer, integer, integer, integer, vim.Pos.Optional
++    local start_row, start_col, end_row, end_col, opts = ...
++    start, end_ = vim.pos(start_row, start_col, opts), vim.pos(end_row, end_col, opts)
++  else
++    error('invalid parameters')
++  end
++
++  ---@type vim.Range
++  local self = setmetatable({
++    start = start,
++    end_ = end_,
++  }, Range)
++
++  return self
++end
++
++---@private
++---@param r1 vim.Range
++---@param r2 vim.Range
++function Range.__lt(r1, r2)
++  return r1.end_ < r2.start
++end
++
++---@private
++---@param r1 vim.Range
++---@param r2 vim.Range
++function Range.__le(r1, r2)
++  return r1.end_ <= r2.start
++end
++
++---@private
++---@param r1 vim.Range
++---@param r2 vim.Range
++function Range.__eq(r1, r2)
++  return r1.start == r2.start and r1.end_ == r2.end_
++end
++
++--- Checks whether {outer} range contains {inner} range.
++---
++---@param outer vim.Range
++---@param inner vim.Range
++---@return boolean `true` if {outer} range fully contains {inner} range.
++function Range.has(outer, inner)
++  return outer.start <= inner.start and outer.end_ >= inner.end_
++end
++
++--- Computes the common range shared by the given ranges.
++---
++---@param r1 vim.Range First range to intersect.
++---@param r2 vim.Range Second range to intersect
++---@return vim.Range? range that is present inside both `r1` and `r2`.
++---                   `nil` if such range does not exist.
++function Range.intersect(r1, r2)
++  if r1.end_ <= r2.start or r1.start >= r2.end_ then
++    return nil
++  end
++  local rs = r1.start <= r2.start and r2 or r1
++  local re = r1.end_ >= r2.end_ and r2 or r1
++  return Range.new(rs.start, re.end_)
++end
++
++-- Overload `Range.new` to allow calling this module as a function.
++setmetatable(Range, {
++  __call = function(_, ...)
++    return Range.new(...)
++  end,
++})
++---@cast Range +fun(start: vim.Pos, end_: vim.Pos): vim.Range
++---@cast Range +fun(start_row: integer, start_col: integer, end_row: integer, end_col: integer, opts?: vim.Pos.Optional): vim.Range
++
++return Range
+diff --git a/src/gen/gen_vimdoc.lua b/src/gen/gen_vimdoc.lua
+index bc53d2cf7..c2692793c 100755
+--- a/src/gen/gen_vimdoc.lua
++++ b/src/gen/gen_vimdoc.lua
+@@ -155,6 +155,8 @@ local config = {
+       'lpeg.lua',
+       'mpack.lua',
+       'net.lua',
++      'pos.lua',
++      'range.lua',
+       're.lua',
+       'regex.lua',
+       'secure.lua',
+@@ -193,6 +195,8 @@ local config = {
+       'runtime/lua/vim/keymap.lua',
+       'runtime/lua/vim/loader.lua',
+       'runtime/lua/vim/net.lua',
++      'runtime/lua/vim/pos.lua',
++      'runtime/lua/vim/range.lua',
+       'runtime/lua/vim/secure.lua',
+       'runtime/lua/vim/shared.lua',
+       'runtime/lua/vim/snippet.lua',
+diff --git a/test/functional/lua/pos_spec.lua b/test/functional/lua/pos_spec.lua
+new file mode 100644
+index 000000000..cb22d100b
+--- /dev/null
++++ b/test/functional/lua/pos_spec.lua
+@@ -0,0 +1,70 @@
++-- Test suite for vim.pos
++local t = require('test.testutil')
++local n = require('test.functional.testnvim')()
++local eq = t.eq
++
++local clear = n.clear
++local exec_lua = n.exec_lua
++
++describe('vim.pos', function()
++  before_each(clear)
++  after_each(clear)
++
++  it('creates a position with or without optional fields', function()
++    local pos = exec_lua(function()
++      return vim.pos(3, 5)
++    end)
++    eq(3, pos.row)
++    eq(5, pos.col)
++    eq(nil, pos.buf)
++
++    local buf = exec_lua(function()
++      return vim.api.nvim_create_buf(false, true)
++    end)
++    pos = exec_lua(function()
++      return vim.pos(3, 5, { buf = buf })
++    end)
++    eq(3, pos.row)
++    eq(5, pos.col)
++    eq(buf, pos.buf)
++  end)
++
++  it('supports comparisons by overloaded mathmatical operators', function()
++    eq(
++      true,
++      exec_lua(function()
++        return vim.pos(3, 5) < vim.pos(4, 5)
++      end)
++    )
++    eq(
++      true,
++      exec_lua(function()
++        return vim.pos(3, 5) <= vim.pos(3, 6)
++      end)
++    )
++    eq(
++      true,
++      exec_lua(function()
++        return vim.pos(3, 5) > vim.pos(2, 5)
++      end)
++    )
++    eq(
++      true,
++      exec_lua(function()
++        return vim.pos(3, 5) >= vim.pos(3, 5)
++      end)
++    )
++    eq(
++      true,
++      exec_lua(function()
++        return vim.pos(3, 5) == vim.pos(3, 5)
++      end)
++    )
++    eq(
++      true,
++      exec_lua(function()
++        return vim.pos(3, 5) ~= vim.pos(3, 6)
++      end)
++    )
++  end)
++end)
+diff --git a/test/functional/lua/range_spec.lua b/test/functional/lua/range_spec.lua
+new file mode 100644
+index 000000000..fea8aa3e8
+--- /dev/null
++++ b/test/functional/lua/range_spec.lua
+@@ -0,0 +1,63 @@
++-- Test suite for vim.range
++local t = require('test.testutil')
++local n = require('test.functional.testnvim')()
++local eq = t.eq
++
++local clear = n.clear
++local exec_lua = n.exec_lua
++
++describe('vim.range', function()
++  before_each(clear)
++  after_each(clear)
++
++  it('creates a range with or without optional fields', function()
++    local range = exec_lua(function()
++      return vim.range(3, 5, 4, 6)
++    end)
++    eq(3, range.start.row)
++    eq(5, range.start.col)
++    eq(4, range.end_.row)
++    eq(6, range.end_.col)
++    eq(nil, range.start.buf)
++    eq(nil, range.end_.buf)
++    local buf = exec_lua(function()
++      return vim.api.nvim_create_buf(false, true)
++    end)
++    range = exec_lua(function()
++      return vim.range(3, 5, 4, 6, { buf = buf })
++    end)
++    eq(buf, range.start.buf)
++    eq(buf, range.end_.buf)
++  end)
++
++  it('create a range from two positions when optional fields are not matched', function()
++    local range = exec_lua(function()
++      return vim.range(vim.pos(3, 5), vim.pos(4, 6))
++    end)
++    eq(3, range.start.row)
++    eq(5, range.start.col)
++    eq(4, range.end_.row)
++    eq(6, range.end_.col)
++    eq(nil, range.start.buf)
++    eq(nil, range.end_.buf)
++
++    local buf1 = exec_lua(function()
++      return vim.api.nvim_create_buf(false, true)
++    end)
++    range = exec_lua(function()
++      return vim.range(vim.pos(3, 5, { buf = buf1 }), vim.pos(4, 6, { buf = buf1 }))
++    end)
++    eq(buf1, range.start.buf)
++    eq(buf1, range.end_.buf)
++
++    local buf2 = exec_lua(function()
++      return vim.api.nvim_create_buf(false, true)
++    end)
++    local success = exec_lua(function()
++      return pcall(function()
++        return vim.range(vim.pos(3, 5, { buf = buf1 }), vim.pos(4, 6, { buf = buf2 }))
++      end)
++    end)
++    eq(success, false)
++  end)
++end)

@@ -1,0 +1,1477 @@
+From 71ac4db335e00b03b27d2c4aa5ab90c083a3a3e7 Mon Sep 17 00:00:00 2001
+From: "Justin M. Keyes" <justinkz@gmail.com>
+Date: Wed, 15 Apr 2026 13:31:17 -0400
+Subject: [PATCH] refactor(api): rename "window" to "win" (positional
+ parameters) #39083
+
+continues d0af4cd9094f.
+
+This commit renames positional parameters. This is only "cosmetic", but
+is intended to make it extra clear which name is preferred, since people
+often copy existing code despite the guidelines in `:help dev-naming`.
+---
+ runtime/doc/api.txt               | 156 ++++++++++----------
+ runtime/doc/lsp.txt               |   8 +-
+ runtime/lua/vim/_meta/api.gen.lua |  92 ++++++------
+ runtime/lua/vim/lsp/util.lua      |  28 ++--
+ src/nvim/api/vim.c                |  12 +-
+ src/nvim/api/win_config.c         |  36 ++---
+ src/nvim/api/window.c             | 238 +++++++++++++++---------------
+ test/functional/lua/api_spec.lua  |   4 +-
+ 8 files changed, 287 insertions(+), 287 deletions(-)
+
+diff --git a/runtime/doc/api.txt b/runtime/doc/api.txt
+index 3c972ea28..b4d27a995 100644
+--- a/runtime/doc/api.txt
++++ b/runtime/doc/api.txt
+@@ -1518,7 +1518,7 @@ nvim_set_current_tabpage({tabpage})               *nvim_set_current_tabpage()*
+     Parameters: ~
+       • {tabpage}  (`integer`) |tab-ID| to focus
+ 
+-nvim_set_current_win({window})                        *nvim_set_current_win()*
++nvim_set_current_win({win})                           *nvim_set_current_win()*
+     Navigates to the given window (and tabpage, implicitly).
+ 
+     Attributes: ~
+@@ -1526,7 +1526,7 @@ nvim_set_current_win({window})                        *nvim_set_current_win()*
+         Since: 0.1.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID| to focus
++      • {win}  (`integer`) |window-ID| to focus
+ 
+ nvim_set_hl({ns_id}, {name}, {val})                            *nvim_set_hl()*
+     Sets a highlight group. By default, replaces the entire definition (e.g.
+@@ -3994,7 +3994,7 @@ nvim_open_win({buf}, {enter}, {config})                      *nvim_open_win()*
+     Return: ~
+         (`integer`) |window-ID|, or 0 on error
+ 
+-nvim_win_get_config({window})                          *nvim_win_get_config()*
++nvim_win_get_config({win})                             *nvim_win_get_config()*
+     Gets window configuration in the form of a dict which can be passed as the
+     `config` parameter of |nvim_open_win()|.
+ 
+@@ -4004,13 +4004,13 @@ nvim_win_get_config({window})                          *nvim_win_get_config()*
+         Since: 0.4.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
++      • {win}  (`integer`) |window-ID|, or 0 for current window
+ 
+     Return: ~
+         (`vim.api.keyset.win_config`) Map defining the window configuration,
+         see |nvim_open_win()|
+ 
+-nvim_win_set_config({window}, {config})                *nvim_win_set_config()*
++nvim_win_set_config({win}, {config})                   *nvim_win_set_config()*
+     Reconfigures the layout and properties of a window.
+     • Updates only the given keys; unspecified (`nil`) keys will not be
+       changed.
+@@ -4028,7 +4028,7 @@ nvim_win_set_config({window}, {config})                *nvim_win_set_config()*
+         Since: 0.4.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
++      • {win}     (`integer`) |window-ID|, or 0 for current window
+       • {config}  (`vim.api.keyset.win_config`) Map defining the window
+                   configuration, see |nvim_open_win()|
+ 
+@@ -4039,7 +4039,7 @@ nvim_win_set_config({window}, {config})                *nvim_win_set_config()*
+ ==============================================================================
+ Window Functions                                                  *api-window*
+ 
+-nvim_win_call({window}, {fun})                               *nvim_win_call()*
++nvim_win_call({win}, {fun})                                  *nvim_win_call()*
+     Calls a function with window as temporary current window.
+ 
+     Attributes: ~
+@@ -4047,9 +4047,9 @@ nvim_win_call({window}, {fun})                               *nvim_win_call()*
+         Since: 0.5.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
+-      • {fun}     (`function`) Function to call inside the window (currently
+-                  Lua callable only)
++      • {win}  (`integer`) |window-ID|, or 0 for current window
++      • {fun}  (`function`) Function to call inside the window (currently Lua
++               callable only)
+ 
+     Return: ~
+         (`any`) Return value of function.
+@@ -4058,7 +4058,7 @@ nvim_win_call({window}, {fun})                               *nvim_win_call()*
+       • |win_execute()|
+       • |nvim_buf_call()|
+ 
+-nvim_win_close({window}, {force})                           *nvim_win_close()*
++nvim_win_close({win}, {force})                              *nvim_win_close()*
+     Closes the window (like |:close| with a |window-ID|).
+ 
+     Attributes: ~
+@@ -4066,34 +4066,34 @@ nvim_win_close({window}, {force})                           *nvim_win_close()*
+         Since: 0.4.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
+-      • {force}   (`boolean`) Behave like `:close!` The last window of a
+-                  buffer with unwritten changes can be closed. The buffer will
+-                  become hidden, even if 'hidden' is not set.
++      • {win}    (`integer`) |window-ID|, or 0 for current window
++      • {force}  (`boolean`) Behave like `:close!` The last window of a buffer
++                 with unwritten changes can be closed. The buffer will become
++                 hidden, even if 'hidden' is not set.
+ 
+-nvim_win_del_var({window}, {name})                        *nvim_win_del_var()*
++nvim_win_del_var({win}, {name})                           *nvim_win_del_var()*
+     Removes a window-scoped (w:) variable
+ 
+     Attributes: ~
+         Since: 0.1.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
+-      • {name}    (`string`) Variable name
++      • {win}   (`integer`) |window-ID|, or 0 for current window
++      • {name}  (`string`) Variable name
+ 
+-nvim_win_get_buf({window})                                *nvim_win_get_buf()*
++nvim_win_get_buf({win})                                   *nvim_win_get_buf()*
+     Gets the current buffer in a window
+ 
+     Attributes: ~
+         Since: 0.1.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
++      • {win}  (`integer`) |window-ID|, or 0 for current window
+ 
+     Return: ~
+         (`integer`) Buffer id
+ 
+-nvim_win_get_cursor({window})                          *nvim_win_get_cursor()*
++nvim_win_get_cursor({win})                             *nvim_win_get_cursor()*
+     Gets the (1,0)-indexed, buffer-relative cursor position for a given window
+     (different windows showing the same buffer have independent cursor
+     positions). |api-indexing|
+@@ -4102,7 +4102,7 @@ nvim_win_get_cursor({window})                          *nvim_win_get_cursor()*
+         Since: 0.1.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
++      • {win}  (`integer`) |window-ID|, or 0 for current window
+ 
+     Return: ~
+         (`[integer, integer]`) (row, col) tuple
+@@ -4110,80 +4110,80 @@ nvim_win_get_cursor({window})                          *nvim_win_get_cursor()*
+     See also: ~
+       • |getcurpos()|
+ 
+-nvim_win_get_height({window})                          *nvim_win_get_height()*
++nvim_win_get_height({win})                             *nvim_win_get_height()*
+     Gets the window height
+ 
+     Attributes: ~
+         Since: 0.1.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
++      • {win}  (`integer`) |window-ID|, or 0 for current window
+ 
+     Return: ~
+         (`integer`) Height as a count of rows
+ 
+-nvim_win_get_number({window})                          *nvim_win_get_number()*
++nvim_win_get_number({win})                             *nvim_win_get_number()*
+     Gets the window number
+ 
+     Attributes: ~
+         Since: 0.1.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
++      • {win}  (`integer`) |window-ID|, or 0 for current window
+ 
+     Return: ~
+         (`integer`) Window number
+ 
+-nvim_win_get_position({window})                      *nvim_win_get_position()*
++nvim_win_get_position({win})                         *nvim_win_get_position()*
+     Gets the window position in display cells. First position is zero.
+ 
+     Attributes: ~
+         Since: 0.1.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
++      • {win}  (`integer`) |window-ID|, or 0 for current window
+ 
+     Return: ~
+         (`[integer, integer]`) (row, col) tuple with the window position
+ 
+-nvim_win_get_tabpage({window})                        *nvim_win_get_tabpage()*
++nvim_win_get_tabpage({win})                           *nvim_win_get_tabpage()*
+     Gets the window tabpage
+ 
+     Attributes: ~
+         Since: 0.1.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
++      • {win}  (`integer`) |window-ID|, or 0 for current window
+ 
+     Return: ~
+         (`integer`) Tabpage that contains the window
+ 
+-nvim_win_get_var({window}, {name})                        *nvim_win_get_var()*
++nvim_win_get_var({win}, {name})                           *nvim_win_get_var()*
+     Gets a window-scoped (w:) variable
+ 
+     Attributes: ~
+         Since: 0.1.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
+-      • {name}    (`string`) Variable name
++      • {win}   (`integer`) |window-ID|, or 0 for current window
++      • {name}  (`string`) Variable name
+ 
+     Return: ~
+         (`any`) Variable value
+ 
+-nvim_win_get_width({window})                            *nvim_win_get_width()*
++nvim_win_get_width({win})                               *nvim_win_get_width()*
+     Gets the window width
+ 
+     Attributes: ~
+         Since: 0.1.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
++      • {win}  (`integer`) |window-ID|, or 0 for current window
+ 
+     Return: ~
+         (`integer`) Width as a count of columns
+ 
+-nvim_win_hide({window})                                      *nvim_win_hide()*
++nvim_win_hide({win})                                         *nvim_win_hide()*
+     Closes the window and hide the buffer it contains (like |:hide| with a
+     |window-ID|).
+ 
+@@ -4196,21 +4196,21 @@ nvim_win_hide({window})                                      *nvim_win_hide()*
+         Since: 0.5.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
++      • {win}  (`integer`) |window-ID|, or 0 for current window
+ 
+-nvim_win_is_valid({window})                              *nvim_win_is_valid()*
++nvim_win_is_valid({win})                                 *nvim_win_is_valid()*
+     Checks if a window is valid
+ 
+     Attributes: ~
+         Since: 0.1.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
++      • {win}  (`integer`) |window-ID|, or 0 for current window
+ 
+     Return: ~
+         (`boolean`) true if the window is valid, false otherwise
+ 
+-nvim_win_set_buf({window}, {buf})                         *nvim_win_set_buf()*
++nvim_win_set_buf({win}, {buf})                            *nvim_win_set_buf()*
+     Sets the current buffer in a window.
+ 
+     Note: As a side-effect, this executes |BufEnter| and |BufLeave|
+@@ -4221,10 +4221,10 @@ nvim_win_set_buf({window}, {buf})                         *nvim_win_set_buf()*
+         Since: 0.3.2
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
+-      • {buf}     (`integer`) Buffer id
++      • {win}  (`integer`) |window-ID|, or 0 for current window
++      • {buf}  (`integer`) Buffer id
+ 
+-nvim_win_set_cursor({window}, {pos})                   *nvim_win_set_cursor()*
++nvim_win_set_cursor({win}, {pos})                      *nvim_win_set_cursor()*
+     Sets the (1,0)-indexed cursor position (byte offset) in the window.
+     |api-indexing| This scrolls the window even if it is not the current one.
+ 
+@@ -4232,21 +4232,21 @@ nvim_win_set_cursor({window}, {pos})                   *nvim_win_set_cursor()*
+         Since: 0.1.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
+-      • {pos}     (`[integer, integer]`) (row, col) tuple representing the new
+-                  position
++      • {win}  (`integer`) |window-ID|, or 0 for current window
++      • {pos}  (`[integer, integer]`) (row, col) tuple representing the new
++               position
+ 
+-nvim_win_set_height({window}, {height})                *nvim_win_set_height()*
++nvim_win_set_height({win}, {height})                   *nvim_win_set_height()*
+     Sets the window height.
+ 
+     Attributes: ~
+         Since: 0.1.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
++      • {win}     (`integer`) |window-ID|, or 0 for current window
+       • {height}  (`integer`) Height as a count of rows
+ 
+-nvim_win_set_hl_ns({window}, {ns_id})                   *nvim_win_set_hl_ns()*
++nvim_win_set_hl_ns({win}, {ns_id})                      *nvim_win_set_hl_ns()*
+     Set highlight namespace for a window. This will use highlights defined
+     with |nvim_set_hl()| for this namespace, but fall back to global
+     highlights (ns=0) when missing.
+@@ -4257,21 +4257,21 @@ nvim_win_set_hl_ns({window}, {ns_id})                   *nvim_win_set_hl_ns()*
+         Since: 0.8.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`)
+-      • {ns_id}   (`integer`) the namespace to use
++      • {win}    (`integer`)
++      • {ns_id}  (`integer`) the namespace to use
+ 
+-nvim_win_set_var({window}, {name}, {value})               *nvim_win_set_var()*
++nvim_win_set_var({win}, {name}, {value})                  *nvim_win_set_var()*
+     Sets a window-scoped (w:) variable
+ 
+     Attributes: ~
+         Since: 0.1.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
+-      • {name}    (`string`) Variable name
+-      • {value}   (`any`) Variable value
++      • {win}    (`integer`) |window-ID|, or 0 for current window
++      • {name}   (`string`) Variable name
++      • {value}  (`any`) Variable value
+ 
+-nvim_win_set_width({window}, {width})                   *nvim_win_set_width()*
++nvim_win_set_width({win}, {width})                      *nvim_win_set_width()*
+     Sets the window width. This will only succeed if the screen is split
+     vertically.
+ 
+@@ -4279,10 +4279,10 @@ nvim_win_set_width({window}, {width})                   *nvim_win_set_width()*
+         Since: 0.1.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window
+-      • {width}   (`integer`) Width as a count of columns
++      • {win}    (`integer`) |window-ID|, or 0 for current window
++      • {width}  (`integer`) Width as a count of columns
+ 
+-nvim_win_text_height({window}, {opts})                *nvim_win_text_height()*
++nvim_win_text_height({win}, {opts})                   *nvim_win_text_height()*
+     Computes the number of screen lines occupied by a range of text in a given
+     window. Works for off-screen text and takes folds into account.
+ 
+@@ -4298,25 +4298,25 @@ nvim_win_text_height({window}, {opts})                *nvim_win_text_height()*
+         Since: 0.10.0
+ 
+     Parameters: ~
+-      • {window}  (`integer`) |window-ID|, or 0 for current window.
+-      • {opts}    (`vim.api.keyset.win_text_height`) Optional parameters:
+-                  • start_row: Starting line index, 0-based inclusive. When
+-                    omitted start at the very top.
+-                  • end_row: Ending line index, 0-based inclusive. When
+-                    omitted end at the very bottom.
+-                  • start_vcol: Starting virtual column index on "start_row",
+-                    0-based inclusive, rounded down to full screen lines. When
+-                    omitted include the whole line.
+-                  • end_vcol: Ending virtual column index on "end_row",
+-                    0-based exclusive, rounded up to full screen lines. When 0
+-                    only include diff filler and virtual lines above
+-                    "end_row". When omitted include the whole line.
+-                  • max_height: Don't add the height of lines below the row
+-                    for which this height is reached. Useful to e.g. limit the
+-                    height to the window height, avoiding unnecessary work. Or
+-                    to find out how many buffer lines beyond "start_row" take
+-                    up a certain number of logical lines (returned in
+-                    "end_row" and "end_vcol").
++      • {win}   (`integer`) |window-ID|, or 0 for current window.
++      • {opts}  (`vim.api.keyset.win_text_height`) Optional parameters:
++                • start_row: Starting line index, 0-based inclusive. When
++                  omitted start at the very top.
++                • end_row: Ending line index, 0-based inclusive. When omitted
++                  end at the very bottom.
++                • start_vcol: Starting virtual column index on "start_row",
++                  0-based inclusive, rounded down to full screen lines. When
++                  omitted include the whole line.
++                • end_vcol: Ending virtual column index on "end_row", 0-based
++                  exclusive, rounded up to full screen lines. When 0 only
++                  include diff filler and virtual lines above "end_row". When
++                  omitted include the whole line.
++                • max_height: Don't add the height of lines below the row for
++                  which this height is reached. Useful to e.g. limit the
++                  height to the window height, avoiding unnecessary work. Or
++                  to find out how many buffer lines beyond "start_row" take up
++                  a certain number of logical lines (returned in "end_row" and
++                  "end_vcol").
+ 
+     Return: ~
+         (`vim.api.keyset.win_text_height_ret`) Dict containing text height
+diff --git a/runtime/doc/lsp.txt b/runtime/doc/lsp.txt
+index b4d062023..a7aed100e 100644
+--- a/runtime/doc/lsp.txt
++++ b/runtime/doc/lsp.txt
+@@ -3046,12 +3046,12 @@ make_given_range_params({start_pos}, {end_pos}, {bufnr}, {position_encoding})
+         (`{ textDocument: { uri: lsp.DocumentUri }, range: lsp.Range }`)
+ 
+                                          *vim.lsp.util.make_position_params()*
+-make_position_params({window}, {position_encoding})
++make_position_params({win}, {position_encoding})
+     Creates a `TextDocumentPositionParams` object for the current buffer and
+     cursor position.
+ 
+     Parameters: ~
+-      • {window}             (`integer?`) |window-ID| or 0 for current,
++      • {win}                (`integer?`) |window-ID| or 0 for current,
+                              defaults to current
+       • {position_encoding}  (`'utf-8'|'utf-16'|'utf-32'`)
+ 
+@@ -3062,14 +3062,14 @@ make_position_params({window}, {position_encoding})
+       • https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocumentPositionParams
+ 
+                                             *vim.lsp.util.make_range_params()*
+-make_range_params({window}, {position_encoding})
++make_range_params({win}, {position_encoding})
+     Using the current position in the current buffer, creates an object that
+     can be used as a building block for several LSP requests, such as
+     `textDocument/codeAction`, `textDocument/colorPresentation`,
+     `textDocument/rangeFormatting`.
+ 
+     Parameters: ~
+-      • {window}             (`integer?`) |window-ID| or 0 for current,
++      • {win}                (`integer?`) |window-ID| or 0 for current,
+                              defaults to current
+       • {position_encoding}  (`"utf-8"|"utf-16"|"utf-32"`)
+ 
+diff --git a/runtime/lua/vim/_meta/api.gen.lua b/runtime/lua/vim/_meta/api.gen.lua
+index 93713b952..ff4e69770 100644
+--- a/runtime/lua/vim/_meta/api.gen.lua
++++ b/runtime/lua/vim/_meta/api.gen.lua
+@@ -2134,8 +2134,8 @@ function vim.api.nvim_set_current_tabpage(tabpage) end
+ 
+ --- Navigates to the given window (and tabpage, implicitly).
+ ---
+---- @param window integer `window-ID` to focus
+-function vim.api.nvim_set_current_win(window) end
++--- @param win integer `window-ID` to focus
++function vim.api.nvim_set_current_win(win) end
+ 
+ --- Set or change decoration provider for a `namespace`
+ ---
+@@ -2410,40 +2410,40 @@ function vim.api.nvim_ui_send(content) end
+ ---
+ --- @see `:help win_execute()`
+ --- @see vim.api.nvim_buf_call
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @param fun function Function to call inside the window (currently Lua callable
+ --- only)
+ --- @return any # Return value of function.
+-function vim.api.nvim_win_call(window, fun) end
++function vim.api.nvim_win_call(win, fun) end
+ 
+ --- Closes the window (like `:close` with a `window-ID`).
+ ---
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @param force boolean Behave like `:close!` The last window of a buffer with
+ --- unwritten changes can be closed. The buffer will become
+ --- hidden, even if 'hidden' is not set.
+-function vim.api.nvim_win_close(window, force) end
++function vim.api.nvim_win_close(win, force) end
+ 
+ --- Removes a window-scoped (w:) variable
+ ---
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @param name string Variable name
+-function vim.api.nvim_win_del_var(window, name) end
++function vim.api.nvim_win_del_var(win, name) end
+ 
+ --- Gets the current buffer in a window
+ ---
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @return integer # Buffer id
+-function vim.api.nvim_win_get_buf(window) end
++function vim.api.nvim_win_get_buf(win) end
+ 
+ --- Gets window configuration in the form of a dict which can be passed as the `config` parameter of
+ --- `nvim_open_win()`.
+ ---
+ --- For non-floating windows, `relative` is empty.
+ ---
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @return vim.api.keyset.win_config_ret # Map defining the window configuration, see |nvim_open_win()|
+-function vim.api.nvim_win_get_config(window) end
++function vim.api.nvim_win_get_config(win) end
+ 
+ --- Gets the (1,0)-indexed, buffer-relative cursor position for a given window
+ --- (different windows showing the same buffer have independent cursor
+@@ -2451,21 +2451,21 @@ function vim.api.nvim_win_get_config(window) end
+ ---
+ ---
+ --- @see `:help getcurpos()`
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @return [integer, integer] # (row, col) tuple
+-function vim.api.nvim_win_get_cursor(window) end
++function vim.api.nvim_win_get_cursor(win) end
+ 
+ --- Gets the window height
+ ---
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @return integer # Height as a count of rows
+-function vim.api.nvim_win_get_height(window) end
++function vim.api.nvim_win_get_height(win) end
+ 
+ --- Gets the window number
+ ---
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @return integer # Window number
+-function vim.api.nvim_win_get_number(window) end
++function vim.api.nvim_win_get_number(win) end
+ 
+ --- @deprecated
+ --- @param window integer
+@@ -2475,28 +2475,28 @@ function vim.api.nvim_win_get_option(window, name) end
+ 
+ --- Gets the window position in display cells. First position is zero.
+ ---
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @return [integer, integer] # (row, col) tuple with the window position
+-function vim.api.nvim_win_get_position(window) end
++function vim.api.nvim_win_get_position(win) end
+ 
+ --- Gets the window tabpage
+ ---
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @return integer # Tabpage that contains the window
+-function vim.api.nvim_win_get_tabpage(window) end
++function vim.api.nvim_win_get_tabpage(win) end
+ 
+ --- Gets a window-scoped (w:) variable
+ ---
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @param name string Variable name
+ --- @return any # Variable value
+-function vim.api.nvim_win_get_var(window, name) end
++function vim.api.nvim_win_get_var(win, name) end
+ 
+ --- Gets the window width
+ ---
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @return integer # Width as a count of columns
+-function vim.api.nvim_win_get_width(window) end
++function vim.api.nvim_win_get_width(win) end
+ 
+ --- Closes the window and hide the buffer it contains (like `:hide` with a
+ --- `window-ID`).
+@@ -2505,21 +2505,21 @@ function vim.api.nvim_win_get_width(window) end
+ --- or 'bufhidden' is `unload`, `delete` or `wipe` as opposed to `:close` or
+ --- `nvim_win_close()`, which will close the buffer.
+ ---
+---- @param window integer `window-ID`, or 0 for current window
+-function vim.api.nvim_win_hide(window) end
++--- @param win integer `window-ID`, or 0 for current window
++function vim.api.nvim_win_hide(win) end
+ 
+ --- Checks if a window is valid
+ ---
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @return boolean # true if the window is valid, false otherwise
+-function vim.api.nvim_win_is_valid(window) end
++function vim.api.nvim_win_is_valid(win) end
+ 
+ --- Sets the current buffer in a window.
+ ---
+ --- Note: As a side-effect, this executes `BufEnter` and `BufLeave` autocommands.
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @param buf integer Buffer id
+-function vim.api.nvim_win_set_buf(window, buf) end
++function vim.api.nvim_win_set_buf(win, buf) end
+ 
+ --- Reconfigures the layout and properties of a window.
+ ---
+@@ -2537,22 +2537,22 @@ function vim.api.nvim_win_set_buf(window, buf) end
+ ---
+ ---
+ --- @see vim.api.nvim_open_win
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @param config vim.api.keyset.win_config Map defining the window configuration, see [nvim_open_win()]
+-function vim.api.nvim_win_set_config(window, config) end
++function vim.api.nvim_win_set_config(win, config) end
+ 
+ --- Sets the (1,0)-indexed cursor position (byte offset) in the window. `api-indexing`
+ --- This scrolls the window even if it is not the current one.
+ ---
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @param pos [integer, integer] (row, col) tuple representing the new position
+-function vim.api.nvim_win_set_cursor(window, pos) end
++function vim.api.nvim_win_set_cursor(win, pos) end
+ 
+ --- Sets the window height.
+ ---
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @param height integer Height as a count of rows
+-function vim.api.nvim_win_set_height(window, height) end
++function vim.api.nvim_win_set_height(win, height) end
+ 
+ --- Set highlight namespace for a window. This will use highlights defined with
+ --- `nvim_set_hl()` for this namespace, but fall back to global highlights (ns=0) when
+@@ -2560,9 +2560,9 @@ function vim.api.nvim_win_set_height(window, height) end
+ ---
+ --- This takes precedence over the 'winhighlight' option.
+ ---
+---- @param window integer
++--- @param win integer
+ --- @param ns_id integer the namespace to use
+-function vim.api.nvim_win_set_hl_ns(window, ns_id) end
++function vim.api.nvim_win_set_hl_ns(win, ns_id) end
+ 
+ --- @deprecated
+ --- @param window integer
+@@ -2572,17 +2572,17 @@ function vim.api.nvim_win_set_option(window, name, value) end
+ 
+ --- Sets a window-scoped (w:) variable
+ ---
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @param name string Variable name
+ --- @param value any Variable value
+-function vim.api.nvim_win_set_var(window, name, value) end
++function vim.api.nvim_win_set_var(win, name, value) end
+ 
+ --- Sets the window width. This will only succeed if the screen is split
+ --- vertically.
+ ---
+---- @param window integer `window-ID`, or 0 for current window
++--- @param win integer `window-ID`, or 0 for current window
+ --- @param width integer Width as a count of columns
+-function vim.api.nvim_win_set_width(window, width) end
++function vim.api.nvim_win_set_width(win, width) end
+ 
+ --- Computes the number of screen lines occupied by a range of text in a given window.
+ --- Works for off-screen text and takes folds into account.
+@@ -2596,7 +2596,7 @@ function vim.api.nvim_win_set_width(window, width) end
+ --- Line indexing is similar to `nvim_buf_get_text()`.
+ ---
+ --- @see `:help virtcol()` for text width.
+---- @param window integer `window-ID`, or 0 for current window.
++--- @param win integer `window-ID`, or 0 for current window.
+ --- @param opts vim.api.keyset.win_text_height Optional parameters:
+ --- - start_row: Starting line index, 0-based inclusive.
+ ---              When omitted start at the very top.
+@@ -2623,4 +2623,4 @@ function vim.api.nvim_win_set_width(window, width) end
+ --- - end_vcol: Ending virtual column in "end_row" where "max_height" or the returned
+ ---   height is reached. 0 if "end_row" is a closed fold.
+ ---
+-function vim.api.nvim_win_text_height(window, opts) end
++function vim.api.nvim_win_text_height(win, opts) end
+diff --git a/runtime/lua/vim/lsp/util.lua b/runtime/lua/vim/lsp/util.lua
+index 340cfb823..3fdf93366 100644
+--- a/runtime/lua/vim/lsp/util.lua
++++ b/runtime/lua/vim/lsp/util.lua
+@@ -2045,12 +2045,12 @@ function M.try_trim_markdown_code_blocks(lines)
+   return 'markdown'
+ end
+ 
+----@param window integer?: |window-ID| or 0 for current, defaults to current
++---@param win integer?: |window-ID| or 0 for current, defaults to current
+ ---@param position_encoding 'utf-8'|'utf-16'|'utf-32'
+-local function make_position_param(window, position_encoding)
+-  window = window or 0
+-  local buf = api.nvim_win_get_buf(window)
+-  local row, col = unpack(api.nvim_win_get_cursor(window))
++local function make_position_param(win, position_encoding)
++  win = win or 0
++  local buf = api.nvim_win_get_buf(win)
++  local row, col = unpack(api.nvim_win_get_cursor(win))
+   row = row - 1
+   local line = api.nvim_buf_get_lines(buf, row, row + 1, true)[1]
+   if not line then
+@@ -2064,13 +2064,13 @@ end
+ 
+ --- Creates a `TextDocumentPositionParams` object for the current buffer and cursor position.
+ ---
+----@param window integer?: |window-ID| or 0 for current, defaults to current
++---@param win integer?: |window-ID| or 0 for current, defaults to current
+ ---@param position_encoding 'utf-8'|'utf-16'|'utf-32'
+ ---@return lsp.TextDocumentPositionParams
+ ---@see https://microsoft.github.io/language-server-protocol/specifications/specification-current/#textDocumentPositionParams
+-function M.make_position_params(window, position_encoding)
+-  window = window or 0
+-  local buf = api.nvim_win_get_buf(window)
++function M.make_position_params(win, position_encoding)
++  win = win or 0
++  local buf = api.nvim_win_get_buf(win)
+   if position_encoding == nil then
+     vim.notify_once(
+       'position_encoding param is required in vim.lsp.util.make_position_params. Defaulting to position encoding of the first client.',
+@@ -2081,7 +2081,7 @@ function M.make_position_params(window, position_encoding)
+   end
+   return {
+     textDocument = M.make_text_document_params(buf),
+-    position = make_position_param(window, position_encoding),
++    position = make_position_param(win, position_encoding),
+   }
+ end
+ 
+@@ -2124,11 +2124,11 @@ end
+ --- `textDocument/codeAction`, `textDocument/colorPresentation`,
+ --- `textDocument/rangeFormatting`.
+ ---
+----@param window integer?: |window-ID| or 0 for current, defaults to current
++---@param win integer?: |window-ID| or 0 for current, defaults to current
+ ---@param position_encoding "utf-8"|"utf-16"|"utf-32"
+ ---@return { textDocument: { uri: lsp.DocumentUri }, range: lsp.Range }
+-function M.make_range_params(window, position_encoding)
+-  local buf = api.nvim_win_get_buf(window or 0)
++function M.make_range_params(win, position_encoding)
++  local buf = api.nvim_win_get_buf(win or 0)
+   if position_encoding == nil then
+     vim.notify_once(
+       'position_encoding param is required in vim.lsp.util.make_range_params. Defaulting to position encoding of the first client.',
+@@ -2137,7 +2137,7 @@ function M.make_range_params(window, position_encoding)
+     --- @diagnostic disable-next-line: deprecated
+     position_encoding = M._get_offset_encoding(buf)
+   end
+-  local position = make_position_param(window, position_encoding)
++  local position = make_position_param(win, position_encoding)
+   return {
+     textDocument = M.make_text_document_params(buf),
+     range = { start = position, ['end'] = position },
+diff --git a/src/nvim/api/vim.c b/src/nvim/api/vim.c
+index 13486d4c3..d35b61818 100644
+--- a/src/nvim/api/vim.c
++++ b/src/nvim/api/vim.c
+@@ -1005,23 +1005,23 @@ Window nvim_get_current_win(void)
+ 
+ /// Navigates to the given window (and tabpage, implicitly).
+ ///
+-/// @param window |window-ID| to focus
++/// @param win |window-ID| to focus
+ /// @param[out] err Error details, if any
+-void nvim_set_current_win(Window window, Error *err)
++void nvim_set_current_win(Window win, Error *err)
+   FUNC_API_SINCE(1)
+   FUNC_API_TEXTLOCK
+ {
+-  win_T *win = find_window_by_handle(window, err);
++  win_T *w = find_window_by_handle(win, err);
+ 
+-  if (!win) {
++  if (!w) {
+     return;
+   }
+ 
+   TRY_WRAP(err, {
+-    if (win->w_buffer != curbuf) {
++    if (w->w_buffer != curbuf) {
+       reset_VIsual_and_resel();
+     }
+-    goto_tabpage_win(win_find_tabpage(win), win);
++    goto_tabpage_win(win_find_tabpage(w), w);
+   });
+ }
+ 
+diff --git a/src/nvim/api/win_config.c b/src/nvim/api/win_config.c
+index ed1d13ea5..86b920d65 100644
+--- a/src/nvim/api/win_config.c
++++ b/src/nvim/api/win_config.c
+@@ -753,50 +753,50 @@ restore_curwin:
+ ///
+ /// @see |nvim_open_win()|
+ ///
+-/// @param      window  |window-ID|, or 0 for current window
++/// @param      win  |window-ID|, or 0 for current window
+ /// @param      config  Map defining the window configuration, see [nvim_open_win()]
+ /// @param[out] err     Error details, if any
+-void nvim_win_set_config(Window window, Dict(win_config) *config, Error *err)
++void nvim_win_set_config(Window win, Dict(win_config) *config, Error *err)
+   FUNC_API_SINCE(6)
+ {
+-  win_T *win = find_window_by_handle(window, err);
+-  if (!win) {
++  win_T *w = find_window_by_handle(win, err);
++  if (!w) {
+     return;
+   }
+ 
+-  bool was_split = !win->w_floating;
++  bool was_split = !w->w_floating;
+   bool has_split = HAS_KEY_X(config, split);
+   bool has_vertical = HAS_KEY_X(config, vertical);
+-  WinStyle old_style = win->w_config.style;
++  WinStyle old_style = w->w_config.style;
+   // reuse old values, if not overridden
+-  WinConfig fconfig = win->w_config;
++  WinConfig fconfig = w->w_config;
+ 
+   bool to_split = config->relative.size == 0
+                   && !(HAS_KEY_X(config, external) && config->external)
+                   && (has_split || has_vertical || was_split);
+ 
+-  if (!parse_win_config(win, config, &fconfig, !was_split || to_split, err)) {
++  if (!parse_win_config(w, config, &fconfig, !was_split || to_split, err)) {
+     return;
+   }
+ 
+   if (to_split) {
+-    if (!win_config_split(win, config, &fconfig, err)) {
++    if (!win_config_split(w, config, &fconfig, err)) {
+       return;
+     }
+   } else {
+-    if (!win_config_float_tp(win, config, &fconfig, err)) {
++    if (!win_config_float_tp(w, config, &fconfig, err)) {
+       return;
+     }
+   }
+ 
+   if (fconfig.style == kWinStyleMinimal && old_style != fconfig.style) {
+-    win_set_minimal_style(win);
+-    didset_window_options(win, true);
+-    changed_window_setting(win);
++    win_set_minimal_style(w);
++    didset_window_options(w, true);
++    changed_window_setting(w);
+   }
+   if (fconfig._cmdline_offset < INT_MAX) {
+-    cmdline_win = win;
+-  } else if (win == cmdline_win && fconfig._cmdline_offset == INT_MAX) {
++    cmdline_win = w;
++  } else if (w == cmdline_win && fconfig._cmdline_offset == INT_MAX) {
+     cmdline_win = NULL;
+   }
+ }
+@@ -849,10 +849,10 @@ static void config_put_bordertext(Dict(win_config) *config, WinConfig *fconfig,
+ ///
+ /// For non-floating windows, `relative` is empty.
+ ///
+-/// @param      window |window-ID|, or 0 for current window
++/// @param      win |window-ID|, or 0 for current window
+ /// @param[out] err Error details, if any
+ /// @return     Map defining the window configuration, see |nvim_open_win()|
+-Dict(win_config) nvim_win_get_config(Window window, Arena *arena, Error *err)
++Dict(win_config) nvim_win_get_config(Window win, Arena *arena, Error *err)
+   FUNC_API_SINCE(6)
+ {
+   /// Keep in sync with FloatRelative in buffer_defs.h
+@@ -868,7 +868,7 @@ Dict(win_config) nvim_win_get_config(Window window, Arena *arena, Error *err)
+ 
+   Dict(win_config) rv = KEYDICT_INIT;
+ 
+-  win_T *wp = find_window_by_handle(window, err);
++  win_T *wp = find_window_by_handle(win, err);
+   if (!wp) {
+     return rv;
+   }
+diff --git a/src/nvim/api/window.c b/src/nvim/api/window.c
+index 3da22d489..bba587621 100644
+--- a/src/nvim/api/window.c
++++ b/src/nvim/api/window.c
+@@ -30,42 +30,42 @@
+ 
+ /// Gets the current buffer in a window
+ ///
+-/// @param window   |window-ID|, or 0 for current window
++/// @param win   |window-ID|, or 0 for current window
+ /// @param[out] err Error details, if any
+ /// @return Buffer id
+-Buffer nvim_win_get_buf(Window window, Error *err)
++Buffer nvim_win_get_buf(Window win, Error *err)
+   FUNC_API_SINCE(1)
+ {
+-  win_T *win = find_window_by_handle(window, err);
++  win_T *w = find_window_by_handle(win, err);
+ 
+-  if (!win) {
++  if (!w) {
+     return 0;
+   }
+ 
+-  return win->w_buffer->handle;
++  return w->w_buffer->handle;
+ }
+ 
+ /// Sets the current buffer in a window.
+ ///
+ /// Note: As a side-effect, this executes |BufEnter| and |BufLeave| autocommands.
+-/// @param window   |window-ID|, or 0 for current window
++/// @param win   |window-ID|, or 0 for current window
+ /// @param buf   Buffer id
+ /// @param[out] err Error details, if any
+-void nvim_win_set_buf(Window window, Buffer buf, Error *err)
++void nvim_win_set_buf(Window win, Buffer buf, Error *err)
+   FUNC_API_SINCE(5)
+   FUNC_API_TEXTLOCK_ALLOW_CMDWIN
+ {
+-  win_T *win = find_window_by_handle(window, err);
++  win_T *w = find_window_by_handle(win, err);
+   buf_T *b = find_buffer_by_handle(buf, err);
+-  if (!win || !b) {
++  if (!w || !b) {
+     return;
+   }
+ 
+-  if (win == cmdwin_win || win == cmdwin_old_curwin || b == cmdwin_buf) {
++  if (w == cmdwin_win || w == cmdwin_old_curwin || b == cmdwin_buf) {
+     api_set_error(err, kErrorTypeException, "%s", e_cmdwin);
+     return;
+   }
+-  win_set_buf(win, b, err);
++  win_set_buf(w, b, err);
+ }
+ 
+ /// Gets the (1,0)-indexed, buffer-relative cursor position for a given window
+@@ -74,19 +74,19 @@ void nvim_win_set_buf(Window window, Buffer buf, Error *err)
+ ///
+ /// @see |getcurpos()|
+ ///
+-/// @param window   |window-ID|, or 0 for current window
++/// @param win   |window-ID|, or 0 for current window
+ /// @param[out] err Error details, if any
+ /// @return (row, col) tuple
+-ArrayOf(Integer, 2) nvim_win_get_cursor(Window window, Arena *arena, Error *err)
++ArrayOf(Integer, 2) nvim_win_get_cursor(Window win, Arena *arena, Error *err)
+   FUNC_API_SINCE(1)
+ {
+   Array rv = ARRAY_DICT_INIT;
+-  win_T *win = find_window_by_handle(window, err);
++  win_T *w = find_window_by_handle(win, err);
+ 
+-  if (win) {
++  if (w) {
+     rv = arena_array(arena, 2);
+-    ADD_C(rv, INTEGER_OBJ(win->w_cursor.lnum));
+-    ADD_C(rv, INTEGER_OBJ(win->w_cursor.col));
++    ADD_C(rv, INTEGER_OBJ(w->w_cursor.lnum));
++    ADD_C(rv, INTEGER_OBJ(w->w_cursor.col));
+   }
+ 
+   return rv;
+@@ -95,15 +95,15 @@ ArrayOf(Integer, 2) nvim_win_get_cursor(Window window, Arena *arena, Error *err)
+ /// Sets the (1,0)-indexed cursor position (byte offset) in the window. |api-indexing|
+ /// This scrolls the window even if it is not the current one.
+ ///
+-/// @param window   |window-ID|, or 0 for current window
++/// @param win   |window-ID|, or 0 for current window
+ /// @param pos      (row, col) tuple representing the new position
+ /// @param[out] err Error details, if any
+-void nvim_win_set_cursor(Window window, ArrayOf(Integer, 2) pos, Error *err)
++void nvim_win_set_cursor(Window win, ArrayOf(Integer, 2) pos, Error *err)
+   FUNC_API_SINCE(1)
+ {
+-  win_T *win = find_window_by_handle(window, err);
++  win_T *w = find_window_by_handle(win, err);
+ 
+-  if (!win) {
++  if (!w) {
+     return;
+   }
+ 
+@@ -115,7 +115,7 @@ void nvim_win_set_cursor(Window window, ArrayOf(Integer, 2) pos, Error *err)
+   int64_t row = pos.items[0].data.integer;
+   int64_t col = pos.items[1].data.integer;
+ 
+-  VALIDATE_RANGE(!(row <= 0 || row > win->w_buffer->b_ml.ml_line_count), "cursor line", {
++  VALIDATE_RANGE(!(row <= 0 || row > w->w_buffer->b_ml.ml_line_count), "cursor line", {
+     return;
+   });
+ 
+@@ -123,168 +123,168 @@ void nvim_win_set_cursor(Window window, ArrayOf(Integer, 2) pos, Error *err)
+     return;
+   });
+ 
+-  win->w_cursor.lnum = (linenr_T)row;
+-  win->w_cursor.col = (colnr_T)col;
+-  win->w_cursor.coladd = 0;
++  w->w_cursor.lnum = (linenr_T)row;
++  w->w_cursor.col = (colnr_T)col;
++  w->w_cursor.coladd = 0;
+   // When column is out of range silently correct it.
+-  check_cursor_col(win);
++  check_cursor_col(w);
+ 
+   // Make sure we stick in this column.
+-  win->w_set_curswant = true;
++  w->w_set_curswant = true;
+ 
+   // make sure cursor is in visible range and
+-  // cursorcolumn and cursorline are updated even if win != curwin
++  // cursorcolumn and cursorline are updated even if w != curwin
+   switchwin_T switchwin;
+-  switch_win(&switchwin, win, NULL, true);
++  switch_win(&switchwin, w, NULL, true);
+   update_topline(curwin);
+   validate_cursor(curwin);
+   restore_win(&switchwin, true);
+ 
+-  redraw_later(win, UPD_VALID);
+-  win->w_redr_status = true;
++  redraw_later(w, UPD_VALID);
++  w->w_redr_status = true;
+ }
+ 
+ /// Gets the window height
+ ///
+-/// @param window   |window-ID|, or 0 for current window
++/// @param win   |window-ID|, or 0 for current window
+ /// @param[out] err Error details, if any
+ /// @return Height as a count of rows
+-Integer nvim_win_get_height(Window window, Error *err)
++Integer nvim_win_get_height(Window win, Error *err)
+   FUNC_API_SINCE(1)
+ {
+-  win_T *win = find_window_by_handle(window, err);
++  win_T *w = find_window_by_handle(win, err);
+ 
+-  if (!win) {
++  if (!w) {
+     return 0;
+   }
+ 
+-  return win->w_height;
++  return w->w_height;
+ }
+ 
+ /// Sets the window height.
+ ///
+-/// @param window   |window-ID|, or 0 for current window
++/// @param win   |window-ID|, or 0 for current window
+ /// @param height   Height as a count of rows
+ /// @param[out] err Error details, if any
+-void nvim_win_set_height(Window window, Integer height, Error *err)
++void nvim_win_set_height(Window win, Integer height, Error *err)
+   FUNC_API_SINCE(1)
+ {
+-  win_T *win = find_window_by_handle(window, err);
++  win_T *w = find_window_by_handle(win, err);
+ 
+-  if (!win) {
++  if (!w) {
+     return;
+   }
+ 
+   TRY_WRAP(err, {
+-    win_setheight_win((int)height, win);
++    win_setheight_win((int)height, w);
+   });
+ }
+ 
+ /// Gets the window width
+ ///
+-/// @param window   |window-ID|, or 0 for current window
++/// @param win   |window-ID|, or 0 for current window
+ /// @param[out] err Error details, if any
+ /// @return Width as a count of columns
+-Integer nvim_win_get_width(Window window, Error *err)
++Integer nvim_win_get_width(Window win, Error *err)
+   FUNC_API_SINCE(1)
+ {
+-  win_T *win = find_window_by_handle(window, err);
++  win_T *w = find_window_by_handle(win, err);
+ 
+-  if (!win) {
++  if (!w) {
+     return 0;
+   }
+ 
+-  return win->w_width;
++  return w->w_width;
+ }
+ 
+ /// Sets the window width. This will only succeed if the screen is split
+ /// vertically.
+ ///
+-/// @param window   |window-ID|, or 0 for current window
++/// @param win   |window-ID|, or 0 for current window
+ /// @param width    Width as a count of columns
+ /// @param[out] err Error details, if any
+-void nvim_win_set_width(Window window, Integer width, Error *err)
++void nvim_win_set_width(Window win, Integer width, Error *err)
+   FUNC_API_SINCE(1)
+ {
+-  win_T *win = find_window_by_handle(window, err);
++  win_T *w = find_window_by_handle(win, err);
+ 
+-  if (!win) {
++  if (!w) {
+     return;
+   }
+ 
+   TRY_WRAP(err, {
+-    win_setwidth_win((int)width, win);
++    win_setwidth_win((int)width, w);
+   });
+ }
+ 
+ /// Gets a window-scoped (w:) variable
+ ///
+-/// @param window   |window-ID|, or 0 for current window
++/// @param win   |window-ID|, or 0 for current window
+ /// @param name     Variable name
+ /// @param[out] err Error details, if any
+ /// @return Variable value
+-Object nvim_win_get_var(Window window, String name, Arena *arena, Error *err)
++Object nvim_win_get_var(Window win, String name, Arena *arena, Error *err)
+   FUNC_API_SINCE(1)
+ {
+-  win_T *win = find_window_by_handle(window, err);
++  win_T *w = find_window_by_handle(win, err);
+ 
+-  if (!win) {
++  if (!w) {
+     return (Object)OBJECT_INIT;
+   }
+ 
+-  return dict_get_value(win->w_vars, name, arena, err);
++  return dict_get_value(w->w_vars, name, arena, err);
+ }
+ 
+ /// Sets a window-scoped (w:) variable
+ ///
+-/// @param window   |window-ID|, or 0 for current window
++/// @param win   |window-ID|, or 0 for current window
+ /// @param name     Variable name
+ /// @param value    Variable value
+ /// @param[out] err Error details, if any
+-void nvim_win_set_var(Window window, String name, Object value, Error *err)
++void nvim_win_set_var(Window win, String name, Object value, Error *err)
+   FUNC_API_SINCE(1)
+ {
+-  win_T *win = find_window_by_handle(window, err);
++  win_T *w = find_window_by_handle(win, err);
+ 
+-  if (!win) {
++  if (!w) {
+     return;
+   }
+ 
+-  dict_set_var(win->w_vars, name, value, false, false, NULL, err);
++  dict_set_var(w->w_vars, name, value, false, false, NULL, err);
+ }
+ 
+ /// Removes a window-scoped (w:) variable
+ ///
+-/// @param window   |window-ID|, or 0 for current window
++/// @param win   |window-ID|, or 0 for current window
+ /// @param name     Variable name
+ /// @param[out] err Error details, if any
+-void nvim_win_del_var(Window window, String name, Error *err)
++void nvim_win_del_var(Window win, String name, Error *err)
+   FUNC_API_SINCE(1)
+ {
+-  win_T *win = find_window_by_handle(window, err);
++  win_T *w = find_window_by_handle(win, err);
+ 
+-  if (!win) {
++  if (!w) {
+     return;
+   }
+ 
+-  dict_set_var(win->w_vars, name, NIL, true, false, NULL, err);
++  dict_set_var(w->w_vars, name, NIL, true, false, NULL, err);
+ }
+ 
+ /// Gets the window position in display cells. First position is zero.
+ ///
+-/// @param window   |window-ID|, or 0 for current window
++/// @param win   |window-ID|, or 0 for current window
+ /// @param[out] err Error details, if any
+ /// @return (row, col) tuple with the window position
+-ArrayOf(Integer, 2) nvim_win_get_position(Window window, Arena *arena, Error *err)
++ArrayOf(Integer, 2) nvim_win_get_position(Window win, Arena *arena, Error *err)
+   FUNC_API_SINCE(1)
+ {
+   Array rv = ARRAY_DICT_INIT;
+-  win_T *win = find_window_by_handle(window, err);
++  win_T *w = find_window_by_handle(win, err);
+ 
+-  if (win) {
++  if (w) {
+     rv = arena_array(arena, 2);
+-    ADD_C(rv, INTEGER_OBJ(win->w_winrow));
+-    ADD_C(rv, INTEGER_OBJ(win->w_wincol));
++    ADD_C(rv, INTEGER_OBJ(w->w_winrow));
++    ADD_C(rv, INTEGER_OBJ(w->w_wincol));
+   }
+ 
+   return rv;
+@@ -292,17 +292,17 @@ ArrayOf(Integer, 2) nvim_win_get_position(Window window, Arena *arena, Error *er
+ 
+ /// Gets the window tabpage
+ ///
+-/// @param window   |window-ID|, or 0 for current window
++/// @param win   |window-ID|, or 0 for current window
+ /// @param[out] err Error details, if any
+ /// @return Tabpage that contains the window
+-Tabpage nvim_win_get_tabpage(Window window, Error *err)
++Tabpage nvim_win_get_tabpage(Window win, Error *err)
+   FUNC_API_SINCE(1)
+ {
+   Tabpage rv = 0;
+-  win_T *win = find_window_by_handle(window, err);
++  win_T *w = find_window_by_handle(win, err);
+ 
+-  if (win) {
+-    rv = win_find_tabpage(win)->handle;
++  if (w) {
++    rv = win_find_tabpage(w)->handle;
+   }
+ 
+   return rv;
+@@ -310,34 +310,34 @@ Tabpage nvim_win_get_tabpage(Window window, Error *err)
+ 
+ /// Gets the window number
+ ///
+-/// @param window   |window-ID|, or 0 for current window
++/// @param win   |window-ID|, or 0 for current window
+ /// @param[out] err Error details, if any
+ /// @return Window number
+-Integer nvim_win_get_number(Window window, Error *err)
++Integer nvim_win_get_number(Window win, Error *err)
+   FUNC_API_SINCE(1)
+ {
+   int rv = 0;
+-  win_T *win = find_window_by_handle(window, err);
++  win_T *w = find_window_by_handle(win, err);
+ 
+-  if (!win) {
++  if (!w) {
+     return rv;
+   }
+ 
+   int tabnr;
+-  win_get_tabwin(win->handle, &tabnr, &rv);
++  win_get_tabwin(w->handle, &tabnr, &rv);
+ 
+   return rv;
+ }
+ 
+ /// Checks if a window is valid
+ ///
+-/// @param window |window-ID|, or 0 for current window
++/// @param win |window-ID|, or 0 for current window
+ /// @return true if the window is valid, false otherwise
+-Boolean nvim_win_is_valid(Window window)
++Boolean nvim_win_is_valid(Window win)
+   FUNC_API_SINCE(1)
+ {
+   Error stub = ERROR_INIT;
+-  Boolean ret = find_window_by_handle(window, &stub) != NULL;
++  Boolean ret = find_window_by_handle(win, &stub) != NULL;
+   api_clear_error(&stub);
+   return ret;
+ }
+@@ -349,49 +349,49 @@ Boolean nvim_win_is_valid(Window window)
+ /// or 'bufhidden' is `unload`, `delete` or `wipe` as opposed to |:close| or
+ /// |nvim_win_close()|, which will close the buffer.
+ ///
+-/// @param window   |window-ID|, or 0 for current window
++/// @param win   |window-ID|, or 0 for current window
+ /// @param[out] err Error details, if any
+-void nvim_win_hide(Window window, Error *err)
++void nvim_win_hide(Window win, Error *err)
+   FUNC_API_SINCE(7)
+   FUNC_API_TEXTLOCK_ALLOW_CMDWIN
+ {
+-  win_T *win = find_window_by_handle(window, err);
+-  if (!win || !can_close_in_cmdwin(win, err)) {
++  win_T *w = find_window_by_handle(win, err);
++  if (!w || !can_close_in_cmdwin(w, err)) {
+     return;
+   }
+ 
+-  tabpage_T *tabpage = win_find_tabpage(win);
++  tabpage_T *tabpage = win_find_tabpage(w);
+   TRY_WRAP(err, {
+     // Never close the autocommand window.
+-    if (is_aucmd_win(win)) {
++    if (is_aucmd_win(w)) {
+       emsg(_(e_autocmd_close));
+     } else if (tabpage == curtab) {
+-      win_close(win, false, false);
++      win_close(w, false, false);
+     } else {
+-      win_close_othertab(win, false, tabpage, false);
++      win_close_othertab(w, false, tabpage, false);
+     }
+   });
+ }
+ 
+ /// Closes the window (like |:close| with a |window-ID|).
+ ///
+-/// @param window   |window-ID|, or 0 for current window
++/// @param win   |window-ID|, or 0 for current window
+ /// @param force    Behave like `:close!` The last window of a buffer with
+ ///                 unwritten changes can be closed. The buffer will become
+ ///                 hidden, even if 'hidden' is not set.
+ /// @param[out] err Error details, if any
+-void nvim_win_close(Window window, Boolean force, Error *err)
++void nvim_win_close(Window win, Boolean force, Error *err)
+   FUNC_API_SINCE(6)
+   FUNC_API_TEXTLOCK_ALLOW_CMDWIN
+ {
+-  win_T *win = find_window_by_handle(window, err);
+-  if (!win || !can_close_in_cmdwin(win, err)) {
++  win_T *w = find_window_by_handle(win, err);
++  if (!w || !can_close_in_cmdwin(w, err)) {
+     return;
+   }
+ 
+-  tabpage_T *tabpage = win_find_tabpage(win);
++  tabpage_T *tabpage = win_find_tabpage(w);
+   TRY_WRAP(err, {
+-    ex_win_close(force, win, tabpage == curtab ? NULL : tabpage);
++    ex_win_close(force, w, tabpage == curtab ? NULL : tabpage);
+   });
+ }
+ 
+@@ -400,25 +400,25 @@ void nvim_win_close(Window window, Boolean force, Error *err)
+ /// @see |win_execute()|
+ /// @see |nvim_buf_call()|
+ ///
+-/// @param window     |window-ID|, or 0 for current window
++/// @param win     |window-ID|, or 0 for current window
+ /// @param fun        Function to call inside the window (currently Lua callable
+ ///                   only)
+ /// @param[out] err   Error details, if any
+ /// @return           Return value of function.
+-Object nvim_win_call(Window window, LuaRef fun, Error *err)
++Object nvim_win_call(Window win, LuaRef fun, Error *err)
+   FUNC_API_SINCE(7)
+   FUNC_API_LUA_ONLY
+ {
+-  win_T *win = find_window_by_handle(window, err);
+-  if (!win) {
++  win_T *w = find_window_by_handle(win, err);
++  if (!w) {
+     return NIL;
+   }
+-  tabpage_T *tabpage = win_find_tabpage(win);
++  tabpage_T *tabpage = win_find_tabpage(w);
+ 
+   Object res = OBJECT_INIT;
+   TRY_WRAP(err, {
+     win_execute_T win_execute_args;
+-    if (win_execute_before(&win_execute_args, win, tabpage)) {
++    if (win_execute_before(&win_execute_args, w, tabpage)) {
+       Array args = ARRAY_DICT_INIT;
+       res = nlua_call_ref(fun, NULL, args, kRetLuaref, NULL, err);
+     }
+@@ -433,14 +433,14 @@ Object nvim_win_call(Window window, LuaRef fun, Error *err)
+ ///
+ /// This takes precedence over the 'winhighlight' option.
+ ///
+-/// @param window
++/// @param win
+ /// @param ns_id the namespace to use
+ /// @param[out] err Error details, if any
+-void nvim_win_set_hl_ns(Window window, Integer ns_id, Error *err)
++void nvim_win_set_hl_ns(Window win, Integer ns_id, Error *err)
+   FUNC_API_SINCE(10)
+ {
+-  win_T *win = find_window_by_handle(window, err);
+-  if (!win) {
++  win_T *w = find_window_by_handle(win, err);
++  if (!w) {
+     return;
+   }
+ 
+@@ -449,9 +449,9 @@ void nvim_win_set_hl_ns(Window window, Integer ns_id, Error *err)
+     return;
+   });
+ 
+-  win->w_ns_hl = (NS)ns_id;
+-  win->w_hl_needs_update = true;
+-  redraw_later(win, UPD_NOT_VALID);
++  w->w_ns_hl = (NS)ns_id;
++  w->w_hl_needs_update = true;
++  redraw_later(w, UPD_NOT_VALID);
+ }
+ 
+ /// Computes the number of screen lines occupied by a range of text in a given window.
+@@ -465,7 +465,7 @@ void nvim_win_set_hl_ns(Window window, Integer ns_id, Error *err)
+ ///
+ /// Line indexing is similar to |nvim_buf_get_text()|.
+ ///
+-/// @param window  |window-ID|, or 0 for current window.
++/// @param win  |window-ID|, or 0 for current window.
+ /// @param opts    Optional parameters:
+ ///                - start_row: Starting line index, 0-based inclusive.
+ ///                             When omitted start at the very top.
+@@ -493,17 +493,17 @@ void nvim_win_set_hl_ns(Window window, Integer ns_id, Error *err)
+ ///            height is reached. 0 if "end_row" is a closed fold.
+ ///
+ /// @see |virtcol()| for text width.
+-DictAs(win_text_height_ret) nvim_win_text_height(Window window, Dict(win_text_height) *opts,
++DictAs(win_text_height_ret) nvim_win_text_height(Window win, Dict(win_text_height) *opts,
+                                                  Arena *arena, Error *err)
+   FUNC_API_SINCE(12)
+ {
+   Dict rv = arena_dict(arena, 2);
+ 
+-  win_T *const win = find_window_by_handle(window, err);
+-  if (!win) {
++  win_T *const w = find_window_by_handle(win, err);
++  if (!w) {
+     return rv;
+   }
+-  buf_T *const buf = win->w_buffer;
++  buf_T *const buf = w->w_buffer;
+   const linenr_T line_count = buf->b_ml.ml_line_count;
+ 
+   linenr_T start_lnum = 1;
+@@ -565,9 +565,9 @@ DictAs(win_text_height_ret) nvim_win_text_height(Window window, Dict(win_text_he
+   }
+ 
+   int64_t fill = 0;
+-  int64_t all = win_text_height(win, start_lnum, start_vcol, &end_lnum, &end_vcol, &fill, max);
++  int64_t all = win_text_height(w, start_lnum, start_vcol, &end_lnum, &end_vcol, &fill, max);
+   if (!HAS_KEY(opts, win_text_height, end_row)) {
+-    const int64_t end_fill = win_get_fill(win, line_count + 1);
++    const int64_t end_fill = win_get_fill(w, line_count + 1);
+     fill += end_fill;
+     all += end_fill;
+   }
+diff --git a/test/functional/lua/api_spec.lua b/test/functional/lua/api_spec.lua
+index 3bc66de0e..0332c8529 100644
+--- a/test/functional/lua/api_spec.lua
++++ b/test/functional/lua/api_spec.lua
+@@ -300,7 +300,7 @@ describe('luaeval(vim.api.…)', function()
+     )
+   end)
+ 
+-  it('errors out correctly when working with API', function()
++  it('validation', function()
+     -- Conversion errors
+     eq(
+       [[Vim(call):E5108: Lua: [string "luaeval()"]:1: Invalid 'obj': Cannot convert given Lua table]],
+@@ -334,7 +334,7 @@ describe('luaeval(vim.api.…)', function()
+       remove_trace(exc_exec([[call luaeval("vim.api.nvim_buf_get_lines(0, 1.5, 1, false)")]]))
+     )
+     eq(
+-      [[Vim(call):E5108: Lua: [string "luaeval()"]:1: Invalid 'window': Expected Lua number]],
++      [[Vim(call):E5108: Lua: [string "luaeval()"]:1: Invalid 'win': Expected Lua number]],
+       remove_trace(exc_exec([[call luaeval("vim.api.nvim_win_is_valid(nil)")]]))
+     )
+ 

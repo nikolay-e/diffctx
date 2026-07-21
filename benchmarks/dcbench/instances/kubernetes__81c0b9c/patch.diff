@@ -1,0 +1,79 @@
+From 81c0b9ce3422413cc28efffeedd5b4e7817abf13 Mon Sep 17 00:00:00 2001
+From: Shingo Omura <everpeace@gmail.com>
+Date: Mon, 16 Mar 2026 18:58:39 +0900
+Subject: [PATCH] KEP-5491: add DRAListTypeAttributes feature gate with Alpha
+
+---
+ pkg/features/kube_features.go                      | 14 ++++++++++++++
+ .../reference/feature_list.md                      |  1 +
+ .../reference/versioned_feature_list.yaml          |  6 ++++++
+ 3 files changed, 21 insertions(+)
+
+diff --git a/pkg/features/kube_features.go b/pkg/features/kube_features.go
+index ece1aa0ce7..ebf6feb5d9 100644
+--- a/pkg/features/kube_features.go
++++ b/pkg/features/kube_features.go
+@@ -227,6 +227,14 @@ const (
+ 	// Enables support for providing extended resource requests backed by DRA.
+ 	DRAExtendedResource featuregate.Feature = "DRAExtendedResource"
+ 
++	// owner: @everpeace
++	// kep: http://kep.k8s.io/5491
++	//
++	// Enable list type attributes for DRA devices in ResourceSlice
++	// and extends ResourceClaim's matchAttribute/distinctAttribute
++	// semantics so that they can work with list type attributes.
++	DRAListTypeAttributes featuregate.Feature = "DRAListTypeAttributes"
++
+ 	// owner: @pravk03
+ 	// kep: https://kep.k8s.io/5517
+ 	//
+@@ -1328,6 +1336,10 @@ var defaultVersionedKubernetesFeatureGates = map[featuregate.Feature]featuregate
+ 		{Version: version.MustParse("1.36"), Default: true, PreRelease: featuregate.Beta},
+ 	},
+ 
++	DRAListTypeAttributes: {
++		{Version: version.MustParse("1.36"), Default: false, PreRelease: featuregate.Alpha},
++	},
++
+ 	DRANodeAllocatableResources: {
+ 		{Version: version.MustParse("1.36"), Default: false, PreRelease: featuregate.Alpha},
+ 	},
+@@ -2369,6 +2381,8 @@ var defaultKubernetesFeatureGateDependencies = map[featuregate.Feature][]feature
+ 
+ 	DRAExtendedResource: {DynamicResourceAllocation},
+ 
++	DRAListTypeAttributes: {DynamicResourceAllocation},
++
+ 	DRANodeAllocatableResources: {DynamicResourceAllocation},
+ 
+ 	DRAPartitionableDevices: {DynamicResourceAllocation},
+diff --git a/test/compatibility_lifecycle/reference/feature_list.md b/test/compatibility_lifecycle/reference/feature_list.md
+index 07a271eccf..aecfd99879 100644
+--- a/test/compatibility_lifecycle/reference/feature_list.md
++++ b/test/compatibility_lifecycle/reference/feature_list.md
+@@ -59,6 +59,7 @@
+ | DRADeviceTaintRules |  |  | 1.35 | 1.36– |  |  | DRADeviceTaints | [code](https://cs.k8s.io/?q=%5CbDRADeviceTaintRules%5Cb&i=nope&files=&excludeFiles=CHANGELOG&repos=kubernetes/kubernetes) [KEPs](https://cs.k8s.io/?q=%5CbDRADeviceTaintRules%5Cb&i=nope&files=&excludeFiles=CHANGELOG&repos=kubernetes/enhancements) |
+ | DRADeviceTaints | :ballot_box_with_check:&nbsp;1.36+ |  | 1.33–1.35 | 1.36– |  |  | DynamicResourceAllocation | [code](https://cs.k8s.io/?q=%5CbDRADeviceTaints%5Cb&i=nope&files=&excludeFiles=CHANGELOG&repos=kubernetes/kubernetes) [KEPs](https://cs.k8s.io/?q=%5CbDRADeviceTaints%5Cb&i=nope&files=&excludeFiles=CHANGELOG&repos=kubernetes/enhancements) |
+ | DRAExtendedResource | :ballot_box_with_check:&nbsp;1.36+ |  | 1.34–1.35 | 1.36– |  |  | DynamicResourceAllocation | [code](https://cs.k8s.io/?q=%5CbDRAExtendedResource%5Cb&i=nope&files=&excludeFiles=CHANGELOG&repos=kubernetes/kubernetes) [KEPs](https://cs.k8s.io/?q=%5CbDRAExtendedResource%5Cb&i=nope&files=&excludeFiles=CHANGELOG&repos=kubernetes/enhancements) |
++| DRAListTypeAttributes |  |  | 1.36– |  |  |  | DynamicResourceAllocation | [code](https://cs.k8s.io/?q=%5CbDRAListTypeAttributes%5Cb&i=nope&files=&excludeFiles=CHANGELOG&repos=kubernetes/kubernetes) [KEPs](https://cs.k8s.io/?q=%5CbDRAListTypeAttributes%5Cb&i=nope&files=&excludeFiles=CHANGELOG&repos=kubernetes/enhancements) |
+ | DRANodeAllocatableResources |  |  | 1.36– |  |  |  | DynamicResourceAllocation | [code](https://cs.k8s.io/?q=%5CbDRANodeAllocatableResources%5Cb&i=nope&files=&excludeFiles=CHANGELOG&repos=kubernetes/kubernetes) [KEPs](https://cs.k8s.io/?q=%5CbDRANodeAllocatableResources%5Cb&i=nope&files=&excludeFiles=CHANGELOG&repos=kubernetes/enhancements) |
+ | DRAPartitionableDevices | :ballot_box_with_check:&nbsp;1.36+ |  | 1.33–1.35 | 1.36– |  |  | DynamicResourceAllocation | [code](https://cs.k8s.io/?q=%5CbDRAPartitionableDevices%5Cb&i=nope&files=&excludeFiles=CHANGELOG&repos=kubernetes/kubernetes) [KEPs](https://cs.k8s.io/?q=%5CbDRAPartitionableDevices%5Cb&i=nope&files=&excludeFiles=CHANGELOG&repos=kubernetes/enhancements) |
+ | DRAPrioritizedList | :ballot_box_with_check:&nbsp;1.34+ |  | 1.33 | 1.34–1.35 | 1.36– |  | DynamicResourceAllocation | [code](https://cs.k8s.io/?q=%5CbDRAPrioritizedList%5Cb&i=nope&files=&excludeFiles=CHANGELOG&repos=kubernetes/kubernetes) [KEPs](https://cs.k8s.io/?q=%5CbDRAPrioritizedList%5Cb&i=nope&files=&excludeFiles=CHANGELOG&repos=kubernetes/enhancements) |
+diff --git a/test/compatibility_lifecycle/reference/versioned_feature_list.yaml b/test/compatibility_lifecycle/reference/versioned_feature_list.yaml
+index 0760a4377c..ebb6ae56bd 100644
+--- a/test/compatibility_lifecycle/reference/versioned_feature_list.yaml
++++ b/test/compatibility_lifecycle/reference/versioned_feature_list.yaml
+@@ -587,6 +587,12 @@
+     lockToDefault: false
+     preRelease: Beta
+     version: "1.36"
++- name: DRAListTypeAttributes
++  versionedSpecs:
++  - default: false
++    lockToDefault: false
++    preRelease: Alpha
++    version: "1.36"
+ - name: DRANodeAllocatableResources
+   versionedSpecs:
+   - default: false

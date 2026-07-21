@@ -1,0 +1,238 @@
+From ac04ad68696527d50cfd408417504f65ebab42ce Mon Sep 17 00:00:00 2001
+From: Daniel Dervishi <58835213+DanielDervishi@users.noreply.github.com>
+Date: Tue, 4 Jun 2024 16:19:39 -0400
+Subject: [PATCH] Refactor FXIOS-9077 - Replaced/Renamed the Onboarding
+ Checkmark Empty and Filled assets  (#20507)
+
+* Added accessible asset and renamed check mark asset to radioButtonChecked
+
+* Updated the names of the images and their locations
+
+---------
+
+Co-authored-by: Daniel Dervishi <ddervishi@CC7H24PK6P.local>
+---
+ .../Client/Application/ImageIdentifiers.swift |   4 +-
+ .../Checkmark/Contents.json                   |   6 --
+ .../onboardingCheckmarkEmpty.pdf              |  77 ------------------
+ .../Contents.json                             |   2 +-
+ .../radioButtonNotSelected.pdf                | Bin 0 -> 966 bytes
+ .../Contents.json                             |   2 +-
+ .../radioButtonSelected.pdf}                  |   0
+ .../View/MicrosurveyTableViewCell.swift       |   4 +-
+ .../OnboardingMultipleChoiceButtonView.swift  |   4 +-
+ 9 files changed, 8 insertions(+), 91 deletions(-)
+ delete mode 100644 firefox-ios/Client/Assets/Images.xcassets/Onboarding/MultipleChoiceButtons/Checkmark/Contents.json
+ delete mode 100644 firefox-ios/Client/Assets/Images.xcassets/Onboarding/MultipleChoiceButtons/Checkmark/onboardingCheckmarkEmpty.imageset/onboardingCheckmarkEmpty.pdf
+ rename firefox-ios/Client/Assets/Images.xcassets/{Onboarding/MultipleChoiceButtons/Checkmark/onboardingCheckmarkEmpty.imageset => radioButtonNotSelected.imageset}/Contents.json (70%)
+ create mode 100644 firefox-ios/Client/Assets/Images.xcassets/radioButtonNotSelected.imageset/radioButtonNotSelected.pdf
+ rename firefox-ios/Client/Assets/Images.xcassets/{Onboarding/MultipleChoiceButtons/Checkmark/onboardingCheckmarkFilled.imageset => radioButtonSelected.imageset}/Contents.json (70%)
+ rename firefox-ios/Client/Assets/Images.xcassets/{Onboarding/MultipleChoiceButtons/Checkmark/onboardingCheckmarkFilled.imageset/onboardingCheckmarkFilled.pdf => radioButtonSelected.imageset/radioButtonSelected.pdf} (100%)
+
+diff --git a/firefox-ios/Client/Application/ImageIdentifiers.swift b/firefox-ios/Client/Application/ImageIdentifiers.swift
+index dae009df5..47c6e66d7 100644
+--- a/firefox-ios/Client/Application/ImageIdentifiers.swift
++++ b/firefox-ios/Client/Application/ImageIdentifiers.swift
+@@ -32,6 +32,8 @@ public struct ImageIdentifiers {
+     public static let shoppingOptInCardImage = "shoppingOptInCardImage"
+     public static let signinSync = "signin-sync"
+     public static let syncOpenTab = "sync_open_tab"
++    public static let radioButtonNotSelected = "radioButtonNotSelected"
++    public static let radioButtonSelected = "radioButtonSelected"
+ 
+     public struct Onboarding {
+         public struct HeaderImages {
+@@ -51,8 +53,6 @@ public struct ImageIdentifiers {
+             public static let themeLight = "onboardingThemeLight"
+             public static let toolbarTop = "onboardingToolbarIconTop"
+             public static let toolbarBottom = "onboardingToolbarIconBottom"
+-            public static let checkmarkEmpty = "onboardingCheckmarkEmpty"
+-            public static let checkmarkFilled = "onboardingCheckmarkFilled"
+         }
+ 
+         public struct ChallengeTheDefault {
+diff --git a/firefox-ios/Client/Assets/Images.xcassets/Onboarding/MultipleChoiceButtons/Checkmark/Contents.json b/firefox-ios/Client/Assets/Images.xcassets/Onboarding/MultipleChoiceButtons/Checkmark/Contents.json
+deleted file mode 100644
+index 73c00596a..000000000
+--- a/firefox-ios/Client/Assets/Images.xcassets/Onboarding/MultipleChoiceButtons/Checkmark/Contents.json
++++ /dev/null
+@@ -1,6 +0,0 @@
+-{
+-  "info" : {
+-    "author" : "xcode",
+-    "version" : 1
+-  }
+-}
+diff --git a/firefox-ios/Client/Assets/Images.xcassets/Onboarding/MultipleChoiceButtons/Checkmark/onboardingCheckmarkEmpty.imageset/onboardingCheckmarkEmpty.pdf b/firefox-ios/Client/Assets/Images.xcassets/Onboarding/MultipleChoiceButtons/Checkmark/onboardingCheckmarkEmpty.imageset/onboardingCheckmarkEmpty.pdf
+deleted file mode 100644
+index 9b6eccf59..000000000
+--- a/firefox-ios/Client/Assets/Images.xcassets/Onboarding/MultipleChoiceButtons/Checkmark/onboardingCheckmarkEmpty.imageset/onboardingCheckmarkEmpty.pdf
++++ /dev/null
+@@ -1,77 +0,0 @@
+-%PDF-1.7
+-
+-1 0 obj
+-  << >>
+-endobj
+-
+-2 0 obj
+-  << /Length 3 0 R >>
+-stream
+-/DeviceRGB CS
+-/DeviceRGB cs
+-q
+-1.000000 0.000000 -0.000000 1.000000 1.000000 1.000000 cm
+-0.780392 0.780392 0.800000 scn
+-11.000000 0.000000 m
+-17.075132 0.000000 22.000000 4.924868 22.000000 11.000000 c
+-22.000000 17.075132 17.075132 22.000000 11.000000 22.000000 c
+-4.924868 22.000000 0.000000 17.075132 0.000000 11.000000 c
+-0.000000 4.924868 4.924868 0.000000 11.000000 0.000000 c
+-h
+-11.000000 1.500000 m
+-16.246706 1.500000 20.500000 5.753294 20.500000 11.000000 c
+-20.500000 16.246704 16.246706 20.500000 11.000000 20.500000 c
+-5.753295 20.500000 1.500000 16.246704 1.500000 11.000000 c
+-1.500000 5.753294 5.753295 1.500000 11.000000 1.500000 c
+-h
+-f*
+-n
+-Q
+-
+-endstream
+-endobj
+-
+-3 0 obj
+-  648
+-endobj
+-
+-4 0 obj
+-  << /Annots []
+-     /Type /Page
+-     /MediaBox [ 0.000000 0.000000 24.000000 24.000000 ]
+-     /Resources 1 0 R
+-     /Contents 2 0 R
+-     /Parent 5 0 R
+-  >>
+-endobj
+-
+-5 0 obj
+-  << /Kids [ 4 0 R ]
+-     /Count 1
+-     /Type /Pages
+-  >>
+-endobj
+-
+-6 0 obj
+-  << /Pages 5 0 R
+-     /Type /Catalog
+-  >>
+-endobj
+-
+-xref
+-0 7
+-0000000000 65535 f
+-0000000010 00000 n
+-0000000034 00000 n
+-0000000738 00000 n
+-0000000760 00000 n
+-0000000933 00000 n
+-0000001007 00000 n
+-trailer
+-<< /ID [ (some) (id) ]
+-   /Root 6 0 R
+-   /Size 7
+->>
+-startxref
+-1066
+-%%EOF
+\ No newline at end of file
+diff --git a/firefox-ios/Client/Assets/Images.xcassets/Onboarding/MultipleChoiceButtons/Checkmark/onboardingCheckmarkEmpty.imageset/Contents.json b/firefox-ios/Client/Assets/Images.xcassets/radioButtonNotSelected.imageset/Contents.json
+similarity index 70%
+rename from firefox-ios/Client/Assets/Images.xcassets/Onboarding/MultipleChoiceButtons/Checkmark/onboardingCheckmarkEmpty.imageset/Contents.json
+rename to firefox-ios/Client/Assets/Images.xcassets/radioButtonNotSelected.imageset/Contents.json
+index 547da34ca..4243113ab 100644
+--- a/firefox-ios/Client/Assets/Images.xcassets/Onboarding/MultipleChoiceButtons/Checkmark/onboardingCheckmarkEmpty.imageset/Contents.json
++++ b/firefox-ios/Client/Assets/Images.xcassets/radioButtonNotSelected.imageset/Contents.json
+@@ -1,7 +1,7 @@
+ {
+   "images" : [
+     {
+-      "filename" : "onboardingCheckmarkEmpty.pdf",
++      "filename" : "radioButtonNotSelected.pdf",
+       "idiom" : "universal"
+     }
+   ],
+diff --git a/firefox-ios/Client/Assets/Images.xcassets/radioButtonNotSelected.imageset/radioButtonNotSelected.pdf b/firefox-ios/Client/Assets/Images.xcassets/radioButtonNotSelected.imageset/radioButtonNotSelected.pdf
+new file mode 100644
+index 0000000000000000000000000000000000000000..136f28cf71d30f6574bbb948ccd0fc3650152323
+GIT binary patch
+literal 966
+zcmY!laB<T$)HCPeGE^{7$WO}RQc$q5QLwY)O3h0Fak-3;#r54Xb4pT+6!hJ45=&BD
+zQj_yjQh_>vK;I`dFTEr~!5FAK2q*+Jp}3?dH8Gc~f-!gU>8!&B0<Pabi$;krib&qO
+zE0;TVd+Zlx7ccIz1uVb*&Ykfh&T&po-#LTDuM3N6EdT!9a{2e`$<_ZRDEq%v+P~=4
+z^0$wjUTonr`{mwi8ZO>7--~PWu9eqsFkWThEok^Hq;9hCh;K%MT-gQFL~h;8^`|U-
+z_dWgWcy1eyMT%v^yX=N-Q9q_E4_fT$z^8frjow?GuDpBM(QNAS-khGXC+t>U%lQ4y
+zw2a|R<3aWdMX}D;gq$VUoSVC7e)lpf{;uR(6WYo)-u=K5(b~A1`OOpuUx}VFNgXGq
+zh-CJ=JGc&r?Us*-XYaICes}Nl<=*cF_1%B(<Qr;A=Dn{i=;?jqvD5W<=lAF`mu0GN
+zLoJWr(|dGLZ?S90r2tp{xks0?#(u89IsfI^eg8ikxcLPX=+IDu1wSY}A<<%FX$g-M
+z6Sycavh*GE^72cH6{2IIQ4vyEkgA{`keCjO8{gEF%tWXB3WaC|13d#UKroDqU_uBM
+z%%q^y;{4L0<kVsXQ1Sr9D=4a+^Ycnl^ME#j(gsX0Ah8H2reF#cLP|j(A$ZEt_s&cK
+zI#mJWgCGT%J<j>1K)r?-?k|R<Bv@dWp_l~nU@_c6ki#GzcTOxx%*jtj)ml-Mn#N_I
+zV9o{cK8RE>Gc`3fRR9V@fuVr{n5B>h7cvIA69f=KCWhu1LdKTpLS}}*utC*mW&w0Q
+zRH&pVF*7H%hzk^Zo-V-P&?wH&P1RJ;$V}0M1d4u8etwAp$iv_O)(_6CN(H(eoUIaz
+RO2FPRH!<Z>Rdw}u0|2x;H0A&R
+
+literal 0
+HcmV?d00001
+
+diff --git a/firefox-ios/Client/Assets/Images.xcassets/Onboarding/MultipleChoiceButtons/Checkmark/onboardingCheckmarkFilled.imageset/Contents.json b/firefox-ios/Client/Assets/Images.xcassets/radioButtonSelected.imageset/Contents.json
+similarity index 70%
+rename from firefox-ios/Client/Assets/Images.xcassets/Onboarding/MultipleChoiceButtons/Checkmark/onboardingCheckmarkFilled.imageset/Contents.json
+rename to firefox-ios/Client/Assets/Images.xcassets/radioButtonSelected.imageset/Contents.json
+index 6d6b0ee7c..e6e62074c 100644
+--- a/firefox-ios/Client/Assets/Images.xcassets/Onboarding/MultipleChoiceButtons/Checkmark/onboardingCheckmarkFilled.imageset/Contents.json
++++ b/firefox-ios/Client/Assets/Images.xcassets/radioButtonSelected.imageset/Contents.json
+@@ -1,7 +1,7 @@
+ {
+   "images" : [
+     {
+-      "filename" : "onboardingCheckmarkFilled.pdf",
++      "filename" : "radioButtonSelected.pdf",
+       "idiom" : "universal"
+     }
+   ],
+diff --git a/firefox-ios/Client/Assets/Images.xcassets/Onboarding/MultipleChoiceButtons/Checkmark/onboardingCheckmarkFilled.imageset/onboardingCheckmarkFilled.pdf b/firefox-ios/Client/Assets/Images.xcassets/radioButtonSelected.imageset/radioButtonSelected.pdf
+similarity index 100%
+rename from firefox-ios/Client/Assets/Images.xcassets/Onboarding/MultipleChoiceButtons/Checkmark/onboardingCheckmarkFilled.imageset/onboardingCheckmarkFilled.pdf
+rename to firefox-ios/Client/Assets/Images.xcassets/radioButtonSelected.imageset/radioButtonSelected.pdf
+diff --git a/firefox-ios/Client/Frontend/Microsurvey/Survey/View/MicrosurveyTableViewCell.swift b/firefox-ios/Client/Frontend/Microsurvey/Survey/View/MicrosurveyTableViewCell.swift
+index d9e4e75a0..0246daf00 100644
+--- a/firefox-ios/Client/Frontend/Microsurvey/Survey/View/MicrosurveyTableViewCell.swift
++++ b/firefox-ios/Client/Frontend/Microsurvey/Survey/View/MicrosurveyTableViewCell.swift
+@@ -19,8 +19,8 @@ class MicrosurveyTableViewCell: UITableViewCell, ReusableCell, ThemeApplicable {
+ 
+         struct Images {
+             // TODO: FXIOS-9028 Fix radio button for accessibility
+-            static let selected = ImageIdentifiers.Onboarding.MultipleChoiceButtonImages.checkmarkFilled
+-            static let notSelected = ImageIdentifiers.Onboarding.MultipleChoiceButtonImages.checkmarkEmpty
++            static let selected = ImageIdentifiers.radioButtonSelected
++            static let notSelected = ImageIdentifiers.radioButtonNotSelected
+         }
+     }
+ 
+diff --git a/firefox-ios/Client/Frontend/Onboarding/Views/OnboardingMultipleChoiceButtonView.swift b/firefox-ios/Client/Frontend/Onboarding/Views/OnboardingMultipleChoiceButtonView.swift
+index 90f357881..114fe9634 100644
+--- a/firefox-ios/Client/Frontend/Onboarding/Views/OnboardingMultipleChoiceButtonView.swift
++++ b/firefox-ios/Client/Frontend/Onboarding/Views/OnboardingMultipleChoiceButtonView.swift
+@@ -20,8 +20,8 @@ class OnboardingMultipleChoiceButtonView: UIView, Themeable {
+         }
+ 
+         struct Images {
+-            static let selected = ImageIdentifiers.Onboarding.MultipleChoiceButtonImages.checkmarkFilled
+-            static let notSelected = ImageIdentifiers.Onboarding.MultipleChoiceButtonImages.checkmarkEmpty
++            static let selected = ImageIdentifiers.radioButtonSelected
++            static let notSelected = ImageIdentifiers.radioButtonNotSelected
+         }
+     }
+ 

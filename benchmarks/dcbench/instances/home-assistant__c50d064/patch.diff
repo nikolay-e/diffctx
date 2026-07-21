@@ -1,0 +1,619 @@
+From c50d0646abd1b34cec1681d33e57db58db9ea648 Mon Sep 17 00:00:00 2001
+From: Michael <35783820+mib1185@users.noreply.github.com>
+Date: Sat, 12 Oct 2024 08:59:57 +0200
+Subject: [PATCH] Mark integrations as single_config_entry in manifest [a-i]
+ (#128189)
+
+* mark integrations as single_config_entry in manifest
+
+* fix ecobee tests
+
+* fix iaqualink test
+---
+ homeassistant/components/cast/config_flow.py  |  6 -----
+ homeassistant/components/cast/manifest.json   |  1 +
+ homeassistant/components/cast/strings.json    |  3 ---
+ homeassistant/components/cloud/config_flow.py |  2 --
+ homeassistant/components/cloud/manifest.json  |  3 ++-
+ homeassistant/components/cloud/strings.json   |  6 -----
+ .../components/cloudflare/config_flow.py      |  3 ---
+ .../components/cloudflare/manifest.json       |  3 ++-
+ .../components/cloudflare/strings.json        |  3 +--
+ homeassistant/components/demo/config_flow.py  |  3 ---
+ homeassistant/components/demo/manifest.json   |  3 ++-
+ .../components/duotecno/config_flow.py        |  3 ---
+ .../components/duotecno/manifest.json         |  3 ++-
+ .../components/duotecno/strings.json          |  3 ---
+ .../components/ecobee/config_flow.py          |  4 ----
+ homeassistant/components/ecobee/manifest.json |  1 +
+ .../components/enocean/config_flow.py         |  3 ---
+ .../components/enocean/manifest.json          |  3 ++-
+ homeassistant/components/enocean/strings.json |  3 +--
+ .../components/iaqualink/config_flow.py       |  5 ----
+ .../components/iaqualink/manifest.json        |  3 ++-
+ .../components/iaqualink/strings.json         |  3 ---
+ .../components/ibeacon/config_flow.py         |  3 ---
+ .../components/ibeacon/manifest.json          |  3 ++-
+ homeassistant/components/ibeacon/strings.json |  3 +--
+ .../components/insteon/config_flow.py         |  5 ----
+ .../components/insteon/manifest.json          |  1 +
+ homeassistant/components/insteon/strings.json |  1 -
+ homeassistant/components/iss/config_flow.py   |  4 ----
+ homeassistant/components/iss/manifest.json    |  3 ++-
+ homeassistant/components/iss/strings.json     |  1 -
+ homeassistant/generated/integrations.json     | 24 ++++++++++++-------
+ tests/components/ecobee/test_config_flow.py   |  8 +++----
+ .../components/iaqualink/test_config_flow.py  | 12 +++++-----
+ 34 files changed, 48 insertions(+), 90 deletions(-)
+
+diff --git a/homeassistant/components/cast/config_flow.py b/homeassistant/components/cast/config_flow.py
+index 4f7dd59e83..0ebfa553f6 100644
+--- a/homeassistant/components/cast/config_flow.py
++++ b/homeassistant/components/cast/config_flow.py
+@@ -47,18 +47,12 @@ class FlowHandler(ConfigFlow, domain=DOMAIN):
+         self, user_input: dict[str, Any] | None = None
+     ) -> ConfigFlowResult:
+         """Handle a flow initialized by the user."""
+-        if self._async_current_entries():
+-            return self.async_abort(reason="single_instance_allowed")
+-
+         return await self.async_step_config()
+ 
+     async def async_step_zeroconf(
+         self, discovery_info: zeroconf.ZeroconfServiceInfo
+     ) -> ConfigFlowResult:
+         """Handle a flow initialized by zeroconf discovery."""
+-        if self._async_in_progress() or self._async_current_entries():
+-            return self.async_abort(reason="single_instance_allowed")
+-
+         await self.async_set_unique_id(DOMAIN)
+ 
+         return await self.async_step_confirm()
+diff --git a/homeassistant/components/cast/manifest.json b/homeassistant/components/cast/manifest.json
+index 72b2f799d1..fbca632c67 100644
+--- a/homeassistant/components/cast/manifest.json
++++ b/homeassistant/components/cast/manifest.json
+@@ -15,5 +15,6 @@
+   "iot_class": "local_polling",
+   "loggers": ["casttube", "pychromecast"],
+   "requirements": ["PyChromecast==14.0.4"],
++  "single_config_entry": true,
+   "zeroconf": ["_googlecast._tcp.local."]
+ }
+diff --git a/homeassistant/components/cast/strings.json b/homeassistant/components/cast/strings.json
+index ce622e48aa..12f2edeee9 100644
+--- a/homeassistant/components/cast/strings.json
++++ b/homeassistant/components/cast/strings.json
+@@ -12,9 +12,6 @@
+         }
+       }
+     },
+-    "abort": {
+-      "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]"
+-    },
+     "error": {
+       "invalid_known_hosts": "Known hosts must be a comma separated list of hosts."
+     }
+diff --git a/homeassistant/components/cloud/config_flow.py b/homeassistant/components/cloud/config_flow.py
+index 932291c2bf..92fbf78378 100644
+--- a/homeassistant/components/cloud/config_flow.py
++++ b/homeassistant/components/cloud/config_flow.py
+@@ -18,6 +18,4 @@ class CloudConfigFlow(ConfigFlow, domain=DOMAIN):
+         self, user_input: dict[str, Any] | None = None
+     ) -> ConfigFlowResult:
+         """Handle the system step."""
+-        if self._async_current_entries():
+-            return self.async_abort(reason="single_instance_allowed")
+         return self.async_create_entry(title="Home Assistant Cloud", data={})
+diff --git a/homeassistant/components/cloud/manifest.json b/homeassistant/components/cloud/manifest.json
+index 529f4fb9be..47bb302857 100644
+--- a/homeassistant/components/cloud/manifest.json
++++ b/homeassistant/components/cloud/manifest.json
+@@ -8,5 +8,6 @@
+   "integration_type": "system",
+   "iot_class": "cloud_push",
+   "loggers": ["hass_nabucasa"],
+-  "requirements": ["hass-nabucasa==0.81.1"]
++  "requirements": ["hass-nabucasa==0.81.1"],
++  "single_config_entry": true
+ }
+diff --git a/homeassistant/components/cloud/strings.json b/homeassistant/components/cloud/strings.json
+index fe36159e5e..9f7e0dbadc 100644
+--- a/homeassistant/components/cloud/strings.json
++++ b/homeassistant/components/cloud/strings.json
+@@ -1,10 +1,4 @@
+ {
+-  "config": {
+-    "step": {},
+-    "abort": {
+-      "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]"
+-    }
+-  },
+   "system_health": {
+     "info": {
+       "can_reach_cert_server": "Reach certificate server",
+diff --git a/homeassistant/components/cloudflare/config_flow.py b/homeassistant/components/cloudflare/config_flow.py
+index a4276cf9dd..c3845a447e 100644
+--- a/homeassistant/components/cloudflare/config_flow.py
++++ b/homeassistant/components/cloudflare/config_flow.py
+@@ -118,9 +118,6 @@ class CloudflareConfigFlow(ConfigFlow, domain=DOMAIN):
+         self, user_input: dict[str, Any] | None = None
+     ) -> ConfigFlowResult:
+         """Handle a flow initiated by the user."""
+-        if self._async_current_entries():
+-            return self.async_abort(reason="single_instance_allowed")
+-
+         persistent_notification.async_dismiss(self.hass, "cloudflare_setup")
+ 
+         errors: dict[str, str] = {}
+diff --git a/homeassistant/components/cloudflare/manifest.json b/homeassistant/components/cloudflare/manifest.json
+index 0f689aa3e0..8529a0b9ba 100644
+--- a/homeassistant/components/cloudflare/manifest.json
++++ b/homeassistant/components/cloudflare/manifest.json
+@@ -6,5 +6,6 @@
+   "documentation": "https://www.home-assistant.io/integrations/cloudflare",
+   "iot_class": "cloud_push",
+   "loggers": ["pycfdns"],
+-  "requirements": ["pycfdns==3.0.0"]
++  "requirements": ["pycfdns==3.0.0"],
++  "single_config_entry": true
+ }
+diff --git a/homeassistant/components/cloudflare/strings.json b/homeassistant/components/cloudflare/strings.json
+index c72953211f..8c8ec57b07 100644
+--- a/homeassistant/components/cloudflare/strings.json
++++ b/homeassistant/components/cloudflare/strings.json
+@@ -34,8 +34,7 @@
+       "unknown": "[%key:common::config_flow::error::unknown%]"
+     },
+     "abort": {
+-      "reauth_successful": "[%key:common::config_flow::abort::reauth_successful%]",
+-      "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]"
++      "reauth_successful": "[%key:common::config_flow::abort::reauth_successful%]"
+     }
+   },
+   "services": {
+diff --git a/homeassistant/components/demo/config_flow.py b/homeassistant/components/demo/config_flow.py
+index c866873732..241f62bed6 100644
+--- a/homeassistant/components/demo/config_flow.py
++++ b/homeassistant/components/demo/config_flow.py
+@@ -39,9 +39,6 @@ class DemoConfigFlow(ConfigFlow, domain=DOMAIN):
+ 
+     async def async_step_import(self, import_data: dict[str, Any]) -> ConfigFlowResult:
+         """Set the config entry up from yaml."""
+-        if self._async_current_entries():
+-            return self.async_abort(reason="single_instance_allowed")
+-
+         return self.async_create_entry(title="Demo", data=import_data)
+ 
+ 
+diff --git a/homeassistant/components/demo/manifest.json b/homeassistant/components/demo/manifest.json
+index 887a82a007..be3456b561 100644
+--- a/homeassistant/components/demo/manifest.json
++++ b/homeassistant/components/demo/manifest.json
+@@ -5,5 +5,6 @@
+   "dependencies": ["conversation", "group", "zone"],
+   "documentation": "https://www.home-assistant.io/integrations/demo",
+   "iot_class": "calculated",
+-  "quality_scale": "internal"
++  "quality_scale": "internal",
++  "single_config_entry": true
+ }
+diff --git a/homeassistant/components/duotecno/config_flow.py b/homeassistant/components/duotecno/config_flow.py
+index ca95726542..51b92d4673 100644
+--- a/homeassistant/components/duotecno/config_flow.py
++++ b/homeassistant/components/duotecno/config_flow.py
+@@ -34,9 +34,6 @@ class DuoTecnoConfigFlow(ConfigFlow, domain=DOMAIN):
+         self, user_input: dict[str, Any] | None = None
+     ) -> ConfigFlowResult:
+         """Handle the initial step."""
+-        if self._async_current_entries():
+-            return self.async_abort(reason="single_instance_allowed")
+-
+         errors: dict[str, str] = {}
+         if user_input is not None:
+             try:
+diff --git a/homeassistant/components/duotecno/manifest.json b/homeassistant/components/duotecno/manifest.json
+index 37ed445718..928faf56d9 100644
+--- a/homeassistant/components/duotecno/manifest.json
++++ b/homeassistant/components/duotecno/manifest.json
+@@ -7,5 +7,6 @@
+   "iot_class": "local_push",
+   "loggers": ["pyduotecno", "pyduotecno-node", "pyduotecno-unit"],
+   "quality_scale": "silver",
+-  "requirements": ["pyDuotecno==2024.10.0"]
++  "requirements": ["pyDuotecno==2024.10.0"],
++  "single_config_entry": true
+ }
+diff --git a/homeassistant/components/duotecno/strings.json b/homeassistant/components/duotecno/strings.json
+index 2342eeb828..7f7c156768 100644
+--- a/homeassistant/components/duotecno/strings.json
++++ b/homeassistant/components/duotecno/strings.json
+@@ -13,9 +13,6 @@
+         }
+       }
+     },
+-    "abort": {
+-      "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]"
+-    },
+     "error": {
+       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+       "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
+diff --git a/homeassistant/components/ecobee/config_flow.py b/homeassistant/components/ecobee/config_flow.py
+index f7709c68d9..687d9173a6 100644
+--- a/homeassistant/components/ecobee/config_flow.py
++++ b/homeassistant/components/ecobee/config_flow.py
+@@ -29,10 +29,6 @@ class EcobeeFlowHandler(ConfigFlow, domain=DOMAIN):
+         self, user_input: dict[str, Any] | None = None
+     ) -> ConfigFlowResult:
+         """Handle a flow initiated by the user."""
+-        if self._async_current_entries():
+-            # Config entry already exists, only one allowed.
+-            return self.async_abort(reason="single_instance_allowed")
+-
+         errors = {}
+         stored_api_key = (
+             self.hass.data[DATA_ECOBEE_CONFIG].get(CONF_API_KEY)
+diff --git a/homeassistant/components/ecobee/manifest.json b/homeassistant/components/ecobee/manifest.json
+index 83dd18fdaa..20b346b776 100644
+--- a/homeassistant/components/ecobee/manifest.json
++++ b/homeassistant/components/ecobee/manifest.json
+@@ -10,6 +10,7 @@
+   "iot_class": "cloud_polling",
+   "loggers": ["pyecobee"],
+   "requirements": ["python-ecobee-api==0.2.20"],
++  "single_config_entry": true,
+   "zeroconf": [
+     {
+       "type": "_ecobee._tcp.local."
+diff --git a/homeassistant/components/enocean/config_flow.py b/homeassistant/components/enocean/config_flow.py
+index fef633d94c..2452d27b16 100644
+--- a/homeassistant/components/enocean/config_flow.py
++++ b/homeassistant/components/enocean/config_flow.py
+@@ -38,9 +38,6 @@ class EnOceanFlowHandler(ConfigFlow, domain=DOMAIN):
+         self, user_input: dict[str, Any] | None = None
+     ) -> ConfigFlowResult:
+         """Handle an EnOcean config flow start."""
+-        if self._async_current_entries():
+-            return self.async_abort(reason="single_instance_allowed")
+-
+         return await self.async_step_detect()
+ 
+     async def async_step_detect(
+diff --git a/homeassistant/components/enocean/manifest.json b/homeassistant/components/enocean/manifest.json
+index 495ab6618e..2faba47e12 100644
+--- a/homeassistant/components/enocean/manifest.json
++++ b/homeassistant/components/enocean/manifest.json
+@@ -6,5 +6,6 @@
+   "documentation": "https://www.home-assistant.io/integrations/enocean",
+   "iot_class": "local_push",
+   "loggers": ["enocean"],
+-  "requirements": ["enocean==0.50"]
++  "requirements": ["enocean==0.50"],
++  "single_config_entry": true
+ }
+diff --git a/homeassistant/components/enocean/strings.json b/homeassistant/components/enocean/strings.json
+index 97da526185..9d9699481b 100644
+--- a/homeassistant/components/enocean/strings.json
++++ b/homeassistant/components/enocean/strings.json
+@@ -18,8 +18,7 @@
+       "invalid_dongle_path": "No valid dongle found for this path"
+     },
+     "abort": {
+-      "invalid_dongle_path": "Invalid dongle path",
+-      "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]"
++      "invalid_dongle_path": "Invalid dongle path"
+     }
+   }
+ }
+diff --git a/homeassistant/components/iaqualink/config_flow.py b/homeassistant/components/iaqualink/config_flow.py
+index 3605c32890..2cb1ba4b5d 100644
+--- a/homeassistant/components/iaqualink/config_flow.py
++++ b/homeassistant/components/iaqualink/config_flow.py
+@@ -27,11 +27,6 @@ class AqualinkFlowHandler(ConfigFlow, domain=DOMAIN):
+         self, user_input: dict[str, Any] | None = None
+     ) -> ConfigFlowResult:
+         """Handle a flow start."""
+-        # Supporting a single account.
+-        entries = self._async_current_entries()
+-        if entries:
+-            return self.async_abort(reason="single_instance_allowed")
+-
+         errors = {}
+ 
+         if user_input is not None:
+diff --git a/homeassistant/components/iaqualink/manifest.json b/homeassistant/components/iaqualink/manifest.json
+index 8834a538be..2531632075 100644
+--- a/homeassistant/components/iaqualink/manifest.json
++++ b/homeassistant/components/iaqualink/manifest.json
+@@ -6,5 +6,6 @@
+   "documentation": "https://www.home-assistant.io/integrations/iaqualink",
+   "iot_class": "cloud_polling",
+   "loggers": ["iaqualink"],
+-  "requirements": ["iaqualink==0.5.0", "h2==4.1.0"]
++  "requirements": ["iaqualink==0.5.0", "h2==4.1.0"],
++  "single_config_entry": true
+ }
+diff --git a/homeassistant/components/iaqualink/strings.json b/homeassistant/components/iaqualink/strings.json
+index 85b49996f5..032e1a592d 100644
+--- a/homeassistant/components/iaqualink/strings.json
++++ b/homeassistant/components/iaqualink/strings.json
+@@ -13,9 +13,6 @@
+     "error": {
+       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+       "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]"
+-    },
+-    "abort": {
+-      "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]"
+     }
+   }
+ }
+diff --git a/homeassistant/components/ibeacon/config_flow.py b/homeassistant/components/ibeacon/config_flow.py
+index 424befa81e..feb5a801d5 100644
+--- a/homeassistant/components/ibeacon/config_flow.py
++++ b/homeassistant/components/ibeacon/config_flow.py
+@@ -30,9 +30,6 @@ class IBeaconConfigFlow(ConfigFlow, domain=DOMAIN):
+         self, user_input: dict[str, Any] | None = None
+     ) -> ConfigFlowResult:
+         """Handle the initial step."""
+-        if self._async_current_entries():
+-            return self.async_abort(reason="single_instance_allowed")
+-
+         if not bluetooth.async_scanner_count(self.hass, connectable=False):
+             return self.async_abort(reason="bluetooth_not_available")
+ 
+diff --git a/homeassistant/components/ibeacon/manifest.json b/homeassistant/components/ibeacon/manifest.json
+index 8dbc99c8ad..8bd7e3ab9c 100644
+--- a/homeassistant/components/ibeacon/manifest.json
++++ b/homeassistant/components/ibeacon/manifest.json
+@@ -13,5 +13,6 @@
+   "documentation": "https://www.home-assistant.io/integrations/ibeacon",
+   "iot_class": "local_push",
+   "loggers": ["bleak"],
+-  "requirements": ["ibeacon-ble==1.2.0"]
++  "requirements": ["ibeacon-ble==1.2.0"],
++  "single_config_entry": true
+ }
+diff --git a/homeassistant/components/ibeacon/strings.json b/homeassistant/components/ibeacon/strings.json
+index 440df8292a..9307f84864 100644
+--- a/homeassistant/components/ibeacon/strings.json
++++ b/homeassistant/components/ibeacon/strings.json
+@@ -6,8 +6,7 @@
+       }
+     },
+     "abort": {
+-      "bluetooth_not_available": "At least one Bluetooth adapter or remote must be configured to use iBeacon Tracker.",
+-      "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]"
++      "bluetooth_not_available": "At least one Bluetooth adapter or remote must be configured to use iBeacon Tracker."
+     }
+   },
+   "options": {
+diff --git a/homeassistant/components/insteon/config_flow.py b/homeassistant/components/insteon/config_flow.py
+index 9b486ad01e..143a9e2a5e 100644
+--- a/homeassistant/components/insteon/config_flow.py
++++ b/homeassistant/components/insteon/config_flow.py
+@@ -59,8 +59,6 @@ class InsteonFlowHandler(ConfigFlow, domain=DOMAIN):
+         self, user_input: dict[str, Any] | None = None
+     ) -> ConfigFlowResult:
+         """Init the config flow."""
+-        if self._async_current_entries():
+-            return self.async_abort(reason="single_instance_allowed")
+         modem_types = [STEP_PLM, STEP_HUB_V1, STEP_HUB_V2]
+         return self.async_show_menu(step_id="user", menu_options=modem_types)
+ 
+@@ -135,9 +133,6 @@ class InsteonFlowHandler(ConfigFlow, domain=DOMAIN):
+         self, discovery_info: usb.UsbServiceInfo
+     ) -> ConfigFlowResult:
+         """Handle USB discovery."""
+-        if self._async_current_entries():
+-            return self.async_abort(reason="single_instance_allowed")
+-
+         self._device_path = discovery_info.device
+         self._device_name = usb.human_readable_device_name(
+             discovery_info.device,
+diff --git a/homeassistant/components/insteon/manifest.json b/homeassistant/components/insteon/manifest.json
+index c579157319..c912764025 100644
+--- a/homeassistant/components/insteon/manifest.json
++++ b/homeassistant/components/insteon/manifest.json
+@@ -20,6 +20,7 @@
+     "pyinsteon==1.6.3",
+     "insteon-frontend-home-assistant==0.5.0"
+   ],
++  "single_config_entry": true,
+   "usb": [
+     {
+       "vid": "10BF"
+diff --git a/homeassistant/components/insteon/strings.json b/homeassistant/components/insteon/strings.json
+index 37cdd5c034..1464a2dbc8 100644
+--- a/homeassistant/components/insteon/strings.json
++++ b/homeassistant/components/insteon/strings.json
+@@ -44,7 +44,6 @@
+     },
+     "abort": {
+       "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
+-      "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]",
+       "not_insteon_device": "Discovered device not an Insteon device"
+     }
+   },
+diff --git a/homeassistant/components/iss/config_flow.py b/homeassistant/components/iss/config_flow.py
+index 8064469823..9cc533f5cc 100644
+--- a/homeassistant/components/iss/config_flow.py
++++ b/homeassistant/components/iss/config_flow.py
+@@ -29,10 +29,6 @@ class ISSConfigFlow(ConfigFlow, domain=DOMAIN):
+ 
+     async def async_step_user(self, user_input=None) -> ConfigFlowResult:
+         """Handle a flow initialized by the user."""
+-        # Check if already configured
+-        if self._async_current_entries():
+-            return self.async_abort(reason="single_instance_allowed")
+-
+         if user_input is not None:
+             return self.async_create_entry(
+                 title=DEFAULT_NAME,
+diff --git a/homeassistant/components/iss/manifest.json b/homeassistant/components/iss/manifest.json
+index 1dc885c9df..bf36a15db4 100644
+--- a/homeassistant/components/iss/manifest.json
++++ b/homeassistant/components/iss/manifest.json
+@@ -7,5 +7,6 @@
+   "integration_type": "service",
+   "iot_class": "cloud_polling",
+   "loggers": ["pyiss"],
+-  "requirements": ["pyiss==1.0.1"]
++  "requirements": ["pyiss==1.0.1"],
++  "single_config_entry": true
+ }
+diff --git a/homeassistant/components/iss/strings.json b/homeassistant/components/iss/strings.json
+index e0c7d85efa..17e86587e8 100644
+--- a/homeassistant/components/iss/strings.json
++++ b/homeassistant/components/iss/strings.json
+@@ -6,7 +6,6 @@
+       }
+     },
+     "abort": {
+-      "single_instance_allowed": "[%key:common::config_flow::abort::single_instance_allowed%]",
+       "latitude_longitude_not_defined": "Latitude and longitude are not defined in Home Assistant."
+     }
+   },
+diff --git a/homeassistant/generated/integrations.json b/homeassistant/generated/integrations.json
+index 4074ceb6ec..d63322f99d 100644
+--- a/homeassistant/generated/integrations.json
++++ b/homeassistant/generated/integrations.json
+@@ -958,7 +958,8 @@
+       "name": "Cloudflare",
+       "integration_type": "hub",
+       "config_flow": true,
+-      "iot_class": "cloud_push"
++      "iot_class": "cloud_push",
++      "single_config_entry": true
+     },
+     "cmus": {
+       "name": "cmus",
+@@ -1160,7 +1161,8 @@
+     "demo": {
+       "integration_type": "hub",
+       "config_flow": false,
+-      "iot_class": "calculated"
++      "iot_class": "calculated",
++      "single_config_entry": true
+     },
+     "denon": {
+       "name": "Denon",
+@@ -1403,7 +1405,8 @@
+       "name": "Duotecno",
+       "integration_type": "hub",
+       "config_flow": true,
+-      "iot_class": "local_push"
++      "iot_class": "local_push",
++      "single_config_entry": true
+     },
+     "duquesne_light": {
+       "name": "Duquesne Light",
+@@ -1461,7 +1464,8 @@
+       "name": "ecobee",
+       "integration_type": "hub",
+       "config_flow": true,
+-      "iot_class": "cloud_polling"
++      "iot_class": "cloud_polling",
++      "single_config_entry": true
+     },
+     "ecoforest": {
+       "name": "Ecoforest",
+@@ -1659,7 +1663,8 @@
+       "name": "EnOcean",
+       "integration_type": "hub",
+       "config_flow": true,
+-      "iot_class": "local_push"
++      "iot_class": "local_push",
++      "single_config_entry": true
+     },
+     "enphase_envoy": {
+       "name": "Enphase Envoy",
+@@ -2732,7 +2737,8 @@
+       "name": "Jandy iAqualink",
+       "integration_type": "hub",
+       "config_flow": true,
+-      "iot_class": "cloud_polling"
++      "iot_class": "cloud_polling",
++      "single_config_entry": true
+     },
+     "ibm": {
+       "name": "IBM",
+@@ -2861,7 +2867,8 @@
+       "name": "Insteon",
+       "integration_type": "hub",
+       "config_flow": true,
+-      "iot_class": "local_push"
++      "iot_class": "local_push",
++      "single_config_entry": true
+     },
+     "intellifire": {
+       "name": "IntelliFire",
+@@ -2960,7 +2967,8 @@
+       "name": "International Space Station (ISS)",
+       "integration_type": "service",
+       "config_flow": true,
+-      "iot_class": "cloud_polling"
++      "iot_class": "cloud_polling",
++      "single_config_entry": true
+     },
+     "ista_ecotrend": {
+       "name": "ista EcoTrend",
+diff --git a/tests/components/ecobee/test_config_flow.py b/tests/components/ecobee/test_config_flow.py
+index 20d3dabb1e..5c919ffab5 100644
+--- a/tests/components/ecobee/test_config_flow.py
++++ b/tests/components/ecobee/test_config_flow.py
+@@ -11,6 +11,7 @@ from homeassistant.components.ecobee.const import (
+     DATA_ECOBEE_CONFIG,
+     DOMAIN,
+ )
++from homeassistant.config_entries import SOURCE_USER
+ from homeassistant.const import CONF_API_KEY
+ from homeassistant.core import HomeAssistant
+ from homeassistant.data_entry_flow import FlowResultType
+@@ -20,12 +21,11 @@ from tests.common import MockConfigEntry
+ 
+ async def test_abort_if_already_setup(hass: HomeAssistant) -> None:
+     """Test we abort if ecobee is already setup."""
+-    flow = config_flow.EcobeeFlowHandler()
+-    flow.hass = hass
+-
+     MockConfigEntry(domain=DOMAIN).add_to_hass(hass)
+ 
+-    result = await flow.async_step_user()
++    result = await hass.config_entries.flow.async_init(
++        DOMAIN, context={"source": SOURCE_USER}
++    )
+ 
+     assert result["type"] is FlowResultType.ABORT
+     assert result["reason"] == "single_instance_allowed"
+diff --git a/tests/components/iaqualink/test_config_flow.py b/tests/components/iaqualink/test_config_flow.py
+index 4aaa66416f..26540eb730 100644
+--- a/tests/components/iaqualink/test_config_flow.py
++++ b/tests/components/iaqualink/test_config_flow.py
+@@ -7,7 +7,8 @@ from iaqualink.exception import (
+     AqualinkServiceUnauthorizedException,
+ )
+ 
+-from homeassistant.components.iaqualink import config_flow
++from homeassistant.components.iaqualink import DOMAIN, config_flow
++from homeassistant.config_entries import SOURCE_USER
+ from homeassistant.core import HomeAssistant
+ from homeassistant.data_entry_flow import FlowResultType
+ 
+@@ -18,13 +19,12 @@ async def test_already_configured(
+     """Test config flow when iaqualink component is already setup."""
+     config_entry.add_to_hass(hass)
+ 
+-    flow = config_flow.AqualinkFlowHandler()
+-    flow.hass = hass
+-    flow.context = {}
+-
+-    result = await flow.async_step_user(config_data)
++    result = await hass.config_entries.flow.async_init(
++        DOMAIN, context={"source": SOURCE_USER}
++    )
+ 
+     assert result["type"] is FlowResultType.ABORT
++    assert result["reason"] == "single_instance_allowed"
+ 
+ 
+ async def test_without_config(hass: HomeAssistant) -> None:

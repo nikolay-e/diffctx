@@ -1,0 +1,1162 @@
+From 1f932af7bfe1161255ad1493ba64a56a29169ce9 Mon Sep 17 00:00:00 2001
+From: Cyndi Chin <cgc95@cornell.edu>
+Date: Mon, 16 Mar 2026 12:27:31 -0400
+Subject: [PATCH] Refactor FXIOS-15068 [Quick Answers] rename feature project
+ (#32473)
+
+---
+ BrowserKit/Package.swift                      |  10 +-
+ .../Backend/Abstractions.swift                |   0
+ .../Backend/AudioManager.swift                |   0
+ .../Backend/AuthorizationHandler.swift        |   0
+ .../Backend/DefaultQuickAnswersService.swift  |   2 +-
+ .../Backend/MockQuickAnswersService.swift     |   0
+ .../Backend/QuickAnswersService.swift         |   0
+ .../Backend/SFSpeechRecognizerEngine.swift    |   0
+ .../Backend/SpeechAnalyzerEngine.swift        |   0
+ .../Backend/SpeechError.swift                 |   0
+ .../Backend/TranscriptionEngine.swift         |   0
+ .../UI/AudioWaveformView.swift                |   0
+ .../UI/GradientCircleView.swift               |   0
+ .../UI/QuickAnswersNavigationHandler.swift}   |  12 +-
+ .../UI/QuickAnswersViewController.swift}      |   8 +-
+ .../UI/QuickAnswersViewModel.swift}           |   2 +-
+ .../UI/TransitionAnimator.swift               |  16 +-
+ .../AudioManagerTests.swift                   |   2 +-
+ .../DefaultQuickAnswersServiceTests.swift     |   2 +-
+ .../Mocks/MockAudioEngine.swift               |   2 +-
+ .../Mocks/MockAudioManager.swift              |   2 +-
+ .../Mocks/MockAudioSession.swift              |   2 +-
+ .../Mocks/MockAuthorizer.swift                |   2 +-
+ .../Mocks/MockSpeechRecognizer.swift          |   2 +-
+ .../Mocks/MockTestQuickAnswersService.swift}  |   4 +-
+ .../Mocks/MockTranscriptionEngine.swift       |   2 +-
+ .../QuickAnswersViewModelTests.swift}         |  20 +--
+ .../SFSpeechRecognizerEngineTests.swift       |   3 +-
+ .../SpeechAnalyzerEngineTests.swift           |   2 +-
+ firefox-ios/Client.xcodeproj/project.pbxproj  |  14 +-
+ .../Coordinators/VoiceSearchCoordinator.swift |  14 +-
+ .../FeatureFlags/NimbusFlaggableFeature.swift |   6 +-
+ .../FeatureFlagsDebugViewController.swift     |   6 +-
+ .../Nimbus/NimbusFeatureFlagLayer.swift       |   8 +-
+ .../VoiceSearchCoordinatorTests.swift         |  30 ++--
+ .../Tests/UnitTest.xctestplan                 | 154 +++++++++---------
+ ...hFeature.yaml => quickAnswersFeature.yaml} |   8 +-
+ firefox-ios/nimbus.fml.yaml                   |   4 +-
+ 38 files changed, 169 insertions(+), 170 deletions(-)
+ rename BrowserKit/Sources/{VoiceSearchKit => QuickAnswersKit}/Backend/Abstractions.swift (100%)
+ rename BrowserKit/Sources/{VoiceSearchKit => QuickAnswersKit}/Backend/AudioManager.swift (100%)
+ rename BrowserKit/Sources/{VoiceSearchKit => QuickAnswersKit}/Backend/AuthorizationHandler.swift (100%)
+ rename BrowserKit/Sources/{VoiceSearchKit => QuickAnswersKit}/Backend/DefaultQuickAnswersService.swift (97%)
+ rename BrowserKit/Sources/{VoiceSearchKit => QuickAnswersKit}/Backend/MockQuickAnswersService.swift (100%)
+ rename BrowserKit/Sources/{VoiceSearchKit => QuickAnswersKit}/Backend/QuickAnswersService.swift (100%)
+ rename BrowserKit/Sources/{VoiceSearchKit => QuickAnswersKit}/Backend/SFSpeechRecognizerEngine.swift (100%)
+ rename BrowserKit/Sources/{VoiceSearchKit => QuickAnswersKit}/Backend/SpeechAnalyzerEngine.swift (100%)
+ rename BrowserKit/Sources/{VoiceSearchKit => QuickAnswersKit}/Backend/SpeechError.swift (100%)
+ rename BrowserKit/Sources/{VoiceSearchKit => QuickAnswersKit}/Backend/TranscriptionEngine.swift (100%)
+ rename BrowserKit/Sources/{VoiceSearchKit => QuickAnswersKit}/UI/AudioWaveformView.swift (100%)
+ rename BrowserKit/Sources/{VoiceSearchKit => QuickAnswersKit}/UI/GradientCircleView.swift (100%)
+ rename BrowserKit/Sources/{VoiceSearchKit/UI/VoiceSearchNavigationHandler.swift => QuickAnswersKit/UI/QuickAnswersNavigationHandler.swift} (57%)
+ rename BrowserKit/Sources/{VoiceSearchKit/UI/VoiceSearchViewController.swift => QuickAnswersKit/UI/QuickAnswersViewController.swift} (95%)
+ rename BrowserKit/Sources/{VoiceSearchKit/UI/VoiceSearchViewModel.swift => QuickAnswersKit/UI/QuickAnswersViewModel.swift} (98%)
+ rename BrowserKit/Sources/{VoiceSearchKit => QuickAnswersKit}/UI/TransitionAnimator.swift (95%)
+ rename BrowserKit/Tests/{VoiceSearchKitTests => QuickAnswersKitTests}/AudioManagerTests.swift (99%)
+ rename BrowserKit/Tests/{VoiceSearchKitTests => QuickAnswersKitTests}/DefaultQuickAnswersServiceTests.swift (99%)
+ rename BrowserKit/Tests/{VoiceSearchKitTests => QuickAnswersKitTests}/Mocks/MockAudioEngine.swift (98%)
+ rename BrowserKit/Tests/{VoiceSearchKitTests => QuickAnswersKitTests}/Mocks/MockAudioManager.swift (98%)
+ rename BrowserKit/Tests/{VoiceSearchKitTests => QuickAnswersKitTests}/Mocks/MockAudioSession.swift (97%)
+ rename BrowserKit/Tests/{VoiceSearchKitTests => QuickAnswersKitTests}/Mocks/MockAuthorizer.swift (95%)
+ rename BrowserKit/Tests/{VoiceSearchKitTests => QuickAnswersKitTests}/Mocks/MockSpeechRecognizer.swift (95%)
+ rename BrowserKit/Tests/{VoiceSearchKitTests/Mocks/MockTestVoiceSearchService.swift => QuickAnswersKitTests/Mocks/MockTestQuickAnswersService.swift} (92%)
+ rename BrowserKit/Tests/{VoiceSearchKitTests => QuickAnswersKitTests}/Mocks/MockTranscriptionEngine.swift (97%)
+ rename BrowserKit/Tests/{VoiceSearchKitTests/VoiceSearchViewModelTests.swift => QuickAnswersKitTests/QuickAnswersViewModelTests.swift} (88%)
+ rename BrowserKit/Tests/{VoiceSearchKitTests => QuickAnswersKitTests}/SFSpeechRecognizerEngineTests.swift (98%)
+ rename BrowserKit/Tests/{VoiceSearchKitTests => QuickAnswersKitTests}/SpeechAnalyzerEngineTests.swift (99%)
+ rename firefox-ios/nimbus-features/{voiceSearchFeature.yaml => quickAnswersFeature.yaml} (60%)
+
+diff --git a/BrowserKit/Package.swift b/BrowserKit/Package.swift
+index 4934ee691..0e74bc967 100644
+--- a/BrowserKit/Package.swift
++++ b/BrowserKit/Package.swift
+@@ -54,8 +54,8 @@ let package = Package(
+             name: "ActionExtensionKit",
+             targets: ["ActionExtensionKit"]),
+         .library(
+-            name: "VoiceSearchKit",
+-            targets: ["VoiceSearchKit"]),
++            name: "QuickAnswersKit",
++            targets: ["QuickAnswersKit"]),
+         .executable(
+             name: "ExecutableContentBlockingGenerator",
+             targets: ["ExecutableContentBlockingGenerator"]),
+@@ -241,15 +241,15 @@ let package = Package(
+                 .unsafeFlags(["-enable-testing"]),
+             ]),
+         .target(
+-            name: "VoiceSearchKit",
++            name: "QuickAnswersKit",
+             dependencies: ["Common"],
+             swiftSettings: [
+                 .unsafeFlags(["-enable-testing"])
+             ]
+         ),
+         .testTarget(
+-            name: "VoiceSearchKitTests",
+-            dependencies: ["VoiceSearchKit", "TestKit"]
++            name: "QuickAnswersKitTests",
++            dependencies: ["QuickAnswersKit", "TestKit"]
+         ),
+         .target(
+             name: "ContentBlockingGenerator",
+diff --git a/BrowserKit/Sources/VoiceSearchKit/Backend/Abstractions.swift b/BrowserKit/Sources/QuickAnswersKit/Backend/Abstractions.swift
+similarity index 100%
+rename from BrowserKit/Sources/VoiceSearchKit/Backend/Abstractions.swift
+rename to BrowserKit/Sources/QuickAnswersKit/Backend/Abstractions.swift
+diff --git a/BrowserKit/Sources/VoiceSearchKit/Backend/AudioManager.swift b/BrowserKit/Sources/QuickAnswersKit/Backend/AudioManager.swift
+similarity index 100%
+rename from BrowserKit/Sources/VoiceSearchKit/Backend/AudioManager.swift
+rename to BrowserKit/Sources/QuickAnswersKit/Backend/AudioManager.swift
+diff --git a/BrowserKit/Sources/VoiceSearchKit/Backend/AuthorizationHandler.swift b/BrowserKit/Sources/QuickAnswersKit/Backend/AuthorizationHandler.swift
+similarity index 100%
+rename from BrowserKit/Sources/VoiceSearchKit/Backend/AuthorizationHandler.swift
+rename to BrowserKit/Sources/QuickAnswersKit/Backend/AuthorizationHandler.swift
+diff --git a/BrowserKit/Sources/VoiceSearchKit/Backend/DefaultQuickAnswersService.swift b/BrowserKit/Sources/QuickAnswersKit/Backend/DefaultQuickAnswersService.swift
+similarity index 97%
+rename from BrowserKit/Sources/VoiceSearchKit/Backend/DefaultQuickAnswersService.swift
+rename to BrowserKit/Sources/QuickAnswersKit/Backend/DefaultQuickAnswersService.swift
+index 8a21857e3..adde1a8cf 100644
+--- a/BrowserKit/Sources/VoiceSearchKit/Backend/DefaultQuickAnswersService.swift
++++ b/BrowserKit/Sources/QuickAnswersKit/Backend/DefaultQuickAnswersService.swift
+@@ -22,7 +22,7 @@ final class DefaultQuickAnswersService: QuickAnswersService {
+     private var recordingTask: Task<Void, Error>?
+     private var continuation: AsyncThrowingStream<SpeechResult, any Error>.Continuation?
+ 
+-    /// Creates a new voice search service with a platform-appropriate transcription engine.
++    /// Creates a new service with a platform-appropriate transcription engine.
+     init(engine: TranscriptionEngine? = nil) {
+         self.engine = engine ?? Self.makeDefaultEngine()
+     }
+diff --git a/BrowserKit/Sources/VoiceSearchKit/Backend/MockQuickAnswersService.swift b/BrowserKit/Sources/QuickAnswersKit/Backend/MockQuickAnswersService.swift
+similarity index 100%
+rename from BrowserKit/Sources/VoiceSearchKit/Backend/MockQuickAnswersService.swift
+rename to BrowserKit/Sources/QuickAnswersKit/Backend/MockQuickAnswersService.swift
+diff --git a/BrowserKit/Sources/VoiceSearchKit/Backend/QuickAnswersService.swift b/BrowserKit/Sources/QuickAnswersKit/Backend/QuickAnswersService.swift
+similarity index 100%
+rename from BrowserKit/Sources/VoiceSearchKit/Backend/QuickAnswersService.swift
+rename to BrowserKit/Sources/QuickAnswersKit/Backend/QuickAnswersService.swift
+diff --git a/BrowserKit/Sources/VoiceSearchKit/Backend/SFSpeechRecognizerEngine.swift b/BrowserKit/Sources/QuickAnswersKit/Backend/SFSpeechRecognizerEngine.swift
+similarity index 100%
+rename from BrowserKit/Sources/VoiceSearchKit/Backend/SFSpeechRecognizerEngine.swift
+rename to BrowserKit/Sources/QuickAnswersKit/Backend/SFSpeechRecognizerEngine.swift
+diff --git a/BrowserKit/Sources/VoiceSearchKit/Backend/SpeechAnalyzerEngine.swift b/BrowserKit/Sources/QuickAnswersKit/Backend/SpeechAnalyzerEngine.swift
+similarity index 100%
+rename from BrowserKit/Sources/VoiceSearchKit/Backend/SpeechAnalyzerEngine.swift
+rename to BrowserKit/Sources/QuickAnswersKit/Backend/SpeechAnalyzerEngine.swift
+diff --git a/BrowserKit/Sources/VoiceSearchKit/Backend/SpeechError.swift b/BrowserKit/Sources/QuickAnswersKit/Backend/SpeechError.swift
+similarity index 100%
+rename from BrowserKit/Sources/VoiceSearchKit/Backend/SpeechError.swift
+rename to BrowserKit/Sources/QuickAnswersKit/Backend/SpeechError.swift
+diff --git a/BrowserKit/Sources/VoiceSearchKit/Backend/TranscriptionEngine.swift b/BrowserKit/Sources/QuickAnswersKit/Backend/TranscriptionEngine.swift
+similarity index 100%
+rename from BrowserKit/Sources/VoiceSearchKit/Backend/TranscriptionEngine.swift
+rename to BrowserKit/Sources/QuickAnswersKit/Backend/TranscriptionEngine.swift
+diff --git a/BrowserKit/Sources/VoiceSearchKit/UI/AudioWaveformView.swift b/BrowserKit/Sources/QuickAnswersKit/UI/AudioWaveformView.swift
+similarity index 100%
+rename from BrowserKit/Sources/VoiceSearchKit/UI/AudioWaveformView.swift
+rename to BrowserKit/Sources/QuickAnswersKit/UI/AudioWaveformView.swift
+diff --git a/BrowserKit/Sources/VoiceSearchKit/UI/GradientCircleView.swift b/BrowserKit/Sources/QuickAnswersKit/UI/GradientCircleView.swift
+similarity index 100%
+rename from BrowserKit/Sources/VoiceSearchKit/UI/GradientCircleView.swift
+rename to BrowserKit/Sources/QuickAnswersKit/UI/GradientCircleView.swift
+diff --git a/BrowserKit/Sources/VoiceSearchKit/UI/VoiceSearchNavigationHandler.swift b/BrowserKit/Sources/QuickAnswersKit/UI/QuickAnswersNavigationHandler.swift
+similarity index 57%
+rename from BrowserKit/Sources/VoiceSearchKit/UI/VoiceSearchNavigationHandler.swift
+rename to BrowserKit/Sources/QuickAnswersKit/UI/QuickAnswersNavigationHandler.swift
+index 22ab63d57..0bab7b609 100644
+--- a/BrowserKit/Sources/VoiceSearchKit/UI/VoiceSearchNavigationHandler.swift
++++ b/BrowserKit/Sources/QuickAnswersKit/UI/QuickAnswersNavigationHandler.swift
+@@ -4,20 +4,20 @@
+ 
+ import Foundation
+ 
+-/// Identifies the possible navigation types for `VoiceSearchViewController`
+-public enum VoiceSearchNavigationType: Equatable {
++/// Identifies the possible navigation types for `QuickAnswersViewController`
++public enum QuickAnswersNavigationType: Equatable {
+     /// Navigates to the specified URL.
+     case url(URL)
+     /// Performs a search with the specified query string.
+     case searchResult(String)
+ }
+ 
+-/// Handles navigation for the `VoiceSearchViewController`
++/// Handles navigation for the `QuickAnswersViewController`
+ @MainActor
+-public protocol VoiceSearchNavigationHandler: AnyObject {
+-    /// Dismisses the voice search interface and optionally performs a navigation action.
++public protocol QuickAnswersNavigationHandler: AnyObject {
++    /// Dismisses the interface and optionally performs a navigation action.
+     ///
+     /// - Parameter navigationType: The navigation action to perform after dismissal.
+     ///   Pass `nil` when dismissing via the close button without navigation.
+-    func dismissVoiceSearch(with navigationType: VoiceSearchNavigationType?)
++    func dismissQuickAnswers(with navigationType: QuickAnswersNavigationType?)
+ }
+diff --git a/BrowserKit/Sources/VoiceSearchKit/UI/VoiceSearchViewController.swift b/BrowserKit/Sources/QuickAnswersKit/UI/QuickAnswersViewController.swift
+similarity index 95%
+rename from BrowserKit/Sources/VoiceSearchKit/UI/VoiceSearchViewController.swift
+rename to BrowserKit/Sources/QuickAnswersKit/UI/QuickAnswersViewController.swift
+index 1d810ad5c..2d39f218c 100644
+--- a/BrowserKit/Sources/VoiceSearchKit/UI/VoiceSearchViewController.swift
++++ b/BrowserKit/Sources/QuickAnswersKit/UI/QuickAnswersViewController.swift
+@@ -5,7 +5,7 @@
+ import UIKit
+ import Common
+ 
+-public final class VoiceSearchViewController: UIViewController, Themeable {
++public final class QuickAnswersViewController: UIViewController, Themeable {
+     private struct UX {
+         static let buttonPadding: CGFloat = 26.0
+         static let buttonContentInset = NSDirectionalEdgeInsets(
+@@ -59,11 +59,11 @@ public final class VoiceSearchViewController: UIViewController, Themeable {
+     public var currentWindowUUID: WindowUUID?
+     public var themeListenerCancellable: Any?
+     private let notificationCenter: NotificationProtocol
+-    private weak var navigationHandler: VoiceSearchNavigationHandler?
++    private weak var navigationHandler: QuickAnswersNavigationHandler?
+ 
+     public init(
+-        navigationHandler: VoiceSearchNavigationHandler?,
+-        presentationTransitionType: VoiceSearchTransitionType = .crossDissolve,
++        navigationHandler: QuickAnswersNavigationHandler?,
++        presentationTransitionType: QuickAnswersTransitionType = .crossDissolve,
+         windowUUID: WindowUUID,
+         themeManager: any ThemeManager,
+         notificationCenter: NotificationProtocol = NotificationCenter.default
+diff --git a/BrowserKit/Sources/VoiceSearchKit/UI/VoiceSearchViewModel.swift b/BrowserKit/Sources/QuickAnswersKit/UI/QuickAnswersViewModel.swift
+similarity index 98%
+rename from BrowserKit/Sources/VoiceSearchKit/UI/VoiceSearchViewModel.swift
+rename to BrowserKit/Sources/QuickAnswersKit/UI/QuickAnswersViewModel.swift
+index 4bd19cd10..7cea9d671 100644
+--- a/BrowserKit/Sources/VoiceSearchKit/UI/VoiceSearchViewModel.swift
++++ b/BrowserKit/Sources/QuickAnswersKit/UI/QuickAnswersViewModel.swift
+@@ -3,7 +3,7 @@
+ // file, You can obtain one at http://mozilla.org/MPL/2.0/
+ 
+ @MainActor
+-final class VoiceSearchViewModel {
++final class QuickAnswersViewModel {
+     enum State: Equatable {
+         case recordVoice(SpeechResult, SpeechError?)
+         case loadingSearchResult
+diff --git a/BrowserKit/Sources/VoiceSearchKit/UI/TransitionAnimator.swift b/BrowserKit/Sources/QuickAnswersKit/UI/TransitionAnimator.swift
+similarity index 95%
+rename from BrowserKit/Sources/VoiceSearchKit/UI/TransitionAnimator.swift
+rename to BrowserKit/Sources/QuickAnswersKit/UI/TransitionAnimator.swift
+index cda2e7686..d940500e2 100644
+--- a/BrowserKit/Sources/VoiceSearchKit/UI/TransitionAnimator.swift
++++ b/BrowserKit/Sources/QuickAnswersKit/UI/TransitionAnimator.swift
+@@ -5,8 +5,8 @@
+ import UIKit
+ import Common
+ 
+-/// The possible transition types to animate presentation and dismissal of `VoiceSearchViewController`.
+-public enum VoiceSearchTransitionType {
++/// The possible transition types to animate presentation and dismissal of `QuickAnswersViewController`.
++public enum QuickAnswersTransitionType {
+     case crossDissolve
+     case slideInFromSide
+ }
+@@ -29,12 +29,12 @@ final class TransitionAnimator: NSObject,
+     }
+     private let themeManager: any ThemeManager
+     private let windowUUID: WindowUUID
+-    private let presentationTransitionType: VoiceSearchTransitionType
++    private let presentationTransitionType: QuickAnswersTransitionType
+     /// The transition type when dismissing the presented controller.
+-    var dismissTransitionType: VoiceSearchTransitionType = .crossDissolve
++    var dismissTransitionType: QuickAnswersTransitionType = .crossDissolve
+ 
+     init(
+-        presentationTransitionType: VoiceSearchTransitionType,
++        presentationTransitionType: QuickAnswersTransitionType,
+         themeManager: any ThemeManager,
+         windowUUID: WindowUUID
+     ) {
+@@ -63,7 +63,7 @@ final class TransitionAnimator: NSObject,
+     }
+ 
+     func animateTransition(using transitionContext: UIViewControllerContextTransitioning) {
+-        let isPresenting = transitionContext.viewController(forKey: .to) is VoiceSearchViewController
++        let isPresenting = transitionContext.viewController(forKey: .to) is QuickAnswersViewController
+         guard isPresenting else {
+             animateDismissal(transitionContext)
+             return
+@@ -82,7 +82,7 @@ final class TransitionAnimator: NSObject,
+     }
+ 
+     private func animatePresentationViaCrossDissolve(_ transitionContext: UIViewControllerContextTransitioning) {
+-        guard let presentedController = transitionContext.viewController(forKey: .to) as? VoiceSearchViewController else {
++        guard let presentedController = transitionContext.viewController(forKey: .to) as? QuickAnswersViewController else {
+             transitionContext.completeTransition(false)
+             return
+         }
+@@ -170,7 +170,7 @@ final class TransitionAnimator: NSObject,
+               // We can't add the presenting controller to the containerView since it is going to be removed
+               // from its original superview, thus we need a snapshot.
+               let snapshotView = presentingController.view.snapshotView(afterScreenUpdates: false),
+-              let dismissedController = transitionContext.viewController(forKey: .from) as? VoiceSearchViewController else {
++              let dismissedController = transitionContext.viewController(forKey: .from) as? QuickAnswersViewController else {
+             transitionContext.completeTransition(false)
+             return
+         }
+diff --git a/BrowserKit/Tests/VoiceSearchKitTests/AudioManagerTests.swift b/BrowserKit/Tests/QuickAnswersKitTests/AudioManagerTests.swift
+similarity index 99%
+rename from BrowserKit/Tests/VoiceSearchKitTests/AudioManagerTests.swift
+rename to BrowserKit/Tests/QuickAnswersKitTests/AudioManagerTests.swift
+index 17e498c03..b4893190f 100644
+--- a/BrowserKit/Tests/VoiceSearchKitTests/AudioManagerTests.swift
++++ b/BrowserKit/Tests/QuickAnswersKitTests/AudioManagerTests.swift
+@@ -5,7 +5,7 @@
+ import AVFoundation
+ import Testing
+ 
+-@testable import VoiceSearchKit
++@testable import QuickAnswersKit
+ 
+ @Suite
+ struct AudioManagerTests {
+diff --git a/BrowserKit/Tests/VoiceSearchKitTests/DefaultQuickAnswersServiceTests.swift b/BrowserKit/Tests/QuickAnswersKitTests/DefaultQuickAnswersServiceTests.swift
+similarity index 99%
+rename from BrowserKit/Tests/VoiceSearchKitTests/DefaultQuickAnswersServiceTests.swift
+rename to BrowserKit/Tests/QuickAnswersKitTests/DefaultQuickAnswersServiceTests.swift
+index c0d176799..ecd50adcd 100644
+--- a/BrowserKit/Tests/VoiceSearchKitTests/DefaultQuickAnswersServiceTests.swift
++++ b/BrowserKit/Tests/QuickAnswersKitTests/DefaultQuickAnswersServiceTests.swift
+@@ -4,7 +4,7 @@
+ 
+ import Testing
+ 
+-@testable import VoiceSearchKit
++@testable import QuickAnswersKit
+ 
+ @MainActor
+ struct DefaultQuickAnswersServiceTests {
+diff --git a/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAudioEngine.swift b/BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockAudioEngine.swift
+similarity index 98%
+rename from BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAudioEngine.swift
+rename to BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockAudioEngine.swift
+index addac12d0..5314139c6 100644
+--- a/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAudioEngine.swift
++++ b/BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockAudioEngine.swift
+@@ -3,7 +3,7 @@
+ // file, You can obtain one at http://mozilla.org/MPL/2.0/
+ 
+ import AVFoundation
+-@testable import VoiceSearchKit
++@testable import QuickAnswersKit
+ 
+ final class MockAudioEngine: AudioEngineProvider, @unchecked Sendable {
+     let mockInputNode = MockAudioInputNode()
+diff --git a/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAudioManager.swift b/BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockAudioManager.swift
+similarity index 98%
+rename from BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAudioManager.swift
+rename to BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockAudioManager.swift
+index 2435438c4..c968b1a8f 100644
+--- a/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAudioManager.swift
++++ b/BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockAudioManager.swift
+@@ -2,7 +2,7 @@
+ // License, v. 2.0. If a copy of the MPL was not distributed with this
+ // file, You can obtain one at http://mozilla.org/MPL/2.0/
+ import AVFoundation
+-@testable import VoiceSearchKit
++@testable import QuickAnswersKit
+ 
+ enum MockAudioManagerError: Error {
+     case configureAudioSession
+diff --git a/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAudioSession.swift b/BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockAudioSession.swift
+similarity index 97%
+rename from BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAudioSession.swift
+rename to BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockAudioSession.swift
+index 16c7044ad..acca1b84f 100644
+--- a/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAudioSession.swift
++++ b/BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockAudioSession.swift
+@@ -4,7 +4,7 @@
+ 
+ import AVFoundation
+ 
+-@testable import VoiceSearchKit
++@testable import QuickAnswersKit
+ 
+ final class MockAudioSession: AudioSessionProvider, @unchecked Sendable {
+     let micPermission = true
+diff --git a/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAuthorizer.swift b/BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockAuthorizer.swift
+similarity index 95%
+rename from BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAuthorizer.swift
+rename to BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockAuthorizer.swift
+index 5f54dcefe..8a7c4ceaf 100644
+--- a/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockAuthorizer.swift
++++ b/BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockAuthorizer.swift
+@@ -1,7 +1,7 @@
+ // This Source Code Form is subject to the terms of the Mozilla Public
+ // License, v. 2.0. If a copy of the MPL was not distributed with this
+ // file, You can obtain one at http://mozilla.org/MPL/2.0/
+-@testable import VoiceSearchKit
++@testable import QuickAnswersKit
+ 
+ final class MockAuthorizer: AuthorizeProvider {
+     let micAuthorized: Bool
+diff --git a/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockSpeechRecognizer.swift b/BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockSpeechRecognizer.swift
+similarity index 95%
+rename from BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockSpeechRecognizer.swift
+rename to BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockSpeechRecognizer.swift
+index 04c8d9edc..ecb143a3f 100644
+--- a/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockSpeechRecognizer.swift
++++ b/BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockSpeechRecognizer.swift
+@@ -4,7 +4,7 @@
+ 
+ import Speech
+ 
+-@testable import VoiceSearchKit
++@testable import QuickAnswersKit
+ 
+ final class MockSpeechRecognizer: SpeechRecognizerProvider, @unchecked Sendable {
+     var isAvailable = true
+diff --git a/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockTestVoiceSearchService.swift b/BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockTestQuickAnswersService.swift
+similarity index 92%
+rename from BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockTestVoiceSearchService.swift
+rename to BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockTestQuickAnswersService.swift
+index a53900ef9..08f4cc175 100644
+--- a/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockTestVoiceSearchService.swift
++++ b/BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockTestQuickAnswersService.swift
+@@ -2,9 +2,9 @@
+ // License, v. 2.0. If a copy of the MPL was not distributed with this
+ // file, You can obtain one at http://mozilla.org/MPL/2.0/
+ 
+-@testable import VoiceSearchKit
++@testable import QuickAnswersKit
+ 
+-final class MockTestVoiceSearchService: QuickAnswersService, @unchecked Sendable {
++final class MockTestQuickAnswersService: QuickAnswersService, @unchecked Sendable {
+     var speechResults: [SpeechResult] = []
+     var searchResult: Result<SearchResult, SearchResultError> = .success(.empty())
+     var shouldThrowSpeechError = false
+diff --git a/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockTranscriptionEngine.swift b/BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockTranscriptionEngine.swift
+similarity index 97%
+rename from BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockTranscriptionEngine.swift
+rename to BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockTranscriptionEngine.swift
+index ff69bcd27..ef298daf3 100644
+--- a/BrowserKit/Tests/VoiceSearchKitTests/Mocks/MockTranscriptionEngine.swift
++++ b/BrowserKit/Tests/QuickAnswersKitTests/Mocks/MockTranscriptionEngine.swift
+@@ -2,7 +2,7 @@
+ // License, v. 2.0. If a copy of the MPL was not distributed with this
+ // file, You can obtain one at http://mozilla.org/MPL/2.0/
+ 
+-@testable import VoiceSearchKit
++@testable import QuickAnswersKit
+ 
+ // MARK: - Test Errors
+ enum TestError: Error, Equatable {
+diff --git a/BrowserKit/Tests/VoiceSearchKitTests/VoiceSearchViewModelTests.swift b/BrowserKit/Tests/QuickAnswersKitTests/QuickAnswersViewModelTests.swift
+similarity index 88%
+rename from BrowserKit/Tests/VoiceSearchKitTests/VoiceSearchViewModelTests.swift
+rename to BrowserKit/Tests/QuickAnswersKitTests/QuickAnswersViewModelTests.swift
+index f62449693..deb77f2fe 100644
+--- a/BrowserKit/Tests/VoiceSearchKitTests/VoiceSearchViewModelTests.swift
++++ b/BrowserKit/Tests/QuickAnswersKitTests/QuickAnswersViewModelTests.swift
+@@ -2,17 +2,17 @@
+ // License, v. 2.0. If a copy of the MPL was not distributed with this
+ // file, You can obtain one at http://mozilla.org/MPL/2.0/
+ 
+-@testable import VoiceSearchKit
++@testable import QuickAnswersKit
+ import XCTest
+ import TestKit
+ 
+ @MainActor
+-final class VoiceSearchViewModelTests: XCTestCase {
+-    private var mockService: MockTestVoiceSearchService!
++final class QuickAnswersViewModelTests: XCTestCase {
++    private var mockService: MockTestQuickAnswersService!
+ 
+     override func setUp() async throws {
+         try await super.setUp()
+-        mockService = MockTestVoiceSearchService()
++        mockService = MockTestQuickAnswersService()
+     }
+ 
+     override func tearDown() async throws {
+@@ -27,7 +27,7 @@ final class VoiceSearchViewModelTests: XCTestCase {
+         mockService.speechResults = [partialResult, finalResult]
+         mockService.searchResult = .success(searchResult)
+         let expectation = XCTestExpectation()
+-        var states = [VoiceSearchViewModel.State]()
++        var states = [QuickAnswersViewModel.State]()
+         let subject = createSubject()
+ 
+         subject.onStateChange = { state in
+@@ -51,7 +51,7 @@ final class VoiceSearchViewModelTests: XCTestCase {
+         mockService.shouldThrowSpeechError = true
+         let expectation = XCTestExpectation()
+         let subject = createSubject()
+-        var state: VoiceSearchViewModel.State?
++        var state: QuickAnswersViewModel.State?
+ 
+         subject.onStateChange = {
+             state = $0
+@@ -70,7 +70,7 @@ final class VoiceSearchViewModelTests: XCTestCase {
+         let searchError = SearchResultError.unknown
+         mockService.speechResults = [speechResult]
+         mockService.searchResult = .failure(searchError)
+-        var states = [VoiceSearchViewModel.State]()
++        var states = [QuickAnswersViewModel.State]()
+         let expectation = XCTestExpectation()
+         let subject = createSubject()
+ 
+@@ -97,7 +97,7 @@ final class VoiceSearchViewModelTests: XCTestCase {
+         mockService.searchResult = .success(searchResult)
+ 
+         let expectation = XCTestExpectation()
+-        var states = [VoiceSearchViewModel.State]()
++        var states = [QuickAnswersViewModel.State]()
+         let subject = createSubject()
+ 
+         subject.onStateChange = { state in
+@@ -116,8 +116,8 @@ final class VoiceSearchViewModelTests: XCTestCase {
+     }
+ 
+     // MARK: - Helper
+-    private func createSubject() -> VoiceSearchViewModel {
+-        let model = VoiceSearchViewModel(service: mockService)
++    private func createSubject() -> QuickAnswersViewModel {
++        let model = QuickAnswersViewModel(service: mockService)
+         trackForMemoryLeaks(model)
+         return model
+     }
+diff --git a/BrowserKit/Tests/VoiceSearchKitTests/SFSpeechRecognizerEngineTests.swift b/BrowserKit/Tests/QuickAnswersKitTests/SFSpeechRecognizerEngineTests.swift
+similarity index 98%
+rename from BrowserKit/Tests/VoiceSearchKitTests/SFSpeechRecognizerEngineTests.swift
+rename to BrowserKit/Tests/QuickAnswersKitTests/SFSpeechRecognizerEngineTests.swift
+index 7eb2b057f..02a102a00 100644
+--- a/BrowserKit/Tests/VoiceSearchKitTests/SFSpeechRecognizerEngineTests.swift
++++ b/BrowserKit/Tests/QuickAnswersKitTests/SFSpeechRecognizerEngineTests.swift
+@@ -5,8 +5,7 @@
+ import AVFoundation
+ import Testing
+ 
+-@testable import VoiceSearchKit
+-
++@testable import QuickAnswersKit
+ @Suite
+ @MainActor
+ struct SFSpeechRecognizerEngineTests {
+diff --git a/BrowserKit/Tests/VoiceSearchKitTests/SpeechAnalyzerEngineTests.swift b/BrowserKit/Tests/QuickAnswersKitTests/SpeechAnalyzerEngineTests.swift
+similarity index 99%
+rename from BrowserKit/Tests/VoiceSearchKitTests/SpeechAnalyzerEngineTests.swift
+rename to BrowserKit/Tests/QuickAnswersKitTests/SpeechAnalyzerEngineTests.swift
+index e025a7261..e1b5f6b6d 100644
+--- a/BrowserKit/Tests/VoiceSearchKitTests/SpeechAnalyzerEngineTests.swift
++++ b/BrowserKit/Tests/QuickAnswersKitTests/SpeechAnalyzerEngineTests.swift
+@@ -5,7 +5,7 @@
+ import AVFoundation
+ import Testing
+ 
+-@testable import VoiceSearchKit
++@testable import QuickAnswersKit
+ 
+ @Suite
+ @MainActor
+diff --git a/firefox-ios/Client.xcodeproj/project.pbxproj b/firefox-ios/Client.xcodeproj/project.pbxproj
+index f92ba52cf..c9d06b2bf 100644
+--- a/firefox-ios/Client.xcodeproj/project.pbxproj
++++ b/firefox-ios/Client.xcodeproj/project.pbxproj
+@@ -1380,6 +1380,7 @@
+ 		AA24AD322E7C3A8F008659A3 /* TrendingSearchClientTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA24AD312E7C3A85008659A3 /* TrendingSearchClientTests.swift */; };
+ 		AA24AD342E7C3AD2008659A3 /* MockTrendingSearchEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA24AD332E7C3ACC008659A3 /* MockTrendingSearchEngine.swift */; };
+ 		AA3CEBAD2ECB853400DDEFEF /* SearchTelemetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA3CEBAC2ECB853400DDEFEF /* SearchTelemetryTests.swift */; };
++		AA459F872F630F3500D05D04 /* QuickAnswersKit in Frameworks */ = {isa = PBXBuildFile; productRef = AA459F862F630F3500D05D04 /* QuickAnswersKit */; };
+ 		AA4D99432E857AF300BB039D /* MockRecentSearchProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA4D99422E857AEE00BB039D /* MockRecentSearchProvider.swift */; };
+ 		AA5E81472EB12BDC00919E60 /* TranslationsMiddleware.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA5E81462EB12BD800919E60 /* TranslationsMiddleware.swift */; };
+ 		AA5E81482EF5000000000001 /* PreferredTranslationLanguagesManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA5E81492EF5000000000001 /* PreferredTranslationLanguagesManager.swift */; };
+@@ -1499,7 +1500,6 @@
+ 		BDD262562CE3AC8200DF2C62 /* PrivacyWindowHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDD262552CE3AC8200DF2C62 /* PrivacyWindowHelper.swift */; };
+ 		BDE2DB332DB1024E002FAE26 /* TabWebViewPreviewAppearanceConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDE2DB322DB1024E002FAE26 /* TabWebViewPreviewAppearanceConfiguration.swift */; };
+ 		C209316E2F3CA52E00F0B05C /* VoiceSearchCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C209316D2F3CA52E00F0B05C /* VoiceSearchCoordinator.swift */; };
+-		C20931702F3CA5E200F0B05C /* VoiceSearchKit in Frameworks */ = {isa = PBXBuildFile; productRef = C209316F2F3CA5E200F0B05C /* VoiceSearchKit */; };
+ 		C20931722F3CAB0100F0B05C /* VoiceSearchCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C20931712F3CAB0100F0B05C /* VoiceSearchCoordinatorTests.swift */; };
+ 		C2126EF82F4477EE001C01FE /* SummarizerLanguageExpansionConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2126EF72F4477EE001C01FE /* SummarizerLanguageExpansionConfiguration.swift */; };
+ 		C2126EFA2F447A46001C01FE /* SummarizerNimbusUtilsTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2126EF92F447A46001C01FE /* SummarizerNimbusUtilsTests.swift */; };
+@@ -11515,6 +11515,7 @@
+ 				E17798A02BD8043800F6F0EB /* ToolbarKit in Frameworks */,
+ 				E6231C011B90A44F005ABB0D /* libz.tbd in Frameworks */,
+ 				E4B3348A1BBF23F9004E2BFF /* AdSupport.framework in Frameworks */,
++				AA459F872F630F3500D05D04 /* QuickAnswersKit in Frameworks */,
+ 				ED6C8DAC2CE6A4BB00D7F7F3 /* Sentry-Dynamic in Frameworks */,
+ 				5A984D362C8A3407007938C9 /* Kingfisher in Frameworks */,
+ 				819656172C80C6F300E62323 /* MenuKit in Frameworks */,
+@@ -11530,7 +11531,6 @@
+ 				216A0D762A40E7AB008077BA /* Redux in Frameworks */,
+ 				0B6D1C882E15456F00919F1E /* SummarizeKit in Frameworks */,
+ 				7B8A47F61D01D3B400C07734 /* PassKit.framework in Frameworks */,
+-				C20931702F3CA5E200F0B05C /* VoiceSearchKit in Frameworks */,
+ 				5A8FD0EC293A7D5E00333AA7 /* SnapKit in Frameworks */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+@@ -17179,7 +17179,7 @@
+ 				8C51ED732DE0A64D00B3E58A /* OnboardingKit */,
+ 				0B6D1C872E15456F00919F1E /* SummarizeKit */,
+ 				ED4F77DF2F364BF800E7A7FB /* CopyWithUpdates */,
+-				C209316F2F3CA5E200F0B05C /* VoiceSearchKit */,
++				AA459F862F630F3500D05D04 /* QuickAnswersKit */,
+ 			);
+ 			productName = Client;
+ 			productReference = F84B21BE1A090F8100AAB793 /* Client.app */;
+@@ -32108,15 +32108,15 @@
+ 			isa = XCSwiftPackageProductDependency;
+ 			productName = OnboardingKit;
+ 		};
++		AA459F862F630F3500D05D04 /* QuickAnswersKit */ = {
++			isa = XCSwiftPackageProductDependency;
++			productName = QuickAnswersKit;
++		};
+ 		AB2AC6622BCFD0A200022AAB /* X509 */ = {
+ 			isa = XCSwiftPackageProductDependency;
+ 			package = AB2AC6612BCFD0A200022AAB /* XCRemoteSwiftPackageReference "swift-certificates" */;
+ 			productName = X509;
+ 		};
+-		C209316F2F3CA5E200F0B05C /* VoiceSearchKit */ = {
+-			isa = XCSwiftPackageProductDependency;
+-			productName = VoiceSearchKit;
+-		};
+ 		C26B96D62F29188100D4B140 /* TestKit */ = {
+ 			isa = XCSwiftPackageProductDependency;
+ 			productName = TestKit;
+diff --git a/firefox-ios/Client/Coordinators/VoiceSearchCoordinator.swift b/firefox-ios/Client/Coordinators/VoiceSearchCoordinator.swift
+index 709c6780d..33efabc4e 100644
+--- a/firefox-ios/Client/Coordinators/VoiceSearchCoordinator.swift
++++ b/firefox-ios/Client/Coordinators/VoiceSearchCoordinator.swift
+@@ -3,15 +3,15 @@
+ // file, You can obtain one at http://mozilla.org/MPL/2.0/
+ 
+ import Foundation
+-import VoiceSearchKit
++import QuickAnswersKit
+ import Common
+ import UIKit
+ 
+-final class VoiceSearchCoordinator: BaseCoordinator, VoiceSearchNavigationHandler {
++final class QuickAnswersCoordinator: BaseCoordinator, QuickAnswersNavigationHandler {
+     private weak var parentCoordinatorDelegate: ParentCoordinatorDelegate?
+     private let windowUUID: WindowUUID
+     private let themeManager: ThemeManager
+-    private let onNavigate: (VoiceSearchNavigationType) -> Void
++    private let onNavigate: (QuickAnswersNavigationType) -> Void
+     private var shouldAnimateTransition: Bool {
+         return !UIAccessibility.isReduceMotionEnabled
+     }
+@@ -21,7 +21,7 @@ final class VoiceSearchCoordinator: BaseCoordinator, VoiceSearchNavigationHandle
+         windowUUID: WindowUUID,
+         themeManager: ThemeManager,
+         router: Router,
+-        onNavigate: @escaping (VoiceSearchNavigationType) -> Void,
++        onNavigate: @escaping (QuickAnswersNavigationType) -> Void,
+     ) {
+         self.parentCoordinatorDelegate = parentCoordinatorDelegate
+         self.windowUUID = windowUUID
+@@ -31,7 +31,7 @@ final class VoiceSearchCoordinator: BaseCoordinator, VoiceSearchNavigationHandle
+     }
+ 
+     func start() {
+-        let controller = VoiceSearchViewController(
++        let controller = QuickAnswersViewController(
+             navigationHandler: self,
+             windowUUID: windowUUID,
+             themeManager: themeManager
+@@ -39,8 +39,8 @@ final class VoiceSearchCoordinator: BaseCoordinator, VoiceSearchNavigationHandle
+         router.present(controller, animated: shouldAnimateTransition)
+     }
+ 
+-    // MARK: - VoiceSearchNavigationHandler
+-    func dismissVoiceSearch(with navigationType: VoiceSearchNavigationType?) {
++    // MARK: - QuickAnswersNavigationHandler
++    func dismissQuickAnswers(with navigationType: QuickAnswersNavigationType?) {
+         if let navigationType {
+             onNavigate(navigationType)
+         }
+diff --git a/firefox-ios/Client/FeatureFlags/NimbusFlaggableFeature.swift b/firefox-ios/Client/FeatureFlags/NimbusFlaggableFeature.swift
+index 727b030ee..9369995b2 100644
+--- a/firefox-ios/Client/FeatureFlags/NimbusFlaggableFeature.swift
++++ b/firefox-ios/Client/FeatureFlags/NimbusFlaggableFeature.swift
+@@ -78,7 +78,7 @@ enum NimbusFeatureFlagID: String, CaseIterable {
+     case translationLanguagePicker
+     case trendingSearches
+     case unifiedSearch
+-    case voiceSearch
++    case quickAnswers
+     case webEngineIntegrationRefactor
+ 
+     // Add flags here if you want to toggle them in the `FeatureFlagsDebugViewController`. Add in alphabetical order.
+@@ -106,6 +106,7 @@ enum NimbusFeatureFlagID: String, CaseIterable {
+                 .needsReloadRefactor,
+                 .noInternetConnectionErrorPage,
+                 .otherErrorPages,
++                .quickAnswers,
+                 .recentSearches,
+                 .relayIntegration,
+                 .sentFromFirefox,
+@@ -122,7 +123,6 @@ enum NimbusFeatureFlagID: String, CaseIterable {
+                 .translationLanguagePicker,
+                 .trendingSearches,
+                 .unifiedSearch,
+-                .voiceSearch,
+                 .webEngineIntegrationRefactor:
+             return rawValue + PrefsKeys.FeatureFlags.DebugSuffixKey
+         default:
+@@ -202,6 +202,7 @@ struct NimbusFlaggableFeature: HasNimbusSearchBar {
+                 .hostedSummarizer,
+                 .hostedSummarizerToolbarEntrypoint,
+                 .hostedSummarizerShakeGesture,
++                .quickAnswers,
+                 .relayIntegration,
+                 .summarizerAppAttestAuth,
+                 .summarizerLanguageExpansion,
+@@ -224,7 +225,6 @@ struct NimbusFlaggableFeature: HasNimbusSearchBar {
+                 .translationLanguagePicker,
+                 .trendingSearches,
+                 .unifiedSearch,
+-                .voiceSearch,
+                 .webEngineIntegrationRefactor:
+             return nil
+         }
+diff --git a/firefox-ios/Client/Frontend/Settings/Main/Debug/FeatureFlags/FeatureFlagsDebugViewController.swift b/firefox-ios/Client/Frontend/Settings/Main/Debug/FeatureFlags/FeatureFlagsDebugViewController.swift
+index ce1e6a89d..3233a3c87 100644
+--- a/firefox-ios/Client/Frontend/Settings/Main/Debug/FeatureFlags/FeatureFlagsDebugViewController.swift
++++ b/firefox-ios/Client/Frontend/Settings/Main/Debug/FeatureFlags/FeatureFlagsDebugViewController.swift
+@@ -256,9 +256,9 @@ final class FeatureFlagsDebugViewController: SettingsTableViewController, Featur
+                 self?.reloadView()
+             },
+             FeatureFlagsBoolSetting(
+-                with: .voiceSearch,
+-                titleText: format(string: "Voice Search"),
+-                statusText: format(string: "Toggle to enable the Voice Search feature")
++                with: .quickAnswers,
++                titleText: format(string: "Quick Answers"),
++                statusText: format(string: "Toggle to enable the Quick Answers feature")
+             ) { [weak self] _ in
+                 self?.reloadView()
+             },
+diff --git a/firefox-ios/Client/Nimbus/NimbusFeatureFlagLayer.swift b/firefox-ios/Client/Nimbus/NimbusFeatureFlagLayer.swift
+index 9f6ef4106..fb640c358 100644
+--- a/firefox-ios/Client/Nimbus/NimbusFeatureFlagLayer.swift
++++ b/firefox-ios/Client/Nimbus/NimbusFeatureFlagLayer.swift
+@@ -214,8 +214,8 @@ final class NimbusFeatureFlagLayer: Sendable {
+         case .trendingSearches:
+             return checkTrendingSearches(from: nimbus)
+ 
+-        case .voiceSearch:
+-            return checkVoiceSearchFeature(from: nimbus)
++        case .quickAnswers:
++            return checkQuickAnswersFeature(from: nimbus)
+ 
+         case .webEngineIntegrationRefactor:
+             return checkWebEngineIntegrationRefactor(from: nimbus)
+@@ -382,8 +382,8 @@ final class NimbusFeatureFlagLayer: Sendable {
+         return nimbus.features.trendingSearchesFeature.value().enabled
+     }
+ 
+-    private func checkVoiceSearchFeature(from nimbus: FxNimbus) -> Bool {
+-        return nimbus.features.voiceSearchFeature.value().enabled
++    private func checkQuickAnswersFeature(from nimbus: FxNimbus) -> Bool {
++        return nimbus.features.quickAnswersFeature.value().enabled
+     }
+ 
+     private func checkFeltPrivacyFeature(
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/VoiceSearchCoordinatorTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/VoiceSearchCoordinatorTests.swift
+index 7296dd174..3d76100da 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/VoiceSearchCoordinatorTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Coordinators/VoiceSearchCoordinatorTests.swift
+@@ -4,11 +4,11 @@
+ 
+ import XCTest
+ import Common
+-import VoiceSearchKit
++import QuickAnswersKit
+ @testable import Client
+ 
+ @MainActor
+-final class VoiceSearchCoordinatorTests: XCTestCase {
++final class QuickAnswersCoordinatorTests: XCTestCase {
+     private var router: MockRouter!
+     private var parentCoordinator: MockParentCoordinator!
+     private var themeManager: MockThemeManager!
+@@ -29,57 +29,57 @@ final class VoiceSearchCoordinatorTests: XCTestCase {
+         try await super.tearDown()
+     }
+ 
+-    func test_start_presentsVoiceSearchViewController() {
++    func test_start_presentsViewController() {
+         let subject = createSubject()
+ 
+         subject.start()
+ 
+         XCTAssertEqual(router.presentCalled, 1)
+-        XCTAssertTrue(router.presentedViewController is VoiceSearchViewController)
++        XCTAssertTrue(router.presentedViewController is QuickAnswersViewController)
+     }
+ 
+-    func test_dismissVoiceSearch_dismissesControllerAndNotifiesParent() {
++    func test_dismissQuickAnswers_dismissesControllerAndNotifiesParent() {
+         let subject = createSubject()
+ 
+-        subject.dismissVoiceSearch(with: nil)
++        subject.dismissQuickAnswers(with: nil)
+ 
+         XCTAssertEqual(parentCoordinator.didFinishCalled, 1)
+         XCTAssertEqual(router.dismissCalled, 1)
+     }
+ 
+-    func test_dismissVoiceSearch_withNilNavigationType_doesntCallCallback() {
++    func test_dismissQuickAnswers_withNilNavigationType_doesntCallCallback() {
+         var didCallCallback = false
+         let subject = createSubject(onNavigate: { _ in
+             didCallCallback = true
+         })
+ 
+-        subject.dismissVoiceSearch(with: nil)
++        subject.dismissQuickAnswers(with: nil)
+ 
+         XCTAssertFalse(didCallCallback, "The onNavigate closure should not have been called")
+     }
+ 
+-    func test_dismissVoiceSearch_withNavigateToURLType_callsCallback() {
++    func test_dismissQuickAnswers_withNavigateToURLType_callsCallback() {
+         var didCallCallback = false
+         let subject = createSubject(onNavigate: { type in
+             XCTAssertEqual(type, .url(self.testURL))
+             didCallCallback = true
+         })
+ 
+-        subject.dismissVoiceSearch(with: .url(testURL))
++        subject.dismissQuickAnswers(with: .url(testURL))
+ 
+         XCTAssertTrue(didCallCallback, "The onNavigate closure should have been called")
+         XCTAssertEqual(parentCoordinator.didFinishCalled, 1)
+         XCTAssertEqual(router.dismissCalled, 1)
+     }
+ 
+-    func test_dismissVoiceSearch_withNavigateToSearchResultType_callsCallback() {
++    func test_dismissQuickAnswers_withNavigateToSearchResultType_callsCallback() {
+         var didCallCallback = false
+         let subject = createSubject(onNavigate: { type in
+             XCTAssertEqual(type, .searchResult(self.testQuery))
+             didCallCallback = true
+         })
+ 
+-        subject.dismissVoiceSearch(with: .searchResult(testQuery))
++        subject.dismissQuickAnswers(with: .searchResult(testQuery))
+ 
+         XCTAssertTrue(didCallCallback, "The onNavigate closure should have been called")
+         XCTAssertEqual(parentCoordinator.didFinishCalled, 1)
+@@ -88,11 +88,11 @@ final class VoiceSearchCoordinatorTests: XCTestCase {
+ 
+     // MARK: - Helper Methods
+     private func createSubject(
+-        onNavigate: @escaping (VoiceSearchNavigationType) -> Void = { _ in },
++        onNavigate: @escaping (QuickAnswersNavigationType) -> Void = { _ in },
+         file: StaticString = #filePath,
+         line: UInt = #line
+-    ) -> VoiceSearchCoordinator {
+-        let subject = VoiceSearchCoordinator(
++    ) -> QuickAnswersCoordinator {
++        let subject = QuickAnswersCoordinator(
+             parentCoordinatorDelegate: parentCoordinator,
+             windowUUID: .XCTestDefaultUUID,
+             themeManager: themeManager,
+diff --git a/firefox-ios/firefox-ios-tests/Tests/UnitTest.xctestplan b/firefox-ios/firefox-ios-tests/Tests/UnitTest.xctestplan
+index 92f991d4e..8fc604f89 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/UnitTest.xctestplan
++++ b/firefox-ios/firefox-ios-tests/Tests/UnitTest.xctestplan
+@@ -111,11 +111,6 @@
+           "identifier" : "OnboardingKit",
+           "name" : "OnboardingKit"
+         },
+-        {
+-          "containerPath" : "container:..\/BrowserKit",
+-          "identifier" : "VoiceSearchKit",
+-          "name" : "VoiceSearchKit"
+-        },
+         {
+           "containerPath" : "container:..\/BrowserKit",
+           "identifier" : "UnifiedSearchKit",
+@@ -125,18 +120,16 @@
+           "containerPath" : "container:..\/BrowserKit",
+           "identifier" : "Common",
+           "name" : "Common"
++        },
++        {
++          "containerPath" : "container:..\/BrowserKit",
++          "identifier" : "QuickAnswersKit",
++          "name" : "QuickAnswersKit"
+         }
+       ]
+     }
+   },
+   "testTargets" : [
+-    {
+-      "target" : {
+-        "containerPath" : "container:..\/BrowserKit",
+-        "identifier" : "ActionExtensionKitTests",
+-        "name" : "ActionExtensionKitTests"
+-      }
+-    },
+     {
+       "target" : {
+         "containerPath" : "container:..\/BrowserKit",
+@@ -145,20 +138,10 @@
+       }
+     },
+     {
+-      "skippedTests" : [
+-        "SummarizeViewModelTests"
+-      ],
+       "target" : {
+-        "containerPath" : "container:..\/BrowserKit",
+-        "identifier" : "SummarizeKitTests",
+-        "name" : "SummarizeKitTests"
+-      }
+-    },
+-    {
+-      "target" : {
+-        "containerPath" : "container:..\/BrowserKit",
+-        "identifier" : "ComponentLibraryTests",
+-        "name" : "ComponentLibraryTests"
++        "containerPath" : "container:..\/MozillaRustComponents",
++        "identifier" : "MozillaRustComponentsTests",
++        "name" : "MozillaRustComponentsTests"
+       }
+     },
+     {
+@@ -175,64 +158,88 @@
+         "name" : "SyncTests"
+       }
+     },
++    {
++      "target" : {
++        "containerPath" : "container:Client.xcodeproj",
++        "identifier" : "2FA436041ABB83B4008031D1",
++        "name" : "AccountTests"
++      }
++    },
+     {
+       "target" : {
+         "containerPath" : "container:..\/BrowserKit",
+-        "identifier" : "MenuKitTests",
+-        "name" : "MenuKitTests"
++        "identifier" : "SiteImageViewTests",
++        "name" : "SiteImageViewTests"
+       }
+     },
+     {
+       "target" : {
+         "containerPath" : "container:..\/BrowserKit",
+-        "identifier" : "ReduxTests",
+-        "name" : "ReduxTests"
++        "identifier" : "CommonTests",
++        "name" : "CommonTests"
+       }
+     },
+     {
+       "target" : {
+         "containerPath" : "container:..\/BrowserKit",
+-        "identifier" : "ToolbarKitTests",
+-        "name" : "ToolbarKitTests"
++        "identifier" : "WebEngineTests",
++        "name" : "WebEngineTests"
++      }
++    },
++    {
++      "target" : {
++        "containerPath" : "container:..\/BrowserKit",
++        "identifier" : "ReduxTests",
++        "name" : "ReduxTests"
+       }
+     },
+     {
+       "skippedTests" : [
+-        "RustLoginsTests\/testUpdateLogin()",
+-        "TestBrowserDB\/testMovesDB()"
++        "SummarizeViewModelTests"
+       ],
+       "target" : {
+-        "containerPath" : "container:Client.xcodeproj",
+-        "identifier" : "2FCAE2231ABB51F800877008",
+-        "name" : "StorageTests"
++        "containerPath" : "container:..\/BrowserKit",
++        "identifier" : "SummarizeKitTests",
++        "name" : "SummarizeKitTests"
+       }
+     },
+     {
+       "target" : {
+         "containerPath" : "container:..\/BrowserKit",
+-        "identifier" : "JWTKitTests",
+-        "name" : "JWTKitTests"
++        "identifier" : "ContentBlockingGeneratorTests",
++        "name" : "ContentBlockingGeneratorTests"
+       }
+     },
+     {
+       "target" : {
+         "containerPath" : "container:..\/BrowserKit",
+-        "identifier" : "TabDataStoreTests",
+-        "name" : "TabDataStoreTests"
++        "identifier" : "QuickAnswersKitTests",
++        "name" : "QuickAnswersKitTests"
+       }
+     },
+     {
+       "target" : {
+         "containerPath" : "container:..\/BrowserKit",
+-        "identifier" : "VoiceSearchKitTests",
+-        "name" : "VoiceSearchKitTests"
++        "identifier" : "MenuKitTests",
++        "name" : "MenuKitTests"
+       }
+     },
+     {
+       "target" : {
+-        "containerPath" : "container:..\/BrowserKit",
+-        "identifier" : "ContentBlockingGeneratorTests",
+-        "name" : "ContentBlockingGeneratorTests"
++        "containerPath" : "container:Client.xcodeproj",
++        "identifier" : "E6F9650B1B2F1CF20034B023",
++        "name" : "SharedTests"
++      }
++    },
++    {
++      "skippedTests" : [
++        "RustLoginsTests\/testUpdateLogin()",
++        "TestBrowserDB\/testMovesDB()"
++      ],
++      "target" : {
++        "containerPath" : "container:Client.xcodeproj",
++        "identifier" : "2FCAE2231ABB51F800877008",
++        "name" : "StorageTests"
+       }
+     },
+     {
+@@ -242,6 +249,27 @@
+         "name" : "SyncTelemetryTests"
+       }
+     },
++    {
++      "target" : {
++        "containerPath" : "container:..\/BrowserKit",
++        "identifier" : "ToolbarKitTests",
++        "name" : "ToolbarKitTests"
++      }
++    },
++    {
++      "target" : {
++        "containerPath" : "container:..\/BrowserKit",
++        "identifier" : "TabDataStoreTests",
++        "name" : "TabDataStoreTests"
++      }
++    },
++    {
++      "target" : {
++        "containerPath" : "container:..\/BrowserKit",
++        "identifier" : "ComponentLibraryTests",
++        "name" : "ComponentLibraryTests"
++      }
++    },
+     {
+       "skippedTests" : [
+         "BrowserViewControllerWebViewDelegateTests\/testWebViewDidFinishNavigation_takeScreenshotWhenTabIsSelected()",
+@@ -302,43 +330,15 @@
+     {
+       "target" : {
+         "containerPath" : "container:..\/BrowserKit",
+-        "identifier" : "CommonTests",
+-        "name" : "CommonTests"
+-      }
+-    },
+-    {
+-      "target" : {
+-        "containerPath" : "container:Client.xcodeproj",
+-        "identifier" : "2FA436041ABB83B4008031D1",
+-        "name" : "AccountTests"
+-      }
+-    },
+-    {
+-      "target" : {
+-        "containerPath" : "container:..\/BrowserKit",
+-        "identifier" : "SiteImageViewTests",
+-        "name" : "SiteImageViewTests"
+-      }
+-    },
+-    {
+-      "target" : {
+-        "containerPath" : "container:Client.xcodeproj",
+-        "identifier" : "E6F9650B1B2F1CF20034B023",
+-        "name" : "SharedTests"
++        "identifier" : "JWTKitTests",
++        "name" : "JWTKitTests"
+       }
+     },
+     {
+       "target" : {
+         "containerPath" : "container:..\/BrowserKit",
+-        "identifier" : "WebEngineTests",
+-        "name" : "WebEngineTests"
+-      }
+-    },
+-    {
+-      "target" : {
+-        "containerPath" : "container:..\/MozillaRustComponents",
+-        "identifier" : "MozillaRustComponentsTests",
+-        "name" : "MozillaRustComponentsTests"
++        "identifier" : "ActionExtensionKitTests",
++        "name" : "ActionExtensionKitTests"
+       }
+     }
+   ],
+diff --git a/firefox-ios/nimbus-features/voiceSearchFeature.yaml b/firefox-ios/nimbus-features/quickAnswersFeature.yaml
+similarity index 60%
+rename from firefox-ios/nimbus-features/voiceSearchFeature.yaml
+rename to firefox-ios/nimbus-features/quickAnswersFeature.yaml
+index 960e5639d..426700cf0 100644
+--- a/firefox-ios/nimbus-features/voiceSearchFeature.yaml
++++ b/firefox-ios/nimbus-features/quickAnswersFeature.yaml
+@@ -1,8 +1,8 @@
+-# The configuration for the voiceSearchFeature feature
++# The configuration for the quickAnswersFeature feature
+ features:
+-  voice-search-feature:
++  quick-answers-feature:
+     description: >
+-      The feature flag to manage the roll out of the voice search feature.
++      The feature flag to manage the roll out of the quick answers feature.
+     variables:
+       enabled:
+         description: >
+@@ -15,4 +15,4 @@ features:
+           enabled: false
+       - channel: developer
+         value:
+-          enabled: false
+\ No newline at end of file
++          enabled: false
+diff --git a/firefox-ios/nimbus.fml.yaml b/firefox-ios/nimbus.fml.yaml
+index ceb4886c0..34a4aeb0f 100644
+--- a/firefox-ios/nimbus.fml.yaml
++++ b/firefox-ios/nimbus.fml.yaml
+@@ -56,5 +56,5 @@ include:
+   - nimbus-features/trackingProtectionRefactor.yaml
+   - nimbus-features/translationsFeature.yaml
+   - nimbus-features/trendingSearchesFeature.yaml
+-  - nimbus-features/voiceSearchFeature.yaml
+-  - nimbus-features/webEngineIntegrationRefactor.yaml
+\ No newline at end of file
++  - nimbus-features/quickAnswersFeature.yaml
++  - nimbus-features/webEngineIntegrationRefactor.yaml

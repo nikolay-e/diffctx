@@ -1,0 +1,572 @@
+From ea3d23d879810ffeb4f4ab1216dcafb390486e9c Mon Sep 17 00:00:00 2001
+From: Adam Rutkowski <hq@mtod.org>
+Date: Thu, 9 Apr 2026 11:43:36 +0200
+Subject: [PATCH] Strict order funnels (#6237)
+
+* Migration: add strict_order to funnels
+
+* Update funnel schema
+
+* Accept strict_order on funnel create/update
+
+* Integrate funnel strict order setting
+
+* Use toggle switch and reword label
+
+* Improve test
+
+* Improve test
+
+* Rely only on socket assign to retrieve strict-order
+
+* fixup
+
+* Carry `strict_order?` within opts
+
+* !fixup
+---
+ extra/lib/plausible/funnel.ex                 |   3 +-
+ extra/lib/plausible/funnels.ex                |  44 +++---
+ extra/lib/plausible/stats/funnel.ex           |  19 ++-
+ .../live/funnel_settings/form.ex              |  48 +++++--
+ test/plausible/funnels_test.exs               |  82 +++++++++++
+ .../live/funnel_settings_test.exs             | 129 +++++++++++++++++-
+ 6 files changed, 294 insertions(+), 31 deletions(-)
+
+diff --git a/extra/lib/plausible/funnel.ex b/extra/lib/plausible/funnel.ex
+index abd3724f8..f30d29527 100644
+--- a/extra/lib/plausible/funnel.ex
++++ b/extra/lib/plausible/funnel.ex
+@@ -41,6 +41,7 @@ defmodule Plausible.Funnel do
+   @type t() :: %__MODULE__{}
+   schema "funnels" do
+     field :name, :string
++    field :strict_order, :boolean, default: false
+     belongs_to :site, Plausible.Site
+ 
+     has_many :steps, Step,
+@@ -55,7 +56,7 @@ defmodule Plausible.Funnel do
+ 
+   def changeset(funnel \\ %__MODULE__{}, attrs \\ %{}) do
+     funnel
+-    |> cast(attrs, [:name])
++    |> cast(attrs, [:name, :strict_order])
+     |> validate_required([:name])
+     |> put_steps(attrs[:steps] || attrs["steps"])
+     |> validate_length(:steps, min: @min_steps, max: @max_steps)
+diff --git a/extra/lib/plausible/funnels.ex b/extra/lib/plausible/funnels.ex
+index 24ac019cb..feebbf65e 100644
+--- a/extra/lib/plausible/funnels.ex
++++ b/extra/lib/plausible/funnels.ex
+@@ -13,10 +13,12 @@ defmodule Plausible.Funnels do
+ 
+   import Ecto.Query
+ 
+-  @spec create(Plausible.Site.t(), String.t(), [map()]) ::
++  @spec create(Plausible.Site.t(), String.t(), [map()], Keyword.t()) ::
+           {:ok, Funnel.t()}
+           | {:error, Ecto.Changeset.t() | :invalid_funnel_size | :upgrade_required}
+-  def create(site, name, steps)
++  def create(site, name, steps, opts \\ [])
++
++  def create(site, name, steps, opts)
+       when is_list(steps) and length(steps) in Funnel.min_steps()..Funnel.max_steps() do
+     site = Plausible.Repo.preload(site, :team)
+ 
+@@ -26,19 +28,19 @@ defmodule Plausible.Funnels do
+ 
+       :ok ->
+         site
+-        |> create_changeset(name, steps)
++        |> create_changeset(name, steps, opts)
+         |> Repo.insert()
+     end
+   end
+ 
+-  def create(_site, _name, _goals) do
++  def create(_site, _name, _goals, _opts) do
+     {:error, :invalid_funnel_size}
+   end
+ 
+-  @spec update(Funnel.t(), String.t(), [map()]) ::
++  @spec update(Funnel.t(), String.t(), [map()], Keyword.t()) ::
+           {:ok, Funnel.t()}
+           | {:error, Ecto.Changeset.t() | :invalid_funnel_size | :upgrade_required}
+-  def update(funnel, name, steps) do
++  def update(funnel, name, steps, opts \\ []) do
+     site = Plausible.Repo.preload(funnel, site: :team).site
+ 
+     case Plausible.Billing.Feature.Funnels.check_availability(site.team) do
+@@ -47,27 +49,37 @@ defmodule Plausible.Funnels do
+ 
+       :ok ->
+         funnel
+-        |> Funnel.changeset(%{name: name, steps: steps})
++        |> edit_changeset(name, steps,
++          strict_order?: Keyword.get(opts, :strict_order?, !!funnel.strict_order)
++        )
+         |> Repo.update()
+     end
+   end
+ 
+-  @spec create_changeset(Plausible.Site.t(), String.t(), [map()]) ::
++  @spec create_changeset(Plausible.Site.t(), String.t(), [map()], Keyword.t()) ::
+           Ecto.Changeset.t()
+-  def create_changeset(site, name, steps) do
+-    Funnel.changeset(%Funnel{site_id: site.id}, %{name: name, steps: steps})
++  def create_changeset(site, name, steps, opts \\ []) do
++    Funnel.changeset(%Funnel{site_id: site.id}, %{
++      name: name,
++      steps: steps,
++      strict_order: Keyword.get(opts, :strict_order?, false)
++    })
+   end
+ 
+-  @spec edit_changeset(Plausible.Funnel.t(), String.t(), [map()]) ::
++  @spec edit_changeset(Plausible.Funnel.t(), String.t(), [map()], Keyword.t()) ::
+           Ecto.Changeset.t()
+-  def edit_changeset(funnel, name, steps) do
+-    Funnel.changeset(funnel, %{name: name, steps: steps})
++  def edit_changeset(funnel, name, steps, opts) do
++    Funnel.changeset(funnel, %{
++      name: name,
++      steps: steps,
++      strict_order: Keyword.get(opts, :strict_order?, false)
++    })
+   end
+ 
+-  @spec ephemeral_definition(Plausible.Site.t(), String.t(), [map()]) :: Funnel.t()
+-  def ephemeral_definition(site, name, steps) do
++  @spec ephemeral_definition(Plausible.Site.t(), String.t(), [map()], Keyword.t()) :: Funnel.t()
++  def ephemeral_definition(site, name, steps, opts \\ []) do
+     site
+-    |> create_changeset(name, steps)
++    |> create_changeset(name, steps, opts)
+     |> Ecto.Changeset.apply_changes()
+   end
+ 
+diff --git a/extra/lib/plausible/stats/funnel.ex b/extra/lib/plausible/stats/funnel.ex
+index 5614c640b..7629dd595 100644
+--- a/extra/lib/plausible/stats/funnel.ex
++++ b/extra/lib/plausible/stats/funnel.ex
+@@ -93,10 +93,21 @@ defmodule Plausible.Stats.Funnel do
+       end)
+ 
+     dynamic_window_funnel =
+-      dynamic(
+-        [q],
+-        fragment("windowFunnel(?)(timestamp, ?)", @funnel_window_duration, ^window_funnel_steps)
+-      )
++      if funnel_definition.strict_order do
++        dynamic(
++          [q],
++          fragment(
++            "windowFunnel(?, 'strict_order')(timestamp, ?)",
++            @funnel_window_duration,
++            ^window_funnel_steps
++          )
++        )
++      else
++        dynamic(
++          [q],
++          fragment("windowFunnel(?)(timestamp, ?)", @funnel_window_duration, ^window_funnel_steps)
++        )
++      end
+ 
+     from(q in db_query,
+       select_merge:
+diff --git a/extra/lib/plausible_web/live/funnel_settings/form.ex b/extra/lib/plausible_web/live/funnel_settings/form.ex
+index e273bd140..6a46134a5 100644
+--- a/extra/lib/plausible_web/live/funnel_settings/form.ex
++++ b/extra/lib/plausible_web/live/funnel_settings/form.ex
+@@ -80,6 +80,20 @@ defmodule PlausibleWeb.Live.FunnelSettings.Form do
+               label="Funnel name"
+             />
+ 
++            <div class="mt-6 flex items-center justify-between gap-4">
++              <span class="text-sm font-medium text-gray-900 dark:text-gray-100">
++                Allow other steps between funnel steps
++              </span>
++              <div class="flex items-center gap-3">
++                <.toggle_switch
++                  id="toggle-strict-order"
++                  id_suffix="switch"
++                  checked={!@strict_order?}
++                  phx-click="toggle-strict-order"
++                />
++              </div>
++            </div>
++
+             <div id="steps-builder" class="mt-6">
+               <.label>
+                 Funnel steps
+@@ -232,7 +246,16 @@ defmodule PlausibleWeb.Live.FunnelSettings.Form do
+      assign(socket, step_ids: step_ids, selections_made: selections_made, funnel_modified?: true)}
+   end
+ 
++  def handle_event("toggle-strict-order", _params, socket) do
++    strict_order? = !socket.assigns.strict_order?
++    send(self(), :evaluate_funnel)
++
++    {:noreply, assign(socket, strict_order?: strict_order?)}
++  end
++
+   def handle_event("validate", %{"funnel" => params}, socket) do
++    strict_order? = socket.assigns.strict_order?
++
+     steps_from_assigns =
+       socket.assigns.step_ids
+       |> Enum.reduce([], fn step_id, acc ->
+@@ -245,7 +268,8 @@ defmodule PlausibleWeb.Live.FunnelSettings.Form do
+       socket.assigns.site
+       |> Funnels.create_changeset(
+         params["name"],
+-        steps_from_assigns
++        steps_from_assigns,
++        strict_order?: strict_order?
+       )
+       |> Map.put(:action, :validate)
+ 
+@@ -255,17 +279,17 @@ defmodule PlausibleWeb.Live.FunnelSettings.Form do
+   def handle_event(
+         "save",
+         %{"funnel" => params},
+-        %{assigns: %{site: site, funnel: funnel}} = socket
++        %{assigns: %{site: site, funnel: funnel, strict_order?: strict_order?}} = socket
+       ) do
+     steps = Enum.map(params["steps"], fn {_idx, payload} -> payload end)
+ 
+     save_fn =
+       case funnel do
+         %Plausible.Funnel{} ->
+-          fn -> Funnels.update(funnel, params["name"], steps) end
++          fn -> Funnels.update(funnel, params["name"], steps, strict_order?: strict_order?) end
+ 
+         nil ->
+-          fn -> Funnels.create(site, params["name"], steps) end
++          fn -> Funnels.create(site, params["name"], steps, strict_order?: strict_order?) end
+       end
+ 
+     case save_fn.() do
+@@ -314,11 +338,13 @@ defmodule PlausibleWeb.Live.FunnelSettings.Form do
+          %{
+            assigns: %{
+              site: site,
+-             selections_made: selections_made
++             selections_made: selections_made,
++             strict_order?: strict_order?
+            }
+          } = socket
+        ) do
+-    with {:ok, {definition, query}} <- build_ephemeral_funnel(site, selections_made),
++    with {:ok, {definition, query}} <-
++           build_ephemeral_funnel(site, selections_made, strict_order?: strict_order?),
+          {:ok, funnel} <- Plausible.Stats.funnel(site, query, definition) do
+       assign(socket, evaluation_result: funnel)
+     else
+@@ -327,7 +353,7 @@ defmodule PlausibleWeb.Live.FunnelSettings.Form do
+     end
+   end
+ 
+-  defp build_ephemeral_funnel(site, selections_made) do
++  defp build_ephemeral_funnel(site, selections_made, opts) do
+     steps =
+       selections_made
+       |> Enum.sort_by(&elem(&1, 0))
+@@ -346,7 +372,8 @@ defmodule PlausibleWeb.Live.FunnelSettings.Form do
+       Funnels.ephemeral_definition(
+         site,
+         "Test funnel",
+-        steps
++        steps,
++        opts
+       )
+ 
+     query =
+@@ -417,7 +444,8 @@ defmodule PlausibleWeb.Live.FunnelSettings.Form do
+       funnel
+       |> Funnels.edit_changeset(
+         funnel.name,
+-        Enum.map(funnel.steps, &%{goal_id: &1.goal.id})
++        Enum.map(funnel.steps, &%{goal_id: &1.goal.id}),
++        strict_order?: funnel.strict_order
+       )
+       |> to_form()
+ 
+@@ -431,6 +459,7 @@ defmodule PlausibleWeb.Live.FunnelSettings.Form do
+         socket,
+         form: form,
+         funnel: funnel,
++        strict_order?: funnel.strict_order,
+         funnel_modified?: false,
+         selections_made: selections_made,
+         step_ids: Enum.to_list(1..Enum.count(funnel.steps))
+@@ -446,6 +475,7 @@ defmodule PlausibleWeb.Live.FunnelSettings.Form do
+       socket,
+       form: form,
+       funnel: nil,
++      strict_order?: false,
+       funnel_modified?: false,
+       selections_made: Map.new(),
+       step_ids: Enum.to_list(1..Funnel.min_steps())
+diff --git a/test/plausible/funnels_test.exs b/test/plausible/funnels_test.exs
+index 53e3e2a29..48581ba86 100644
+--- a/test/plausible/funnels_test.exs
++++ b/test/plausible/funnels_test.exs
+@@ -43,6 +43,7 @@ defmodule Plausible.FunnelsTest do
+ 
+         assert funnel.inserted_at
+         assert funnel.name == "From blog to signup and purchase"
++        assert funnel.strict_order == false
+         assert [fg1, fg2, fg3] = funnel.steps
+ 
+         assert fg1.goal_id == g1["goal_id"]
+@@ -76,6 +77,36 @@ defmodule Plausible.FunnelsTest do
+         assert funnel1.id == funnel2.id
+       end
+ 
++      test "update funnel strict_order", %{site: site, steps: [g1, g2, g3 | _]} do
++        {:ok, funnel} =
++          Funnels.create(
++            site,
++            "Sample funnel",
++            [g1, g2]
++          )
++
++        assert funnel.strict_order == false
++
++        {:ok, strict_funnel} =
++          Funnels.update(
++            funnel,
++            "Sample funnel",
++            [g1, g2, g3],
++            strict_order?: true
++          )
++
++        assert strict_funnel.strict_order == true
++
++        {:ok, preserved_funnel} =
++          Funnels.update(
++            strict_funnel,
++            "Sample funnel",
++            [g1, g2]
++          )
++
++        assert preserved_funnel.strict_order == true
++      end
++
+       test "retrieve a funnel by id and site, get steps in order", %{
+         site: site,
+         steps: [g1, g2, g3 | _]
+@@ -299,6 +330,57 @@ defmodule Plausible.FunnelsTest do
+                 }} = funnel_data
+       end
+ 
++      test "strict-order funnels stop at intervention events", %{
++        site: site,
++        steps: [g1, g2, g3 | _]
++      } do
++        {:ok, non_strict_funnel} =
++          Funnels.create(
++            site,
++            "From blog to signup and purchase",
++            [g1, g2, g3]
++          )
++
++        {:ok, strict_funnel} =
++          Funnels.create(
++            site,
++            "Strict from blog to signup and purchase",
++            [g1, g2, g3],
++            strict_order?: true
++          )
++
++        populate_stats(site, [
++          build(:pageview,
++            pathname: "/go/to/blog/foo",
++            user_id: 123,
++            timestamp: ~N[2021-01-01 00:00:00]
++          ),
++          build(:pageview,
++            pathname: "/some/other/page",
++            user_id: 123,
++            timestamp: ~N[2021-01-01 00:00:01]
++          ),
++          build(:event,
++            name: "Signup",
++            user_id: 123,
++            timestamp: ~N[2021-01-01 00:00:02]
++          ),
++          build(:pageview,
++            pathname: "/checkout",
++            user_id: 123,
++            timestamp: ~N[2021-01-01 00:00:03]
++          )
++        ])
++
++        query = QueryBuilder.build!(site, input_date_range: :all)
++
++        {:ok, non_strict_funnel_data} = Stats.funnel(site, query, non_strict_funnel.id)
++        {:ok, strict_funnel_data} = Stats.funnel(site, query, strict_funnel.id)
++
++        assert Enum.at(non_strict_funnel_data.steps, 2).visitors == 1
++        assert Enum.at(strict_funnel_data.steps, 2).visitors == 0
++      end
++
+       test "funnels can be evaluated even where there are no visits yet", %{
+         site: site,
+         steps: [g1, g2, g3 | _]
+diff --git a/test/plausible_web/live/funnel_settings_test.exs b/test/plausible_web/live/funnel_settings_test.exs
+index 2fb874b2a..5aec16db9 100644
+--- a/test/plausible_web/live/funnel_settings_test.exs
++++ b/test/plausible_web/live/funnel_settings_test.exs
+@@ -326,7 +326,52 @@ defmodule PlausibleWeb.Live.FunnelSettingsTest do
+         |> element(~s/form/)
+         |> render_submit()
+ 
+-        assert %Plausible.Funnel{steps: [_, _]} = Plausible.Funnels.get(site, "My test funnel")
++        assert %Plausible.Funnel{steps: [_, _], strict_order: false} =
++                 Plausible.Funnels.get(site, "My test funnel")
++      end
++
++      test "save button saves strict-order setting", %{
++        conn: conn,
++        site: site
++      } do
++        {:ok, [g1, g2]} = setup_goals(site)
++
++        {:ok, %Plausible.Funnel{strict_order: false} = funnel} =
++          Plausible.Funnels.create(
++            site,
++            "Strict funnel",
++            [%{"goal_id" => g1.id}, %{"goal_id" => g2.id}],
++            strict_order?: false
++          )
++
++        lv = get_liveview(conn, site)
++
++        lv
++        |> element(~s/button[phx-click="edit-funnel"][phx-value-funnel-id="#{funnel.id}"]/)
++        |> render_click()
++
++        assert lv = find_live_child(lv, "funnels-form")
++
++        assert element_exists?(
++                 render(lv),
++                 ~s/button#toggle-strict-order-switch[aria-checked="true"]/
++               )
++
++        lv
++        |> element(~s/button#toggle-strict-order-switch[phx-click="toggle-strict-order"]/)
++        |> render_click()
++
++        assert element_exists?(
++                 render(lv),
++                 ~s/button#toggle-strict-order-switch[aria-checked="false"]/
++               )
++
++        lv
++        |> element(~s/form/)
++        |> render_submit()
++
++        assert %Plausible.Funnel{strict_order: true} =
++                 Plausible.Funnels.get(site, "Strict funnel")
+       end
+ 
+       test "editing a funnel pre-renders it", %{
+@@ -348,6 +393,54 @@ defmodule PlausibleWeb.Live.FunnelSettingsTest do
+         assert lv |> element("#step-2") |> render() |> text_of_attr("value") == "Signup"
+       end
+ 
++      test "funnel is re-evaluated when strict-order is changed", %{
++        conn: conn,
++        site: site
++      } do
++        {:ok, [g1, g2]} = setup_goals(site)
++
++        {:ok, funnel} =
++          Plausible.Funnels.create(
++            site,
++            "Strict-order switch",
++            [%{"goal_id" => g1.id}, %{"goal_id" => g2.id}]
++          )
++
++        ts = NaiveDateTime.utc_now() |> NaiveDateTime.truncate(:second)
++
++        populate_stats(site, [
++          build(:pageview, pathname: "/go/to/blog/foo", user_id: 123, timestamp: ts),
++          build(:pageview,
++            pathname: "/intervention",
++            user_id: 123,
++            timestamp: NaiveDateTime.add(ts, 1, :second)
++          ),
++          build(:event,
++            name: "Signup",
++            user_id: 123,
++            timestamp: NaiveDateTime.add(ts, 2, :second)
++          )
++        ])
++
++        lv = get_liveview(conn, site)
++
++        lv
++        |> element(~s/button[phx-click="edit-funnel"][phx-value-funnel-id="#{funnel.id}"]/)
++        |> render_click()
++
++        assert lv = find_live_child(lv, "funnels-form")
++
++        assert text_of_element(render(lv), ~s/#step-eval-1/) =~ "Dropoff: 0%"
++        assert text_of_element(render(lv), ~s/#funnel-eval/) =~ "Last month conversion rate: 100%"
++
++        lv
++        |> element(~s/button#toggle-strict-order-switch[phx-click="toggle-strict-order"]/)
++        |> render_click()
++
++        assert text_of_element(render(lv), ~s/#step-eval-1/) =~ "Dropoff: 100%"
++        assert text_of_element(render(lv), ~s/#funnel-eval/) =~ "Last month conversion rate: 0%"
++      end
++
+       test "clicking save after editing the funnel, updates it", %{
+         conn: conn,
+         site: site
+@@ -387,6 +480,40 @@ defmodule PlausibleWeb.Live.FunnelSettingsTest do
+                  Plausible.Funnels.get(site, "Updated funnel")
+       end
+ 
++      test "clicking save after editing the funnel, updates strict-order setting", %{
++        conn: conn,
++        site: site
++      } do
++        {:ok, [g1, g2]} = setup_goals(site)
++
++        {:ok, funnel} =
++          Plausible.Funnels.create(
++            site,
++            "Editable strict funnel",
++            [%{"goal_id" => g1.id}, %{"goal_id" => g2.id}],
++            strict_order?: false
++          )
++
++        lv = get_liveview(conn, site)
++
++        lv
++        |> element(~s/button[phx-click="edit-funnel"][phx-value-funnel-id="#{funnel.id}"]/)
++        |> render_click()
++
++        assert lv = find_live_child(lv, "funnels-form")
++
++        lv
++        |> element(~s/button#toggle-strict-order-switch[phx-click="toggle-strict-order"]/)
++        |> render_click()
++
++        lv
++        |> element(~s/form/)
++        |> render_submit()
++
++        assert %Plausible.Funnel{strict_order: true} =
++                 Plausible.Funnels.get(site, "Editable strict funnel")
++      end
++
+       test "funnel gets evaluated on every select, assuming a second has passed between selections",
+            %{
+              conn: conn,

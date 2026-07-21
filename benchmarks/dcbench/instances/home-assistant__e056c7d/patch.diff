@@ -1,0 +1,365 @@
+From e056c7d78c7714235fb7bb30b4c4d5c9d8b41efe Mon Sep 17 00:00:00 2001
+From: AlCalzone <dominic.griesel@openhomefoundation.org>
+Date: Mon, 15 Jun 2026 14:33:05 +0200
+Subject: [PATCH] Deprecate openSenseMap air quality entity (#173862)
+
+Co-authored-by: Claude Opus 4.8 (1M context) <noreply@anthropic.com>
+---
+ .../components/opensensemap/air_quality.py    |  82 +++++++++-
+ .../components/opensensemap/const.py          |   1 +
+ .../components/opensensemap/strings.json      |   8 +
+ .../opensensemap/test_air_quality.py          | 151 ++++++++++++++++++
+ tests/components/opensensemap/test_init.py    |  11 +-
+ 5 files changed, 240 insertions(+), 13 deletions(-)
+ create mode 100644 tests/components/opensensemap/test_air_quality.py
+
+diff --git a/homeassistant/components/opensensemap/air_quality.py b/homeassistant/components/opensensemap/air_quality.py
+index 45f5a4f015..b648320d3f 100644
+--- a/homeassistant/components/opensensemap/air_quality.py
++++ b/homeassistant/components/opensensemap/air_quality.py
+@@ -3,14 +3,21 @@
+ import voluptuous as vol
+ 
+ from homeassistant.components.air_quality import (
++    DOMAIN as AIR_QUALITY_DOMAIN,
+     PLATFORM_SCHEMA as AIR_QUALITY_PLATFORM_SCHEMA,
+     AirQualityEntity,
+ )
++from homeassistant.components.automation import automations_with_entity
++from homeassistant.components.script import scripts_with_entity
+ from homeassistant.config_entries import SOURCE_IMPORT
+ from homeassistant.const import CONF_NAME
+ from homeassistant.core import DOMAIN as HOMEASSISTANT_DOMAIN, HomeAssistant
+ from homeassistant.data_entry_flow import FlowResultType
+-from homeassistant.helpers import config_validation as cv, issue_registry as ir
++from homeassistant.helpers import (
++    config_validation as cv,
++    entity_registry as er,
++    issue_registry as ir,
++)
+ from homeassistant.helpers.entity_platform import (
+     AddConfigEntryEntitiesCallback,
+     AddEntitiesCallback,
+@@ -19,6 +26,7 @@ from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
+ from homeassistant.helpers.update_coordinator import CoordinatorEntity
+ 
+ from .const import (
++    AIR_QUALITY_DEPRECATION_BREAKS_IN_VERSION,
+     CONF_STATION_ID,
+     DEPRECATED_YAML_BREAKS_IN_VERSION,
+     DOMAIN,
+@@ -86,18 +94,78 @@ async def async_setup_platform(
+     )
+ 
+ 
++def _automations_and_scripts_using_entity(
++    hass: HomeAssistant, entity_id: str
++) -> list[str]:
++    """Return markdown links to automations and scripts referencing an entity."""
++    automations = automations_with_entity(hass, entity_id)
++    scripts = scripts_with_entity(hass, entity_id)
++    if not automations and not scripts:
++        return []
++
++    entity_registry = er.async_get(hass)
++    items: list[str] = []
++    for integration, entities in (("automation", automations), ("script", scripts)):
++        for used_entity_id in entities:
++            if entry := entity_registry.async_get(used_entity_id):
++                items.append(
++                    f"- [{entry.original_name}]"
++                    f"(/config/{integration}/edit/{entry.unique_id})"
++                )
++            else:
++                items.append(f"- `{used_entity_id}`")
++    return items
++
++
+ async def async_setup_entry(
+     hass: HomeAssistant,
+     entry: OpenSenseMapConfigEntry,
+     async_add_entities: AddConfigEntryEntitiesCallback,
+ ) -> None:
+-    """Set up the openSenseMap air quality entity from a config entry."""
++    """Set up the openSenseMap air quality entity from a config entry.
++
++    The air quality entity is deprecated in favor of the individual particulate
++    matter sensor entities. It is only kept for existing installations that
++    already have it registered; fresh installations no longer create it.
++    """
++    station_id = entry.data[CONF_STATION_ID]
++    issue_id = f"deprecated_air_quality_{entry.entry_id}"
++    entity_registry = er.async_get(hass)
++    entity_id = entity_registry.async_get_entity_id(
++        AIR_QUALITY_DOMAIN, DOMAIN, station_id
++    )
++
++    if entity_id is None:
++        ir.async_delete_issue(hass, DOMAIN, issue_id)
++        return
++
++    items = _automations_and_scripts_using_entity(hass, entity_id)
++    entity_entry = entity_registry.async_get(entity_id)
++    if entity_entry is not None and entity_entry.disabled and not items:
++        # Disabled and unused: clean it up instead of carrying it forward.
++        entity_registry.async_remove(entity_id)
++        ir.async_delete_issue(hass, DOMAIN, issue_id)
++        return
++
++    translation_key = "deprecated_air_quality"
++    placeholders = {"entity_id": entity_id}
++    if items:
++        translation_key = "deprecated_air_quality_in_use"
++        placeholders["items"] = "\n".join(items)
++
++    ir.async_create_issue(
++        hass,
++        DOMAIN,
++        issue_id,
++        breaks_in_ha_version=AIR_QUALITY_DEPRECATION_BREAKS_IN_VERSION,
++        is_fixable=False,
++        severity=ir.IssueSeverity.WARNING,
++        translation_key=translation_key,
++        translation_placeholders=placeholders,
++    )
++
+     async_add_entities(
+-        [
+-            OpenSenseMapQuality(
+-                entry.runtime_data, entry.data[CONF_STATION_ID], entry.title
+-            )
+-        ]
++        [OpenSenseMapQuality(entry.runtime_data, station_id, entry.title)]
+     )
+ 
+ 
+diff --git a/homeassistant/components/opensensemap/const.py b/homeassistant/components/opensensemap/const.py
+index b8f1f01f33..a08b41f627 100644
+--- a/homeassistant/components/opensensemap/const.py
++++ b/homeassistant/components/opensensemap/const.py
+@@ -10,6 +10,7 @@ CONF_STATION_ID = "station_id"
+ 
+ INTEGRATION_TITLE = "openSenseMap"
+ DEPRECATED_YAML_BREAKS_IN_VERSION = "2026.12.0"
++AIR_QUALITY_DEPRECATION_BREAKS_IN_VERSION = "2027.1.0"
+ 
+ ERROR_CANNOT_CONNECT = "cannot_connect"
+ ERROR_INVALID_STATION = "invalid_station"
+diff --git a/homeassistant/components/opensensemap/strings.json b/homeassistant/components/opensensemap/strings.json
+index 4f6cdc53ef..125ba638ed 100644
+--- a/homeassistant/components/opensensemap/strings.json
++++ b/homeassistant/components/opensensemap/strings.json
+@@ -23,6 +23,14 @@
+     }
+   },
+   "issues": {
++    "deprecated_air_quality": {
++      "description": "The openSenseMap air quality entity (`{entity_id}`) is deprecated. The particulate matter measurements it provided are now available as individual sensor entities.\n\nUpdate your dashboards and templates to use those sensor entities, then disable the air quality entity to have it removed after the next restart.",
++      "title": "The openSenseMap air quality entity is deprecated"
++    },
++    "deprecated_air_quality_in_use": {
++      "description": "The openSenseMap air quality entity (`{entity_id}`) is deprecated. The particulate matter measurements it provided are now available as individual sensor entities.\n\nIt is still used in the following automations or scripts:\n{items}\n\nUpdate them to use the sensor entities, then disable the air quality entity to have it removed after the next restart.",
++      "title": "[%key:component::opensensemap::issues::deprecated_air_quality::title%]"
++    },
+     "deprecated_yaml_import_issue_cannot_connect": {
+       "description": "Configuring {integration_title} using YAML is being removed but there was a connection error importing your YAML configuration.\n\nEnsure connection to {integration_title} works and restart Home Assistant to try again or remove the {integration_title} YAML configuration from your configuration.yaml file and continue to set up the integration manually.",
+       "title": "The {integration_title} YAML configuration import failed"
+diff --git a/tests/components/opensensemap/test_air_quality.py b/tests/components/opensensemap/test_air_quality.py
+new file mode 100644
+index 0000000000..e3b2d4a3f6
+--- /dev/null
++++ b/tests/components/opensensemap/test_air_quality.py
+@@ -0,0 +1,151 @@
++"""Tests for the deprecation of the openSenseMap air quality entity."""
++
++import pytest
++
++from homeassistant.components.air_quality import DOMAIN as AIR_QUALITY_DOMAIN
++from homeassistant.components.automation import DOMAIN as AUTOMATION_DOMAIN
++from homeassistant.components.opensensemap.const import DOMAIN
++from homeassistant.core import HomeAssistant
++from homeassistant.helpers import entity_registry as er, issue_registry as ir
++from homeassistant.setup import async_setup_component
++
++from .conftest import TEST_STATION_ID
++
++from tests.common import MockConfigEntry
++
++ENTITY_ID = "air_quality.test_station"
++
++
++def _register_air_quality_entity(
++    entity_registry: er.EntityRegistry,
++    config_entry: MockConfigEntry,
++    *,
++    disabled: bool,
++) -> str:
++    """Register a pre-existing air quality entity and return its entity_id."""
++    entry = entity_registry.async_get_or_create(
++        AIR_QUALITY_DOMAIN,
++        DOMAIN,
++        TEST_STATION_ID,
++        suggested_object_id="test_station",
++        config_entry=config_entry,
++        disabled_by=er.RegistryEntryDisabler.USER if disabled else None,
++    )
++    assert entry.entity_id == ENTITY_ID
++    return entry.entity_id
++
++
++async def _setup_automation(hass: HomeAssistant, entity_id: str) -> None:
++    """Set up an automation referencing an entity."""
++    assert await async_setup_component(
++        hass,
++        AUTOMATION_DOMAIN,
++        {
++            AUTOMATION_DOMAIN: {
++                "alias": "test_automation",
++                "trigger": {"platform": "state", "entity_id": entity_id},
++                "action": {"action": "notify.notify", "data": {}},
++            }
++        },
++    )
++
++
++@pytest.mark.usefixtures("mock_opensensemap_api")
++async def test_air_quality_not_created_on_fresh_setup(
++    hass: HomeAssistant,
++    entity_registry: er.EntityRegistry,
++    issue_registry: ir.IssueRegistry,
++    mock_config_entry: MockConfigEntry,
++) -> None:
++    """Test the deprecated air quality entity is not created for new installations."""
++    mock_config_entry.add_to_hass(hass)
++    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
++    await hass.async_block_till_done()
++
++    assert hass.states.get(ENTITY_ID) is None
++    assert entity_registry.async_get(ENTITY_ID) is None
++    assert (
++        issue_registry.async_get_issue(
++            DOMAIN, f"deprecated_air_quality_{mock_config_entry.entry_id}"
++        )
++        is None
++    )
++
++
++@pytest.mark.usefixtures("mock_opensensemap_api")
++async def test_air_quality_kept_when_enabled(
++    hass: HomeAssistant,
++    entity_registry: er.EntityRegistry,
++    issue_registry: ir.IssueRegistry,
++    mock_config_entry: MockConfigEntry,
++) -> None:
++    """Test an existing, enabled air quality entity is kept and raises an issue."""
++    mock_config_entry.add_to_hass(hass)
++    _register_air_quality_entity(entity_registry, mock_config_entry, disabled=False)
++
++    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
++    await hass.async_block_till_done()
++
++    assert hass.states.get(ENTITY_ID) is not None
++    issue = issue_registry.async_get_issue(
++        DOMAIN, f"deprecated_air_quality_{mock_config_entry.entry_id}"
++    )
++    assert issue is not None
++    assert issue.translation_key == "deprecated_air_quality"
++
++
++@pytest.mark.usefixtures("mock_opensensemap_api")
++async def test_air_quality_removed_when_disabled_and_unused(
++    hass: HomeAssistant,
++    entity_registry: er.EntityRegistry,
++    issue_registry: ir.IssueRegistry,
++    mock_config_entry: MockConfigEntry,
++) -> None:
++    """Test a disabled, unused air quality entity is removed without an issue."""
++    mock_config_entry.add_to_hass(hass)
++    _register_air_quality_entity(entity_registry, mock_config_entry, disabled=True)
++
++    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
++    await hass.async_block_till_done()
++
++    assert entity_registry.async_get(ENTITY_ID) is None
++    assert hass.states.get(ENTITY_ID) is None
++    assert (
++        issue_registry.async_get_issue(
++            DOMAIN, f"deprecated_air_quality_{mock_config_entry.entry_id}"
++        )
++        is None
++    )
++
++
++@pytest.mark.parametrize(
++    ("disabled", "state_present"),
++    [
++        pytest.param(False, True, id="enabled"),
++        pytest.param(True, False, id="disabled"),
++    ],
++)
++@pytest.mark.usefixtures("mock_opensensemap_api")
++async def test_air_quality_issue_when_used(
++    hass: HomeAssistant,
++    entity_registry: er.EntityRegistry,
++    issue_registry: ir.IssueRegistry,
++    mock_config_entry: MockConfigEntry,
++    disabled: bool,
++    state_present: bool,
++) -> None:
++    """Test an air quality entity used in automations is kept and flagged in use."""
++    mock_config_entry.add_to_hass(hass)
++    _register_air_quality_entity(entity_registry, mock_config_entry, disabled=disabled)
++    await _setup_automation(hass, ENTITY_ID)
++
++    assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
++    await hass.async_block_till_done()
++
++    assert entity_registry.async_get(ENTITY_ID) is not None
++    assert (hass.states.get(ENTITY_ID) is not None) == state_present
++    issue = issue_registry.async_get_issue(
++        DOMAIN, f"deprecated_air_quality_{mock_config_entry.entry_id}"
++    )
++    assert issue is not None
++    assert issue.translation_key == "deprecated_air_quality_in_use"
+diff --git a/tests/components/opensensemap/test_init.py b/tests/components/opensensemap/test_init.py
+index d631fdd374..2306f91143 100644
+--- a/tests/components/opensensemap/test_init.py
++++ b/tests/components/opensensemap/test_init.py
+@@ -30,10 +30,9 @@ async def test_setup_entry(
+ 
+     assert mock_config_entry.state is ConfigEntryState.LOADED
+ 
+-    state = hass.states.get("air_quality.test_station")
++    state = hass.states.get("sensor.test_station_pm2_5")
+     assert state is not None
+-    assert state.attributes["particulate_matter_2_5"] == 5.42
+-    assert state.attributes["particulate_matter_10"] == 9.17
++    assert state.state == "5.42"
+ 
+ 
+ async def test_async_update_failure_marks_unavailable(
+@@ -46,21 +45,21 @@ async def test_async_update_failure_marks_unavailable(
+     mock_config_entry.add_to_hass(hass)
+     assert await hass.config_entries.async_setup(mock_config_entry.entry_id)
+     await hass.async_block_till_done()
+-    assert hass.states.get("air_quality.test_station").state != "unavailable"
++    assert hass.states.get("sensor.test_station_pm2_5").state != "unavailable"
+ 
+     mock_opensensemap_api.get_data.side_effect = OpenSenseMapError
+     freezer.tick(timedelta(minutes=10))
+     async_fire_time_changed(hass)
+     await hass.async_block_till_done()
+ 
+-    assert hass.states.get("air_quality.test_station").state == "unavailable"
++    assert hass.states.get("sensor.test_station_pm2_5").state == "unavailable"
+ 
+     mock_opensensemap_api.get_data.side_effect = None
+     freezer.tick(timedelta(minutes=10))
+     async_fire_time_changed(hass)
+     await hass.async_block_till_done()
+ 
+-    assert hass.states.get("air_quality.test_station").state != "unavailable"
++    assert hass.states.get("sensor.test_station_pm2_5").state != "unavailable"
+ 
+ 
+ async def test_setup_entry_cannot_connect(

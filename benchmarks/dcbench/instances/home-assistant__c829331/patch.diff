@@ -1,0 +1,1458 @@
+From c82933175dd76b95e30fd847ab0f03d45fce883b Mon Sep 17 00:00:00 2001
+From: Marc Mueller <30130371+cdce8p@users.noreply.github.com>
+Date: Mon, 5 Feb 2024 11:31:33 +0100
+Subject: [PATCH] Use builtin TimeoutError [a-d] (#109678)
+
+---
+ .../components/accuweather/config_flow.py         |  3 +--
+ homeassistant/components/acmeda/config_flow.py    |  3 +--
+ homeassistant/components/ads/__init__.py          |  2 +-
+ .../components/aladdin_connect/__init__.py        |  3 +--
+ .../components/aladdin_connect/config_flow.py     |  7 +++----
+ homeassistant/components/alexa/auth.py            |  2 +-
+ homeassistant/components/alexa/state_report.py    |  5 ++---
+ homeassistant/components/analytics/analytics.py   |  2 +-
+ .../components/androidtv_remote/__init__.py       |  3 +--
+ homeassistant/components/apcupsd/config_flow.py   |  3 +--
+ homeassistant/components/api/__init__.py          |  2 +-
+ homeassistant/components/arcam_fmj/__init__.py    |  2 +-
+ .../components/assist_pipeline/websocket_api.py   |  4 ++--
+ homeassistant/components/august/__init__.py       |  6 +++---
+ homeassistant/components/auth/indieauth.py        |  3 +--
+ homeassistant/components/axis/device.py           |  3 +--
+ homeassistant/components/baf/__init__.py          |  3 +--
+ homeassistant/components/baf/config_flow.py       |  3 +--
+ homeassistant/components/blink/__init__.py        |  3 +--
+ .../components/blink/alarm_control_panel.py       |  5 ++---
+ homeassistant/components/blink/camera.py          |  7 +++----
+ homeassistant/components/blink/switch.py          |  5 ++---
+ .../components/bluesound/media_player.py          |  8 ++++----
+ .../bluetooth_le_tracker/device_tracker.py        |  3 +--
+ homeassistant/components/bond/config_flow.py      |  3 +--
+ homeassistant/components/buienradar/camera.py     |  2 +-
+ homeassistant/components/buienradar/util.py       |  3 +--
+ homeassistant/components/camera/__init__.py       |  6 +++---
+ homeassistant/components/cast/helpers.py          |  3 +--
+ homeassistant/components/cert_expiry/helper.py    |  2 +-
+ homeassistant/components/citybikes/sensor.py      |  2 +-
+ homeassistant/components/cloud/account_link.py    |  5 ++---
+ homeassistant/components/cloud/alexa_config.py    |  2 +-
+ homeassistant/components/cloud/http_api.py        |  4 ++--
+ homeassistant/components/cloud/subscription.py    |  4 ++--
+ .../components/color_extractor/__init__.py        |  2 +-
+ .../components/comed_hourly_pricing/sensor.py     |  2 +-
+ homeassistant/components/daikin/__init__.py       |  2 +-
+ homeassistant/components/daikin/config_flow.py    |  2 +-
+ homeassistant/components/deconz/config_flow.py    |  6 +++---
+ homeassistant/components/deconz/gateway.py        |  2 +-
+ homeassistant/components/doorbird/camera.py       |  2 +-
+ homeassistant/components/dsmr/config_flow.py      |  2 +-
+ tests/components/analytics/test_analytics.py      |  3 +--
+ tests/components/august/test_init.py              |  3 +--
+ tests/components/baf/test_config_flow.py          |  3 +--
+ tests/components/blink/test_init.py               |  3 +--
+ tests/components/bluetooth/test_init.py           |  2 +-
+ .../bluetooth_le_tracker/test_device_tracker.py   |  3 +--
+ tests/components/bond/test_config_flow.py         |  3 +--
+ tests/components/bond/test_entity.py              |  9 ++++-----
+ tests/components/bond/test_init.py                |  3 +--
+ tests/components/camera/test_init.py              |  5 ++---
+ tests/components/cast/test_helpers.py             |  3 +--
+ tests/components/cert_expiry/test_config_flow.py  |  3 +--
+ tests/components/cloud/test_account_link.py       |  2 +-
+ tests/components/cloud/test_http_api.py           | 15 +++++++--------
+ tests/components/cloud/test_subscription.py       |  5 ++---
+ tests/components/daikin/test_config_flow.py       |  3 +--
+ tests/components/daikin/test_init.py              |  3 +--
+ tests/components/deconz/test_config_flow.py       |  9 +++------
+ tests/components/deconz/test_gateway.py           |  3 +--
+ tests/components/dsmr/test_config_flow.py         |  5 ++---
+ 63 files changed, 97 insertions(+), 137 deletions(-)
+
+diff --git a/homeassistant/components/accuweather/config_flow.py b/homeassistant/components/accuweather/config_flow.py
+index b1d113dad7..b3fc7872c8 100644
+--- a/homeassistant/components/accuweather/config_flow.py
++++ b/homeassistant/components/accuweather/config_flow.py
+@@ -1,7 +1,6 @@
+ """Adds config flow for AccuWeather."""
+ from __future__ import annotations
+ 
+-import asyncio
+ from asyncio import timeout
+ from typing import Any
+ 
+@@ -61,7 +60,7 @@ class AccuWeatherFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
+                         longitude=user_input[CONF_LONGITUDE],
+                     )
+                     await accuweather.async_get_location()
+-            except (ApiError, ClientConnectorError, asyncio.TimeoutError, ClientError):
++            except (ApiError, ClientConnectorError, TimeoutError, ClientError):
+                 errors["base"] = "cannot_connect"
+             except InvalidApiKeyError:
+                 errors[CONF_API_KEY] = "invalid_api_key"
+diff --git a/homeassistant/components/acmeda/config_flow.py b/homeassistant/components/acmeda/config_flow.py
+index b0dd287f42..56a11aff20 100644
+--- a/homeassistant/components/acmeda/config_flow.py
++++ b/homeassistant/components/acmeda/config_flow.py
+@@ -1,7 +1,6 @@
+ """Config flow for Rollease Acmeda Automate Pulse Hub."""
+ from __future__ import annotations
+ 
+-import asyncio
+ from asyncio import timeout
+ from contextlib import suppress
+ from typing import Any
+@@ -42,7 +41,7 @@ class AcmedaFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
+         }
+ 
+         hubs: list[aiopulse.Hub] = []
+-        with suppress(asyncio.TimeoutError):
++        with suppress(TimeoutError):
+             async with timeout(5):
+                 async for hub in aiopulse.Hub.discover():
+                     if hub.id not in already_configured:
+diff --git a/homeassistant/components/ads/__init__.py b/homeassistant/components/ads/__init__.py
+index 1f80553031..84d9e29a51 100644
+--- a/homeassistant/components/ads/__init__.py
++++ b/homeassistant/components/ads/__init__.py
+@@ -303,7 +303,7 @@ class AdsEntity(Entity):
+         try:
+             async with timeout(10):
+                 await self._event.wait()
+-        except asyncio.TimeoutError:
++        except TimeoutError:
+             _LOGGER.debug("Variable %s: Timeout during first update", ads_var)
+ 
+     @property
+diff --git a/homeassistant/components/aladdin_connect/__init__.py b/homeassistant/components/aladdin_connect/__init__.py
+index 3df3c0dbe0..d1c7bc5668 100644
+--- a/homeassistant/components/aladdin_connect/__init__.py
++++ b/homeassistant/components/aladdin_connect/__init__.py
+@@ -1,5 +1,4 @@
+ """The aladdin_connect component."""
+-import asyncio
+ import logging
+ from typing import Final
+ 
+@@ -29,7 +28,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+     )
+     try:
+         await acc.login()
+-    except (ClientError, asyncio.TimeoutError, Aladdin.ConnectionError) as ex:
++    except (ClientError, TimeoutError, Aladdin.ConnectionError) as ex:
+         raise ConfigEntryNotReady("Can not connect to host") from ex
+     except Aladdin.InvalidPasswordError as ex:
+         raise ConfigEntryAuthFailed("Incorrect Password") from ex
+diff --git a/homeassistant/components/aladdin_connect/config_flow.py b/homeassistant/components/aladdin_connect/config_flow.py
+index e5170e9b0a..d14b7b7c35 100644
+--- a/homeassistant/components/aladdin_connect/config_flow.py
++++ b/homeassistant/components/aladdin_connect/config_flow.py
+@@ -1,7 +1,6 @@
+ """Config flow for Aladdin Connect cover integration."""
+ from __future__ import annotations
+ 
+-import asyncio
+ from collections.abc import Mapping
+ from typing import Any
+ 
+@@ -42,7 +41,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> None:
+     )
+     try:
+         await acc.login()
+-    except (ClientError, asyncio.TimeoutError, Aladdin.ConnectionError) as ex:
++    except (ClientError, TimeoutError, Aladdin.ConnectionError) as ex:
+         raise ex
+ 
+     except Aladdin.InvalidPasswordError as ex:
+@@ -81,7 +80,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+             except InvalidAuth:
+                 errors["base"] = "invalid_auth"
+ 
+-            except (ClientError, asyncio.TimeoutError, Aladdin.ConnectionError):
++            except (ClientError, TimeoutError, Aladdin.ConnectionError):
+                 errors["base"] = "cannot_connect"
+ 
+             else:
+@@ -117,7 +116,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+         except InvalidAuth:
+             errors["base"] = "invalid_auth"
+ 
+-        except (ClientError, asyncio.TimeoutError, Aladdin.ConnectionError):
++        except (ClientError, TimeoutError, Aladdin.ConnectionError):
+             errors["base"] = "cannot_connect"
+ 
+         else:
+diff --git a/homeassistant/components/alexa/auth.py b/homeassistant/components/alexa/auth.py
+index 527e51b539..10a7be4967 100644
+--- a/homeassistant/components/alexa/auth.py
++++ b/homeassistant/components/alexa/auth.py
+@@ -122,7 +122,7 @@ class Auth:
+                     allow_redirects=True,
+                 )
+ 
+-        except (asyncio.TimeoutError, aiohttp.ClientError):
++        except (TimeoutError, aiohttp.ClientError):
+             _LOGGER.error("Timeout calling LWA to get auth token")
+             return None
+ 
+diff --git a/homeassistant/components/alexa/state_report.py b/homeassistant/components/alexa/state_report.py
+index 20e66dfa08..3ad863747e 100644
+--- a/homeassistant/components/alexa/state_report.py
++++ b/homeassistant/components/alexa/state_report.py
+@@ -1,7 +1,6 @@
+ """Alexa state report code."""
+ from __future__ import annotations
+ 
+-import asyncio
+ from asyncio import timeout
+ from http import HTTPStatus
+ import json
+@@ -375,7 +374,7 @@ async def async_send_changereport_message(
+                 allow_redirects=True,
+             )
+ 
+-    except (asyncio.TimeoutError, aiohttp.ClientError):
++    except (TimeoutError, aiohttp.ClientError):
+         _LOGGER.error("Timeout sending report to Alexa for %s", alexa_entity.entity_id)
+         return
+ 
+@@ -531,7 +530,7 @@ async def async_send_doorbell_event_message(
+                 allow_redirects=True,
+             )
+ 
+-    except (asyncio.TimeoutError, aiohttp.ClientError):
++    except (TimeoutError, aiohttp.ClientError):
+         _LOGGER.error("Timeout sending report to Alexa for %s", alexa_entity.entity_id)
+         return
+ 
+diff --git a/homeassistant/components/analytics/analytics.py b/homeassistant/components/analytics/analytics.py
+index 1c81eacd14..bce4b69ecf 100644
+--- a/homeassistant/components/analytics/analytics.py
++++ b/homeassistant/components/analytics/analytics.py
+@@ -329,7 +329,7 @@ class Analytics:
+                         response.status,
+                         self.endpoint,
+                     )
+-        except asyncio.TimeoutError:
++        except TimeoutError:
+             LOGGER.error("Timeout sending analytics to %s", ANALYTICS_ENDPOINT_URL)
+         except aiohttp.ClientError as err:
+             LOGGER.error(
+diff --git a/homeassistant/components/androidtv_remote/__init__.py b/homeassistant/components/androidtv_remote/__init__.py
+index c78321589a..9e99a93efa 100644
+--- a/homeassistant/components/androidtv_remote/__init__.py
++++ b/homeassistant/components/androidtv_remote/__init__.py
+@@ -1,7 +1,6 @@
+ """The Android TV Remote integration."""
+ from __future__ import annotations
+ 
+-import asyncio
+ from asyncio import timeout
+ import logging
+ 
+@@ -50,7 +49,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+     except InvalidAuth as exc:
+         # The Android TV is hard reset or the certificate and key files were deleted.
+         raise ConfigEntryAuthFailed from exc
+-    except (CannotConnect, ConnectionClosed, asyncio.TimeoutError) as exc:
++    except (CannotConnect, ConnectionClosed, TimeoutError) as exc:
+         # The Android TV is network unreachable. Raise exception and let Home Assistant retry
+         # later. If device gets a new IP address the zeroconf flow will update the config.
+         raise ConfigEntryNotReady from exc
+diff --git a/homeassistant/components/apcupsd/config_flow.py b/homeassistant/components/apcupsd/config_flow.py
+index 99c78fd5d3..25a1ccf7e0 100644
+--- a/homeassistant/components/apcupsd/config_flow.py
++++ b/homeassistant/components/apcupsd/config_flow.py
+@@ -1,7 +1,6 @@
+ """Config flow for APCUPSd integration."""
+ from __future__ import annotations
+ 
+-import asyncio
+ from typing import Any
+ 
+ import voluptuous as vol
+@@ -54,7 +53,7 @@ class ConfigFlowHandler(ConfigFlow, domain=DOMAIN):
+         coordinator = APCUPSdCoordinator(self.hass, host, port)
+         await coordinator.async_request_refresh()
+ 
+-        if isinstance(coordinator.last_exception, (UpdateFailed, asyncio.TimeoutError)):
++        if isinstance(coordinator.last_exception, (UpdateFailed, TimeoutError)):
+             errors = {"base": "cannot_connect"}
+             return self.async_show_form(
+                 step_id="user", data_schema=_SCHEMA, errors=errors
+diff --git a/homeassistant/components/api/__init__.py b/homeassistant/components/api/__init__.py
+index d012dfc372..266703bbab 100644
+--- a/homeassistant/components/api/__init__.py
++++ b/homeassistant/components/api/__init__.py
+@@ -175,7 +175,7 @@ class APIEventStream(HomeAssistantView):
+                     msg = f"data: {payload}\n\n"
+                     _LOGGER.debug("STREAM %s WRITING %s", id(stop_obj), msg.strip())
+                     await response.write(msg.encode("UTF-8"))
+-                except asyncio.TimeoutError:
++                except TimeoutError:
+                     await to_write.put(STREAM_PING_PAYLOAD)
+ 
+         except asyncio.CancelledError:
+diff --git a/homeassistant/components/arcam_fmj/__init__.py b/homeassistant/components/arcam_fmj/__init__.py
+index d9ab17dba8..a45dd89e18 100644
+--- a/homeassistant/components/arcam_fmj/__init__.py
++++ b/homeassistant/components/arcam_fmj/__init__.py
+@@ -83,7 +83,7 @@ async def _run_client(hass: HomeAssistant, client: Client, interval: float) -> N
+ 
+         except ConnectionFailed:
+             await asyncio.sleep(interval)
+-        except asyncio.TimeoutError:
++        except TimeoutError:
+             continue
+         except Exception:  # pylint: disable=broad-except
+             _LOGGER.exception("Unexpected exception, aborting arcam client")
+diff --git a/homeassistant/components/assist_pipeline/websocket_api.py b/homeassistant/components/assist_pipeline/websocket_api.py
+index bfba856387..6d60426e73 100644
+--- a/homeassistant/components/assist_pipeline/websocket_api.py
++++ b/homeassistant/components/assist_pipeline/websocket_api.py
+@@ -241,7 +241,7 @@ async def websocket_run(
+         # Task contains a timeout
+         async with asyncio.timeout(timeout):
+             await run_task
+-    except asyncio.TimeoutError:
++    except TimeoutError:
+         pipeline_input.run.process_event(
+             PipelineEvent(
+                 PipelineEventType.ERROR,
+@@ -487,7 +487,7 @@ async def websocket_device_capture(
+     )
+ 
+     try:
+-        with contextlib.suppress(asyncio.TimeoutError):
++        with contextlib.suppress(TimeoutError):
+             async with asyncio.timeout(timeout_seconds):
+                 while True:
+                     # Send audio chunks encoded as base64
+diff --git a/homeassistant/components/august/__init__.py b/homeassistant/components/august/__init__.py
+index 624121b882..466160d297 100644
+--- a/homeassistant/components/august/__init__.py
++++ b/homeassistant/components/august/__init__.py
+@@ -59,7 +59,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+         return await async_setup_august(hass, entry, august_gateway)
+     except (RequireValidation, InvalidAuth) as err:
+         raise ConfigEntryAuthFailed from err
+-    except asyncio.TimeoutError as err:
++    except TimeoutError as err:
+         raise ConfigEntryNotReady("Timed out connecting to august api") from err
+     except (AugustApiAIOHTTPError, ClientResponseError, CannotConnect) as err:
+         raise ConfigEntryNotReady from err
+@@ -233,7 +233,7 @@ class AugustData(AugustSubscriberMixin):
+             return_exceptions=True,
+         ):
+             if isinstance(result, Exception) and not isinstance(
+-                result, (asyncio.TimeoutError, ClientResponseError, CannotConnect)
++                result, (TimeoutError, ClientResponseError, CannotConnect)
+             ):
+                 _LOGGER.warning(
+                     "Unexpected exception during initial sync: %s",
+@@ -292,7 +292,7 @@ class AugustData(AugustSubscriberMixin):
+         for device_id in device_ids_list:
+             try:
+                 await self._async_refresh_device_detail_by_id(device_id)
+-            except asyncio.TimeoutError:
++            except TimeoutError:
+                 _LOGGER.warning(
+                     "Timed out calling august api during refresh of device: %s",
+                     device_id,
+diff --git a/homeassistant/components/auth/indieauth.py b/homeassistant/components/auth/indieauth.py
+index e2614af6a3..cf7f38fa32 100644
+--- a/homeassistant/components/auth/indieauth.py
++++ b/homeassistant/components/auth/indieauth.py
+@@ -1,7 +1,6 @@
+ """Helpers to resolve client ID/secret."""
+ from __future__ import annotations
+ 
+-import asyncio
+ from html.parser import HTMLParser
+ from ipaddress import ip_address
+ import logging
+@@ -102,7 +101,7 @@ async def fetch_redirect_uris(hass: HomeAssistant, url: str) -> list[str]:
+                 if chunks == 10:
+                     break
+ 
+-    except asyncio.TimeoutError:
++    except TimeoutError:
+         _LOGGER.error("Timeout while looking up redirect_uri %s", url)
+     except aiohttp.client_exceptions.ClientSSLError:
+         _LOGGER.error("SSL error while looking up redirect_uri %s", url)
+diff --git a/homeassistant/components/axis/device.py b/homeassistant/components/axis/device.py
+index 67ef61af8a..4a54843edf 100644
+--- a/homeassistant/components/axis/device.py
++++ b/homeassistant/components/axis/device.py
+@@ -1,6 +1,5 @@
+ """Axis network device abstraction."""
+ 
+-import asyncio
+ from asyncio import timeout
+ from types import MappingProxyType
+ from typing import Any
+@@ -270,7 +269,7 @@ async def get_axis_device(
+         )
+         raise AuthenticationRequired from err
+ 
+-    except (asyncio.TimeoutError, axis.RequestError) as err:
++    except (TimeoutError, axis.RequestError) as err:
+         LOGGER.error("Error connecting to the Axis device at %s", config[CONF_HOST])
+         raise CannotConnect from err
+ 
+diff --git a/homeassistant/components/baf/__init__.py b/homeassistant/components/baf/__init__.py
+index fcc648f400..e685ec6dc8 100644
+--- a/homeassistant/components/baf/__init__.py
++++ b/homeassistant/components/baf/__init__.py
+@@ -1,7 +1,6 @@
+ """The Big Ass Fans integration."""
+ from __future__ import annotations
+ 
+-import asyncio
+ from asyncio import timeout
+ 
+ from aiobafi6 import Device, Service
+@@ -42,7 +41,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+         raise ConfigEntryNotReady(
+             f"Unexpected device found at {ip_address}; expected {entry.unique_id}, found {device.dns_sd_uuid}"
+         ) from ex
+-    except asyncio.TimeoutError as ex:
++    except TimeoutError as ex:
+         run_future.cancel()
+         raise ConfigEntryNotReady(f"Timed out connecting to {ip_address}") from ex
+ 
+diff --git a/homeassistant/components/baf/config_flow.py b/homeassistant/components/baf/config_flow.py
+index 9edb23abcf..0aaf2189c2 100644
+--- a/homeassistant/components/baf/config_flow.py
++++ b/homeassistant/components/baf/config_flow.py
+@@ -1,7 +1,6 @@
+ """Config flow for baf."""
+ from __future__ import annotations
+ 
+-import asyncio
+ from asyncio import timeout
+ import logging
+ from typing import Any
+@@ -28,7 +27,7 @@ async def async_try_connect(ip_address: str) -> Device:
+     try:
+         async with timeout(RUN_TIMEOUT):
+             await device.async_wait_available()
+-    except asyncio.TimeoutError as ex:
++    except TimeoutError as ex:
+         raise CannotConnect from ex
+     finally:
+         run_future.cancel()
+diff --git a/homeassistant/components/blink/__init__.py b/homeassistant/components/blink/__init__.py
+index 50c7fad516..e86d07c878 100644
+--- a/homeassistant/components/blink/__init__.py
++++ b/homeassistant/components/blink/__init__.py
+@@ -1,5 +1,4 @@
+ """Support for Blink Home Camera System."""
+-import asyncio
+ from copy import deepcopy
+ import logging
+ 
+@@ -93,7 +92,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+ 
+     try:
+         await blink.start()
+-    except (ClientError, asyncio.TimeoutError) as ex:
++    except (ClientError, TimeoutError) as ex:
+         raise ConfigEntryNotReady("Can not connect to host") from ex
+ 
+     if blink.auth.check_key_required():
+diff --git a/homeassistant/components/blink/alarm_control_panel.py b/homeassistant/components/blink/alarm_control_panel.py
+index 80a6ceb50e..f3e3d97fc5 100644
+--- a/homeassistant/components/blink/alarm_control_panel.py
++++ b/homeassistant/components/blink/alarm_control_panel.py
+@@ -1,7 +1,6 @@
+ """Support for Blink Alarm Control Panel."""
+ from __future__ import annotations
+ 
+-import asyncio
+ import logging
+ 
+ from blinkpy.blinkpy import Blink, BlinkSyncModule
+@@ -91,7 +90,7 @@ class BlinkSyncModuleHA(
+         try:
+             await self.sync.async_arm(False)
+ 
+-        except asyncio.TimeoutError as er:
++        except TimeoutError as er:
+             raise HomeAssistantError("Blink failed to disarm camera") from er
+ 
+         await self.coordinator.async_refresh()
+@@ -101,7 +100,7 @@ class BlinkSyncModuleHA(
+         try:
+             await self.sync.async_arm(True)
+ 
+-        except asyncio.TimeoutError as er:
++        except TimeoutError as er:
+             raise HomeAssistantError("Blink failed to arm camera away") from er
+ 
+         await self.coordinator.async_refresh()
+diff --git a/homeassistant/components/blink/camera.py b/homeassistant/components/blink/camera.py
+index 838020c98c..ff4fa6380a 100644
+--- a/homeassistant/components/blink/camera.py
++++ b/homeassistant/components/blink/camera.py
+@@ -1,7 +1,6 @@
+ """Support for Blink system camera."""
+ from __future__ import annotations
+ 
+-import asyncio
+ from collections.abc import Mapping
+ import contextlib
+ import logging
+@@ -96,7 +95,7 @@ class BlinkCamera(CoordinatorEntity[BlinkUpdateCoordinator], Camera):
+         try:
+             await self._camera.async_arm(True)
+ 
+-        except asyncio.TimeoutError as er:
++        except TimeoutError as er:
+             raise HomeAssistantError("Blink failed to arm camera") from er
+ 
+         self._camera.motion_enabled = True
+@@ -106,7 +105,7 @@ class BlinkCamera(CoordinatorEntity[BlinkUpdateCoordinator], Camera):
+         """Disable motion detection for the camera."""
+         try:
+             await self._camera.async_arm(False)
+-        except asyncio.TimeoutError as er:
++        except TimeoutError as er:
+             raise HomeAssistantError("Blink failed to disarm camera") from er
+ 
+         self._camera.motion_enabled = False
+@@ -124,7 +123,7 @@ class BlinkCamera(CoordinatorEntity[BlinkUpdateCoordinator], Camera):
+ 
+     async def trigger_camera(self) -> None:
+         """Trigger camera to take a snapshot."""
+-        with contextlib.suppress(asyncio.TimeoutError):
++        with contextlib.suppress(TimeoutError):
+             await self._camera.snap_picture()
+         self.async_write_ha_state()
+ 
+diff --git a/homeassistant/components/blink/switch.py b/homeassistant/components/blink/switch.py
+index 197c8e0868..0a066850d5 100644
+--- a/homeassistant/components/blink/switch.py
++++ b/homeassistant/components/blink/switch.py
+@@ -1,7 +1,6 @@
+ """Support for Blink Motion detection switches."""
+ from __future__ import annotations
+ 
+-import asyncio
+ from typing import Any
+ 
+ from homeassistant.components.switch import (
+@@ -74,7 +73,7 @@ class BlinkSwitch(CoordinatorEntity[BlinkUpdateCoordinator], SwitchEntity):
+         try:
+             await self._camera.async_arm(True)
+ 
+-        except asyncio.TimeoutError as er:
++        except TimeoutError as er:
+             raise HomeAssistantError(
+                 "Blink failed to arm camera motion detection"
+             ) from er
+@@ -86,7 +85,7 @@ class BlinkSwitch(CoordinatorEntity[BlinkUpdateCoordinator], SwitchEntity):
+         try:
+             await self._camera.async_arm(False)
+ 
+-        except asyncio.TimeoutError as er:
++        except TimeoutError as er:
+             raise HomeAssistantError(
+                 "Blink failed to dis-arm camera motion detection"
+             ) from er
+diff --git a/homeassistant/components/bluesound/media_player.py b/homeassistant/components/bluesound/media_player.py
+index eba03963eb..70c19b5fa6 100644
+--- a/homeassistant/components/bluesound/media_player.py
++++ b/homeassistant/components/bluesound/media_player.py
+@@ -290,7 +290,7 @@ class BluesoundPlayer(MediaPlayerEntity):
+             while True:
+                 await self.async_update_status()
+ 
+-        except (asyncio.TimeoutError, ClientError, BluesoundPlayer._TimeoutException):
++        except (TimeoutError, ClientError, BluesoundPlayer._TimeoutException):
+             _LOGGER.info("Node %s:%s is offline, retrying later", self.name, self.port)
+             await asyncio.sleep(NODE_OFFLINE_CHECK_TIMEOUT)
+             self.start_polling()
+@@ -317,7 +317,7 @@ class BluesoundPlayer(MediaPlayerEntity):
+                 self._retry_remove = None
+ 
+             await self.force_update_sync_status(self._init_callback, True)
+-        except (asyncio.TimeoutError, ClientError):
++        except (TimeoutError, ClientError):
+             _LOGGER.info("Node %s:%s is offline, retrying later", self.host, self.port)
+             self._retry_remove = async_track_time_interval(
+                 self._hass, self.async_init, NODE_RETRY_INITIATION
+@@ -370,7 +370,7 @@ class BluesoundPlayer(MediaPlayerEntity):
+                 _LOGGER.error("Error %s on %s", response.status, url)
+                 return None
+ 
+-        except (asyncio.TimeoutError, aiohttp.ClientError):
++        except (TimeoutError, aiohttp.ClientError):
+             if raise_timeout:
+                 _LOGGER.info("Timeout: %s:%s", self.host, self.port)
+                 raise
+@@ -437,7 +437,7 @@ class BluesoundPlayer(MediaPlayerEntity):
+                     "Error %s on %s. Trying one more time", response.status, url
+                 )
+ 
+-        except (asyncio.TimeoutError, ClientError):
++        except (TimeoutError, ClientError):
+             self._is_online = False
+             self._last_status_update = None
+             self._status = None
+diff --git a/homeassistant/components/bluetooth_le_tracker/device_tracker.py b/homeassistant/components/bluetooth_le_tracker/device_tracker.py
+index 3739734223..f85a9506d7 100644
+--- a/homeassistant/components/bluetooth_le_tracker/device_tracker.py
++++ b/homeassistant/components/bluetooth_le_tracker/device_tracker.py
+@@ -1,7 +1,6 @@
+ """Tracking for bluetooth low energy devices."""
+ from __future__ import annotations
+ 
+-import asyncio
+ from datetime import datetime, timedelta
+ import logging
+ from uuid import UUID
+@@ -155,7 +154,7 @@ async def async_setup_scanner(  # noqa: C901
+             async with BleakClient(device) as client:
+                 bat_char = await client.read_gatt_char(BATTERY_CHARACTERISTIC_UUID)
+                 battery = ord(bat_char)
+-        except asyncio.TimeoutError:
++        except TimeoutError:
+             _LOGGER.debug(
+                 "Timeout when trying to get battery status for %s", service_info.name
+             )
+diff --git a/homeassistant/components/bond/config_flow.py b/homeassistant/components/bond/config_flow.py
+index 26b485127f..33b5d2bf2c 100644
+--- a/homeassistant/components/bond/config_flow.py
++++ b/homeassistant/components/bond/config_flow.py
+@@ -1,7 +1,6 @@
+ """Config flow for Bond integration."""
+ from __future__ import annotations
+ 
+-import asyncio
+ import contextlib
+ from http import HTTPStatus
+ import logging
+@@ -87,7 +86,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
+         try:
+             if not (token := await async_get_token(self.hass, host)):
+                 return
+-        except asyncio.TimeoutError:
++        except TimeoutError:
+             return
+ 
+         self._discovered[CONF_ACCESS_TOKEN] = token
+diff --git a/homeassistant/components/buienradar/camera.py b/homeassistant/components/buienradar/camera.py
+index 1963041bcc..ba62cbfbb1 100644
+--- a/homeassistant/components/buienradar/camera.py
++++ b/homeassistant/components/buienradar/camera.py
+@@ -128,7 +128,7 @@ class BuienradarCam(Camera):
+                 _LOGGER.debug("HTTP 200 - Last-Modified: %s", last_modified)
+ 
+                 return True
+-        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
++        except (TimeoutError, aiohttp.ClientError) as err:
+             _LOGGER.error("Failed to fetch image, %s", type(err))
+             return False
+ 
+diff --git a/homeassistant/components/buienradar/util.py b/homeassistant/components/buienradar/util.py
+index 63e0004dc4..426f982baf 100644
+--- a/homeassistant/components/buienradar/util.py
++++ b/homeassistant/components/buienradar/util.py
+@@ -1,5 +1,4 @@
+ """Shared utilities for different supported platforms."""
+-import asyncio
+ from asyncio import timeout
+ from datetime import datetime, timedelta
+ from http import HTTPStatus
+@@ -104,7 +103,7 @@ class BrData:
+                     result[MESSAGE] = "Got http statuscode: %d" % (resp.status)
+ 
+                 return result
+-        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
++        except (TimeoutError, aiohttp.ClientError) as err:
+             result[MESSAGE] = str(err)
+             return result
+         finally:
+diff --git a/homeassistant/components/camera/__init__.py b/homeassistant/components/camera/__init__.py
+index 5a78728697..1abf1768fa 100644
+--- a/homeassistant/components/camera/__init__.py
++++ b/homeassistant/components/camera/__init__.py
+@@ -181,7 +181,7 @@ async def _async_get_image(
+     that we can scale, however the majority of cases
+     are handled.
+     """
+-    with suppress(asyncio.CancelledError, asyncio.TimeoutError):
++    with suppress(asyncio.CancelledError, TimeoutError):
+         async with asyncio.timeout(timeout):
+             image_bytes = (
+                 await _async_get_stream_image(
+@@ -891,7 +891,7 @@ async def ws_camera_stream(
+     except HomeAssistantError as ex:
+         _LOGGER.error("Error requesting stream: %s", ex)
+         connection.send_error(msg["id"], "start_stream_failed", str(ex))
+-    except asyncio.TimeoutError:
++    except TimeoutError:
+         _LOGGER.error("Timeout getting stream source")
+         connection.send_error(
+             msg["id"], "start_stream_failed", "Timeout getting stream source"
+@@ -936,7 +936,7 @@ async def ws_camera_web_rtc_offer(
+     except (HomeAssistantError, ValueError) as ex:
+         _LOGGER.error("Error handling WebRTC offer: %s", ex)
+         connection.send_error(msg["id"], "web_rtc_offer_failed", str(ex))
+-    except asyncio.TimeoutError:
++    except TimeoutError:
+         _LOGGER.error("Timeout handling WebRTC offer")
+         connection.send_error(
+             msg["id"], "web_rtc_offer_failed", "Timeout handling WebRTC offer"
+diff --git a/homeassistant/components/cast/helpers.py b/homeassistant/components/cast/helpers.py
+index 8b8862ab31..a3158ee819 100644
+--- a/homeassistant/components/cast/helpers.py
++++ b/homeassistant/components/cast/helpers.py
+@@ -1,7 +1,6 @@
+ """Helpers to deal with Cast devices."""
+ from __future__ import annotations
+ 
+-import asyncio
+ import configparser
+ from dataclasses import dataclass
+ import logging
+@@ -257,7 +256,7 @@ async def _fetch_playlist(hass, url, supported_content_types):
+                 playlist_data = (await resp.content.read(64 * 1024)).decode(charset)
+             except ValueError as err:
+                 raise PlaylistError(f"Could not decode playlist {url}") from err
+-    except asyncio.TimeoutError as err:
++    except TimeoutError as err:
+         raise PlaylistError(f"Timeout while fetching playlist {url}") from err
+     except aiohttp.client_exceptions.ClientError as err:
+         raise PlaylistError(f"Error while fetching playlist {url}") from err
+diff --git a/homeassistant/components/cert_expiry/helper.py b/homeassistant/components/cert_expiry/helper.py
+index cde9364214..6d10d75070 100644
+--- a/homeassistant/components/cert_expiry/helper.py
++++ b/homeassistant/components/cert_expiry/helper.py
+@@ -55,7 +55,7 @@ async def get_cert_expiry_timestamp(
+         cert = await async_get_cert(hass, hostname, port)
+     except socket.gaierror as err:
+         raise ResolveFailed(f"Cannot resolve hostname: {hostname}") from err
+-    except asyncio.TimeoutError as err:
++    except TimeoutError as err:
+         raise ConnectionTimeout(
+             f"Connection timeout with server: {hostname}:{port}"
+         ) from err
+diff --git a/homeassistant/components/citybikes/sensor.py b/homeassistant/components/citybikes/sensor.py
+index fcd780dba7..fc49331c1b 100644
+--- a/homeassistant/components/citybikes/sensor.py
++++ b/homeassistant/components/citybikes/sensor.py
+@@ -144,7 +144,7 @@ async def async_citybikes_request(hass, uri, schema):
+ 
+         json_response = await req.json()
+         return schema(json_response)
+-    except (asyncio.TimeoutError, aiohttp.ClientError):
++    except (TimeoutError, aiohttp.ClientError):
+         _LOGGER.error("Could not connect to CityBikes API endpoint")
+     except ValueError:
+         _LOGGER.error("Received non-JSON data from CityBikes API endpoint")
+diff --git a/homeassistant/components/cloud/account_link.py b/homeassistant/components/cloud/account_link.py
+index 1423330cb4..f1e5d1a690 100644
+--- a/homeassistant/components/cloud/account_link.py
++++ b/homeassistant/components/cloud/account_link.py
+@@ -1,7 +1,6 @@
+ """Account linking via the cloud."""
+ from __future__ import annotations
+ 
+-import asyncio
+ from datetime import datetime
+ import logging
+ from typing import Any
+@@ -69,7 +68,7 @@ async def _get_services(hass: HomeAssistant) -> list[dict[str, Any]]:
+ 
+     try:
+         services = await account_link.async_fetch_available_services(hass.data[DOMAIN])
+-    except (aiohttp.ClientError, asyncio.TimeoutError):
++    except (aiohttp.ClientError, TimeoutError):
+         return []
+ 
+     hass.data[DATA_SERVICES] = services
+@@ -114,7 +113,7 @@ class CloudOAuth2Implementation(config_entry_oauth2_flow.AbstractOAuth2Implement
+             try:
+                 tokens = await helper.async_get_tokens()
+ 
+-            except asyncio.TimeoutError:
++            except TimeoutError:
+                 _LOGGER.info("Timeout fetching tokens for flow %s", flow_id)
+             except account_link.AccountLinkException as err:
+                 _LOGGER.info(
+diff --git a/homeassistant/components/cloud/alexa_config.py b/homeassistant/components/cloud/alexa_config.py
+index e85c6dd277..caed7b38c4 100644
+--- a/homeassistant/components/cloud/alexa_config.py
++++ b/homeassistant/components/cloud/alexa_config.py
+@@ -505,7 +505,7 @@ class CloudAlexaConfig(alexa_config.AbstractConfig):
+ 
+             return True
+ 
+-        except asyncio.TimeoutError:
++        except TimeoutError:
+             _LOGGER.warning("Timeout trying to sync entities to Alexa")
+             return False
+ 
+diff --git a/homeassistant/components/cloud/http_api.py b/homeassistant/components/cloud/http_api.py
+index 849a1c99db..be3271a88a 100644
+--- a/homeassistant/components/cloud/http_api.py
++++ b/homeassistant/components/cloud/http_api.py
+@@ -55,7 +55,7 @@ _LOGGER = logging.getLogger(__name__)
+ 
+ 
+ _CLOUD_ERRORS: dict[type[Exception], tuple[HTTPStatus, str]] = {
+-    asyncio.TimeoutError: (
++    TimeoutError: (
+         HTTPStatus.BAD_GATEWAY,
+         "Unable to reach the Home Assistant cloud.",
+     ),
+@@ -429,7 +429,7 @@ async def websocket_update_prefs(
+         try:
+             async with asyncio.timeout(10):
+                 await alexa_config.async_get_access_token()
+-        except asyncio.TimeoutError:
++        except TimeoutError:
+             connection.send_error(
+                 msg["id"], "alexa_timeout", "Timeout validating Alexa access token."
+             )
+diff --git a/homeassistant/components/cloud/subscription.py b/homeassistant/components/cloud/subscription.py
+index 9a62f2d115..63b57d2fa3 100644
+--- a/homeassistant/components/cloud/subscription.py
++++ b/homeassistant/components/cloud/subscription.py
+@@ -19,7 +19,7 @@ async def async_subscription_info(cloud: Cloud[CloudClient]) -> dict[str, Any] |
+     try:
+         async with asyncio.timeout(REQUEST_TIMEOUT):
+             return await cloud_api.async_subscription_info(cloud)
+-    except asyncio.TimeoutError:
++    except TimeoutError:
+         _LOGGER.error(
+             (
+                 "A timeout of %s was reached while trying to fetch subscription"
+@@ -40,7 +40,7 @@ async def async_migrate_paypal_agreement(
+     try:
+         async with asyncio.timeout(REQUEST_TIMEOUT):
+             return await cloud_api.async_migrate_paypal_agreement(cloud)
+-    except asyncio.TimeoutError:
++    except TimeoutError:
+         _LOGGER.error(
+             "A timeout of %s was reached while trying to start agreement migration",
+             REQUEST_TIMEOUT,
+diff --git a/homeassistant/components/color_extractor/__init__.py b/homeassistant/components/color_extractor/__init__.py
+index 2cc3e20695..e6095c9f92 100644
+--- a/homeassistant/components/color_extractor/__init__.py
++++ b/homeassistant/components/color_extractor/__init__.py
+@@ -139,7 +139,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+             async with asyncio.timeout(10):
+                 response = await session.get(url)
+ 
+-        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
++        except (TimeoutError, aiohttp.ClientError) as err:
+             _LOGGER.error("Failed to get ColorThief image due to HTTPError: %s", err)
+             return None
+ 
+diff --git a/homeassistant/components/comed_hourly_pricing/sensor.py b/homeassistant/components/comed_hourly_pricing/sensor.py
+index ef974b8f3e..195bfa97b7 100644
+--- a/homeassistant/components/comed_hourly_pricing/sensor.py
++++ b/homeassistant/components/comed_hourly_pricing/sensor.py
+@@ -123,7 +123,7 @@ class ComedHourlyPricingSensor(SensorEntity):
+             else:
+                 self._attr_native_value = None
+ 
+-        except (asyncio.TimeoutError, aiohttp.ClientError) as err:
++        except (TimeoutError, aiohttp.ClientError) as err:
+             _LOGGER.error("Could not get data from ComEd API: %s", err)
+         except (ValueError, KeyError):
+             _LOGGER.warning("Could not update status for %s", self.name)
+diff --git a/homeassistant/components/daikin/__init__.py b/homeassistant/components/daikin/__init__.py
+index e39fe97bc6..b8e87d2b20 100644
+--- a/homeassistant/components/daikin/__init__.py
++++ b/homeassistant/components/daikin/__init__.py
+@@ -86,7 +86,7 @@ async def daikin_api_setup(
+             device = await Appliance.factory(
+                 host, session, key=key, uuid=uuid, password=password
+             )
+-    except asyncio.TimeoutError as err:
++    except TimeoutError as err:
+         _LOGGER.debug("Connection to %s timed out", host)
+         raise ConfigEntryNotReady from err
+     except ClientConnectionError as err:
+diff --git a/homeassistant/components/daikin/config_flow.py b/homeassistant/components/daikin/config_flow.py
+index b79cc960fc..abd2d78c7f 100644
+--- a/homeassistant/components/daikin/config_flow.py
++++ b/homeassistant/components/daikin/config_flow.py
+@@ -89,7 +89,7 @@ class FlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
+                     uuid=uuid,
+                     password=password,
+                 )
+-        except (asyncio.TimeoutError, ClientError):
++        except (TimeoutError, ClientError):
+             self.host = None
+             return self.async_show_form(
+                 step_id="user",
+diff --git a/homeassistant/components/deconz/config_flow.py b/homeassistant/components/deconz/config_flow.py
+index c0361aa2bc..99fa641236 100644
+--- a/homeassistant/components/deconz/config_flow.py
++++ b/homeassistant/components/deconz/config_flow.py
+@@ -103,7 +103,7 @@ class DeconzFlowHandler(ConfigFlow, domain=DOMAIN):
+             async with asyncio.timeout(10):
+                 self.bridges = await deconz_discovery(session)
+ 
+-        except (asyncio.TimeoutError, ResponseError):
++        except (TimeoutError, ResponseError):
+             self.bridges = []
+ 
+         if LOGGER.isEnabledFor(logging.DEBUG):
+@@ -164,7 +164,7 @@ class DeconzFlowHandler(ConfigFlow, domain=DOMAIN):
+             except LinkButtonNotPressed:
+                 errors["base"] = "linking_not_possible"
+ 
+-            except (ResponseError, RequestError, asyncio.TimeoutError):
++            except (ResponseError, RequestError, TimeoutError):
+                 errors["base"] = "no_key"
+ 
+             else:
+@@ -193,7 +193,7 @@ class DeconzFlowHandler(ConfigFlow, domain=DOMAIN):
+                         }
+                     )
+ 
+-            except asyncio.TimeoutError:
++            except TimeoutError:
+                 return self.async_abort(reason="no_bridges")
+ 
+         return self.async_create_entry(
+diff --git a/homeassistant/components/deconz/gateway.py b/homeassistant/components/deconz/gateway.py
+index 156309c090..a982d110f1 100644
+--- a/homeassistant/components/deconz/gateway.py
++++ b/homeassistant/components/deconz/gateway.py
+@@ -360,6 +360,6 @@ async def get_deconz_session(
+         LOGGER.warning("Invalid key for deCONZ at %s", config[CONF_HOST])
+         raise AuthenticationRequired from err
+ 
+-    except (asyncio.TimeoutError, errors.RequestError, errors.ResponseError) as err:
++    except (TimeoutError, errors.RequestError, errors.ResponseError) as err:
+         LOGGER.error("Error connecting to deCONZ gateway at %s", config[CONF_HOST])
+         raise CannotConnect from err
+diff --git a/homeassistant/components/doorbird/camera.py b/homeassistant/components/doorbird/camera.py
+index a4133f2da2..3da47eb572 100644
+--- a/homeassistant/components/doorbird/camera.py
++++ b/homeassistant/components/doorbird/camera.py
+@@ -108,7 +108,7 @@ class DoorBirdCamera(DoorBirdEntity, Camera):
+             self._last_image = await response.read()
+             self._last_update = now
+             return self._last_image
+-        except asyncio.TimeoutError:
++        except TimeoutError:
+             _LOGGER.error("DoorBird %s: Camera image timed out", self.name)
+             return self._last_image
+         except aiohttp.ClientError as error:
+diff --git a/homeassistant/components/dsmr/config_flow.py b/homeassistant/components/dsmr/config_flow.py
+index 376b4d100f..a38326c134 100644
+--- a/homeassistant/components/dsmr/config_flow.py
++++ b/homeassistant/components/dsmr/config_flow.py
+@@ -123,7 +123,7 @@ class DSMRConnection:
+             try:
+                 async with asyncio.timeout(30):
+                     await protocol.wait_closed()
+-            except asyncio.TimeoutError:
++            except TimeoutError:
+                 # Timeout (no data received), close transport and return True (if telegram is empty, will result in CannotCommunicate error)
+                 transport.close()
+                 await protocol.wait_closed()
+diff --git a/tests/components/analytics/test_analytics.py b/tests/components/analytics/test_analytics.py
+index d22738a7e6..fd1c7070f6 100644
+--- a/tests/components/analytics/test_analytics.py
++++ b/tests/components/analytics/test_analytics.py
+@@ -1,5 +1,4 @@
+ """The tests for the analytics ."""
+-import asyncio
+ from typing import Any
+ from unittest.mock import ANY, AsyncMock, Mock, PropertyMock, patch
+ 
+@@ -756,7 +755,7 @@ async def test_timeout_while_sending(
+ ) -> None:
+     """Test timeout error while sending analytics."""
+     analytics = Analytics(hass)
+-    aioclient_mock.post(ANALYTICS_ENDPOINT_URL_DEV, exc=asyncio.TimeoutError())
++    aioclient_mock.post(ANALYTICS_ENDPOINT_URL_DEV, exc=TimeoutError())
+ 
+     await analytics.save_preferences({ATTR_BASE: True})
+     with patch(
+diff --git a/tests/components/august/test_init.py b/tests/components/august/test_init.py
+index 55bc44c6f2..81d8992948 100644
+--- a/tests/components/august/test_init.py
++++ b/tests/components/august/test_init.py
+@@ -1,5 +1,4 @@
+ """The tests for the august platform."""
+-import asyncio
+ from unittest.mock import Mock, patch
+ 
+ from aiohttp import ClientResponseError
+@@ -68,7 +67,7 @@ async def test_august_is_offline(hass: HomeAssistant) -> None:
+ 
+     with patch(
+         "yalexs.authenticator_async.AuthenticatorAsync.async_authenticate",
+-        side_effect=asyncio.TimeoutError,
++        side_effect=TimeoutError,
+     ):
+         await hass.config_entries.async_setup(config_entry.entry_id)
+         await hass.async_block_till_done()
+diff --git a/tests/components/baf/test_config_flow.py b/tests/components/baf/test_config_flow.py
+index f770db0509..f15c624447 100644
+--- a/tests/components/baf/test_config_flow.py
++++ b/tests/components/baf/test_config_flow.py
+@@ -1,5 +1,4 @@
+ """Test the baf config flow."""
+-import asyncio
+ from ipaddress import ip_address
+ from unittest.mock import patch
+ 
+@@ -55,7 +54,7 @@ async def test_form_cannot_connect(hass: HomeAssistant) -> None:
+         DOMAIN, context={"source": config_entries.SOURCE_USER}
+     )
+ 
+-    with _patch_device_config_flow(asyncio.TimeoutError):
++    with _patch_device_config_flow(TimeoutError):
+         result2 = await hass.config_entries.flow.async_configure(
+             result["flow_id"],
+             {CONF_IP_ADDRESS: "127.0.0.1"},
+diff --git a/tests/components/blink/test_init.py b/tests/components/blink/test_init.py
+index f3d9beaf21..32c424aae6 100644
+--- a/tests/components/blink/test_init.py
++++ b/tests/components/blink/test_init.py
+@@ -1,5 +1,4 @@
+ """Test the Blink init."""
+-import asyncio
+ from unittest.mock import AsyncMock, MagicMock
+ 
+ from aiohttp import ClientError
+@@ -23,7 +22,7 @@ PIN = "1234"
+ 
+ @pytest.mark.parametrize(
+     ("the_error", "available"),
+-    [(ClientError, False), (asyncio.TimeoutError, False), (None, False)],
++    [(ClientError, False), (TimeoutError, False), (None, False)],
+ )
+ async def test_setup_not_ready(
+     hass: HomeAssistant,
+diff --git a/tests/components/bluetooth/test_init.py b/tests/components/bluetooth/test_init.py
+index 35ee073bc8..e97ed0c27d 100644
+--- a/tests/components/bluetooth/test_init.py
++++ b/tests/components/bluetooth/test_init.py
+@@ -2294,7 +2294,7 @@ async def test_process_advertisements_timeout(
+     def _callback(service_info: BluetoothServiceInfo) -> bool:
+         return False
+ 
+-    with pytest.raises(asyncio.TimeoutError):
++    with pytest.raises(TimeoutError):
+         await async_process_advertisements(
+             hass, _callback, {}, BluetoothScanningMode.ACTIVE, 0
+         )
+diff --git a/tests/components/bluetooth_le_tracker/test_device_tracker.py b/tests/components/bluetooth_le_tracker/test_device_tracker.py
+index 15b5ef287a..78ce96bde9 100644
+--- a/tests/components/bluetooth_le_tracker/test_device_tracker.py
++++ b/tests/components/bluetooth_le_tracker/test_device_tracker.py
+@@ -1,5 +1,4 @@
+ """Test Bluetooth LE device tracker."""
+-import asyncio
+ from datetime import timedelta
+ from unittest.mock import patch
+ 
+@@ -47,7 +46,7 @@ class MockBleakClientTimesOut(MockBleakClient):
+ 
+     async def read_gatt_char(self, *args, **kwargs):
+         """Mock BleakClient.read_gatt_char."""
+-        raise asyncio.TimeoutError
++        raise TimeoutError
+ 
+ 
+ class MockBleakClientFailing(MockBleakClient):
+diff --git a/tests/components/bond/test_config_flow.py b/tests/components/bond/test_config_flow.py
+index 91d628e484..7d639309dd 100644
+--- a/tests/components/bond/test_config_flow.py
++++ b/tests/components/bond/test_config_flow.py
+@@ -1,7 +1,6 @@
+ """Test the Bond config flow."""
+ from __future__ import annotations
+ 
+-import asyncio
+ from http import HTTPStatus
+ from ipaddress import ip_address
+ from typing import Any
+@@ -274,7 +273,7 @@ async def test_zeroconf_form_token_unavailable(hass: HomeAssistant) -> None:
+ async def test_zeroconf_form_token_times_out(hass: HomeAssistant) -> None:
+     """Test we get the discovery form and we handle the token request timeout."""
+ 
+-    with patch_bond_version(), patch_bond_token(side_effect=asyncio.TimeoutError):
++    with patch_bond_version(), patch_bond_token(side_effect=TimeoutError):
+         result = await hass.config_entries.flow.async_init(
+             DOMAIN,
+             context={"source": config_entries.SOURCE_ZEROCONF},
+diff --git a/tests/components/bond/test_entity.py b/tests/components/bond/test_entity.py
+index d61b4e0656..bcb61ddc92 100644
+--- a/tests/components/bond/test_entity.py
++++ b/tests/components/bond/test_entity.py
+@@ -1,5 +1,4 @@
+ """Tests for the Bond entities."""
+-import asyncio
+ from datetime import timedelta
+ from unittest.mock import patch
+ 
+@@ -85,7 +84,7 @@ async def test_bpup_goes_offline_and_recovers_same_entity(hass: HomeAssistant) -
+     assert hass.states.get("fan.name_1").attributes[fan.ATTR_PERCENTAGE] == 33
+ 
+     bpup_subs.last_message_time = -BPUP_ALIVE_TIMEOUT
+-    with patch_bond_device_state(side_effect=asyncio.TimeoutError):
++    with patch_bond_device_state(side_effect=TimeoutError):
+         async_fire_time_changed(hass, utcnow() + timedelta(seconds=230))
+         await hass.async_block_till_done()
+ 
+@@ -147,7 +146,7 @@ async def test_bpup_goes_offline_and_recovers_different_entity(
+     assert hass.states.get("fan.name_1").attributes[fan.ATTR_PERCENTAGE] == 33
+ 
+     bpup_subs.last_message_time = -BPUP_ALIVE_TIMEOUT
+-    with patch_bond_device_state(side_effect=asyncio.TimeoutError):
++    with patch_bond_device_state(side_effect=TimeoutError):
+         async_fire_time_changed(hass, utcnow() + timedelta(seconds=230))
+         await hass.async_block_till_done()
+ 
+@@ -178,7 +177,7 @@ async def test_polling_fails_and_recovers(hass: HomeAssistant) -> None:
+         hass, FAN_DOMAIN, ceiling_fan("name-1"), bond_device_id="test-device-id"
+     )
+ 
+-    with patch_bond_device_state(side_effect=asyncio.TimeoutError):
++    with patch_bond_device_state(side_effect=TimeoutError):
+         async_fire_time_changed(hass, utcnow() + timedelta(seconds=230))
+         await hass.async_block_till_done()
+ 
+@@ -199,7 +198,7 @@ async def test_polling_stops_at_the_stop_event(hass: HomeAssistant) -> None:
+         hass, FAN_DOMAIN, ceiling_fan("name-1"), bond_device_id="test-device-id"
+     )
+ 
+-    with patch_bond_device_state(side_effect=asyncio.TimeoutError):
++    with patch_bond_device_state(side_effect=TimeoutError):
+         async_fire_time_changed(hass, utcnow() + timedelta(seconds=230))
+         await hass.async_block_till_done()
+ 
+diff --git a/tests/components/bond/test_init.py b/tests/components/bond/test_init.py
+index 6b462a02c2..6453fa3980 100644
+--- a/tests/components/bond/test_init.py
++++ b/tests/components/bond/test_init.py
+@@ -1,5 +1,4 @@
+ """Tests for the Bond module."""
+-import asyncio
+ from unittest.mock import MagicMock, Mock
+ 
+ from aiohttp import ClientConnectionError, ClientResponseError
+@@ -45,7 +44,7 @@ async def test_async_setup_no_domain_config(hass: HomeAssistant) -> None:
+     [
+         ClientConnectionError,
+         ClientResponseError(MagicMock(), MagicMock(), status=404),
+-        asyncio.TimeoutError,
++        TimeoutError,
+         OSError,
+     ],
+ )
+diff --git a/tests/components/camera/test_init.py b/tests/components/camera/test_init.py
+index f1e3a4fdef..528c13bc08 100644
+--- a/tests/components/camera/test_init.py
++++ b/tests/components/camera/test_init.py
+@@ -1,5 +1,4 @@
+ """The tests for the camera component."""
+-import asyncio
+ from http import HTTPStatus
+ import io
+ from types import ModuleType
+@@ -204,7 +203,7 @@ async def test_get_image_with_timeout(hass: HomeAssistant, image_mock_url) -> No
+     """Try to get image with timeout."""
+     with patch(
+         "homeassistant.components.demo.camera.DemoCamera.async_camera_image",
+-        side_effect=asyncio.TimeoutError,
++        side_effect=TimeoutError,
+     ), pytest.raises(HomeAssistantError):
+         await camera.async_get_image(hass, "camera.demo_camera")
+ 
+@@ -670,7 +669,7 @@ async def test_websocket_web_rtc_offer_timeout(
+ 
+     with patch(
+         "homeassistant.components.camera.Camera.async_handle_web_rtc_offer",
+-        side_effect=asyncio.TimeoutError(),
++        side_effect=TimeoutError(),
+     ):
+         await client.send_json(
+             {
+diff --git a/tests/components/cast/test_helpers.py b/tests/components/cast/test_helpers.py
+index 7918601941..d19c4f212d 100644
+--- a/tests/components/cast/test_helpers.py
++++ b/tests/components/cast/test_helpers.py
+@@ -1,5 +1,4 @@
+ """Tests for the Cast integration helpers."""
+-import asyncio
+ 
+ from aiohttp import client_exceptions
+ import pytest
+@@ -141,7 +140,7 @@ async def test_parse_bad_playlist(
+ @pytest.mark.parametrize(
+     ("url", "exc"),
+     (
+-        ("http://sverigesradio.se/164-hi-aac.pls", asyncio.TimeoutError),
++        ("http://sverigesradio.se/164-hi-aac.pls", TimeoutError),
+         ("http://sverigesradio.se/164-hi-aac.pls", client_exceptions.ClientError),
+     ),
+ )
+diff --git a/tests/components/cert_expiry/test_config_flow.py b/tests/components/cert_expiry/test_config_flow.py
+index 800a3ce54d..1e72e708d4 100644
+--- a/tests/components/cert_expiry/test_config_flow.py
++++ b/tests/components/cert_expiry/test_config_flow.py
+@@ -1,5 +1,4 @@
+ """Tests for the Cert Expiry config flow."""
+-import asyncio
+ import socket
+ import ssl
+ from unittest.mock import patch
+@@ -210,7 +209,7 @@ async def test_abort_on_socket_failed(hass: HomeAssistant) -> None:
+ 
+     with patch(
+         "homeassistant.components.cert_expiry.helper.async_get_cert",
+-        side_effect=asyncio.TimeoutError,
++        side_effect=TimeoutError,
+     ):
+         result = await hass.config_entries.flow.async_configure(
+             result["flow_id"], user_input={CONF_HOST: HOST}
+diff --git a/tests/components/cloud/test_account_link.py b/tests/components/cloud/test_account_link.py
+index 471ecc119a..14f99fe0fb 100644
+--- a/tests/components/cloud/test_account_link.py
++++ b/tests/components/cloud/test_account_link.py
+@@ -160,7 +160,7 @@ async def test_get_services_error(hass: HomeAssistant) -> None:
+ 
+     with patch.object(account_link, "CACHE_TIMEOUT", 0), patch(
+         "hass_nabucasa.account_link.async_fetch_available_services",
+-        side_effect=asyncio.TimeoutError,
++        side_effect=TimeoutError,
+     ):
+         assert await account_link._get_services(hass) == []
+         assert account_link.DATA_SERVICES not in hass.data
+diff --git a/tests/components/cloud/test_http_api.py b/tests/components/cloud/test_http_api.py
+index 4602c05439..78b06874d6 100644
+--- a/tests/components/cloud/test_http_api.py
++++ b/tests/components/cloud/test_http_api.py
+@@ -1,5 +1,4 @@
+ """Tests for the HTTP API for the cloud component."""
+-import asyncio
+ from copy import deepcopy
+ from http import HTTPStatus
+ from typing import Any
+@@ -346,7 +345,7 @@ async def test_login_view_request_timeout(
+ ) -> None:
+     """Test request timeout while trying to log in."""
+     cloud_client = await hass_client()
+-    cloud.login.side_effect = asyncio.TimeoutError
++    cloud.login.side_effect = TimeoutError
+ 
+     req = await cloud_client.post(
+         "/api/cloud/login", json={"email": "my_username", "password": "my_password"}
+@@ -409,7 +408,7 @@ async def test_logout_view_request_timeout(
+ ) -> None:
+     """Test timeout while logging out."""
+     cloud_client = await hass_client()
+-    cloud.logout.side_effect = asyncio.TimeoutError
++    cloud.logout.side_effect = TimeoutError
+ 
+     req = await cloud_client.post("/api/cloud/logout")
+ 
+@@ -524,7 +523,7 @@ async def test_register_view_request_timeout(
+ ) -> None:
+     """Test timeout while registering."""
+     cloud_client = await hass_client()
+-    cloud.auth.async_register.side_effect = asyncio.TimeoutError
++    cloud.auth.async_register.side_effect = TimeoutError
+ 
+     req = await cloud_client.post(
+         "/api/cloud/register", json={"email": "hello@bla.com", "password": "falcon42"}
+@@ -590,7 +589,7 @@ async def test_forgot_password_view_request_timeout(
+ ) -> None:
+     """Test timeout while forgot password."""
+     cloud_client = await hass_client()
+-    cloud.auth.async_forgot_password.side_effect = asyncio.TimeoutError
++    cloud.auth.async_forgot_password.side_effect = TimeoutError
+ 
+     req = await cloud_client.post(
+         "/api/cloud/forgot_password", json={"email": "hello@bla.com"}
+@@ -674,7 +673,7 @@ async def test_resend_confirm_view_request_timeout(
+ ) -> None:
+     """Test timeout while resend confirm."""
+     cloud_client = await hass_client()
+-    cloud.auth.async_resend_email_confirm.side_effect = asyncio.TimeoutError
++    cloud.auth.async_resend_email_confirm.side_effect = TimeoutError
+ 
+     req = await cloud_client.post(
+         "/api/cloud/resend_confirm", json={"email": "hello@bla.com"}
+@@ -1400,7 +1399,7 @@ async def test_sync_alexa_entities_timeout(
+             "homeassistant.components.cloud.alexa_config.CloudAlexaConfig"
+             ".async_sync_entities"
+         ),
+-        side_effect=asyncio.TimeoutError,
++        side_effect=TimeoutError,
+     ):
+         await client.send_json({"id": 5, "type": "cloud/alexa/sync"})
+         response = await client.receive_json()
+@@ -1484,7 +1483,7 @@ async def test_thingtalk_convert_timeout(
+ 
+     with patch(
+         "homeassistant.components.cloud.http_api.thingtalk.async_convert",
+-        side_effect=asyncio.TimeoutError,
++        side_effect=TimeoutError,
+     ):
+         await client.send_json(
+             {"id": 5, "type": "cloud/thingtalk/convert", "query": "some-data"}
+diff --git a/tests/components/cloud/test_subscription.py b/tests/components/cloud/test_subscription.py
+index 9207c1fef2..c7297e3574 100644
+--- a/tests/components/cloud/test_subscription.py
++++ b/tests/components/cloud/test_subscription.py
+@@ -1,5 +1,4 @@
+ """Test cloud subscription functions."""
+-import asyncio
+ from unittest.mock import AsyncMock, Mock
+ 
+ from hass_nabucasa import Cloud
+@@ -33,7 +32,7 @@ async def test_fetching_subscription_with_timeout_error(
+     """Test that we handle timeout error."""
+     aioclient_mock.get(
+         "https://accounts.nabucasa.com/payments/subscription_info",
+-        exc=asyncio.TimeoutError(),
++        exc=TimeoutError(),
+     )
+ 
+     assert await async_subscription_info(mocked_cloud) is None
+@@ -51,7 +50,7 @@ async def test_migrate_paypal_agreement_with_timeout_error(
+     """Test that we handle timeout error."""
+     aioclient_mock.post(
+         "https://accounts.nabucasa.com/payments/migrate_paypal_agreement",
+-        exc=asyncio.TimeoutError(),
++        exc=TimeoutError(),
+     )
+ 
+     assert await async_migrate_paypal_agreement(mocked_cloud) is None
+diff --git a/tests/components/daikin/test_config_flow.py b/tests/components/daikin/test_config_flow.py
+index 4d54d7483d..942137e8f6 100644
+--- a/tests/components/daikin/test_config_flow.py
++++ b/tests/components/daikin/test_config_flow.py
+@@ -1,5 +1,4 @@
+ """Tests for the Daikin config flow."""
+-import asyncio
+ from ipaddress import ip_address
+ from unittest.mock import PropertyMock, patch
+ 
+@@ -81,7 +80,7 @@ async def test_abort_if_already_setup(hass: HomeAssistant, mock_daikin) -> None:
+ @pytest.mark.parametrize(
+     ("s_effect", "reason"),
+     [
+-        (asyncio.TimeoutError, "cannot_connect"),
++        (TimeoutError, "cannot_connect"),
+         (ClientError, "cannot_connect"),
+         (web_exceptions.HTTPForbidden, "invalid_auth"),
+         (DaikinException, "unknown"),
+diff --git a/tests/components/daikin/test_init.py b/tests/components/daikin/test_init.py
+index 857d9e399f..7c4467c303 100644
+--- a/tests/components/daikin/test_init.py
++++ b/tests/components/daikin/test_init.py
+@@ -1,5 +1,4 @@
+ """Define tests for the Daikin init."""
+-import asyncio
+ from datetime import timedelta
+ from unittest.mock import AsyncMock, PropertyMock, patch
+ 
+@@ -224,7 +223,7 @@ async def test_timeout_error(hass: HomeAssistant, mock_daikin) -> None:
+     )
+     config_entry.add_to_hass(hass)
+ 
+-    mock_daikin.factory.side_effect = asyncio.TimeoutError
++    mock_daikin.factory.side_effect = TimeoutError
+     await hass.config_entries.async_setup(config_entry.entry_id)
+     await hass.async_block_till_done()
+ 
+diff --git a/tests/components/deconz/test_config_flow.py b/tests/components/deconz/test_config_flow.py
+index 1211d4dfa4..7874b7899c 100644
+--- a/tests/components/deconz/test_config_flow.py
++++ b/tests/components/deconz/test_config_flow.py
+@@ -1,5 +1,4 @@
+ """Tests for deCONZ config flow."""
+-import asyncio
+ import logging
+ from unittest.mock import patch
+ 
+@@ -195,7 +194,7 @@ async def test_manual_configuration_after_discovery_timeout(
+     hass: HomeAssistant, aioclient_mock: AiohttpClientMocker
+ ) -> None:
+     """Test failed discovery fallbacks to manual configuration."""
+-    aioclient_mock.get(pydeconz.utils.URL_DISCOVER, exc=asyncio.TimeoutError)
++    aioclient_mock.get(pydeconz.utils.URL_DISCOVER, exc=TimeoutError)
+ 
+     result = await hass.config_entries.flow.async_init(
+         DECONZ_DOMAIN, context={"source": SOURCE_USER}
+@@ -347,9 +346,7 @@ async def test_manual_configuration_timeout_get_bridge(
+         headers={"content-type": CONTENT_TYPE_JSON},
+     )
+ 
+-    aioclient_mock.get(
+-        f"http://1.2.3.4:80/api/{API_KEY}/config", exc=asyncio.TimeoutError
+-    )
++    aioclient_mock.get(f"http://1.2.3.4:80/api/{API_KEY}/config", exc=TimeoutError)
+ 
+     result = await hass.config_entries.flow.async_configure(
+         result["flow_id"], user_input={}
+@@ -363,7 +360,7 @@ async def test_manual_configuration_timeout_get_bridge(
+     ("raised_error", "error_string"),
+     [
+         (pydeconz.errors.LinkButtonNotPressed, "linking_not_possible"),
+-        (asyncio.TimeoutError, "no_key"),
++        (TimeoutError, "no_key"),
+         (pydeconz.errors.ResponseError, "no_key"),
+         (pydeconz.errors.RequestError, "no_key"),
+     ],
+diff --git a/tests/components/deconz/test_gateway.py b/tests/components/deconz/test_gateway.py
+index cc5d2520f5..84a57fe759 100644
+--- a/tests/components/deconz/test_gateway.py
++++ b/tests/components/deconz/test_gateway.py
+@@ -1,5 +1,4 @@
+ """Test deCONZ gateway."""
+-import asyncio
+ from copy import deepcopy
+ from unittest.mock import patch
+ 
+@@ -297,7 +296,7 @@ async def test_get_deconz_session(hass: HomeAssistant) -> None:
+ @pytest.mark.parametrize(
+     ("side_effect", "raised_exception"),
+     [
+-        (asyncio.TimeoutError, CannotConnect),
++        (TimeoutError, CannotConnect),
+         (pydeconz.RequestError, CannotConnect),
+         (pydeconz.ResponseError, CannotConnect),
+         (pydeconz.Unauthorized, AuthenticationRequired),
+diff --git a/tests/components/dsmr/test_config_flow.py b/tests/components/dsmr/test_config_flow.py
+index 422bfa0c35..2d44b67e87 100644
+--- a/tests/components/dsmr/test_config_flow.py
++++ b/tests/components/dsmr/test_config_flow.py
+@@ -1,5 +1,4 @@
+ """Test the DSMR config flow."""
+-import asyncio
+ from itertools import chain, repeat
+ import os
+ from typing import Any
+@@ -388,13 +387,13 @@ async def test_setup_serial_timeout(
+ 
+     first_timeout_wait_closed = AsyncMock(
+         return_value=True,
+-        side_effect=chain([asyncio.TimeoutError], repeat(DEFAULT)),
++        side_effect=chain([TimeoutError], repeat(DEFAULT)),
+     )
+     protocol.wait_closed = first_timeout_wait_closed
+ 
+     first_timeout_wait_closed = AsyncMock(
+         return_value=True,
+-        side_effect=chain([asyncio.TimeoutError], repeat(DEFAULT)),
++        side_effect=chain([TimeoutError], repeat(DEFAULT)),
+     )
+     rfxtrx_protocol.wait_closed = first_timeout_wait_closed
+ 

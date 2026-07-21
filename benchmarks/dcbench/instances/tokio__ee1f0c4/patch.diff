@@ -1,0 +1,224 @@
+From ee1f0c473f5e9b70a96756bc67fe5a04e691294d Mon Sep 17 00:00:00 2001
+From: Alice Ryhl <alice@ryhl.io>
+Date: Sun, 31 Jan 2021 11:08:40 +0100
+Subject: [PATCH] util: remove tokio-stream dependency from tokio-util (#3487)
+
+---
+ tokio-util/Cargo.toml                |  4 ++--
+ tokio-util/src/codec/decoder.rs      |  2 +-
+ tokio-util/src/codec/framed.rs       | 10 +++++-----
+ tokio-util/src/codec/framed_impl.rs  |  2 +-
+ tokio-util/src/codec/framed_read.rs  |  4 ++--
+ tokio-util/src/codec/framed_write.rs |  2 +-
+ tokio-util/src/codec/mod.rs          |  2 +-
+ tokio-util/src/io/reader_stream.rs   |  4 ++--
+ tokio-util/src/io/stream_reader.rs   |  2 +-
+ tokio-util/src/udp/frame.rs          |  4 ++--
+ 10 files changed, 18 insertions(+), 18 deletions(-)
+
+diff --git a/tokio-util/Cargo.toml b/tokio-util/Cargo.toml
+index 9440e4e..510d13f 100644
+--- a/tokio-util/Cargo.toml
++++ b/tokio-util/Cargo.toml
+@@ -36,8 +36,7 @@ rt = ["tokio/rt"]
+ __docs_rs = ["futures-util"]
+ 
+ [dependencies]
+-tokio = { version = "1.0.0" }
+-tokio-stream = { version = "0.1" }
++tokio = { version = "1.0.0", features = ["sync"] }
+ 
+ bytes = "1.0.0"
+ futures-core = "0.3.0"
+@@ -51,6 +50,7 @@ slab = { version = "0.4.1", optional = true } # Backs `DelayQueue`
+ [dev-dependencies]
+ tokio = { version = "1.0.0", features = ["full"] }
+ tokio-test = { version = "0.4.0" }
++tokio-stream = { version = "0.1" }
+ 
+ async-stream = "0.3.0"
+ futures = "0.3.0"
+diff --git a/tokio-util/src/codec/decoder.rs b/tokio-util/src/codec/decoder.rs
+index 3d19332..895ea10 100644
+--- a/tokio-util/src/codec/decoder.rs
++++ b/tokio-util/src/codec/decoder.rs
+@@ -153,7 +153,7 @@ pub trait Decoder {
+     /// calling `split` on the [`Framed`] returned by this method, which will
+     /// break them into separate objects, allowing them to interact more easily.
+     ///
+-    /// [`Stream`]: tokio_stream::Stream
++    /// [`Stream`]: futures_core::Stream
+     /// [`Sink`]: futures_sink::Sink
+     /// [`Framed`]: crate::codec::Framed
+     fn framed<T: AsyncRead + AsyncWrite + Sized>(self, io: T) -> Framed<T, Self>
+diff --git a/tokio-util/src/codec/framed.rs b/tokio-util/src/codec/framed.rs
+index fe00c07..c7701e0 100644
+--- a/tokio-util/src/codec/framed.rs
++++ b/tokio-util/src/codec/framed.rs
+@@ -2,8 +2,8 @@ use crate::codec::decoder::Decoder;
+ use crate::codec::encoder::Encoder;
+ use crate::codec::framed_impl::{FramedImpl, RWFrames, ReadFrame, WriteFrame};
+ 
++use futures_core::Stream;
+ use tokio::io::{AsyncRead, AsyncWrite};
+-use tokio_stream::Stream;
+ 
+ use bytes::BytesMut;
+ use futures_sink::Sink;
+@@ -20,7 +20,7 @@ pin_project! {
+     /// You can create a `Framed` instance by using the [`Decoder::framed`] adapter, or
+     /// by using the `new` function seen below.
+     ///
+-    /// [`Stream`]: tokio_stream::Stream
++    /// [`Stream`]: futures_core::Stream
+     /// [`Sink`]: futures_sink::Sink
+     /// [`AsyncRead`]: tokio::io::AsyncRead
+     /// [`Decoder::framed`]: crate::codec::Decoder::framed()
+@@ -52,7 +52,7 @@ where
+     /// calling [`split`] on the `Framed` returned by this method, which will
+     /// break them into separate objects, allowing them to interact more easily.
+     ///
+-    /// [`Stream`]: tokio_stream::Stream
++    /// [`Stream`]: futures_core::Stream
+     /// [`Sink`]: futures_sink::Sink
+     /// [`Decode`]: crate::codec::Decoder
+     /// [`Encoder`]: crate::codec::Encoder
+@@ -86,7 +86,7 @@ where
+     /// calling [`split`] on the `Framed` returned by this method, which will
+     /// break them into separate objects, allowing them to interact more easily.
+     ///
+-    /// [`Stream`]: tokio_stream::Stream
++    /// [`Stream`]: futures_core::Stream
+     /// [`Sink`]: futures_sink::Sink
+     /// [`Decode`]: crate::codec::Decoder
+     /// [`Encoder`]: crate::codec::Encoder
+@@ -131,7 +131,7 @@ impl<T, U> Framed<T, U> {
+     /// calling [`split`] on the `Framed` returned by this method, which will
+     /// break them into separate objects, allowing them to interact more easily.
+     ///
+-    /// [`Stream`]: tokio_stream::Stream
++    /// [`Stream`]: futures_core::Stream
+     /// [`Sink`]: futures_sink::Sink
+     /// [`Decoder`]: crate::codec::Decoder
+     /// [`Encoder`]: crate::codec::Encoder
+diff --git a/tokio-util/src/codec/framed_impl.rs b/tokio-util/src/codec/framed_impl.rs
+index 69df6f2..66714d9 100644
+--- a/tokio-util/src/codec/framed_impl.rs
++++ b/tokio-util/src/codec/framed_impl.rs
+@@ -1,8 +1,8 @@
+ use crate::codec::decoder::Decoder;
+ use crate::codec::encoder::Encoder;
+ 
++use futures_core::Stream;
+ use tokio::io::{AsyncRead, AsyncWrite};
+-use tokio_stream::Stream;
+ 
+ use bytes::BytesMut;
+ use futures_core::ready;
+diff --git a/tokio-util/src/codec/framed_read.rs b/tokio-util/src/codec/framed_read.rs
+index e0eb967..7347470 100644
+--- a/tokio-util/src/codec/framed_read.rs
++++ b/tokio-util/src/codec/framed_read.rs
+@@ -1,8 +1,8 @@
+ use crate::codec::framed_impl::{FramedImpl, ReadFrame};
+ use crate::codec::Decoder;
+ 
++use futures_core::Stream;
+ use tokio::io::AsyncRead;
+-use tokio_stream::Stream;
+ 
+ use bytes::BytesMut;
+ use futures_sink::Sink;
+@@ -14,7 +14,7 @@ use std::task::{Context, Poll};
+ pin_project! {
+     /// A [`Stream`] of messages decoded from an [`AsyncRead`].
+     ///
+-    /// [`Stream`]: tokio_stream::Stream
++    /// [`Stream`]: futures_core::Stream
+     /// [`AsyncRead`]: tokio::io::AsyncRead
+     pub struct FramedRead<T, D> {
+         #[pin]
+diff --git a/tokio-util/src/codec/framed_write.rs b/tokio-util/src/codec/framed_write.rs
+index 7df0d6a..d2f6cb2 100644
+--- a/tokio-util/src/codec/framed_write.rs
++++ b/tokio-util/src/codec/framed_write.rs
+@@ -1,8 +1,8 @@
+ use crate::codec::encoder::Encoder;
+ use crate::codec::framed_impl::{FramedImpl, WriteFrame};
+ 
++use futures_core::Stream;
+ use tokio::io::AsyncWrite;
+-use tokio_stream::Stream;
+ 
+ use bytes::BytesMut;
+ use futures_sink::Sink;
+diff --git a/tokio-util/src/codec/mod.rs b/tokio-util/src/codec/mod.rs
+index c4f24d8..a3c460f 100644
+--- a/tokio-util/src/codec/mod.rs
++++ b/tokio-util/src/codec/mod.rs
+@@ -246,7 +246,7 @@
+ //!
+ //! [`AsyncRead`]: tokio::io::AsyncRead
+ //! [`AsyncWrite`]: tokio::io::AsyncWrite
+-//! [`Stream`]: tokio_stream::Stream
++//! [`Stream`]: futures_core::Stream
+ //! [`Sink`]: futures_sink::Sink
+ //! [`SinkExt::close`]: https://docs.rs/futures/0.3/futures/sink/trait.SinkExt.html#method.close
+ //! [`FramedRead`]: struct@crate::codec::FramedRead
+diff --git a/tokio-util/src/io/reader_stream.rs b/tokio-util/src/io/reader_stream.rs
+index 7c25f34..1f234c9 100644
+--- a/tokio-util/src/io/reader_stream.rs
++++ b/tokio-util/src/io/reader_stream.rs
+@@ -40,7 +40,7 @@ pin_project! {
+     ///
+     /// [`AsyncRead`]: tokio::io::AsyncRead
+     /// [`StreamReader`]: crate::io::StreamReader
+-    /// [`Stream`]: tokio_stream::Stream
++    /// [`Stream`]: futures_core::Stream
+     #[derive(Debug)]
+     pub struct ReaderStream<R> {
+         // Reader itself.
+@@ -58,7 +58,7 @@ impl<R: AsyncRead> ReaderStream<R> {
+     /// `Result<Bytes, std::io::Error>`.
+     ///
+     /// [`AsyncRead`]: tokio::io::AsyncRead
+-    /// [`Stream`]: tokio_stream::Stream
++    /// [`Stream`]: futures_core::Stream
+     pub fn new(reader: R) -> Self {
+         ReaderStream {
+             reader: Some(reader),
+diff --git a/tokio-util/src/io/stream_reader.rs b/tokio-util/src/io/stream_reader.rs
+index b3a04cb..8fe09b9 100644
+--- a/tokio-util/src/io/stream_reader.rs
++++ b/tokio-util/src/io/stream_reader.rs
+@@ -51,7 +51,7 @@ pin_project! {
+     /// ```
+     ///
+     /// [`AsyncRead`]: tokio::io::AsyncRead
+-    /// [`Stream`]: tokio_stream::Stream
++    /// [`Stream`]: futures_core::Stream
+     /// [`ReaderStream`]: crate::io::ReaderStream
+     #[derive(Debug)]
+     pub struct StreamReader<S, B> {
+diff --git a/tokio-util/src/udp/frame.rs b/tokio-util/src/udp/frame.rs
+index eafe7f9..c386635 100644
+--- a/tokio-util/src/udp/frame.rs
++++ b/tokio-util/src/udp/frame.rs
+@@ -1,7 +1,7 @@
+ use crate::codec::{Decoder, Encoder};
+ 
++use futures_core::Stream;
+ use tokio::{io::ReadBuf, net::UdpSocket};
+-use tokio_stream::Stream;
+ 
+ use bytes::{BufMut, BytesMut};
+ use futures_core::ready;
+@@ -28,7 +28,7 @@ use std::{io, mem::MaybeUninit};
+ /// calling [`split`] on the `UdpFramed` returned by this method, which will break
+ /// them into separate objects, allowing them to interact more easily.
+ ///
+-/// [`Stream`]: tokio_stream::Stream
++/// [`Stream`]: futures_core::Stream
+ /// [`Sink`]: futures_sink::Sink
+ /// [`split`]: https://docs.rs/futures/0.3/futures/stream/trait.StreamExt.html#method.split
+ #[must_use = "sinks do nothing unless polled"]

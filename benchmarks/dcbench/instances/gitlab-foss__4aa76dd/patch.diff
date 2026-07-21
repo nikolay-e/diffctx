@@ -1,0 +1,3313 @@
+From 4aa76dddecc048cef24963323afe59f1c120cb72 Mon Sep 17 00:00:00 2001
+From: Nick Thomas <nick@gitlab.com>
+Date: Thu, 13 Jun 2019 14:12:28 +0100
+Subject: [PATCH] Remove dead MySQL code
+
+None of this code can be reached any more, so it can all be removed
+---
+ Gemfile                                       |   2 -
+ Gemfile.lock                                  |   8 -
+ app/models/ci/pipeline.rb                     |   2 -
+ app/models/concerns/case_sensitivity.rb       |   4 -
+ app/models/concerns/routable.rb               |  43 +-
+ app/models/deployment.rb                      |  11 +-
+ app/uploaders/records_uploads.rb              |  10 +-
+ config/application.rb                         |   5 -
+ config/database.yml.mysql                     |  60 --
+ .../initializers/active_record_data_types.rb  | 100 +---
+ .../active_record_mysql_timestamp.rb          |  30 -
+ config/initializers/ar_mysql_jsonb_support.rb |  31 -
+ .../initializers/ar_native_database_types.rb  |  12 -
+ config/initializers/connection_fix.rb         |  32 --
+ .../mysql_ignore_postgresql_options.rb        |  42 --
+ .../mysql_set_length_for_binary_indexes.rb    |  30 -
+ config/initializers/peek.rb                   |   6 +-
+ ...00543_reset_events_primary_key_sequence.rb |  16 +-
+ ...403035759_create_project_ci_cd_settings.rb |   6 -
+ ...i_build_trace_chunks_raw_data_for_mysql.rb |  13 -
+ ..._increase_mysql_text_limit_for_gpg_keys.rb |   1 -
+ ...4904_fix_prometheus_metric_query_limits.rb |  19 -
+ ...46_add_missing_indexes_for_foreign_keys.rb |   4 -
+ db/migrate/gpg_keys_limits_to_mysql.rb        |  14 -
+ ...i_build_trace_chunks_raw_data_for_mysql.rb |   9 -
+ db/migrate/limits_to_mysql.rb                 |   8 -
+ db/migrate/markdown_cache_limits_to_mysql.rb  |  13 -
+ ...merge_request_diff_file_limits_to_mysql.rb |  12 -
+ .../prometheus_metrics_limits_to_mysql.rb     |  12 -
+ ...populate_missing_project_ci_cd_settings.rb |   4 -
+ ..._update_project_import_visibility_level.rb |   2 +-
+ ...e_auto_dev_ops_domain_to_cluster_domain.rb |  20 -
+ ..._approvals_user_id_and_merge_request_id.rb |  40 +-
+ lib/api/entities.rb                           |  11 +-
+ lib/backup/database.rb                        |  27 -
+ lib/forever.rb                                |  10 +-
+ ...valid_time_for_pages_domain_certificate.rb |  17 +-
+ ...populate_untracked_uploads_dependencies.rb |  15 +-
+ .../prepare_untracked_uploads.rb              |   5 +-
+ lib/gitlab/database.rb                        |  76 +--
+ lib/gitlab/database/date_time.rb              |  18 +-
+ lib/gitlab/database/median.rb                 |  45 +-
+ lib/gitlab/database/migration_helpers.rb      | 138 +----
+ .../v1/rename_base.rb                         |  12 +-
+ lib/gitlab/import/database_helpers.rb         |  10 +-
+ lib/mysql_zero_date.rb                        |  20 -
+ lib/serializers/json.rb                       |  18 +-
+ lib/support/deploy/deploy.sh                  |   2 +-
+ lib/tasks/gitlab/db.rake                      |  13 +-
+ lib/tasks/gitlab/setup.rake                   |   1 -
+ lib/tasks/migrate/add_limits_mysql.rake       |  17 -
+ scripts/create_mysql_user.sh                  |   7 -
+ spec/features/projects/new_project_spec.rb    |   8 +-
+ spec/lib/forever_spec.rb                      |  16 +-
+ .../gitlab/cycle_analytics/usage_data_spec.rb |  80 +--
+ spec/lib/gitlab/database/median_spec.rb       |  17 -
+ .../gitlab/database/migration_helpers_spec.rb | 542 +++++-------------
+ spec/lib/gitlab/database_spec.rb              | 135 +----
+ .../gitlab/import/database_helpers_spec.rb    |  31 +-
+ spec/lib/serializers/json_spec.rb             |  84 +--
+ spec/models/concerns/case_sensitivity_spec.rb |  27 +-
+ spec/spec_helper.rb                           |   4 -
+ .../background_migration_worker_spec.rb       |  20 +-
+ 63 files changed, 352 insertions(+), 1695 deletions(-)
+ delete mode 100644 config/database.yml.mysql
+ delete mode 100644 config/initializers/active_record_mysql_timestamp.rb
+ delete mode 100644 config/initializers/ar_mysql_jsonb_support.rb
+ delete mode 100644 config/initializers/ar_native_database_types.rb
+ delete mode 100644 config/initializers/connection_fix.rb
+ delete mode 100644 config/initializers/mysql_ignore_postgresql_options.rb
+ delete mode 100644 config/initializers/mysql_set_length_for_binary_indexes.rb
+ delete mode 100644 db/migrate/20180406204716_add_limits_ci_build_trace_chunks_raw_data_for_mysql.rb
+ delete mode 100644 db/migrate/20180521171529_increase_mysql_text_limit_for_gpg_keys.rb
+ delete mode 100644 db/migrate/20180831164904_fix_prometheus_metric_query_limits.rb
+ delete mode 100644 db/migrate/gpg_keys_limits_to_mysql.rb
+ delete mode 100644 db/migrate/limits_ci_build_trace_chunks_raw_data_for_mysql.rb
+ delete mode 100644 db/migrate/limits_to_mysql.rb
+ delete mode 100644 db/migrate/markdown_cache_limits_to_mysql.rb
+ delete mode 100644 db/migrate/merge_request_diff_file_limits_to_mysql.rb
+ delete mode 100644 db/migrate/prometheus_metrics_limits_to_mysql.rb
+ delete mode 100644 lib/mysql_zero_date.rb
+ delete mode 100644 lib/tasks/migrate/add_limits_mysql.rake
+ delete mode 100644 scripts/create_mysql_user.sh
+ delete mode 100644 spec/lib/gitlab/database/median_spec.rb
+
+diff --git a/Gemfile b/Gemfile
+index 2f64e258fb..ba958c6ae1 100644
+--- a/Gemfile
++++ b/Gemfile
+@@ -16,7 +16,6 @@ gem 'sprockets', '~> 3.7.0'
+ gem 'default_value_for', '~> 3.2.0'
+ 
+ # Supported DBs
+-gem 'mysql2', '~> 0.4.10', group: :mysql
+ gem 'pg', '~> 1.1', group: :postgres
+ 
+ gem 'rugged', '~> 0.28'
+@@ -298,7 +297,6 @@ gem 'batch-loader', '~> 1.4.0'
+ # Perf bar
+ gem 'peek', '~> 1.0.1'
+ gem 'peek-gc', '~> 0.0.2'
+-gem 'peek-mysql2', '~> 1.2.0', group: :mysql
+ gem 'peek-pg', '~> 1.3.0', group: :postgres
+ gem 'peek-rblineprof', '~> 0.2.0'
+ 
+diff --git a/Gemfile.lock b/Gemfile.lock
+index 79ec7b36a4..7e26c5bbc4 100644
+--- a/Gemfile.lock
++++ b/Gemfile.lock
+@@ -536,7 +536,6 @@ GEM
+     mustermann (1.0.3)
+     mustermann-grape (1.0.0)
+       mustermann (~> 1.0.0)
+-    mysql2 (0.4.10)
+     nakayoshi_fork (0.0.4)
+     net-ldap (0.16.0)
+     net-ssh (5.2.0)
+@@ -644,11 +643,6 @@ GEM
+       railties (>= 4.0.0)
+     peek-gc (0.0.2)
+       peek
+-    peek-mysql2 (1.2.0)
+-      concurrent-ruby
+-      concurrent-ruby-ext
+-      mysql2
+-      peek
+     peek-pg (1.3.0)
+       concurrent-ruby
+       concurrent-ruby-ext
+@@ -1163,7 +1157,6 @@ DEPENDENCIES
+   mimemagic (~> 0.3.2)
+   mini_magick
+   minitest (~> 5.11.0)
+-  mysql2 (~> 0.4.10)
+   nakayoshi_fork (~> 0.0.4)
+   net-ldap
+   net-ssh (~> 5.2)
+@@ -1191,7 +1184,6 @@ DEPENDENCIES
+   org-ruby (~> 0.9.12)
+   peek (~> 1.0.1)
+   peek-gc (~> 0.0.2)
+-  peek-mysql2 (~> 1.2.0)
+   peek-pg (~> 1.3.0)
+   peek-rblineprof (~> 0.2.0)
+   pg (~> 1.1)
+diff --git a/app/models/ci/pipeline.rb b/app/models/ci/pipeline.rb
+index 2262282e64..c2eb51ba10 100644
+--- a/app/models/ci/pipeline.rb
++++ b/app/models/ci/pipeline.rb
+@@ -236,8 +236,6 @@ def self.newest_first(ref: nil, limit: 100)
+ 
+       if limit
+         ids = relation.limit(limit).select(:id)
+-        # MySQL does not support limit in subquery
+-        ids = ids.pluck(:id) if Gitlab::Database.mysql?
+         relation = relation.where(id: ids)
+       end
+ 
+diff --git a/app/models/concerns/case_sensitivity.rb b/app/models/concerns/case_sensitivity.rb
+index c93b6589ee..abddbf1c7e 100644
+--- a/app/models/concerns/case_sensitivity.rb
++++ b/app/models/concerns/case_sensitivity.rb
+@@ -40,14 +40,10 @@ def value_in(column, values)
+     end
+ 
+     def lower_value(value)
+-      return value if Gitlab::Database.mysql?
+-
+       Arel::Nodes::NamedFunction.new('LOWER', [Arel::Nodes.build_quoted(value)])
+     end
+ 
+     def lower_column(column)
+-      return column if Gitlab::Database.mysql?
+-
+       column.lower
+     end
+   end
+diff --git a/app/models/concerns/routable.rb b/app/models/concerns/routable.rb
+index 9becab632f..116e896765 100644
+--- a/app/models/concerns/routable.rb
++++ b/app/models/concerns/routable.rb
+@@ -33,29 +33,12 @@ module Routable
+     #
+     # Returns a single object, or nil.
+     def find_by_full_path(path, follow_redirects: false)
+-      # On MySQL we want to ensure the ORDER BY uses a case-sensitive match so
+-      # any literal matches come first, for this we have to use "BINARY".
+-      # Without this there's still no guarantee in what order MySQL will return
+-      # rows.
+-      #
+-      # Why do we do this?
+-      #
+-      # Even though we have Rails validation on Route for unique paths
+-      # (case-insensitive), there are old projects in our DB (and possibly
+-      # clients' DBs) that have the same path with different cases.
+-      # See https://gitlab.com/gitlab-org/gitlab-ce/issues/18603. Also note that
+-      # our unique index is case-sensitive in Postgres.
+-      binary = Gitlab::Database.mysql? ? 'BINARY' : ''
+-      order_sql = Arel.sql("(CASE WHEN #{binary} routes.path = #{connection.quote(path)} THEN 0 ELSE 1 END)")
++      order_sql = Arel.sql("(CASE WHEN routes.path = #{connection.quote(path)} THEN 0 ELSE 1 END)")
+       found = where_full_path_in([path]).reorder(order_sql).take
+       return found if found
+ 
+       if follow_redirects
+-        if Gitlab::Database.postgresql?
+-          joins(:redirect_routes).find_by("LOWER(redirect_routes.path) = LOWER(?)", path)
+-        else
+-          joins(:redirect_routes).find_by(redirect_routes: { path: path })
+-        end
++        joins(:redirect_routes).find_by("LOWER(redirect_routes.path) = LOWER(?)", path)
+       end
+     end
+ 
+@@ -67,27 +50,13 @@ def find_by_full_path(path, follow_redirects: false)
+     #
+     # Returns an ActiveRecord::Relation.
+     def where_full_path_in(paths)
+-      wheres = []
+-      cast_lower = Gitlab::Database.postgresql?
++      return none if paths.empty?
+ 
+-      paths.each do |path|
+-        path = connection.quote(path)
+-
+-        where =
+-          if cast_lower
+-            "(LOWER(routes.path) = LOWER(#{path}))"
+-          else
+-            "(routes.path = #{path})"
+-          end
+-
+-        wheres << where
++      wheres = paths.map do |path|
++        "(LOWER(routes.path) = LOWER(#{connection.quote(path)}))"
+       end
+ 
+-      if wheres.empty?
+-        none
+-      else
+-        joins(:route).where(wheres.join(' OR '))
+-      end
++      joins(:route).where(wheres.join(' OR '))
+     end
+   end
+ 
+diff --git a/app/models/deployment.rb b/app/models/deployment.rb
+index b69cda4f2f..68586e7a1f 100644
+--- a/app/models/deployment.rb
++++ b/app/models/deployment.rb
+@@ -128,17 +128,8 @@ def update_merge_request_metrics!
+       merge_requests = merge_requests.where("merge_request_metrics.merged_at >= ?", previous_deployment.finished_at)
+     end
+ 
+-    # Need to use `map` instead of `select` because MySQL doesn't allow `SELECT`ing from the same table
+-    # that we're updating.
+-    merge_request_ids =
+-      if Gitlab::Database.postgresql?
+-        merge_requests.select(:id)
+-      elsif Gitlab::Database.mysql?
+-        merge_requests.map(&:id)
+-      end
+-
+     MergeRequest::Metrics
+-      .where(merge_request_id: merge_request_ids, first_deployed_to_production_at: nil)
++      .where(merge_request_id: merge_requests.select(:id), first_deployed_to_production_at: nil)
+       .update_all(first_deployed_to_production_at: finished_at)
+   end
+ 
+diff --git a/app/uploaders/records_uploads.rb b/app/uploaders/records_uploads.rb
+index 00b51f92b1..3b2a9d2f80 100644
+--- a/app/uploaders/records_uploads.rb
++++ b/app/uploaders/records_uploads.rb
+@@ -23,15 +23,7 @@ def record_upload(_tempfile = nil)
+       return unless model
+       return unless file && file.exists?
+ 
+-      # MySQL InnoDB may encounter a deadlock if a deletion and an
+-      # insert is in the same transaction due to its next-key locking
+-      # algorithm, so we need to skip the transaction.
+-      # https://gitlab.com/gitlab-org/gitlab-ce/issues/55161#note_131556351
+-      if Gitlab::Database.mysql?
+-        readd_upload
+-      else
+-        Upload.transaction { readd_upload }
+-      end
++      Upload.transaction { readd_upload }
+     end
+ 
+     def readd_upload
+diff --git a/config/application.rb b/config/application.rb
+index df5079ba99..92240426b5 100644
+--- a/config/application.rb
++++ b/config/application.rb
+@@ -22,11 +22,6 @@ class Application < Rails::Application
+     require_dependency Rails.root.join('lib/gitlab/middleware/read_only')
+     require_dependency Rails.root.join('lib/gitlab/middleware/basic_health_check')
+ 
+-    # This needs to be loaded before DB connection is made
+-    # to make sure that all connections have NO_ZERO_DATE
+-    # setting disabled
+-    require_dependency Rails.root.join('lib/mysql_zero_date')
+-
+     # Settings in config/environments/* take precedence over those specified here.
+     # Application configuration should go into files in config/initializers
+     # -- all .rb files in that directory are automatically loaded.
+diff --git a/config/database.yml.mysql b/config/database.yml.mysql
+deleted file mode 100644
+index 98c2abe9f5..0000000000
+--- a/config/database.yml.mysql
++++ /dev/null
+@@ -1,60 +0,0 @@
+-#
+-# PRODUCTION
+-#
+-production:
+-  adapter: mysql2
+-  encoding: utf8
+-  collation: utf8_general_ci
+-  reconnect: false
+-  database: gitlabhq_production
+-  pool: 10
+-  username: git
+-  password: "secure password"
+-  host: localhost
+-  # socket: /tmp/mysql.sock
+-
+-#
+-# Development specific
+-#
+-development:
+-  adapter: mysql2
+-  encoding: utf8
+-  collation: utf8_general_ci
+-  reconnect: false
+-  database: gitlabhq_development
+-  pool: 5
+-  username: root
+-  password: "secure password"
+-  host: localhost
+-  # socket: /tmp/mysql.sock
+-
+-#
+-# Staging specific
+-#
+-staging:
+-  adapter: mysql2
+-  encoding: utf8
+-  collation: utf8_general_ci
+-  reconnect: false
+-  database: gitlabhq_staging
+-  pool: 10
+-  username: git
+-  password: "secure password"
+-  host: localhost
+-  # socket: /tmp/mysql.sock
+-
+-# Warning: The database defined as "test" will be erased and
+-# re-generated from your development database when you run "rake".
+-# Do not set this db to the same as development or production.
+-test: &test
+-  adapter: mysql2
+-  encoding: utf8mb4
+-  collation: utf8mb4_general_ci
+-  reconnect: false
+-  database: gitlabhq_test
+-  pool: 5
+-  username: root
+-  password:
+-  host: localhost
+-  # socket: /tmp/mysql.sock
+-  prepared_statements: false
+diff --git a/config/initializers/active_record_data_types.rb b/config/initializers/active_record_data_types.rb
+index 151bce4d13..846f28e6f6 100644
+--- a/config/initializers/active_record_data_types.rb
++++ b/config/initializers/active_record_data_types.rb
+@@ -1,83 +1,45 @@
+ # ActiveRecord custom data type for storing datetimes with timezone information.
+ # See https://gitlab.com/gitlab-org/gitlab-ce/merge_requests/11229
+ 
+-if Gitlab::Database.postgresql?
+-  require 'active_record/connection_adapters/postgresql_adapter'
++require 'active_record/connection_adapters/postgresql_adapter'
+ 
+-  module ActiveRecord::ConnectionAdapters::PostgreSQL::OID
+-    # Add the class `DateTimeWithTimeZone` so we can map `timestamptz` to it.
+-    class DateTimeWithTimeZone < DateTime
+-      def type
+-        :datetime_with_timezone
+-      end
++module ActiveRecord::ConnectionAdapters::PostgreSQL::OID
++  # Add the class `DateTimeWithTimeZone` so we can map `timestamptz` to it.
++  class DateTimeWithTimeZone < DateTime
++    def type
++      :datetime_with_timezone
+     end
+   end
++end
+ 
+-  module RegisterDateTimeWithTimeZone
+-    # Run original `initialize_type_map` and then register `timestamptz` as a
+-    # `DateTimeWithTimeZone`.
+-    #
+-    # Apparently it does not matter that the original `initialize_type_map`
+-    # aliases `timestamptz` to `timestamp`.
+-    #
+-    # When schema dumping, `timestamptz` columns will be output as
+-    # `t.datetime_with_timezone`.
+-    def initialize_type_map(mapping = type_map)
+-      super mapping
+-
+-      mapping.register_type 'timestamptz' do |_, _, sql_type|
+-        precision = extract_precision(sql_type)
+-        ActiveRecord::ConnectionAdapters::PostgreSQLAdapter::OID::DateTimeWithTimeZone.new(precision: precision)
+-      end
+-    end
+-  end
+-
+-  class ActiveRecord::ConnectionAdapters::PostgreSQLAdapter
+-    prepend RegisterDateTimeWithTimeZone
+-
+-    # Add column type `datetime_with_timezone` so we can do this in
+-    # migrations:
+-    #
+-    #   add_column(:users, :datetime_with_timezone)
+-    #
+-    NATIVE_DATABASE_TYPES[:datetime_with_timezone] = { name: 'timestamptz' }
+-  end
+-elsif Gitlab::Database.mysql?
+-  require 'active_record/connection_adapters/mysql2_adapter'
+-
+-  module RegisterDateTimeWithTimeZone
+-    # Run original `initialize_type_map` and then register `timestamp` as a
+-    # `MysqlDateTimeWithTimeZone`.
+-    #
+-    # When schema dumping, `timestamp` columns will be output as
+-    # `t.datetime_with_timezone`.
+-    def initialize_type_map(mapping = type_map)
+-      super mapping
+-
+-      mapping.register_type(/timestamp/i) do |sql_type|
+-        precision = extract_precision(sql_type)
+-        ActiveRecord::ConnectionAdapters::AbstractMysqlAdapter::MysqlDateTimeWithTimeZone.new(precision: precision)
+-      end
++module RegisterDateTimeWithTimeZone
++  # Run original `initialize_type_map` and then register `timestamptz` as a
++  # `DateTimeWithTimeZone`.
++  #
++  # Apparently it does not matter that the original `initialize_type_map`
++  # aliases `timestamptz` to `timestamp`.
++  #
++  # When schema dumping, `timestamptz` columns will be output as
++  # `t.datetime_with_timezone`.
++  def initialize_type_map(mapping = type_map)
++    super mapping
++
++    mapping.register_type 'timestamptz' do |_, _, sql_type|
++      precision = extract_precision(sql_type)
++      ActiveRecord::ConnectionAdapters::PostgreSQLAdapter::OID::DateTimeWithTimeZone.new(precision: precision)
+     end
+   end
++end
+ 
+-  class ActiveRecord::ConnectionAdapters::AbstractMysqlAdapter
+-    prepend RegisterDateTimeWithTimeZone
+-
+-    # Add the class `DateTimeWithTimeZone` so we can map `timestamp` to it.
+-    class MysqlDateTimeWithTimeZone < ActiveRecord::Type::DateTime
+-      def type
+-        :datetime_with_timezone
+-      end
+-    end
++class ActiveRecord::ConnectionAdapters::PostgreSQLAdapter
++  prepend RegisterDateTimeWithTimeZone
+ 
+-    # Add column type `datetime_with_timezone` so we can do this in
+-    # migrations:
+-    #
+-    #   add_column(:users, :datetime_with_timezone)
+-    #
+-    NATIVE_DATABASE_TYPES[:datetime_with_timezone] = { name: 'timestamp' }
+-  end
++  # Add column type `datetime_with_timezone` so we can do this in
++  # migrations:
++  #
++  #   add_column(:users, :datetime_with_timezone)
++  #
++  NATIVE_DATABASE_TYPES[:datetime_with_timezone] = { name: 'timestamptz' }
+ end
+ 
+ # Ensure `datetime_with_timezone` columns are correctly written to schema.rb
+diff --git a/config/initializers/active_record_mysql_timestamp.rb b/config/initializers/active_record_mysql_timestamp.rb
+deleted file mode 100644
+index af74c4ff6f..0000000000
+--- a/config/initializers/active_record_mysql_timestamp.rb
++++ /dev/null
+@@ -1,30 +0,0 @@
+-# Make sure that MySQL won't try to use CURRENT_TIMESTAMP when the timestamp
+-# column is NOT NULL. See https://gitlab.com/gitlab-org/gitlab-ce/issues/36405
+-# And also: https://bugs.mysql.com/bug.php?id=75098
+-# This patch was based on:
+-# https://github.com/rails/rails/blob/15ef55efb591e5379486ccf53dd3e13f416564f6/activerecord/lib/active_record/connection_adapters/mysql/schema_creation.rb#L34-L36
+-
+-if Gitlab::Database.mysql?
+-  require 'active_record/connection_adapters/abstract/schema_creation'
+-
+-  module MySQLTimestampFix
+-    def add_column_options!(sql, options)
+-      # By default, TIMESTAMP columns are NOT NULL, cannot contain NULL values,
+-      # and assigning NULL assigns the current timestamp. To permit a TIMESTAMP
+-      # column to contain NULL, explicitly declare it with the NULL attribute.
+-      # See http://dev.mysql.com/doc/refman/5.7/en/timestamp-initialization.html
+-      if sql.end_with?('timestamp') && !options[:primary_key]
+-        if options[:null] != false
+-          sql << ' NULL'
+-        elsif options[:column].default.nil?
+-          sql << ' DEFAULT 0'
+-        end
+-      end
+-
+-      super
+-    end
+-  end
+-
+-  ActiveRecord::ConnectionAdapters::AbstractAdapter::SchemaCreation
+-    .prepend(MySQLTimestampFix)
+-end
+diff --git a/config/initializers/ar_mysql_jsonb_support.rb b/config/initializers/ar_mysql_jsonb_support.rb
+deleted file mode 100644
+index 63a0b05119..0000000000
+--- a/config/initializers/ar_mysql_jsonb_support.rb
++++ /dev/null
+@@ -1,31 +0,0 @@
+-# frozen_string_literal: true
+-
+-require 'active_record/connection_adapters/abstract_mysql_adapter'
+-require 'active_record/connection_adapters/mysql/schema_definitions'
+-
+-# MySQL (5.6) and MariaDB (10.1) are currently supported versions within GitLab,
+-# Since they do not support native `json` datatype we force to emulate it as `text`
+-
+-if Gitlab::Database.mysql?
+-  module ActiveRecord
+-    module ConnectionAdapters
+-      class AbstractMysqlAdapter
+-        JSON_DATASIZE = 1.megabyte
+-
+-        NATIVE_DATABASE_TYPES.merge!(
+-          json: { name: "text", limit: JSON_DATASIZE },
+-          jsonb: { name: "text", limit: JSON_DATASIZE }
+-        )
+-      end
+-
+-      module MySQL
+-        module ColumnMethods
+-          # We add `jsonb` helper, as `json` is already defined for `MySQL` since Rails 5
+-          def jsonb(*args, **options)
+-            args.each { |name| column(name, :json, options) }
+-          end
+-        end
+-      end
+-    end
+-  end
+-end
+diff --git a/config/initializers/ar_native_database_types.rb b/config/initializers/ar_native_database_types.rb
+deleted file mode 100644
+index 6d397661f7..0000000000
+--- a/config/initializers/ar_native_database_types.rb
++++ /dev/null
+@@ -1,12 +0,0 @@
+-require 'active_record/connection_adapters/abstract_mysql_adapter'
+-
+-module ActiveRecord
+-  module ConnectionAdapters
+-    class AbstractMysqlAdapter
+-      NATIVE_DATABASE_TYPES.merge!(
+-        bigserial: { name: 'bigint(20) auto_increment PRIMARY KEY' },
+-        serial: { name: 'int auto_increment PRIMARY KEY' }
+-      )
+-    end
+-  end
+-end
+diff --git a/config/initializers/connection_fix.rb b/config/initializers/connection_fix.rb
+deleted file mode 100644
+index d0b1444f60..0000000000
+--- a/config/initializers/connection_fix.rb
++++ /dev/null
+@@ -1,32 +0,0 @@
+-# from http://gist.github.com/238999
+-#
+-# If your workers are inactive for a long period of time, they'll lose
+-# their MySQL connection.
+-#
+-# This hack ensures we re-connect whenever a connection is
+-# lost. Because, really. why not?
+-#
+-# Stick this in RAILS_ROOT/config/initializers/connection_fix.rb (or somewhere similar)
+-#
+-# From:
+-#   http://coderrr.wordpress.com/2009/01/08/activerecord-threading-issues-and-resolutions/
+-
+-if defined?(ActiveRecord::ConnectionAdapters::Mysql2Adapter)
+-  module ActiveRecord::ConnectionAdapters
+-    class Mysql2Adapter
+-      alias_method :execute_without_retry, :execute
+-
+-      def execute(*args)
+-        execute_without_retry(*args)
+-      rescue ActiveRecord::StatementInvalid => e
+-        if e.message =~ /server has gone away/i
+-          warn "Lost connection to MySQL server during query"
+-          reconnect!
+-          retry
+-        else
+-          raise e
+-        end
+-      end
+-    end
+-  end
+-end
+diff --git a/config/initializers/mysql_ignore_postgresql_options.rb b/config/initializers/mysql_ignore_postgresql_options.rb
+deleted file mode 100644
+index e6a7d9bef5..0000000000
+--- a/config/initializers/mysql_ignore_postgresql_options.rb
++++ /dev/null
+@@ -1,42 +0,0 @@
+-# This patches ActiveRecord so indexes created using the MySQL adapter ignore
+-# any PostgreSQL specific options (e.g. `using: :gin`).
+-#
+-# These patches do the following for MySQL:
+-#
+-# 1. Indexes created using the :opclasses option are ignored (as they serve no
+-#    purpose on MySQL).
+-# 2. When creating an index with `using: :gin` the `using` option is discarded
+-#    as :gin is not a valid value for MySQL.
+-# 3. The `:opclasses` option is stripped from add_index_options in case it's
+-#    used anywhere other than in the add_index methods.
+-
+-if defined?(ActiveRecord::ConnectionAdapters::Mysql2Adapter)
+-  module ActiveRecord
+-    module ConnectionAdapters
+-      class Mysql2Adapter < AbstractMysqlAdapter
+-        alias_method :__gitlab_add_index, :add_index
+-        alias_method :__gitlab_add_index_options, :add_index_options
+-
+-        def add_index(table_name, column_name, options = {})
+-          unless options[:opclasses]
+-            __gitlab_add_index(table_name, column_name, options)
+-          end
+-        end
+-
+-        def add_index_options(table_name, column_name, options = {})
+-          if options[:using] && options[:using] == :gin
+-            options = options.dup
+-            options.delete(:using)
+-          end
+-
+-          if options[:opclasses]
+-            options = options.dup
+-            options.delete(:opclasses)
+-          end
+-
+-          __gitlab_add_index_options(table_name, column_name, options)
+-        end
+-      end
+-    end
+-  end
+-end
+diff --git a/config/initializers/mysql_set_length_for_binary_indexes.rb b/config/initializers/mysql_set_length_for_binary_indexes.rb
+deleted file mode 100644
+index 552f3a20a9..0000000000
+--- a/config/initializers/mysql_set_length_for_binary_indexes.rb
++++ /dev/null
+@@ -1,30 +0,0 @@
+-# This patches ActiveRecord so indexes for binary columns created using the
+-# MySQL adapter apply a length of 20. Otherwise MySQL can't create an index on
+-# binary columns.
+-
+-module MysqlSetLengthForBinaryIndexAndIgnorePostgresOptionsForSchema
+-  # This method is used in Rails 5 schema loading as t.index
+-  def index(column_names, options = {})
+-    # Ignore indexes that use opclasses,
+-    # also see config/initializers/mysql_ignore_postgresql_options.rb
+-    if options[:opclasses]
+-      warn "WARNING: index on columns #{column_names} uses unsupported option, skipping."
+-      return
+-    end
+-
+-    options[:length] ||= {}
+-    Array(column_names).each do |column_name|
+-      column = columns.find { |c| c.name == column_name }
+-
+-      if column&.type == :binary
+-        options[:length][column_name] = 20
+-      end
+-    end
+-
+-    super(column_names, options)
+-  end
+-end
+-
+-if defined?(ActiveRecord::ConnectionAdapters::MySQL::TableDefinition)
+-  ActiveRecord::ConnectionAdapters::MySQL::TableDefinition.send(:prepend, MysqlSetLengthForBinaryIndexAndIgnorePostgresOptionsForSchema)
+-end
+diff --git a/config/initializers/peek.rb b/config/initializers/peek.rb
+index 2aec32e878..1ffd133239 100644
+--- a/config/initializers/peek.rb
++++ b/config/initializers/peek.rb
+@@ -2,11 +2,7 @@
+ 
+ Peek.into Peek::Views::Host
+ 
+-if Gitlab::Database.mysql?
+-  require 'peek-mysql2'
+-  PEEK_DB_CLIENT = ::Mysql2::Client
+-  PEEK_DB_VIEW = Peek::Views::Mysql2
+-elsif Gitlab::Database.postgresql?
++if Gitlab::Database.postgresql?
+   require 'peek-pg'
+   PEEK_DB_CLIENT = ::PG::Connection
+   PEEK_DB_VIEW = Peek::Views::PG
+diff --git a/db/migrate/20180206200543_reset_events_primary_key_sequence.rb b/db/migrate/20180206200543_reset_events_primary_key_sequence.rb
+index d395c5725e..e7a18e6839 100644
+--- a/db/migrate/20180206200543_reset_events_primary_key_sequence.rb
++++ b/db/migrate/20180206200543_reset_events_primary_key_sequence.rb
+@@ -12,24 +12,10 @@ class Event < ActiveRecord::Base
+   end
+ 
+   def up
+-    if Gitlab::Database.postgresql?
+-      reset_primary_key_for_postgresql
+-    else
+-      reset_primary_key_for_mysql
+-    end
++    reset_pk_sequence!(Event.table_name)
+   end
+ 
+   def down
+     # No-op
+   end
+-
+-  def reset_primary_key_for_postgresql
+-    reset_pk_sequence!(Event.table_name)
+-  end
+-
+-  def reset_primary_key_for_mysql
+-    amount = Event.pluck('COALESCE(MAX(id), 1)').first
+-
+-    execute "ALTER TABLE #{Event.table_name} AUTO_INCREMENT = #{amount}"
+-  end
+ end
+diff --git a/db/migrate/20180403035759_create_project_ci_cd_settings.rb b/db/migrate/20180403035759_create_project_ci_cd_settings.rb
+index 0002868977..c630dd3c94 100644
+--- a/db/migrate/20180403035759_create_project_ci_cd_settings.rb
++++ b/db/migrate/20180403035759_create_project_ci_cd_settings.rb
+@@ -30,12 +30,6 @@ def down
+   end
+ 
+   def add_foreign_key_with_retry
+-    if Gitlab::Database.mysql?
+-      # When using MySQL we don't support online upgrades, thus projects can't
+-      # be deleted while we are running this migration.
+-      return add_project_id_foreign_key
+-    end
+-
+     # Between the initial INSERT and the addition of the foreign key some
+     # projects may have been removed, leaving orphaned rows in our new settings
+     # table.
+diff --git a/db/migrate/20180406204716_add_limits_ci_build_trace_chunks_raw_data_for_mysql.rb b/db/migrate/20180406204716_add_limits_ci_build_trace_chunks_raw_data_for_mysql.rb
+deleted file mode 100644
+index 0b541e9435..0000000000
+--- a/db/migrate/20180406204716_add_limits_ci_build_trace_chunks_raw_data_for_mysql.rb
++++ /dev/null
+@@ -1,13 +0,0 @@
+-# See http://doc.gitlab.com/ce/development/migration_style_guide.html
+-# for more information on how to write migrations for GitLab.
+-require Rails.root.join('db/migrate/limits_ci_build_trace_chunks_raw_data_for_mysql')
+-
+-class AddLimitsCiBuildTraceChunksRawDataForMysql < ActiveRecord::Migration[4.2]
+-  include Gitlab::Database::MigrationHelpers
+-
+-  DOWNTIME = false
+-
+-  def up
+-    LimitsCiBuildTraceChunksRawDataForMysql.new.up
+-  end
+-end
+diff --git a/db/migrate/20180521171529_increase_mysql_text_limit_for_gpg_keys.rb b/db/migrate/20180521171529_increase_mysql_text_limit_for_gpg_keys.rb
+deleted file mode 100644
+index 08ce8cc309..0000000000
+--- a/db/migrate/20180521171529_increase_mysql_text_limit_for_gpg_keys.rb
++++ /dev/null
+@@ -1 +0,0 @@
+-require_relative 'gpg_keys_limits_to_mysql'
+diff --git a/db/migrate/20180831164904_fix_prometheus_metric_query_limits.rb b/db/migrate/20180831164904_fix_prometheus_metric_query_limits.rb
+deleted file mode 100644
+index 80c4d11a38..0000000000
+--- a/db/migrate/20180831164904_fix_prometheus_metric_query_limits.rb
++++ /dev/null
+@@ -1,19 +0,0 @@
+-# frozen_string_literal: true
+-
+-# See http://doc.gitlab.com/ce/development/migration_style_guide.html
+-# for more information on how to write migrations for GitLab.
+-require Rails.root.join('db/migrate/prometheus_metrics_limits_to_mysql')
+-
+-class FixPrometheusMetricQueryLimits < ActiveRecord::Migration[4.2]
+-  include Gitlab::Database::MigrationHelpers
+-
+-  DOWNTIME = false
+-
+-  def up
+-    PrometheusMetricsLimitsToMysql.new.up
+-  end
+-
+-  def down
+-    # no-op
+-  end
+-end
+diff --git a/db/migrate/20181030154446_add_missing_indexes_for_foreign_keys.rb b/db/migrate/20181030154446_add_missing_indexes_for_foreign_keys.rb
+index 2b5cd45e92..e21eb29128 100644
+--- a/db/migrate/20181030154446_add_missing_indexes_for_foreign_keys.rb
++++ b/db/migrate/20181030154446_add_missing_indexes_for_foreign_keys.rb
+@@ -34,10 +34,6 @@ def up
+   end
+ 
+   def down
+-    # MySQL requires index for FK,
+-    # thus removal of indexes does fail
+-    return if Gitlab::Database.mysql?
+-
+     remove_concurrent_index(:application_settings, :usage_stats_set_by_user_id)
+     remove_concurrent_index(:ci_pipeline_schedules, :owner_id)
+     remove_concurrent_index(:ci_trigger_requests, :trigger_id)
+diff --git a/db/migrate/gpg_keys_limits_to_mysql.rb b/db/migrate/gpg_keys_limits_to_mysql.rb
+deleted file mode 100644
+index 2cd347a046..0000000000
+--- a/db/migrate/gpg_keys_limits_to_mysql.rb
++++ /dev/null
+@@ -1,14 +0,0 @@
+-class IncreaseMysqlTextLimitForGpgKeys < ActiveRecord::Migration[4.2]
+-  # Set this constant to true if this migration requires downtime.
+-  DOWNTIME = false
+-
+-  def up
+-    return unless Gitlab::Database.mysql?
+-
+-    change_column :gpg_keys, :key, :text, limit: 16.megabytes - 1
+-  end
+-
+-  def down
+-    # no-op
+-  end
+-end
+diff --git a/db/migrate/limits_ci_build_trace_chunks_raw_data_for_mysql.rb b/db/migrate/limits_ci_build_trace_chunks_raw_data_for_mysql.rb
+deleted file mode 100644
+index 92402cf387..0000000000
+--- a/db/migrate/limits_ci_build_trace_chunks_raw_data_for_mysql.rb
++++ /dev/null
+@@ -1,9 +0,0 @@
+-class LimitsCiBuildTraceChunksRawDataForMysql < ActiveRecord::Migration[4.2]
+-  def up
+-    return unless Gitlab::Database.mysql?
+-
+-    # Mysql needs MEDIUMTEXT type (up to 16MB) rather than TEXT (up to 64KB)
+-    # Because 'raw_data' is always capped by Ci::BuildTraceChunk::CHUNK_SIZE, which is 128KB
+-    change_column :ci_build_trace_chunks, :raw_data, :binary, limit: 16.megabytes - 1 # MEDIUMTEXT
+-  end
+-end
+diff --git a/db/migrate/limits_to_mysql.rb b/db/migrate/limits_to_mysql.rb
+deleted file mode 100644
+index 33cb19aff9..0000000000
+--- a/db/migrate/limits_to_mysql.rb
++++ /dev/null
+@@ -1,8 +0,0 @@
+-class LimitsToMysql < ActiveRecord::Migration[4.2]
+-  def up
+-    return unless ActiveRecord::Base.configurations[Rails.env]['adapter'] =~ /^mysql/
+-
+-    change_column :snippets, :content, :text, limit: 2147483647
+-    change_column :notes, :st_diff, :text, limit: 2147483647
+-  end
+-end
+diff --git a/db/migrate/markdown_cache_limits_to_mysql.rb b/db/migrate/markdown_cache_limits_to_mysql.rb
+deleted file mode 100644
+index f99d500a13..0000000000
+--- a/db/migrate/markdown_cache_limits_to_mysql.rb
++++ /dev/null
+@@ -1,13 +0,0 @@
+-class MarkdownCacheLimitsToMysql < ActiveRecord::Migration[4.2]
+-  DOWNTIME = false
+-
+-  def up
+-    return unless Gitlab::Database.mysql?
+-
+-    change_column :snippets, :content_html, :text, limit: 2147483647
+-  end
+-
+-  def down
+-    # no-op
+-  end
+-end
+diff --git a/db/migrate/merge_request_diff_file_limits_to_mysql.rb b/db/migrate/merge_request_diff_file_limits_to_mysql.rb
+deleted file mode 100644
+index 65dd0b5b7f..0000000000
+--- a/db/migrate/merge_request_diff_file_limits_to_mysql.rb
++++ /dev/null
+@@ -1,12 +0,0 @@
+-class MergeRequestDiffFileLimitsToMysql < ActiveRecord::Migration[4.2]
+-  DOWNTIME = false
+-
+-  def up
+-    return unless Gitlab::Database.mysql?
+-
+-    change_column :merge_request_diff_files, :diff, :text, limit: 2147483647, default: nil
+-  end
+-
+-  def down
+-  end
+-end
+diff --git a/db/migrate/prometheus_metrics_limits_to_mysql.rb b/db/migrate/prometheus_metrics_limits_to_mysql.rb
+deleted file mode 100644
+index f7a2fcba8c..0000000000
+--- a/db/migrate/prometheus_metrics_limits_to_mysql.rb
++++ /dev/null
+@@ -1,12 +0,0 @@
+-class PrometheusMetricsLimitsToMysql < ActiveRecord::Migration[4.2]
+-  DOWNTIME = false
+-
+-  def up
+-    return unless Gitlab::Database.mysql?
+-
+-    change_column :prometheus_metrics, :query, :text, limit: 4096, default: nil
+-  end
+-
+-  def down
+-  end
+-end
+diff --git a/db/post_migrate/20180409170809_populate_missing_project_ci_cd_settings.rb b/db/post_migrate/20180409170809_populate_missing_project_ci_cd_settings.rb
+index 0cda3d76a3..a400a071e0 100644
+--- a/db/post_migrate/20180409170809_populate_missing_project_ci_cd_settings.rb
++++ b/db/post_migrate/20180409170809_populate_missing_project_ci_cd_settings.rb
+@@ -9,10 +9,6 @@ class PopulateMissingProjectCiCdSettings < ActiveRecord::Migration[4.2]
+   disable_ddl_transaction!
+ 
+   def up
+-    # MySQL does not support online upgrades, thus there can't be any missing
+-    # rows.
+-    return if Gitlab::Database.mysql?
+-
+     # Projects created after the initial migration but before the code started
+     # using ProjectCiCdSetting won't have a corresponding row in
+     # project_ci_cd_settings, so let's fix that.
+diff --git a/db/post_migrate/20181219130552_update_project_import_visibility_level.rb b/db/post_migrate/20181219130552_update_project_import_visibility_level.rb
+index 6209de88b3..bfa452578a 100644
+--- a/db/post_migrate/20181219130552_update_project_import_visibility_level.rb
++++ b/db/post_migrate/20181219130552_update_project_import_visibility_level.rb
+@@ -49,7 +49,7 @@ def down
+   def update_projects_visibility(visibility)
+     say_with_time("Updating project visibility to #{visibility} on #{Project::IMPORT_TYPE} imports.") do
+       Project.with_group_visibility(visibility).select(:id).each_batch(of: BATCH_SIZE) do |batch, _index|
+-        batch_sql = Gitlab::Database.mysql? ? batch.pluck(:id).join(', ') : batch.select(:id).to_sql
++        batch_sql = batch.select(:id).to_sql
+ 
+         say("Updating #{batch.size} items.", true)
+ 
+diff --git a/db/post_migrate/20190204115450_migrate_auto_dev_ops_domain_to_cluster_domain.rb b/db/post_migrate/20190204115450_migrate_auto_dev_ops_domain_to_cluster_domain.rb
+index 392e64eead..036b0b64b4 100644
+--- a/db/post_migrate/20190204115450_migrate_auto_dev_ops_domain_to_cluster_domain.rb
++++ b/db/post_migrate/20190204115450_migrate_auto_dev_ops_domain_to_cluster_domain.rb
+@@ -16,26 +16,6 @@ def down
+   private
+ 
+   def update_clusters_domain_query
+-    if Gitlab::Database.mysql?
+-      mysql_query
+-    else
+-      postgresql_query
+-    end
+-  end
+-
+-  def mysql_query
+-    <<~HEREDOC
+-    UPDATE clusters, project_auto_devops, cluster_projects
+-    SET
+-      clusters.domain = project_auto_devops.domain
+-    WHERE
+-      cluster_projects.cluster_id = clusters.id
+-      AND project_auto_devops.project_id = cluster_projects.project_id
+-      AND project_auto_devops.domain != ''
+-    HEREDOC
+-  end
+-
+-  def postgresql_query
+     <<~HEREDOC
+     UPDATE clusters
+     SET domain = project_auto_devops.domain
+diff --git a/db/post_migrate/20190404143330_add_unique_constraint_to_approvals_user_id_and_merge_request_id.rb b/db/post_migrate/20190404143330_add_unique_constraint_to_approvals_user_id_and_merge_request_id.rb
+index 447f91ebc7..dd85ebc800 100644
+--- a/db/post_migrate/20190404143330_add_unique_constraint_to_approvals_user_id_and_merge_request_id.rb
++++ b/db/post_migrate/20190404143330_add_unique_constraint_to_approvals_user_id_and_merge_request_id.rb
+@@ -21,34 +21,18 @@ def down
+   def remove_duplicates
+     add_concurrent_index :approvals, [:user_id, :merge_request_id, :id]
+ 
+-    if Gitlab::Database.mysql?
+-      execute <<-SQL
+-        DELETE FROM a
+-        USING approvals AS a
+-        INNER JOIN (
+-          SELECT user_id, merge_request_id, MIN(id) as min_id
+-          FROM approvals
+-          GROUP BY user_id, merge_request_id
+-          HAVING COUNT(id) > 1
+-        ) as approvals_with_duplicates
+-        ON approvals_with_duplicates.user_id = a.user_id
+-        AND approvals_with_duplicates.merge_request_id = a.merge_request_id
+-        WHERE approvals_with_duplicates.min_id <> a.id;
+-      SQL
+-    else
+-      execute <<-SQL
+-        DELETE FROM approvals
+-        USING (
+-          SELECT user_id, merge_request_id, MIN(id) as min_id
+-          FROM approvals
+-          GROUP BY user_id, merge_request_id
+-          HAVING COUNT(id) > 1
+-        ) as approvals_with_duplicates
+-        WHERE approvals_with_duplicates.user_id = approvals.user_id
+-        AND approvals_with_duplicates.merge_request_id = approvals.merge_request_id
+-        AND approvals_with_duplicates.min_id <> approvals.id;
+-      SQL
+-    end
++    execute <<-SQL
++      DELETE FROM approvals
++      USING (
++        SELECT user_id, merge_request_id, MIN(id) as min_id
++        FROM approvals
++        GROUP BY user_id, merge_request_id
++        HAVING COUNT(id) > 1
++      ) as approvals_with_duplicates
++      WHERE approvals_with_duplicates.user_id = approvals.user_id
++      AND approvals_with_duplicates.merge_request_id = approvals.merge_request_id
++      AND approvals_with_duplicates.min_id <> approvals.id;
++    SQL
+ 
+     remove_concurrent_index :approvals, [:user_id, :merge_request_id, :id]
+   end
+diff --git a/lib/api/entities.rb b/lib/api/entities.rb
+index 494da77027..10b4f8934d 100644
+--- a/lib/api/entities.rb
++++ b/lib/api/entities.rb
+@@ -1052,15 +1052,8 @@ class ProjectWithAccess < Project
+       # rubocop: disable CodeReuse/ActiveRecord
+       def self.preload_relation(projects_relation, options = {})
+         relation = super(projects_relation, options)
+-
+-        # MySQL doesn't support LIMIT inside an IN subquery
+-        if Gitlab::Database.mysql?
+-          project_ids = relation.pluck('projects.id')
+-          namespace_ids = relation.pluck(:namespace_id)
+-        else
+-          project_ids = relation.select('projects.id')
+-          namespace_ids = relation.select(:namespace_id)
+-        end
++        project_ids = relation.select('projects.id')
++        namespace_ids = relation.select(:namespace_id)
+ 
+         options[:project_members] = options[:current_user]
+           .project_members
+diff --git a/lib/backup/database.rb b/lib/backup/database.rb
+index cd8e29d14d..7e457c4982 100644
+--- a/lib/backup/database.rb
++++ b/lib/backup/database.rb
+@@ -23,11 +23,6 @@ def dump
+ 
+       dump_pid =
+         case config["adapter"]
+-        when /^mysql/ then
+-          progress.print "Dumping MySQL database #{config['database']} ... "
+-          # Workaround warnings from MySQL 5.6 about passwords on cmd line
+-          ENV['MYSQL_PWD'] = config["password"].to_s if config["password"]
+-          spawn('mysqldump', *mysql_args, config['database'], out: compress_wr)
+         when "postgresql" then
+           progress.print "Dumping PostgreSQL database #{config['database']} ... "
+           pg_env
+@@ -57,11 +52,6 @@ def restore
+ 
+       restore_pid =
+         case config["adapter"]
+-        when /^mysql/ then
+-          progress.print "Restoring MySQL database #{config['database']} ... "
+-          # Workaround warnings from MySQL 5.6 about passwords on cmd line
+-          ENV['MYSQL_PWD'] = config["password"].to_s if config["password"]
+-          spawn('mysql', *mysql_args, config['database'], in: decompress_rd)
+         when "postgresql" then
+           progress.print "Restoring PostgreSQL database #{config['database']} ... "
+           pg_env
+@@ -80,23 +70,6 @@ def restore
+ 
+     protected
+ 
+-    def mysql_args
+-      args = {
+-        'host'      => '--host',
+-        'port'      => '--port',
+-        'socket'    => '--socket',
+-        'username'  => '--user',
+-        'encoding'  => '--default-character-set',
+-        # SSL
+-        'sslkey'    => '--ssl-key',
+-        'sslcert'   => '--ssl-cert',
+-        'sslca'     => '--ssl-ca',
+-        'sslcapath' => '--ssl-capath',
+-        'sslcipher' => '--ssl-cipher'
+-      }
+-      args.map { |opt, arg| "#{arg}=#{config[opt]}" if config[opt] }.compact
+-    end
+-
+     def pg_env
+       args = {
+         'username'  => 'PGUSER',
+diff --git a/lib/forever.rb b/lib/forever.rb
+index 0a37118fe6..3f92355744 100644
+--- a/lib/forever.rb
++++ b/lib/forever.rb
+@@ -1,15 +1,9 @@
+ # frozen_string_literal: true
+ 
+ class Forever
+-  POSTGRESQL_DATE = DateTime.new(3000, 1, 1)
+-  MYSQL_DATE = DateTime.new(2038, 01, 19)
++  DATE = DateTime.new(3000, 1, 1)
+ 
+-  # MySQL timestamp has a range of '1970-01-01 00:00:01' UTC to '2038-01-19 03:14:07' UTC
+   def self.date
+-    if Gitlab::Database.postgresql?
+-      POSTGRESQL_DATE
+-    else
+-      MYSQL_DATE
+-    end
++    DATE
+   end
+ end
+diff --git a/lib/gitlab/background_migration/fill_valid_time_for_pages_domain_certificate.rb b/lib/gitlab/background_migration/fill_valid_time_for_pages_domain_certificate.rb
+index 6046d33aea..4016b807f2 100644
+--- a/lib/gitlab/background_migration/fill_valid_time_for_pages_domain_certificate.rb
++++ b/lib/gitlab/background_migration/fill_valid_time_for_pages_domain_certificate.rb
+@@ -19,18 +19,11 @@ def x509
+ 
+       def perform(start_id, stop_id)
+         PagesDomain.where(id: start_id..stop_id).find_each do |domain|
+-          if Gitlab::Database.mysql?
+-            domain.update_columns(
+-              certificate_valid_not_before: domain.x509&.not_before,
+-              certificate_valid_not_after: domain.x509&.not_after
+-            )
+-          else
+-            # for some reason activerecord doesn't append timezone, iso8601 forces this
+-            domain.update_columns(
+-              certificate_valid_not_before: domain.x509&.not_before&.iso8601,
+-              certificate_valid_not_after: domain.x509&.not_after&.iso8601
+-            )
+-          end
++          # for some reason activerecord doesn't append timezone, iso8601 forces this
++          domain.update_columns(
++            certificate_valid_not_before: domain.x509&.not_before&.iso8601,
++            certificate_valid_not_after: domain.x509&.not_after&.iso8601
++          )
+         rescue => e
+           Rails.logger.error "Failed to update pages domain certificate valid time. id: #{domain.id}, message: #{e.message}" # rubocop:disable Gitlab/RailsLogger
+         end
+diff --git a/lib/gitlab/background_migration/populate_untracked_uploads_dependencies.rb b/lib/gitlab/background_migration/populate_untracked_uploads_dependencies.rb
+index 1924f2ffee..f5fb33f166 100644
+--- a/lib/gitlab/background_migration/populate_untracked_uploads_dependencies.rb
++++ b/lib/gitlab/background_migration/populate_untracked_uploads_dependencies.rb
+@@ -176,23 +176,12 @@ class Project < ActiveRecord::Base
+         self.table_name = 'projects'
+ 
+         def self.find_by_full_path(path)
+-          binary = Gitlab::Database.mysql? ? 'BINARY' : ''
+-          order_sql = "(CASE WHEN #{binary} routes.path = #{connection.quote(path)} THEN 0 ELSE 1 END)"
++          order_sql = "(CASE WHEN routes.path = #{connection.quote(path)} THEN 0 ELSE 1 END)"
+           where_full_path_in(path).reorder(order_sql).take
+         end
+ 
+         def self.where_full_path_in(path)
+-          cast_lower = Gitlab::Database.postgresql?
+-
+-          path = connection.quote(path)
+-
+-          where =
+-            if cast_lower
+-              "(LOWER(routes.path) = LOWER(#{path}))"
+-            else
+-              "(routes.path = #{path})"
+-            end
+-
++          where = "(LOWER(routes.path) = LOWER(#{connection.quote(path)}))"
+           joins("INNER JOIN routes ON routes.source_id = projects.id AND routes.source_type = 'Project'").where(where)
+         end
+       end
+diff --git a/lib/gitlab/background_migration/prepare_untracked_uploads.rb b/lib/gitlab/background_migration/prepare_untracked_uploads.rb
+index cce2a82c09..7d40b459c9 100644
+--- a/lib/gitlab/background_migration/prepare_untracked_uploads.rb
++++ b/lib/gitlab/background_migration/prepare_untracked_uploads.rb
+@@ -133,12 +133,9 @@ def insert_file_paths(file_paths)
+       def insert_sql(file_paths)
+         if postgresql_pre_9_5?
+           "INSERT INTO #{table_columns_and_values_for_insert(file_paths)};"
+-        elsif postgresql?
++        else
+           "INSERT INTO #{table_columns_and_values_for_insert(file_paths)}"\
+             " ON CONFLICT DO NOTHING;"
+-        else # MySQL
+-          "INSERT IGNORE INTO"\
+-            " #{table_columns_and_values_for_insert(file_paths)};"
+         end
+       end
+ 
+diff --git a/lib/gitlab/database.rb b/lib/gitlab/database.rb
+index 3e4c720b49..eef63536de 100644
+--- a/lib/gitlab/database.rb
++++ b/lib/gitlab/database.rb
+@@ -4,13 +4,13 @@ module Gitlab
+   module Database
+     include Gitlab::Metrics::Methods
+ 
+-    # The max value of INTEGER type is the same between MySQL and PostgreSQL:
+     # https://www.postgresql.org/docs/9.2/static/datatype-numeric.html
+-    # http://dev.mysql.com/doc/refman/5.7/en/integer-types.html
+     MAX_INT_VALUE = 2147483647
++
+     # The max value between MySQL's TIMESTAMP and PostgreSQL's timestampz:
+     # https://www.postgresql.org/docs/9.1/static/datatype-datetime.html
+     # https://dev.mysql.com/doc/refman/5.7/en/datetime.html
++    # FIXME: this should just be the max value of timestampz
+     MAX_TIMESTAMP_VALUE = Time.at((1 << 31) - 1).freeze
+ 
+     # Minimum schema version from which migrations are supported
+@@ -39,11 +39,11 @@ def self.adapter_name
+     end
+ 
+     def self.human_adapter_name
+-      postgresql? ? 'PostgreSQL' : 'MySQL'
+-    end
+-
+-    def self.mysql?
+-      adapter_name.casecmp('mysql2').zero?
++      if postgresql?
++        'PostgreSQL'
++      else
++        'Unknown'
++      end
+     end
+ 
+     def self.postgresql?
+@@ -60,15 +60,14 @@ def self.read_write?
+ 
+     # Check whether the underlying database is in read-only mode
+     def self.db_read_only?
+-      if postgresql?
+-        pg_is_in_recovery =
+-          ActiveRecord::Base.connection.execute('SELECT pg_is_in_recovery()')
+-            .first.fetch('pg_is_in_recovery')
++      pg_is_in_recovery =
++        ActiveRecord::Base
++          .connection
++          .execute('SELECT pg_is_in_recovery()')
++          .first
++          .fetch('pg_is_in_recovery')
+ 
+-        Gitlab::Utils.to_boolean(pg_is_in_recovery)
+-      else
+-        false
+-      end
++      Gitlab::Utils.to_boolean(pg_is_in_recovery)
+     end
+ 
+     def self.db_read_write?
+@@ -118,51 +117,23 @@ def self.pg_last_xact_replay_timestamp
+     end
+ 
+     def self.nulls_last_order(field, direction = 'ASC')
+-      order = "#{field} #{direction}"
+-
+-      if postgresql?
+-        order = "#{order} NULLS LAST"
+-      else
+-        # `field IS NULL` will be `0` for non-NULL columns and `1` for NULL
+-        # columns. In the (default) ascending order, `0` comes first.
+-        order = "#{field} IS NULL, #{order}" if direction == 'ASC'
+-      end
+-
+-      Arel.sql(order)
++      Arel.sql("#{field} #{direction} NULLS LAST")
+     end
+ 
+     def self.nulls_first_order(field, direction = 'ASC')
+-      order = "#{field} #{direction}"
+-
+-      if postgresql?
+-        order = "#{order} NULLS FIRST"
+-      else
+-        # `field IS NULL` will be `0` for non-NULL columns and `1` for NULL
+-        # columns. In the (default) ascending order, `0` comes first.
+-        order = "#{field} IS NULL, #{order}" if direction == 'DESC'
+-      end
+-
+-      Arel.sql(order)
++      Arel.sql("#{field} #{direction} NULLS FIRST")
+     end
+ 
+     def self.random
+-      postgresql? ? "RANDOM()" : "RAND()"
++      "RANDOM()"
+     end
+ 
+     def self.true_value
+-      if postgresql?
+-        "'t'"
+-      else
+-        1
+-      end
++      "'t'"
+     end
+ 
+     def self.false_value
+-      if postgresql?
+-        "'f'"
+-      else
+-        0
+-      end
++      "'f'"
+     end
+ 
+     def self.with_connection_pool(pool_size)
+@@ -182,7 +153,7 @@ def self.with_connection_pool(pool_size)
+     # rows - An Array of Hash instances, each mapping the columns to their
+     #        values.
+     # return_ids - When set to true the return value will be an Array of IDs of
+-    #              the inserted rows, this only works on PostgreSQL.
++    #              the inserted rows
+     # disable_quote - A key or an Array of keys to exclude from quoting (You
+     #                 become responsible for protection from SQL injection for
+     #                 these keys!)
+@@ -191,7 +162,6 @@ def self.bulk_insert(table, rows, return_ids: false, disable_quote: [])
+ 
+       keys = rows.first.keys
+       columns = keys.map { |key| connection.quote_column_name(key) }
+-      return_ids = false if mysql?
+ 
+       disable_quote = Array(disable_quote).to_set
+       tuples = rows.map do |row|
+@@ -258,11 +228,7 @@ def self.cached_table_exists?(table_name)
+     def self.database_version
+       row = connection.execute("SELECT VERSION()").first
+ 
+-      if postgresql?
+-        row['version']
+-      else
+-        row.first
+-      end
++      row['version']
+     end
+ 
+     private_class_method :database_version
+diff --git a/lib/gitlab/database/date_time.rb b/lib/gitlab/database/date_time.rb
+index 79d2caff15..1392b39701 100644
+--- a/lib/gitlab/database/date_time.rb
++++ b/lib/gitlab/database/date_time.rb
+@@ -7,8 +7,7 @@ module DateTime
+       # the first of the `start_time_attrs` that isn't NULL. `SELECT` the resulting interval
+       # along with an alias specified by the `as` parameter.
+       #
+-      # Note: For MySQL, the interval is returned in seconds.
+-      #       For PostgreSQL, the interval is returned as an INTERVAL type.
++      # Note: the interval is returned as an INTERVAL type.
+       def subtract_datetimes(query_so_far, start_time_attrs, end_time_attrs, as)
+         diff_fn = subtract_datetimes_diff(query_so_far, start_time_attrs, end_time_attrs)
+ 
+@@ -16,17 +15,10 @@ def subtract_datetimes(query_so_far, start_time_attrs, end_time_attrs, as)
+       end
+ 
+       def subtract_datetimes_diff(query_so_far, start_time_attrs, end_time_attrs)
+-        if Gitlab::Database.postgresql?
+-          Arel::Nodes::Subtraction.new(
+-            Arel::Nodes::NamedFunction.new("COALESCE", Array.wrap(end_time_attrs)),
+-            Arel::Nodes::NamedFunction.new("COALESCE", Array.wrap(start_time_attrs)))
+-        elsif Gitlab::Database.mysql?
+-          Arel::Nodes::NamedFunction.new(
+-            "TIMESTAMPDIFF",
+-            [Arel.sql('second'),
+-             Arel::Nodes::NamedFunction.new("COALESCE", Array.wrap(start_time_attrs)),
+-             Arel::Nodes::NamedFunction.new("COALESCE", Array.wrap(end_time_attrs))])
+-        end
++        Arel::Nodes::Subtraction.new(
++          Arel::Nodes::NamedFunction.new("COALESCE", Array.wrap(end_time_attrs)),
++          Arel::Nodes::NamedFunction.new("COALESCE", Array.wrap(start_time_attrs))
++        )
+       end
+     end
+   end
+diff --git a/lib/gitlab/database/median.rb b/lib/gitlab/database/median.rb
+index b8d895dee7..391c1e85a7 100644
+--- a/lib/gitlab/database/median.rb
++++ b/lib/gitlab/database/median.rb
+@@ -17,13 +17,9 @@ def median_datetimes(arel_table, query_so_far, column_sym, partition_column)
+       def extract_median(results)
+         result = results.compact.first
+ 
+-        if Gitlab::Database.postgresql?
+-          result = result.first.presence
++        result = result.first.presence
+ 
+-          result['median']&.to_f if result
+-        elsif Gitlab::Database.mysql?
+-          result.to_a.flatten.first
+-        end
++        result['median']&.to_f if result
+       end
+ 
+       def extract_medians(results)
+@@ -34,31 +30,6 @@ def extract_medians(results)
+         end
+       end
+ 
+-      def mysql_median_datetime_sql(arel_table, query_so_far, column_sym)
+-        query = arel_table.from
+-                .from(arel_table.project(Arel.sql('*')).order(arel_table[column_sym]).as(arel_table.table_name))
+-                .project(average([arel_table[column_sym]], 'median'))
+-                .where(
+-                  Arel::Nodes::Between.new(
+-                    Arel.sql("(select @row_id := @row_id + 1)"),
+-                    Arel::Nodes::And.new(
+-                      [Arel.sql('@ct/2.0'),
+-                       Arel.sql('@ct/2.0 + 1')]
+-                    )
+-                  )
+-                ).
+-                # Disallow negative values
+-                where(arel_table[column_sym].gteq(0))
+-
+-        [
+-          Arel.sql("CREATE TEMPORARY TABLE IF NOT EXISTS #{query_so_far.to_sql}"),
+-          Arel.sql("set @ct := (select count(1) from #{arel_table.table_name});"),
+-          Arel.sql("set @row_id := 0;"),
+-          query.to_sql,
+-          Arel.sql("DROP TEMPORARY TABLE IF EXISTS #{arel_table.table_name};")
+-        ]
+-      end
+-
+       def pg_median_datetime_sql(arel_table, query_so_far, column_sym, partition_column = nil)
+         # Create a CTE with the column we're operating on, row number (after sorting by the column
+         # we're operating on), and count of the table we're operating on (duplicated across) all rows
+@@ -113,18 +84,8 @@ def pg_median_datetime_sql(arel_table, query_so_far, column_sym, partition_colum
+ 
+       private
+ 
+-      def median_queries(arel_table, query_so_far, column_sym, partition_column = nil)
+-        if Gitlab::Database.postgresql?
+-          pg_median_datetime_sql(arel_table, query_so_far, column_sym, partition_column)
+-        elsif Gitlab::Database.mysql?
+-          raise NotSupportedError, "partition_column is not supported for MySQL" if partition_column
+-
+-          mysql_median_datetime_sql(arel_table, query_so_far, column_sym)
+-        end
+-      end
+-
+       def execute_queries(arel_table, query_so_far, column_sym, partition_column = nil)
+-        queries = median_queries(arel_table, query_so_far, column_sym, partition_column)
++        queries = pg_median_datetime_sql(arel_table, query_so_far, column_sym, partition_column)
+ 
+         Array.wrap(queries).map { |query| ActiveRecord::Base.connection.execute(query) }
+       end
+diff --git a/lib/gitlab/database/migration_helpers.rb b/lib/gitlab/database/migration_helpers.rb
+index 2ae807697b..4bd09163bf 100644
+--- a/lib/gitlab/database/migration_helpers.rb
++++ b/lib/gitlab/database/migration_helpers.rb
+@@ -68,10 +68,7 @@ def remove_timestamps(table_name, options = {})
+         end
+       end
+ 
+-      # Creates a new index, concurrently when supported
+-      #
+-      # On PostgreSQL this method creates an index concurrently, on MySQL this
+-      # creates a regular index.
++      # Creates a new index, concurrently
+       #
+       # Example:
+       #
+@@ -85,9 +82,7 @@ def add_concurrent_index(table_name, column_name, options = {})
+             'in the body of your migration class'
+         end
+ 
+-        if Database.postgresql?
+-          options = options.merge({ algorithm: :concurrently })
+-        end
++        options = options.merge({ algorithm: :concurrently })
+ 
+         if index_exists?(table_name, column_name, options)
+           Rails.logger.warn "Index not created because it already exists (this may be due to an aborted migration or similar): table_name: #{table_name}, column_name: #{column_name}" # rubocop:disable Gitlab/RailsLogger
+@@ -99,9 +94,7 @@ def add_concurrent_index(table_name, column_name, options = {})
+         end
+       end
+ 
+-      # Removes an existed index, concurrently when supported
+-      #
+-      # On PostgreSQL this method removes an index concurrently.
++      # Removes an existed index, concurrently
+       #
+       # Example:
+       #
+@@ -129,9 +122,7 @@ def remove_concurrent_index(table_name, column_name, options = {})
+         end
+       end
+ 
+-      # Removes an existing index, concurrently when supported
+-      #
+-      # On PostgreSQL this method removes an index concurrently.
++      # Removes an existing index, concurrently
+       #
+       # Example:
+       #
+@@ -170,8 +161,7 @@ def supports_drop_index_concurrently?
+ 
+       # Adds a foreign key with only minimal locking on the tables involved.
+       #
+-      # This method only requires minimal locking when using PostgreSQL. When
+-      # using MySQL this method will use Rails' default `add_foreign_key`.
++      # This method only requires minimal locking
+       #
+       # source - The source table containing the foreign key.
+       # target - The target table the key points to.
+@@ -187,27 +177,7 @@ def add_concurrent_foreign_key(source, target, column:, on_delete: :cascade, nam
+           raise 'add_concurrent_foreign_key can not be run inside a transaction'
+         end
+ 
+-        # While MySQL does allow disabling of foreign keys it has no equivalent
+-        # of PostgreSQL's "VALIDATE CONSTRAINT". As a result we'll just fall
+-        # back to the normal foreign key procedure.
+-        if Database.mysql?
+-          if foreign_key_exists?(source, target, column: column)
+-            Rails.logger.warn "Foreign key not created because it exists already " \
+-              "(this may be due to an aborted migration or similar): " \
+-              "source: #{source}, target: #{target}, column: #{column}"
+-            return
+-          end
+-
+-          key_options = { column: column, on_delete: on_delete }
+-
+-          # The MySQL adapter tries to create a foreign key without a name when
+-          # `:name` is nil, instead of generating a name for us.
+-          key_options[:name] = name if name
+-
+-          return add_foreign_key(source, target, key_options)
+-        else
+-          on_delete = 'SET NULL' if on_delete == :nullify
+-        end
++        on_delete = 'SET NULL' if on_delete == :nullify
+ 
+         key_name = name || concurrent_foreign_key_name(source, column)
+ 
+@@ -265,7 +235,7 @@ def concurrent_foreign_key_name(table, column)
+ 
+       # Long-running migrations may take more than the timeout allowed by
+       # the database. Disable the session's statement timeout to ensure
+-      # migrations don't get killed prematurely. (PostgreSQL only)
++      # migrations don't get killed prematurely.
+       #
+       # There are two possible ways to disable the statement timeout:
+       #
+@@ -277,15 +247,6 @@ def concurrent_foreign_key_name(table, column)
+       # otherwise the statement will still be disabled until connection is dropped
+       # or `RESET ALL` is executed
+       def disable_statement_timeout
+-        # bypass disabled_statement logic when not using postgres, but still execute block when one is given
+-        unless Database.postgresql?
+-          if block_given?
+-            yield
+-          end
+-
+-          return
+-        end
+-
+         if block_given?
+           begin
+             execute('SET statement_timeout TO 0')
+@@ -535,13 +496,12 @@ def install_rename_triggers(table, old_column, new_column)
+         quoted_old = quote_column_name(old_column)
+         quoted_new = quote_column_name(new_column)
+ 
+-        if Database.postgresql?
+-          install_rename_triggers_for_postgresql(trigger_name, quoted_table,
+-                                                 quoted_old, quoted_new)
+-        else
+-          install_rename_triggers_for_mysql(trigger_name, quoted_table,
+-                                            quoted_old, quoted_new)
+-        end
++        install_rename_triggers_for_postgresql(
++          trigger_name,
++          quoted_table,
++          quoted_old,
++          quoted_new
++        )
+       end
+ 
+       # Changes the type of a column concurrently.
+@@ -584,11 +544,7 @@ def cleanup_concurrent_column_rename(table, old, new)
+ 
+         check_trigger_permissions!(table)
+ 
+-        if Database.postgresql?
+-          remove_rename_triggers_for_postgresql(table, trigger_name)
+-        else
+-          remove_rename_triggers_for_mysql(trigger_name)
+-        end
++        remove_rename_triggers_for_postgresql(table, trigger_name)
+ 
+         remove_column(table, old)
+       end
+@@ -801,38 +757,12 @@ def install_rename_triggers_for_postgresql(trigger, table, old, new)
+         EOF
+       end
+ 
+-      # Installs the triggers necessary to perform a concurrent column rename on
+-      # MySQL.
+-      def install_rename_triggers_for_mysql(trigger, table, old, new)
+-        execute <<-EOF.strip_heredoc
+-        CREATE TRIGGER #{trigger}_insert
+-        BEFORE INSERT
+-        ON #{table}
+-        FOR EACH ROW
+-        SET NEW.#{new} = NEW.#{old}
+-        EOF
+-
+-        execute <<-EOF.strip_heredoc
+-        CREATE TRIGGER #{trigger}_update
+-        BEFORE UPDATE
+-        ON #{table}
+-        FOR EACH ROW
+-        SET NEW.#{new} = NEW.#{old}
+-        EOF
+-      end
+-
+       # Removes the triggers used for renaming a PostgreSQL column concurrently.
+       def remove_rename_triggers_for_postgresql(table, trigger)
+         execute("DROP TRIGGER IF EXISTS #{trigger} ON #{table}")
+         execute("DROP FUNCTION IF EXISTS #{trigger}()")
+       end
+ 
+-      # Removes the triggers used for renaming a MySQL column concurrently.
+-      def remove_rename_triggers_for_mysql(trigger)
+-        execute("DROP TRIGGER IF EXISTS #{trigger}_insert")
+-        execute("DROP TRIGGER IF EXISTS #{trigger}_update")
+-      end
+-
+       # Returns the (base) name to use for triggers when renaming columns.
+       def rename_trigger_name(table, old, new)
+         'trigger_' + Digest::SHA256.hexdigest("#{table}_#{old}_#{new}").first(12)
+@@ -882,8 +812,6 @@ def copy_indexes(table, old, new)
+             order: index.orders
+           }
+ 
+-          # These options are not supported by MySQL, so we only add them if
+-          # they were previously set.
+           options[:using] = index.using if index.using
+           options[:where] = index.where if index.where
+ 
+@@ -923,26 +851,16 @@ def column_for(table, name)
+       end
+ 
+       # This will replace the first occurrence of a string in a column with
+-      # the replacement
+-      # On postgresql we can use `regexp_replace` for that.
+-      # On mysql we find the location of the pattern, and overwrite it
+-      # with the replacement
++      # the replacement using `regexp_replace`
+       def replace_sql(column, pattern, replacement)
+         quoted_pattern = Arel::Nodes::Quoted.new(pattern.to_s)
+         quoted_replacement = Arel::Nodes::Quoted.new(replacement.to_s)
+ 
+-        if Database.mysql?
+-          locate = Arel::Nodes::NamedFunction
+-            .new('locate', [quoted_pattern, column])
+-          insert_in_place = Arel::Nodes::NamedFunction
+-            .new('insert', [column, locate, pattern.size, quoted_replacement])
++        replace = Arel::Nodes::NamedFunction.new(
++          "regexp_replace", [column, quoted_pattern, quoted_replacement]
++        )
+ 
+-          Arel::Nodes::SqlLiteral.new(insert_in_place.to_sql)
+-        else
+-          replace = Arel::Nodes::NamedFunction
+-            .new("regexp_replace", [column, quoted_pattern, quoted_replacement])
+-          Arel::Nodes::SqlLiteral.new(replace.to_sql)
+-        end
++        Arel::Nodes::SqlLiteral.new(replace.to_sql)
+       end
+ 
+       def remove_foreign_key_if_exists(*args)
+@@ -984,11 +902,7 @@ def check_trigger_permissions!(table)
+ 
+     ALTER #{user} WITH SUPERUSER
+ 
+-For MySQL you instead need to run:
+-
+-    GRANT ALL PRIVILEGES ON #{dbname}.* TO #{user}@'%'
+-
+-Both queries will grant the user super user permissions, ensuring you don't run
++This query will grant the user super user permissions, ensuring you don't run
+ into similar problems in the future (e.g. when new tables are created).
+           EOF
+         end
+@@ -1091,10 +1005,6 @@ def queue_background_migration_jobs_by_range_at_intervals(model_class, job_class
+       # This will include indexes using an expression on the column, for example:
+       # `CREATE INDEX CONCURRENTLY index_name ON table (LOWER(column));`
+       #
+-      # For mysql, it falls back to the default ActiveRecord implementation that
+-      # will not find custom indexes. But it will select by name without passing
+-      # a column.
+-      #
+       # We can remove this when upgrading to Rails 5 with an updated `index_exists?`:
+       # - https://github.com/rails/rails/commit/edc2b7718725016e988089b5fb6d6fb9d6e16882
+       #
+@@ -1105,10 +1015,8 @@ def index_exists_by_name?(table, index)
+         # does not find indexes without passing a column name.
+         if indexes(table).map(&:name).include?(index.to_s)
+           true
+-        elsif Gitlab::Database.postgresql?
+-          postgres_exists_by_name?(table, index)
+         else
+-          false
++          postgres_exists_by_name?(table, index)
+         end
+       end
+ 
+@@ -1124,10 +1032,6 @@ def postgres_exists_by_name?(table, name)
+         connection.select_value(index_sql).to_i > 0
+       end
+ 
+-      def mysql_compatible_index_length
+-        Gitlab::Database.mysql? ? 20 : nil
+-      end
+-
+       private
+ 
+       def validate_timestamp_column_name!(column_name)
+diff --git a/lib/gitlab/database/rename_reserved_paths_migration/v1/rename_base.rb b/lib/gitlab/database/rename_reserved_paths_migration/v1/rename_base.rb
+index 60afa4bcd5..565f34b78b 100644
+--- a/lib/gitlab/database/rename_reserved_paths_migration/v1/rename_base.rb
++++ b/lib/gitlab/database/rename_reserved_paths_migration/v1/rename_base.rb
+@@ -51,14 +51,10 @@ def rename_routes(old_full_path, new_full_path)
+             quoted_old_full_path = quote_string(old_full_path)
+             quoted_old_wildcard_path = quote_string("#{old_full_path}/%")
+ 
+-            filter = if Database.mysql?
+-                       "lower(routes.path) = lower('#{quoted_old_full_path}') "\
+-                       "OR routes.path LIKE '#{quoted_old_wildcard_path}'"
+-                     else
+-                       "routes.id IN "\
+-                       "( SELECT routes.id FROM routes WHERE lower(routes.path) = lower('#{quoted_old_full_path}') "\
+-                       "UNION SELECT routes.id FROM routes WHERE routes.path ILIKE '#{quoted_old_wildcard_path}' )"
+-                     end
++            filter =
++              "routes.id IN "\
++              "( SELECT routes.id FROM routes WHERE lower(routes.path) = lower('#{quoted_old_full_path}') "\
++              "UNION SELECT routes.id FROM routes WHERE routes.path ILIKE '#{quoted_old_wildcard_path}' )"
+ 
+             replace_statement = replace_sql(Route.arel_table[:path],
+                                             old_full_path,
+diff --git a/lib/gitlab/import/database_helpers.rb b/lib/gitlab/import/database_helpers.rb
+index 5b3f30d894..aaade39dd6 100644
+--- a/lib/gitlab/import/database_helpers.rb
++++ b/lib/gitlab/import/database_helpers.rb
+@@ -6,9 +6,7 @@ module DatabaseHelpers
+       # Inserts a raw row and returns the ID of the inserted row.
+       #
+       # attributes - The attributes/columns to set.
+-      # relation - An ActiveRecord::Relation to use for finding the ID of the row
+-      #            when using MySQL.
+-      # rubocop: disable CodeReuse/ActiveRecord
++      # relation - An ActiveRecord::Relation to use for finding the table name
+       def insert_and_return_id(attributes, relation)
+         # We use bulk_insert here so we can bypass any queries executed by
+         # callbacks or validation rules, as doing this wouldn't scale when
+@@ -16,12 +14,8 @@ def insert_and_return_id(attributes, relation)
+         result = Gitlab::Database
+                  .bulk_insert(relation.table_name, [attributes], return_ids: true)
+ 
+-        # MySQL doesn't support returning the IDs of a bulk insert in a way that
+-        # is not a pain, so in this case we'll issue an extra query instead.
+-        result.first ||
+-          relation.where(iid: attributes[:iid]).limit(1).pluck(:id).first
++        result.first
+       end
+-      # rubocop: enable CodeReuse/ActiveRecord
+     end
+   end
+ end
+diff --git a/lib/mysql_zero_date.rb b/lib/mysql_zero_date.rb
+deleted file mode 100644
+index f36610abf8..0000000000
+--- a/lib/mysql_zero_date.rb
++++ /dev/null
+@@ -1,20 +0,0 @@
+-# frozen_string_literal: true
+-
+-# Disable NO_ZERO_DATE mode for mysql in rails 5.
+-# We use zero date as a default value
+-# (config/initializers/active_record_mysql_timestamp.rb), in
+-# Rails 5 using zero date fails by default (https://gitlab.com/gitlab-org/gitlab-ce/-/jobs/75450216)
+-# and NO_ZERO_DATE has to be explicitly disabled. Disabling strict mode
+-# is not sufficient.
+-
+-require 'active_record/connection_adapters/abstract_mysql_adapter'
+-
+-module MysqlZeroDate
+-  def configure_connection
+-    super
+-
+-    @connection.query "SET @@SESSION.sql_mode = REPLACE(@@SESSION.sql_mode, 'NO_ZERO_DATE', '');" # rubocop:disable Gitlab/ModuleWithInstanceVariables
+-  end
+-end
+-
+-ActiveRecord::ConnectionAdapters::AbstractMysqlAdapter.prepend(MysqlZeroDate)
+diff --git a/lib/serializers/json.rb b/lib/serializers/json.rb
+index 93cb192087..1ed5d5dc3f 100644
+--- a/lib/serializers/json.rb
++++ b/lib/serializers/json.rb
+@@ -1,32 +1,16 @@
+ # frozen_string_literal: true
+ 
+ module Serializers
+-  # This serializer exports data as JSON,
+-  # it is designed to be used with interwork compatibility between MySQL and PostgreSQL
+-  # implementations, as used version of MySQL does not support native json type
+-  #
+-  # Secondly, the loader makes the resulting hash to have deep indifferent access
++  # Make the resulting hash have deep indifferent access
+   class JSON
+     class << self
+       def dump(obj)
+-        # MySQL stores data as text
+-        # look at ./config/initializers/ar_mysql_jsonb_support.rb
+-        if Gitlab::Database.mysql?
+-          obj = ActiveSupport::JSON.encode(obj)
+-        end
+-
+         obj
+       end
+ 
+       def load(data)
+         return if data.nil?
+ 
+-        # On MySQL we store data as text
+-        # look at ./config/initializers/ar_mysql_jsonb_support.rb
+-        if Gitlab::Database.mysql?
+-          data = ActiveSupport::JSON.decode(data)
+-        end
+-
+         Gitlab::Utils.deep_indifferent_access(data)
+       end
+     end
+diff --git a/lib/support/deploy/deploy.sh b/lib/support/deploy/deploy.sh
+index ab46c47d8f..1f8c915140 100755
+--- a/lib/support/deploy/deploy.sh
++++ b/lib/support/deploy/deploy.sh
+@@ -28,7 +28,7 @@ sudo -u git -H git pull origin master
+ echo 'Deploy: Bundle and migrate'
+ 
+ # change it to your needs
+-sudo -u git -H bundle --without aws development test mysql --deployment
++sudo -u git -H bundle --without aws development test --deployment
+ 
+ sudo -u git -H bundle exec rake db:migrate RAILS_ENV=production
+ sudo -u git -H bundle exec rake gitlab:assets:clean RAILS_ENV=production
+diff --git a/lib/tasks/gitlab/db.rake b/lib/tasks/gitlab/db.rake
+index 4e7a8adbef..5f2ed5274e 100644
+--- a/lib/tasks/gitlab/db.rake
++++ b/lib/tasks/gitlab/db.rake
+@@ -26,12 +26,9 @@ namespace :gitlab do
+     task drop_tables: :environment do
+       connection = ActiveRecord::Base.connection
+ 
+-      # If MySQL, turn off foreign key checks
+-      connection.execute('SET FOREIGN_KEY_CHECKS=0') if Gitlab::Database.mysql?
+-
+-      # connection.tables is deprecated in MySQLAdapter, but in PostgreSQLAdapter
+-      # data_sources returns both views and tables, so use #tables instead
+-      tables = Gitlab::Database.mysql? ? connection.data_sources : connection.tables
++      # In PostgreSQLAdapter, data_sources returns both views and tables, so use
++      # #tables instead
++      tables = connection.tables
+ 
+       # Removes the entry from the array
+       tables.delete 'schema_migrations'
+@@ -40,12 +37,8 @@ namespace :gitlab do
+ 
+       # Drop tables with cascade to avoid dependent table errors
+       # PG: http://www.postgresql.org/docs/current/static/ddl-depend.html
+-      # MySQL: http://dev.mysql.com/doc/refman/5.7/en/drop-table.html
+       # Add `IF EXISTS` because cascade could have already deleted a table.
+       tables.each { |t| connection.execute("DROP TABLE IF EXISTS #{connection.quote_table_name(t)} CASCADE") }
+-
+-      # If MySQL, re-enable foreign key checks
+-      connection.execute('SET FOREIGN_KEY_CHECKS=1') if Gitlab::Database.mysql?
+     end
+ 
+     desc 'Configures the database by running migrate, or by loading the schema and seeding if needed'
+diff --git a/lib/tasks/gitlab/setup.rake b/lib/tasks/gitlab/setup.rake
+index e876b23d43..e763de682f 100644
+--- a/lib/tasks/gitlab/setup.rake
++++ b/lib/tasks/gitlab/setup.rake
+@@ -31,7 +31,6 @@ namespace :gitlab do
+     terminate_all_connections unless Rails.env.production?
+ 
+     Rake::Task["db:reset"].invoke
+-    Rake::Task["add_limits_mysql"].invoke
+     Rake::Task["setup_postgresql"].invoke
+     Rake::Task["db:seed_fu"].invoke
+   rescue Gitlab::TaskAbortedByUserError
+diff --git a/lib/tasks/migrate/add_limits_mysql.rake b/lib/tasks/migrate/add_limits_mysql.rake
+deleted file mode 100644
+index c77fa49d58..0000000000
+--- a/lib/tasks/migrate/add_limits_mysql.rake
++++ /dev/null
+@@ -1,17 +0,0 @@
+-require Rails.root.join('db/migrate/limits_to_mysql')
+-require Rails.root.join('db/migrate/markdown_cache_limits_to_mysql')
+-require Rails.root.join('db/migrate/merge_request_diff_file_limits_to_mysql')
+-require Rails.root.join('db/migrate/limits_ci_build_trace_chunks_raw_data_for_mysql')
+-require Rails.root.join('db/migrate/gpg_keys_limits_to_mysql')
+-require Rails.root.join('db/migrate/prometheus_metrics_limits_to_mysql')
+-
+-desc "GitLab | Add limits to strings in mysql database"
+-task add_limits_mysql: :environment do
+-  puts "Adding limits to schema.rb for mysql"
+-  LimitsToMysql.new.up
+-  MarkdownCacheLimitsToMysql.new.up
+-  MergeRequestDiffFileLimitsToMysql.new.up
+-  LimitsCiBuildTraceChunksRawDataForMysql.new.up
+-  IncreaseMysqlTextLimitForGpgKeys.new.up
+-  PrometheusMetricsLimitsToMysql.new.up
+-end
+diff --git a/scripts/create_mysql_user.sh b/scripts/create_mysql_user.sh
+deleted file mode 100644
+index 35f68c581f..0000000000
+--- a/scripts/create_mysql_user.sh
++++ /dev/null
+@@ -1,7 +0,0 @@
+-#!/bin/bash
+-
+-mysql --user=root --host=mysql <<EOF
+-CREATE USER IF NOT EXISTS 'gitlab'@'%';
+-GRANT ALL PRIVILEGES ON gitlabhq_test.* TO 'gitlab'@'%';
+-FLUSH PRIVILEGES;
+-EOF
+diff --git a/spec/features/projects/new_project_spec.rb b/spec/features/projects/new_project_spec.rb
+index fe7b4b759a..7602935b47 100644
+--- a/spec/features/projects/new_project_spec.rb
++++ b/spec/features/projects/new_project_spec.rb
+@@ -62,13 +62,7 @@
+         find('#import-project-tab').click
+       end
+ 
+-      context 'when using postgres', :postgresql do
+-        it { expect(page).to have_link('Manifest file') }
+-      end
+-
+-      context 'when using mysql', :mysql do
+-        it { expect(page).not_to have_link('Manifest file') }
+-      end
++      it { expect(page).to have_link('Manifest file') }
+     end
+ 
+     context 'Visibility level selector', :js do
+diff --git a/spec/lib/forever_spec.rb b/spec/lib/forever_spec.rb
+index b9ffe895bf..800fa5a6ad 100644
+--- a/spec/lib/forever_spec.rb
++++ b/spec/lib/forever_spec.rb
+@@ -4,19 +4,9 @@
+   describe '.date' do
+     subject { described_class.date }
+ 
+-    context 'when using PostgreSQL' do
+-      it 'returns Postgresql future date' do
+-        allow(Gitlab::Database).to receive(:postgresql?).and_return(true)
+-
+-        expect(subject).to eq(described_class::POSTGRESQL_DATE)
+-      end
+-    end
+-
+-    context 'when using MySQL' do
+-      it 'returns MySQL future date' do
+-        allow(Gitlab::Database).to receive(:postgresql?).and_return(false)
+-
+-        expect(subject).to eq(described_class::MYSQL_DATE)
++    it 'returns Postgresql future date' do
++      Timecop.travel(Date.new(2999, 12, 31)) do
++        is_expected.to be > Date.today
+       end
+     end
+   end
+diff --git a/spec/lib/gitlab/cycle_analytics/usage_data_spec.rb b/spec/lib/gitlab/cycle_analytics/usage_data_spec.rb
+index ad61bdeace..258ab049c0 100644
+--- a/spec/lib/gitlab/cycle_analytics/usage_data_spec.rb
++++ b/spec/lib/gitlab/cycle_analytics/usage_data_spec.rb
+@@ -28,27 +28,7 @@
+       end
+     end
+ 
+-    shared_examples 'a valid usage data result' do
+-      it 'returns the aggregated usage data of every selected project' do
+-        result = subject.to_json
+-
+-        expect(result).to have_key(:avg_cycle_analytics)
+-
+-        CycleAnalytics::LevelBase::STAGES.each do |stage|
+-          expect(result[:avg_cycle_analytics]).to have_key(stage)
+-
+-          stage_values    = result[:avg_cycle_analytics][stage]
+-          expected_values = expect_values_per_stage[stage]
+-
+-          expected_values.each_pair do |op, value|
+-            expect(stage_values).to have_key(op)
+-            expect(stage_values[op]).to eq(value)
+-          end
+-        end
+-      end
+-    end
+-
+-    context 'when using postgresql', :postgresql do
++    context 'a valid usage data result' do
+       let(:expect_values_per_stage) do
+         {
+           issue: {
+@@ -89,51 +69,23 @@
+         }
+       end
+ 
+-      it_behaves_like 'a valid usage data result'
+-    end
++      it 'returns the aggregated usage data of every selected project' do
++        result = subject.to_json
+ 
+-    context 'when using mysql', :mysql do
+-      let(:expect_values_per_stage) do
+-        {
+-          issue: {
+-            average: nil,
+-            sd: 0,
+-            missing: 2
+-          },
+-          plan: {
+-            average: nil,
+-            sd: 0,
+-            missing: 2
+-          },
+-          code: {
+-            average: nil,
+-            sd: 0,
+-            missing: 2
+-          },
+-          test: {
+-            average: nil,
+-            sd: 0,
+-            missing: 2
+-          },
+-          review: {
+-            average: nil,
+-            sd: 0,
+-            missing: 2
+-          },
+-          staging: {
+-            average: nil,
+-            sd: 0,
+-            missing: 2
+-          },
+-          production: {
+-            average: nil,
+-            sd: 0,
+-            missing: 2
+-          }
+-        }
+-      end
++        expect(result).to have_key(:avg_cycle_analytics)
++
++        CycleAnalytics::LevelBase::STAGES.each do |stage|
++          expect(result[:avg_cycle_analytics]).to have_key(stage)
+ 
+-      it_behaves_like 'a valid usage data result'
++          stage_values    = result[:avg_cycle_analytics][stage]
++          expected_values = expect_values_per_stage[stage]
++
++          expected_values.each_pair do |op, value|
++            expect(stage_values).to have_key(op)
++            expect(stage_values[op]).to eq(value)
++          end
++        end
++      end
+     end
+   end
+ end
+diff --git a/spec/lib/gitlab/database/median_spec.rb b/spec/lib/gitlab/database/median_spec.rb
+deleted file mode 100644
+index 1b5e30089c..0000000000
+--- a/spec/lib/gitlab/database/median_spec.rb
++++ /dev/null
+@@ -1,17 +0,0 @@
+-require 'spec_helper'
+-
+-describe Gitlab::Database::Median do
+-  let(:dummy_class) do
+-    Class.new do
+-      include Gitlab::Database::Median
+-    end
+-  end
+-
+-  subject(:median) { dummy_class.new }
+-
+-  describe '#median_datetimes' do
+-    it 'raises NotSupportedError', :mysql do
+-      expect { median.median_datetimes(nil, nil, nil, :project_id) }.to raise_error(dummy_class::NotSupportedError, "partition_column is not supported for MySQL")
+-    end
+-  end
+-end
+diff --git a/spec/lib/gitlab/database/migration_helpers_spec.rb b/spec/lib/gitlab/database/migration_helpers_spec.rb
+index dd0033bbc1..b73828b955 100644
+--- a/spec/lib/gitlab/database/migration_helpers_spec.rb
++++ b/spec/lib/gitlab/database/migration_helpers_spec.rb
+@@ -30,85 +30,66 @@
+ 
+     before do
+       allow(model).to receive(:transaction_open?).and_return(in_transaction)
++      allow(model).to receive(:disable_statement_timeout)
+     end
+ 
+-    context 'using PostgreSQL' do
+-      before do
+-        allow(Gitlab::Database).to receive(:postgresql?).and_return(true)
+-        allow(model).to receive(:disable_statement_timeout)
+-      end
+-
+-      it 'adds "created_at" and "updated_at" fields with the "datetime_with_timezone" data type' do
+-        Gitlab::Database::MigrationHelpers::DEFAULT_TIMESTAMP_COLUMNS.each do |column_name|
+-          expect(model).to receive(:add_column).with(:foo, column_name, :datetime_with_timezone, { null: false })
+-        end
+-
+-        model.add_timestamps_with_timezone(:foo)
+-      end
+-
+-      it 'can disable the NOT NULL constraint' do
+-        Gitlab::Database::MigrationHelpers::DEFAULT_TIMESTAMP_COLUMNS.each do |column_name|
+-          expect(model).to receive(:add_column).with(:foo, column_name, :datetime_with_timezone, { null: true })
+-        end
+-
+-        model.add_timestamps_with_timezone(:foo, null: true)
++    it 'adds "created_at" and "updated_at" fields with the "datetime_with_timezone" data type' do
++      Gitlab::Database::MigrationHelpers::DEFAULT_TIMESTAMP_COLUMNS.each do |column_name|
++        expect(model).to receive(:add_column).with(:foo, column_name, :datetime_with_timezone, { null: false })
+       end
+ 
+-      it 'can add just one column' do
+-        expect(model).to receive(:add_column).with(:foo, :created_at, :datetime_with_timezone, anything)
+-        expect(model).not_to receive(:add_column).with(:foo, :updated_at, :datetime_with_timezone, anything)
++      model.add_timestamps_with_timezone(:foo)
++    end
+ 
+-        model.add_timestamps_with_timezone(:foo, columns: [:created_at])
++    it 'can disable the NOT NULL constraint' do
++      Gitlab::Database::MigrationHelpers::DEFAULT_TIMESTAMP_COLUMNS.each do |column_name|
++        expect(model).to receive(:add_column).with(:foo, column_name, :datetime_with_timezone, { null: true })
+       end
+ 
+-      it 'can add choice of acceptable columns' do
+-        expect(model).to receive(:add_column).with(:foo, :created_at, :datetime_with_timezone, anything)
+-        expect(model).to receive(:add_column).with(:foo, :deleted_at, :datetime_with_timezone, anything)
+-        expect(model).not_to receive(:add_column).with(:foo, :updated_at, :datetime_with_timezone, anything)
+-
+-        model.add_timestamps_with_timezone(:foo, columns: [:created_at, :deleted_at])
+-      end
++      model.add_timestamps_with_timezone(:foo, null: true)
++    end
+ 
+-      it 'cannot add unacceptable column names' do
+-        expect do
+-          model.add_timestamps_with_timezone(:foo, columns: [:bar])
+-        end.to raise_error %r/Illegal timestamp column name/
+-      end
++    it 'can add just one column' do
++      expect(model).to receive(:add_column).with(:foo, :created_at, :datetime_with_timezone, anything)
++      expect(model).not_to receive(:add_column).with(:foo, :updated_at, :datetime_with_timezone, anything)
+ 
+-      context 'in a transaction' do
+-        let(:in_transaction) { true }
++      model.add_timestamps_with_timezone(:foo, columns: [:created_at])
++    end
+ 
+-        before do
+-          allow(model).to receive(:add_column).with(any_args).and_call_original
+-          allow(model).to receive(:add_column)
+-            .with(:foo, anything, :datetime_with_timezone, anything)
+-            .and_return(nil)
+-        end
++    it 'can add choice of acceptable columns' do
++      expect(model).to receive(:add_column).with(:foo, :created_at, :datetime_with_timezone, anything)
++      expect(model).to receive(:add_column).with(:foo, :deleted_at, :datetime_with_timezone, anything)
++      expect(model).not_to receive(:add_column).with(:foo, :updated_at, :datetime_with_timezone, anything)
+ 
+-        it 'cannot add a default value' do
+-          expect do
+-            model.add_timestamps_with_timezone(:foo, default: :i_cause_an_error)
+-          end.to raise_error %r/add_timestamps_with_timezone/
+-        end
++      model.add_timestamps_with_timezone(:foo, columns: [:created_at, :deleted_at])
++    end
+ 
+-        it 'can add columns without defaults' do
+-          expect do
+-            model.add_timestamps_with_timezone(:foo)
+-          end.not_to raise_error
+-        end
+-      end
++    it 'cannot add unacceptable column names' do
++      expect do
++        model.add_timestamps_with_timezone(:foo, columns: [:bar])
++      end.to raise_error %r/Illegal timestamp column name/
+     end
+ 
+-    context 'using MySQL' do
++    context 'in a transaction' do
++      let(:in_transaction) { true }
++
+       before do
+-        allow(Gitlab::Database).to receive(:postgresql?).and_return(false)
++        allow(model).to receive(:add_column).with(any_args).and_call_original
++        allow(model).to receive(:add_column)
++          .with(:foo, anything, :datetime_with_timezone, anything)
++          .and_return(nil)
+       end
+ 
+-      it 'adds "created_at" and "updated_at" fields with "datetime_with_timezone" data type' do
+-        expect(model).to receive(:add_column).with(:foo, :created_at, :datetime_with_timezone, { null: false })
+-        expect(model).to receive(:add_column).with(:foo, :updated_at, :datetime_with_timezone, { null: false })
++      it 'cannot add a default value' do
++        expect do
++          model.add_timestamps_with_timezone(:foo, default: :i_cause_an_error)
++        end.to raise_error %r/add_timestamps_with_timezone/
++      end
+ 
+-        model.add_timestamps_with_timezone(:foo)
++      it 'can add columns without defaults' do
++        expect do
++          model.add_timestamps_with_timezone(:foo)
++        end.not_to raise_error
+       end
+     end
+   end
+@@ -117,56 +98,29 @@
+     context 'outside a transaction' do
+       before do
+         allow(model).to receive(:transaction_open?).and_return(false)
++        allow(model).to receive(:disable_statement_timeout).and_call_original
+       end
+ 
+-      context 'using PostgreSQL', :postgresql do
+-        before do
+-          allow(Gitlab::Database).to receive(:postgresql?).and_return(true)
+-          allow(model).to receive(:disable_statement_timeout).and_call_original
+-        end
+-
+-        it 'creates the index concurrently' do
+-          expect(model).to receive(:add_index)
+-            .with(:users, :foo, algorithm: :concurrently)
++      it 'creates the index concurrently' do
++        expect(model).to receive(:add_index)
++          .with(:users, :foo, algorithm: :concurrently)
+ 
+-          model.add_concurrent_index(:users, :foo)
+-        end
+-
+-        it 'creates unique index concurrently' do
+-          expect(model).to receive(:add_index)
+-            .with(:users, :foo, { algorithm: :concurrently, unique: true })
+-
+-          model.add_concurrent_index(:users, :foo, unique: true)
+-        end
+-
+-        it 'does nothing if the index exists already' do
+-          expect(model).to receive(:index_exists?)
+-            .with(:users, :foo, { algorithm: :concurrently, unique: true }).and_return(true)
+-          expect(model).not_to receive(:add_index)
+-
+-          model.add_concurrent_index(:users, :foo, unique: true)
+-        end
++        model.add_concurrent_index(:users, :foo)
+       end
+ 
+-      context 'using MySQL' do
+-        before do
+-          allow(Gitlab::Database).to receive(:postgresql?).and_return(false)
+-        end
++      it 'creates unique index concurrently' do
++        expect(model).to receive(:add_index)
++          .with(:users, :foo, { algorithm: :concurrently, unique: true })
+ 
+-        it 'creates a regular index' do
+-          expect(model).to receive(:add_index)
+-            .with(:users, :foo, {})
+-
+-          model.add_concurrent_index(:users, :foo)
+-        end
++        model.add_concurrent_index(:users, :foo, unique: true)
++      end
+ 
+-        it 'does nothing if the index exists already' do
+-          expect(model).to receive(:index_exists?)
+-            .with(:users, :foo, { unique: true }).and_return(true)
+-          expect(model).not_to receive(:add_index)
++      it 'does nothing if the index exists already' do
++        expect(model).to receive(:index_exists?)
++          .with(:users, :foo, { algorithm: :concurrently, unique: true }).and_return(true)
++        expect(model).not_to receive(:add_index)
+ 
+-          model.add_concurrent_index(:users, :foo, unique: true)
+-        end
++        model.add_concurrent_index(:users, :foo, unique: true)
+       end
+     end
+ 
+@@ -186,28 +140,23 @@
+         allow(model).to receive(:transaction_open?).and_return(false)
+         allow(model).to receive(:index_exists?).and_return(true)
+         allow(model).to receive(:disable_statement_timeout).and_call_original
++        allow(model).to receive(:supports_drop_index_concurrently?).and_return(true)
+       end
+ 
+-      context 'using PostgreSQL' do
+-        before do
+-          allow(model).to receive(:supports_drop_index_concurrently?).and_return(true)
+-        end
+-
+-        describe 'by column name' do
+-          it 'removes the index concurrently' do
+-            expect(model).to receive(:remove_index)
+-              .with(:users, { algorithm: :concurrently, column: :foo })
++      describe 'by column name' do
++        it 'removes the index concurrently' do
++          expect(model).to receive(:remove_index)
++            .with(:users, { algorithm: :concurrently, column: :foo })
+ 
+-            model.remove_concurrent_index(:users, :foo)
+-          end
++          model.remove_concurrent_index(:users, :foo)
++        end
+ 
+-          it 'does nothing if the index does not exist' do
+-            expect(model).to receive(:index_exists?)
+-              .with(:users, :foo, { algorithm: :concurrently, unique: true }).and_return(false)
+-            expect(model).not_to receive(:remove_index)
++        it 'does nothing if the index does not exist' do
++          expect(model).to receive(:index_exists?)
++            .with(:users, :foo, { algorithm: :concurrently, unique: true }).and_return(false)
++          expect(model).not_to receive(:remove_index)
+ 
+-            model.remove_concurrent_index(:users, :foo, unique: true)
+-          end
++          model.remove_concurrent_index(:users, :foo, unique: true)
+         end
+ 
+         describe 'by index name' do
+@@ -230,17 +179,6 @@
+           end
+         end
+       end
+-
+-      context 'using MySQL' do
+-        it 'removes an index' do
+-          expect(Gitlab::Database).to receive(:postgresql?).and_return(false).twice
+-
+-          expect(model).to receive(:remove_index)
+-            .with(:users, { column: :foo })
+-
+-          model.remove_concurrent_index(:users, :foo)
+-        end
+-      end
+     end
+ 
+     context 'inside a transaction' do
+@@ -273,88 +211,44 @@
+         allow(model).to receive(:transaction_open?).and_return(false)
+       end
+ 
+-      context 'using MySQL' do
+-        before do
+-          allow(Gitlab::Database).to receive(:mysql?).and_return(true)
+-        end
++      it 'creates a concurrent foreign key and validates it' do
++        expect(model).to receive(:disable_statement_timeout).and_call_original
++        expect(model).to receive(:execute).with(/statement_timeout/)
++        expect(model).to receive(:execute).ordered.with(/NOT VALID/)
++        expect(model).to receive(:execute).ordered.with(/VALIDATE CONSTRAINT/)
++        expect(model).to receive(:execute).with(/RESET ALL/)
+ 
+-        it 'creates a regular foreign key' do
+-          expect(model).to receive(:add_foreign_key)
+-            .with(:projects, :users, column: :user_id, on_delete: :cascade)
+-
+-          model.add_concurrent_foreign_key(:projects, :users, column: :user_id)
+-        end
+-
+-        it 'allows the use of a custom key name' do
+-          expect(model).to receive(:add_foreign_key).with(
+-            :projects,
+-            :users,
+-            column: :user_id,
+-            on_delete: :cascade,
+-            name: :foo
+-          )
+-
+-          model.add_concurrent_foreign_key(
+-            :projects,
+-            :users,
+-            column: :user_id,
+-            name: :foo
+-          )
+-        end
+-
+-        it 'does not create a foreign key if it exists already' do
+-          expect(model).to receive(:foreign_key_exists?).with(:projects, :users, column: :user_id).and_return(true)
+-          expect(model).not_to receive(:add_foreign_key)
+-
+-          model.add_concurrent_foreign_key(:projects, :users, column: :user_id)
+-        end
++        model.add_concurrent_foreign_key(:projects, :users, column: :user_id)
+       end
+ 
+-      context 'using PostgreSQL' do
+-        before do
+-          allow(Gitlab::Database).to receive(:postgresql?).and_return(true)
+-          allow(Gitlab::Database).to receive(:mysql?).and_return(false)
+-        end
+-
+-        it 'creates a concurrent foreign key and validates it' do
+-          expect(model).to receive(:disable_statement_timeout).and_call_original
+-          expect(model).to receive(:execute).with(/statement_timeout/)
+-          expect(model).to receive(:execute).ordered.with(/NOT VALID/)
+-          expect(model).to receive(:execute).ordered.with(/VALIDATE CONSTRAINT/)
+-          expect(model).to receive(:execute).with(/RESET ALL/)
++      it 'appends a valid ON DELETE statement' do
++        expect(model).to receive(:disable_statement_timeout).and_call_original
++        expect(model).to receive(:execute).with(/statement_timeout/)
++        expect(model).to receive(:execute).with(/ON DELETE SET NULL/)
++        expect(model).to receive(:execute).ordered.with(/VALIDATE CONSTRAINT/)
++        expect(model).to receive(:execute).with(/RESET ALL/)
+ 
+-          model.add_concurrent_foreign_key(:projects, :users, column: :user_id)
+-        end
+-
+-        it 'appends a valid ON DELETE statement' do
+-          expect(model).to receive(:disable_statement_timeout).and_call_original
+-          expect(model).to receive(:execute).with(/statement_timeout/)
+-          expect(model).to receive(:execute).with(/ON DELETE SET NULL/)
+-          expect(model).to receive(:execute).ordered.with(/VALIDATE CONSTRAINT/)
+-          expect(model).to receive(:execute).with(/RESET ALL/)
+-
+-          model.add_concurrent_foreign_key(:projects, :users,
+-                                           column: :user_id,
+-                                           on_delete: :nullify)
+-        end
++        model.add_concurrent_foreign_key(:projects, :users,
++                                         column: :user_id,
++                                         on_delete: :nullify)
++      end
+ 
+-        it 'does not create a foreign key if it exists already' do
+-          expect(model).to receive(:foreign_key_exists?).with(:projects, :users, column: :user_id).and_return(true)
+-          expect(model).not_to receive(:execute).with(/ADD CONSTRAINT/)
+-          expect(model).to receive(:execute).with(/VALIDATE CONSTRAINT/)
++      it 'does not create a foreign key if it exists already' do
++        expect(model).to receive(:foreign_key_exists?).with(:projects, :users, column: :user_id).and_return(true)
++        expect(model).not_to receive(:execute).with(/ADD CONSTRAINT/)
++        expect(model).to receive(:execute).with(/VALIDATE CONSTRAINT/)
+ 
+-          model.add_concurrent_foreign_key(:projects, :users, column: :user_id)
+-        end
++        model.add_concurrent_foreign_key(:projects, :users, column: :user_id)
++      end
+ 
+-        it 'allows the use of a custom key name' do
+-          expect(model).to receive(:disable_statement_timeout).and_call_original
+-          expect(model).to receive(:execute).with(/statement_timeout/)
+-          expect(model).to receive(:execute).ordered.with(/NOT VALID/)
+-          expect(model).to receive(:execute).ordered.with(/VALIDATE CONSTRAINT.+foo/)
+-          expect(model).to receive(:execute).with(/RESET ALL/)
++      it 'allows the use of a custom key name' do
++        expect(model).to receive(:disable_statement_timeout).and_call_original
++        expect(model).to receive(:execute).with(/statement_timeout/)
++        expect(model).to receive(:execute).ordered.with(/NOT VALID/)
++        expect(model).to receive(:execute).ordered.with(/VALIDATE CONSTRAINT.+foo/)
++        expect(model).to receive(:execute).with(/RESET ALL/)
+ 
+-          model.add_concurrent_foreign_key(:projects, :users, column: :user_id, name: :foo)
+-        end
++        model.add_concurrent_foreign_key(:projects, :users, column: :user_id, name: :foo)
+       end
+     end
+   end
+@@ -393,48 +287,43 @@
+   end
+ 
+   describe '#disable_statement_timeout' do
+-    context 'using PostgreSQL' do
+-      it 'disables statement timeouts to current transaction only' do
+-        expect(Gitlab::Database).to receive(:postgresql?).and_return(true)
++    it 'disables statement timeouts to current transaction only' do
++      expect(model).to receive(:execute).with('SET LOCAL statement_timeout TO 0')
+ 
+-        expect(model).to receive(:execute).with('SET LOCAL statement_timeout TO 0')
++      model.disable_statement_timeout
++    end
+ 
+-        model.disable_statement_timeout
++    # this specs runs without an enclosing transaction (:delete truncation method for db_cleaner)
++    context 'with real environment', :delete do
++      before do
++        model.execute("SET statement_timeout TO '20000'")
+       end
+ 
+-      # this specs runs without an enclosing transaction (:delete truncation method for db_cleaner)
+-      context 'with real environment', :postgresql, :delete do
+-        before do
+-          model.execute("SET statement_timeout TO '20000'")
+-        end
+-
+-        after do
+-          model.execute('RESET ALL')
+-        end
+-
+-        it 'defines statement to 0 only for current transaction' do
+-          expect(model.execute('SHOW statement_timeout').first['statement_timeout']).to eq('20s')
++      after do
++        model.execute('RESET ALL')
++      end
+ 
+-          model.connection.transaction do
+-            model.disable_statement_timeout
+-            expect(model.execute('SHOW statement_timeout').first['statement_timeout']).to eq('0')
+-          end
++      it 'defines statement to 0 only for current transaction' do
++        expect(model.execute('SHOW statement_timeout').first['statement_timeout']).to eq('20s')
+ 
+-          expect(model.execute('SHOW statement_timeout').first['statement_timeout']).to eq('20s')
++        model.connection.transaction do
++          model.disable_statement_timeout
++          expect(model.execute('SHOW statement_timeout').first['statement_timeout']).to eq('0')
+         end
++
++        expect(model.execute('SHOW statement_timeout').first['statement_timeout']).to eq('20s')
+       end
+ 
+       context 'when passing a blocks' do
+         it 'disables statement timeouts on session level and executes the block' do
+-          expect(Gitlab::Database).to receive(:postgresql?).and_return(true)
+           expect(model).to receive(:execute).with('SET statement_timeout TO 0')
+-          expect(model).to receive(:execute).with('RESET ALL')
++          expect(model).to receive(:execute).with('RESET ALL').at_least(:once)
+ 
+           expect { |block| model.disable_statement_timeout(&block) }.to yield_control
+         end
+ 
+         # this specs runs without an enclosing transaction (:delete truncation method for db_cleaner)
+-        context 'with real environment', :postgresql, :delete do
++        context 'with real environment', :delete do
+           before do
+             model.execute("SET statement_timeout TO '20000'")
+           end
+@@ -457,69 +346,17 @@
+         end
+       end
+     end
+-
+-    context 'using MySQL' do
+-      it 'does nothing' do
+-        expect(Gitlab::Database).to receive(:postgresql?).and_return(false)
+-
+-        expect(model).not_to receive(:execute)
+-
+-        model.disable_statement_timeout
+-      end
+-
+-      context 'when passing a blocks' do
+-        it 'executes the block of code' do
+-          expect(Gitlab::Database).to receive(:postgresql?).and_return(false)
+-
+-          expect(model).not_to receive(:execute)
+-
+-          expect { |block| model.disable_statement_timeout(&block) }.to yield_control
+-        end
+-      end
+-    end
+   end
+ 
+   describe '#true_value' do
+-    context 'using PostgreSQL' do
+-      before do
+-        expect(Gitlab::Database).to receive(:postgresql?).and_return(true)
+-      end
+-
+-      it 'returns the appropriate value' do
+-        expect(model.true_value).to eq("'t'")
+-      end
+-    end
+-
+-    context 'using MySQL' do
+-      before do
+-        expect(Gitlab::Database).to receive(:postgresql?).and_return(false)
+-      end
+-
+-      it 'returns the appropriate value' do
+-        expect(model.true_value).to eq(1)
+-      end
++    it 'returns the appropriate value' do
++      expect(model.true_value).to eq("'t'")
+     end
+   end
+ 
+   describe '#false_value' do
+-    context 'using PostgreSQL' do
+-      before do
+-        expect(Gitlab::Database).to receive(:postgresql?).and_return(true)
+-      end
+-
+-      it 'returns the appropriate value' do
+-        expect(model.false_value).to eq("'f'")
+-      end
+-    end
+-
+-    context 'using MySQL' do
+-      before do
+-        expect(Gitlab::Database).to receive(:postgresql?).and_return(false)
+-      end
+-
+-      it 'returns the appropriate value' do
+-        expect(model.false_value).to eq(0)
+-      end
++    it 'returns the appropriate value' do
++      expect(model.false_value).to eq("'f'")
+     end
+   end
+ 
+@@ -711,77 +548,37 @@
+       before do
+         allow(model).to receive(:transaction_open?).and_return(false)
+         allow(model).to receive(:column_for).and_return(old_column)
+-
+-        # Since MySQL and PostgreSQL use different quoting styles we'll just
+-        # stub the methods used for this to make testing easier.
+-        allow(model).to receive(:quote_column_name) { |name| name.to_s }
+-        allow(model).to receive(:quote_table_name) { |name| name.to_s }
+       end
+ 
+-      context 'using MySQL' do
+-        it 'renames a column concurrently' do
+-          allow(Gitlab::Database).to receive(:postgresql?).and_return(false)
++      it 'renames a column concurrently' do
++        expect(model).to receive(:check_trigger_permissions!).with(:users)
+ 
+-          expect(model).to receive(:check_trigger_permissions!).with(:users)
++        expect(model).to receive(:install_rename_triggers_for_postgresql)
++          .with(trigger_name, '"users"', '"old"', '"new"')
+ 
+-          expect(model).to receive(:install_rename_triggers_for_mysql)
+-            .with(trigger_name, 'users', 'old', 'new')
++        expect(model).to receive(:add_column)
++          .with(:users, :new, :integer,
++               limit: old_column.limit,
++               precision: old_column.precision,
++               scale: old_column.scale)
+ 
+-          expect(model).to receive(:add_column)
+-            .with(:users, :new, :integer,
+-                 limit: old_column.limit,
+-                 precision: old_column.precision,
+-                 scale: old_column.scale)
++        expect(model).to receive(:change_column_default)
++          .with(:users, :new, old_column.default)
+ 
+-          expect(model).to receive(:change_column_default)
+-            .with(:users, :new, old_column.default)
+-
+-          expect(model).to receive(:update_column_in_batches)
++        expect(model).to receive(:update_column_in_batches)
+ 
+-          expect(model).to receive(:change_column_null).with(:users, :new, false)
++        expect(model).to receive(:change_column_null).with(:users, :new, false)
+ 
+-          expect(model).to receive(:copy_indexes).with(:users, :old, :new)
+-          expect(model).to receive(:copy_foreign_keys).with(:users, :old, :new)
++        expect(model).to receive(:copy_indexes).with(:users, :old, :new)
++        expect(model).to receive(:copy_foreign_keys).with(:users, :old, :new)
+ 
+-          model.rename_column_concurrently(:users, :old, :new)
+-        end
+-      end
+-
+-      context 'using PostgreSQL' do
+-        it 'renames a column concurrently' do
+-          allow(Gitlab::Database).to receive(:postgresql?).and_return(true)
+-
+-          expect(model).to receive(:check_trigger_permissions!).with(:users)
+-
+-          expect(model).to receive(:install_rename_triggers_for_postgresql)
+-            .with(trigger_name, 'users', 'old', 'new')
+-
+-          expect(model).to receive(:add_column)
+-            .with(:users, :new, :integer,
+-                 limit: old_column.limit,
+-                 precision: old_column.precision,
+-                 scale: old_column.scale)
+-
+-          expect(model).to receive(:change_column_default)
+-            .with(:users, :new, old_column.default)
+-
+-          expect(model).to receive(:update_column_in_batches)
+-
+-          expect(model).to receive(:change_column_null).with(:users, :new, false)
+-
+-          expect(model).to receive(:copy_indexes).with(:users, :old, :new)
+-          expect(model).to receive(:copy_foreign_keys).with(:users, :old, :new)
+-
+-          model.rename_column_concurrently(:users, :old, :new)
+-        end
++        model.rename_column_concurrently(:users, :old, :new)
+       end
+     end
+   end
+ 
+   describe '#cleanup_concurrent_column_rename' do
+-    it 'cleans up the renaming procedure for PostgreSQL' do
+-      allow(Gitlab::Database).to receive(:postgresql?).and_return(true)
+-
++    it 'cleans up the renaming procedure' do
+       expect(model).to receive(:check_trigger_permissions!).with(:users)
+ 
+       expect(model).to receive(:remove_rename_triggers_for_postgresql)
+@@ -791,19 +588,6 @@
+ 
+       model.cleanup_concurrent_column_rename(:users, :old, :new)
+     end
+-
+-    it 'cleans up the renaming procedure for MySQL' do
+-      allow(Gitlab::Database).to receive(:postgresql?).and_return(false)
+-
+-      expect(model).to receive(:check_trigger_permissions!).with(:users)
+-
+-      expect(model).to receive(:remove_rename_triggers_for_mysql)
+-        .with(/trigger_.{12}/)
+-
+-      expect(model).to receive(:remove_column).with(:users, :old)
+-
+-      model.cleanup_concurrent_column_rename(:users, :old, :new)
+-    end
+   end
+ 
+   describe '#change_column_type_concurrently' do
+@@ -839,18 +623,6 @@
+     end
+   end
+ 
+-  describe '#install_rename_triggers_for_mysql' do
+-    it 'installs the triggers for MySQL' do
+-      expect(model).to receive(:execute)
+-        .with(/CREATE TRIGGER foo_insert.+ON users/m)
+-
+-      expect(model).to receive(:execute)
+-        .with(/CREATE TRIGGER foo_update.+ON users/m)
+-
+-      model.install_rename_triggers_for_mysql('foo', :users, :old, :new)
+-    end
+-  end
+-
+   describe '#remove_rename_triggers_for_postgresql' do
+     it 'removes the function and trigger' do
+       expect(model).to receive(:execute).with('DROP TRIGGER IF EXISTS foo ON bar')
+@@ -860,15 +632,6 @@
+     end
+   end
+ 
+-  describe '#remove_rename_triggers_for_mysql' do
+-    it 'removes the triggers' do
+-      expect(model).to receive(:execute).with('DROP TRIGGER IF EXISTS foo_insert')
+-      expect(model).to receive(:execute).with('DROP TRIGGER IF EXISTS foo_update')
+-
+-      model.remove_rename_triggers_for_mysql('foo')
+-    end
+-  end
+-
+   describe '#rename_trigger_name' do
+     it 'returns a String' do
+       expect(model.rename_trigger_name(:users, :foo, :bar))
+@@ -1088,26 +851,9 @@
+   end
+ 
+   describe '#replace_sql' do
+-    context 'using postgres' do
+-      before do
+-        allow(Gitlab::Database).to receive(:mysql?).and_return(false)
+-      end
+-
+-      it 'builds the sql with correct functions' do
+-        expect(model.replace_sql(Arel::Table.new(:users)[:first_name], "Alice", "Eve").to_s)
+-          .to include('regexp_replace')
+-      end
+-    end
+-
+-    context 'using mysql' do
+-      before do
+-        allow(Gitlab::Database).to receive(:mysql?).and_return(true)
+-      end
+-
+-      it 'builds the sql with the correct functions' do
+-        expect(model.replace_sql(Arel::Table.new(:users)[:first_name], "Alice", "Eve").to_s)
+-          .to include('locate', 'insert')
+-      end
++    it 'builds the sql with correct functions' do
++      expect(model.replace_sql(Arel::Table.new(:users)[:first_name], "Alice", "Eve").to_s)
++        .to include('regexp_replace')
+     end
+ 
+     describe 'results' do
+@@ -1464,7 +1210,7 @@
+         .to be_falsy
+     end
+ 
+-    context 'when an index with a function exists', :postgresql do
++    context 'when an index with a function exists' do
+       before do
+         ActiveRecord::Base.connection.execute(
+           'CREATE INDEX test_index ON projects (LOWER(path));'
+diff --git a/spec/lib/gitlab/database_spec.rb b/spec/lib/gitlab/database_spec.rb
+index 5f57cd6b82..9e8712266e 100644
+--- a/spec/lib/gitlab/database_spec.rb
++++ b/spec/lib/gitlab/database_spec.rb
+@@ -24,21 +24,13 @@
+       expect(described_class.human_adapter_name).to eq('PostgreSQL')
+     end
+ 
+-    it 'returns MySQL when using MySQL' do
++    it 'returns Unknown when using anything else' do
+       allow(described_class).to receive(:postgresql?).and_return(false)
+ 
+-      expect(described_class.human_adapter_name).to eq('MySQL')
++      expect(described_class.human_adapter_name).to eq('Unknown')
+     end
+   end
+ 
+-  # These are just simple smoke tests to check if the methods work (regardless
+-  # of what they may return).
+-  describe '.mysql?' do
+-    subject { described_class.mysql? }
+-
+-    it { is_expected.to satisfy { |val| val == true || val == false } }
+-  end
+-
+   describe '.postgresql?' do
+     subject { described_class.postgresql? }
+ 
+@@ -52,15 +44,6 @@
+       described_class.instance_variable_set(:@version, nil)
+     end
+ 
+-    context "on mysql" do
+-      it "extracts the version number" do
+-        allow(described_class).to receive(:database_version)
+-          .and_return("5.7.12-standard")
+-
+-        expect(described_class.version).to eq '5.7.12-standard'
+-      end
+-    end
+-
+     context "on postgresql" do
+       it "extracts the version number" do
+         allow(described_class).to receive(:database_version)
+@@ -80,7 +63,7 @@
+   end
+ 
+   describe '.postgresql_9_or_less?' do
+-    it 'returns false when using MySQL' do
++    it 'returns false when not using postgresql' do
+       allow(described_class).to receive(:postgresql?).and_return(false)
+ 
+       expect(described_class.postgresql_9_or_less?).to eq(false)
+@@ -134,7 +117,7 @@
+   end
+ 
+   describe '.join_lateral_supported?' do
+-    it 'returns false when using MySQL' do
++    it 'returns false when not using postgresql' do
+       allow(described_class).to receive(:postgresql?).and_return(false)
+ 
+       expect(described_class.join_lateral_supported?).to eq(false)
+@@ -156,7 +139,7 @@
+   end
+ 
+   describe '.replication_slots_supported?' do
+-    it 'returns false when using MySQL' do
++    it 'returns false when not using postgresql' do
+       allow(described_class).to receive(:postgresql?).and_return(false)
+ 
+       expect(described_class.replication_slots_supported?).to eq(false)
+@@ -248,43 +231,13 @@
+   end
+ 
+   describe '.nulls_last_order' do
+-    context 'when using PostgreSQL' do
+-      before do
+-        expect(described_class).to receive(:postgresql?).and_return(true)
+-      end
+-
+-      it { expect(described_class.nulls_last_order('column', 'ASC')).to eq 'column ASC NULLS LAST'}
+-      it { expect(described_class.nulls_last_order('column', 'DESC')).to eq 'column DESC NULLS LAST'}
+-    end
+-
+-    context 'when using MySQL' do
+-      before do
+-        expect(described_class).to receive(:postgresql?).and_return(false)
+-      end
+-
+-      it { expect(described_class.nulls_last_order('column', 'ASC')).to eq 'column IS NULL, column ASC'}
+-      it { expect(described_class.nulls_last_order('column', 'DESC')).to eq 'column DESC'}
+-    end
++    it { expect(described_class.nulls_last_order('column', 'ASC')).to eq 'column ASC NULLS LAST'}
++    it { expect(described_class.nulls_last_order('column', 'DESC')).to eq 'column DESC NULLS LAST'}
+   end
+ 
+   describe '.nulls_first_order' do
+-    context 'when using PostgreSQL' do
+-      before do
+-        expect(described_class).to receive(:postgresql?).and_return(true)
+-      end
+-
+-      it { expect(described_class.nulls_first_order('column', 'ASC')).to eq 'column ASC NULLS FIRST'}
+-      it { expect(described_class.nulls_first_order('column', 'DESC')).to eq 'column DESC NULLS FIRST'}
+-    end
+-
+-    context 'when using MySQL' do
+-      before do
+-        expect(described_class).to receive(:postgresql?).and_return(false)
+-      end
+-
+-      it { expect(described_class.nulls_first_order('column', 'ASC')).to eq 'column ASC'}
+-      it { expect(described_class.nulls_first_order('column', 'DESC')).to eq 'column IS NULL, column DESC'}
+-    end
++    it { expect(described_class.nulls_first_order('column', 'ASC')).to eq 'column ASC NULLS FIRST'}
++    it { expect(described_class.nulls_first_order('column', 'DESC')).to eq 'column DESC NULLS FIRST'}
+   end
+ 
+   describe '.with_connection_pool' do
+@@ -394,10 +347,6 @@
+     end
+ 
+     context 'when using PostgreSQL' do
+-      before do
+-        allow(described_class).to receive(:mysql?).and_return(false)
+-      end
+-
+       it 'allows the returning of the IDs of the inserted rows' do
+         result = double(:result, values: [['10']])
+ 
+@@ -463,31 +412,15 @@
+   end
+ 
+   describe '#true_value' do
+-    it 'returns correct value for PostgreSQL' do
+-      expect(described_class).to receive(:postgresql?).and_return(true)
+-
++    it 'returns correct value' do
+       expect(described_class.true_value).to eq "'t'"
+     end
+-
+-    it 'returns correct value for MySQL' do
+-      expect(described_class).to receive(:postgresql?).and_return(false)
+-
+-      expect(described_class.true_value).to eq 1
+-    end
+   end
+ 
+   describe '#false_value' do
+-    it 'returns correct value for PostgreSQL' do
+-      expect(described_class).to receive(:postgresql?).and_return(true)
+-
++    it 'returns correct value' do
+       expect(described_class.false_value).to eq "'f'"
+     end
+-
+-    it 'returns correct value for MySQL' do
+-      expect(described_class).to receive(:postgresql?).and_return(false)
+-
+-      expect(described_class.false_value).to eq 0
+-    end
+   end
+ 
+   describe '.read_only?' do
+@@ -497,43 +430,33 @@
+   end
+ 
+   describe '.db_read_only?' do
+-    context 'when using PostgreSQL' do
+-      before do
+-        allow(ActiveRecord::Base.connection).to receive(:execute).and_call_original
+-        allow(described_class).to receive(:postgresql?).and_return(true)
+-      end
+-
+-      it 'detects a read only database' do
+-        allow(ActiveRecord::Base.connection).to receive(:execute).with('SELECT pg_is_in_recovery()').and_return([{ "pg_is_in_recovery" => "t" }])
+-
+-        expect(described_class.db_read_only?).to be_truthy
+-      end
++    before do
++      allow(ActiveRecord::Base.connection).to receive(:execute).and_call_original
++      allow(described_class).to receive(:postgresql?).and_return(true)
++    end
+ 
+-      it 'detects a read only database' do
+-        allow(ActiveRecord::Base.connection).to receive(:execute).with('SELECT pg_is_in_recovery()').and_return([{ "pg_is_in_recovery" => true }])
++    it 'detects a read only database' do
++      allow(ActiveRecord::Base.connection).to receive(:execute).with('SELECT pg_is_in_recovery()').and_return([{ "pg_is_in_recovery" => "t" }])
+ 
+-        expect(described_class.db_read_only?).to be_truthy
+-      end
++      expect(described_class.db_read_only?).to be_truthy
++    end
+ 
+-      it 'detects a read write database' do
+-        allow(ActiveRecord::Base.connection).to receive(:execute).with('SELECT pg_is_in_recovery()').and_return([{ "pg_is_in_recovery" => "f" }])
++    it 'detects a read only database' do
++      allow(ActiveRecord::Base.connection).to receive(:execute).with('SELECT pg_is_in_recovery()').and_return([{ "pg_is_in_recovery" => true }])
+ 
+-        expect(described_class.db_read_only?).to be_falsey
+-      end
++      expect(described_class.db_read_only?).to be_truthy
++    end
+ 
+-      it 'detects a read write database' do
+-        allow(ActiveRecord::Base.connection).to receive(:execute).with('SELECT pg_is_in_recovery()').and_return([{ "pg_is_in_recovery" => false }])
++    it 'detects a read write database' do
++      allow(ActiveRecord::Base.connection).to receive(:execute).with('SELECT pg_is_in_recovery()').and_return([{ "pg_is_in_recovery" => "f" }])
+ 
+-        expect(described_class.db_read_only?).to be_falsey
+-      end
++      expect(described_class.db_read_only?).to be_falsey
+     end
+ 
+-    context 'when using MySQL' do
+-      before do
+-        expect(described_class).to receive(:postgresql?).and_return(false)
+-      end
++    it 'detects a read write database' do
++      allow(ActiveRecord::Base.connection).to receive(:execute).with('SELECT pg_is_in_recovery()').and_return([{ "pg_is_in_recovery" => false }])
+ 
+-      it { expect(described_class.db_read_only?).to be_falsey }
++      expect(described_class.db_read_only?).to be_falsey
+     end
+   end
+ 
+diff --git a/spec/lib/gitlab/import/database_helpers_spec.rb b/spec/lib/gitlab/import/database_helpers_spec.rb
+index e716155b7d..3ac3445517 100644
+--- a/spec/lib/gitlab/import/database_helpers_spec.rb
++++ b/spec/lib/gitlab/import/database_helpers_spec.rb
+@@ -15,32 +15,15 @@
+     let(:attributes) { { iid: 1, title: 'foo' } }
+     let(:project) { create(:project) }
+ 
+-    context 'on PostgreSQL' do
+-      it 'returns the ID returned by the query' do
+-        expect(Gitlab::Database)
+-          .to receive(:bulk_insert)
+-          .with(Issue.table_name, [attributes], return_ids: true)
+-          .and_return([10])
++    it 'returns the ID returned by the query' do
++      expect(Gitlab::Database)
++        .to receive(:bulk_insert)
++        .with(Issue.table_name, [attributes], return_ids: true)
++        .and_return([10])
+ 
+-        id = subject.insert_and_return_id(attributes, project.issues)
++      id = subject.insert_and_return_id(attributes, project.issues)
+ 
+-        expect(id).to eq(10)
+-      end
+-    end
+-
+-    context 'on MySQL' do
+-      it 'uses a separate query to retrieve the ID' do
+-        issue = create(:issue, project: project, iid: attributes[:iid])
+-
+-        expect(Gitlab::Database)
+-          .to receive(:bulk_insert)
+-          .with(Issue.table_name, [attributes], return_ids: true)
+-          .and_return([])
+-
+-        id = subject.insert_and_return_id(attributes, project.issues)
+-
+-        expect(id).to eq(issue.id)
+-      end
++      expect(id).to eq(10)
+     end
+   end
+ end
+diff --git a/spec/lib/serializers/json_spec.rb b/spec/lib/serializers/json_spec.rb
+index 5d59d66e8b..847a01d186 100644
+--- a/spec/lib/serializers/json_spec.rb
++++ b/spec/lib/serializers/json_spec.rb
+@@ -6,24 +6,8 @@
+ 
+     subject { described_class.dump(obj) }
+ 
+-    context 'when MySQL is used' do
+-      before do
+-        allow(Gitlab::Database).to receive(:adapter_name) { 'mysql2' }
+-      end
+-
+-      it 'encodes as string' do
+-        is_expected.to eq('{"key":"value"}')
+-      end
+-    end
+-
+-    context 'when PostgreSQL is used' do
+-      before do
+-        allow(Gitlab::Database).to receive(:adapter_name) { 'postgresql' }
+-      end
+-
+-      it 'returns a hash' do
+-        is_expected.to eq(obj)
+-      end
++    it 'returns a hash' do
++      is_expected.to eq(obj)
+     end
+   end
+ 
+@@ -31,7 +15,13 @@
+     let(:data_string) { '{"key":"value","variables":[{"key":"VAR1","value":"VALUE1"}]}' }
+     let(:data_hash) { JSON.parse(data_string) }
+ 
+-    shared_examples 'having consistent accessor' do
++    context 'when loading a hash' do
++      subject { described_class.load(data_hash) }
++
++      it 'decodes a string' do
++        is_expected.to be_a(Hash)
++      end
++
+       it 'allows to access with symbols' do
+         expect(subject[:key]).to eq('value')
+         expect(subject[:variables].first[:key]).to eq('VAR1')
+@@ -43,59 +33,11 @@
+       end
+     end
+ 
+-    context 'when MySQL is used' do
+-      before do
+-        allow(Gitlab::Database).to receive(:adapter_name) { 'mysql2' }
+-      end
+-
+-      context 'when loading a string' do
+-        subject { described_class.load(data_string) }
+-
+-        it 'decodes a string' do
+-          is_expected.to be_a(Hash)
+-        end
+-
+-        it_behaves_like 'having consistent accessor'
+-      end
+-
+-      context 'when loading a different type' do
+-        subject { described_class.load({ key: 'hash' }) }
+-
+-        it 'raises an exception' do
+-          expect { subject }.to raise_error(TypeError)
+-        end
+-      end
+-
+-      context 'when loading a nil' do
+-        subject { described_class.load(nil) }
+-
+-        it 'returns nil' do
+-          is_expected.to be_nil
+-        end
+-      end
+-    end
+-
+-    context 'when PostgreSQL is used' do
+-      before do
+-        allow(Gitlab::Database).to receive(:adapter_name) { 'postgresql' }
+-      end
+-
+-      context 'when loading a hash' do
+-        subject { described_class.load(data_hash) }
+-
+-        it 'decodes a string' do
+-          is_expected.to be_a(Hash)
+-        end
+-
+-        it_behaves_like 'having consistent accessor'
+-      end
+-
+-      context 'when loading a nil' do
+-        subject { described_class.load(nil) }
++    context 'when loading a nil' do
++      subject { described_class.load(nil) }
+ 
+-        it 'returns nil' do
+-          is_expected.to be_nil
+-        end
++      it 'returns nil' do
++        is_expected.to be_nil
+       end
+     end
+   end
+diff --git a/spec/models/concerns/case_sensitivity_spec.rb b/spec/models/concerns/case_sensitivity_spec.rb
+index d6d41a25ea..9819f656f0 100644
+--- a/spec/models/concerns/case_sensitivity_spec.rb
++++ b/spec/models/concerns/case_sensitivity_spec.rb
+@@ -28,28 +28,13 @@
+         .to contain_exactly(model_1)
+     end
+ 
+-    # Using `mysql` & `postgresql` metadata-tags here because both adapters build
+-    # the query slightly differently
+-    context 'for MySQL', :mysql do
+-      it 'builds a simple query' do
+-        query = model.iwhere(path: %w(MODEL-1 model-2), name: 'model 1').to_sql
+-        expected_query = <<~QRY.strip
+-        SELECT `namespaces`.* FROM `namespaces` WHERE (`namespaces`.`path` IN ('MODEL-1', 'model-2')) AND (`namespaces`.`name` = 'model 1')
+-        QRY
+-
+-        expect(query).to eq(expected_query)
+-      end
+-    end
++    it 'builds a query using LOWER' do
++      query = model.iwhere(path: %w(MODEL-1 model-2), name: 'model 1').to_sql
++      expected_query = <<~QRY.strip
++      SELECT \"namespaces\".* FROM \"namespaces\" WHERE (LOWER(\"namespaces\".\"path\") IN (LOWER('MODEL-1'), LOWER('model-2'))) AND (LOWER(\"namespaces\".\"name\") = LOWER('model 1'))
++      QRY
+ 
+-    context 'for PostgreSQL', :postgresql do
+-      it 'builds a query using LOWER' do
+-        query = model.iwhere(path: %w(MODEL-1 model-2), name: 'model 1').to_sql
+-        expected_query = <<~QRY.strip
+-        SELECT \"namespaces\".* FROM \"namespaces\" WHERE (LOWER(\"namespaces\".\"path\") IN (LOWER('MODEL-1'), LOWER('model-2'))) AND (LOWER(\"namespaces\".\"name\") = LOWER('model 1'))
+-        QRY
+-
+-        expect(query).to eq(expected_query)
+-      end
++      expect(query).to eq(expected_query)
+     end
+   end
+ end
+diff --git a/spec/spec_helper.rb b/spec/spec_helper.rb
+index a6fb172e79..a44b5069ad 100644
+--- a/spec/spec_helper.rb
++++ b/spec/spec_helper.rb
+@@ -266,10 +266,6 @@
+     example.run if Gitlab::Database.postgresql?
+   end
+ 
+-  config.around(:each, :mysql) do |example|
+-    example.run if Gitlab::Database.mysql?
+-  end
+-
+   # This makes sure the `ApplicationController#can?` method is stubbed with the
+   # original implementation for all view specs.
+   config.before(:each, type: :view) do
+diff --git a/spec/workers/background_migration_worker_spec.rb b/spec/workers/background_migration_worker_spec.rb
+index 746c858609..e5be8ce042 100644
+--- a/spec/workers/background_migration_worker_spec.rb
++++ b/spec/workers/background_migration_worker_spec.rb
+@@ -55,21 +55,13 @@
+   end
+ 
+   describe '#healthy_database?' do
+-    context 'using MySQL', :mysql do
+-      it 'returns true' do
+-        expect(worker.healthy_database?).to eq(true)
+-      end
+-    end
+-
+-    context 'using PostgreSQL', :postgresql do
+-      context 'when replication lag is too great' do
+-        it 'returns false' do
+-          allow(Postgresql::ReplicationSlot)
+-            .to receive(:lag_too_great?)
+-            .and_return(true)
++    context 'when replication lag is too great' do
++      it 'returns false' do
++        allow(Postgresql::ReplicationSlot)
++          .to receive(:lag_too_great?)
++          .and_return(true)
+ 
+-          expect(worker.healthy_database?).to eq(false)
+-        end
++        expect(worker.healthy_database?).to eq(false)
+       end
+ 
+       context 'when replication lag is small enough' do

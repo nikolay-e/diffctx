@@ -1,0 +1,69 @@
+From 2707686f9d8fd8d147256f67a2946b086771c6fd Mon Sep 17 00:00:00 2001
+From: Paulus Schoutsen <balloob@gmail.com>
+Date: Thu, 2 Jul 2026 21:23:24 +0200
+Subject: [PATCH] Rename Modbus integration to "Manual Modbus" (#175389)
+
+Co-authored-by: Claude <noreply@anthropic.com>
+---
+ homeassistant/components/modbus/manifest.json | 2 +-
+ homeassistant/components/modbus/strings.json  | 3 ++-
+ homeassistant/generated/integrations.json     | 2 +-
+ script/hassfest/translations.py               | 1 +
+ 4 files changed, 5 insertions(+), 3 deletions(-)
+
+diff --git a/homeassistant/components/modbus/manifest.json b/homeassistant/components/modbus/manifest.json
+index 30945c8a13..7709841a3b 100644
+--- a/homeassistant/components/modbus/manifest.json
++++ b/homeassistant/components/modbus/manifest.json
+@@ -1,6 +1,6 @@
+ {
+   "domain": "modbus",
+-  "name": "Modbus",
++  "name": "Manual Modbus",
+   "codeowners": [],
+   "documentation": "https://www.home-assistant.io/integrations/modbus",
+   "iot_class": "local_polling",
+diff --git a/homeassistant/components/modbus/strings.json b/homeassistant/components/modbus/strings.json
+index d0d78d726e..08d29cc9aa 100644
+--- a/homeassistant/components/modbus/strings.json
++++ b/homeassistant/components/modbus/strings.json
+@@ -90,5 +90,6 @@
+       },
+       "name": "Write register"
+     }
+-  }
++  },
++  "title": "Manual Modbus"
+ }
+diff --git a/homeassistant/generated/integrations.json b/homeassistant/generated/integrations.json
+index 4ee7c315ed..58949fe059 100644
+--- a/homeassistant/generated/integrations.json
++++ b/homeassistant/generated/integrations.json
+@@ -4364,7 +4364,6 @@
+       "iot_class": "local_polling"
+     },
+     "modbus": {
+-      "name": "Modbus",
+       "integration_type": "hub",
+       "config_flow": false,
+       "iot_class": "local_polling"
+@@ -8488,6 +8487,7 @@
+     "local_todo",
+     "min_max",
+     "mobile_app",
++    "modbus",
+     "moehlenhoff_alpha2",
+     "mold_indicator",
+     "moon",
+diff --git a/script/hassfest/translations.py b/script/hassfest/translations.py
+index f9f2d1df30..7369ed7b73 100644
+--- a/script/hassfest/translations.py
++++ b/script/hassfest/translations.py
+@@ -45,6 +45,7 @@ ALLOW_NAME_TRANSLATION = {
+     "local_calendar",
+     "local_ip",
+     "local_todo",
++    "modbus",
+     "nmap_tracker",
+     "remote_calendar",
+     "rpi_power",

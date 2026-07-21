@@ -1,0 +1,394 @@
+From 223fe49184a2cb8cad804385cd3a3d1772dbe34e Mon Sep 17 00:00:00 2001
+From: Brennan <brecon@microsoft.com>
+Date: Fri, 18 Jul 2025 10:59:39 -0700
+Subject: [PATCH] Obsolete RazorRuntimeCompilation (#62793)
+
+---
+ .../src/AssemblyPartExtensions.cs                         | 1 +
+ .../MvcRazorRuntimeCompilationOptionsSetup.cs             | 4 ++++
+ .../RazorRuntimeCompilationMvcBuilderExtensions.cs        | 1 +
+ .../RazorRuntimeCompilationMvcCoreBuilderExtensions.cs    | 1 +
+ .../src/FileProviderRazorProjectFileSystem.cs             | 4 ++++
+ .../src/FileProviderRazorProjectItem.cs                   | 1 +
+ .../src/MvcRazorRuntimeCompilationOptions.cs              | 1 +
+ .../src/RazorReferenceManager.cs                          | 4 ++++
+ .../src/RazorRuntimeCompilationHostingStartup.cs          | 2 ++
+ .../src/RuntimeCompilationFileProvider.cs                 | 8 ++++++++
+ ...RazorRuntimeCompilationMvcCoreBuilderExtensionsTest.cs | 4 ++++
+ .../test/FileProviderRazorProjectFileSystemTest.cs        | 2 ++
+ .../test/RazorReferenceManagerTest.cs                     | 2 ++
+ .../test/RuntimeCompilationFileProviderTest.cs            | 2 ++
+ .../test/RuntimeViewCompilerTest.cs                       | 4 ++++
+ .../test/TestInfrastructure/TestRazorReferenceManager.cs  | 2 ++
+ src/Mvc/test/Mvc.FunctionalTests/ErrorPageTests.cs        | 4 ++++
+ src/Mvc/test/Mvc.FunctionalTests/RazorBuildTest.cs        | 2 ++
+ .../RazorRuntimeCompilationHostingStartupTest.cs          | 2 ++
+ 19 files changed, 51 insertions(+)
+
+diff --git a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/AssemblyPartExtensions.cs b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/AssemblyPartExtensions.cs
+index 94a7eb41c4..a15d1155ae 100644
+--- a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/AssemblyPartExtensions.cs
++++ b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/AssemblyPartExtensions.cs
+@@ -9,6 +9,7 @@ namespace Microsoft.AspNetCore.Mvc.ApplicationParts;
+ /// <summary>
+ /// Static class that adds methods to <see cref="AssemblyPart"/>.
+ /// </summary>
++[Obsolete("Razor runtime compilation is obsolete and is not recommended for production scenarios. For production scenarios, use the default build time compilation. For development scenarios, use Hot Reload instead. For more information, visit https://aka.ms/aspnet/deprecate/003.", DiagnosticId = "ASPDEPR003")]
+ public static class AssemblyPartExtensions
+ {
+     /// <inheritdoc />
+diff --git a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/DependencyInjection/MvcRazorRuntimeCompilationOptionsSetup.cs b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/DependencyInjection/MvcRazorRuntimeCompilationOptionsSetup.cs
+index 33eae53219..78b648781b 100644
+--- a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/DependencyInjection/MvcRazorRuntimeCompilationOptionsSetup.cs
++++ b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/DependencyInjection/MvcRazorRuntimeCompilationOptionsSetup.cs
+@@ -6,7 +6,9 @@ using Microsoft.Extensions.Options;
+ 
+ namespace Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation;
+ 
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+ internal sealed class MvcRazorRuntimeCompilationOptionsSetup : IConfigureOptions<MvcRazorRuntimeCompilationOptions>
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+ {
+     private readonly IWebHostEnvironment _hostingEnvironment;
+ 
+@@ -15,7 +17,9 @@ internal sealed class MvcRazorRuntimeCompilationOptionsSetup : IConfigureOptions
+         _hostingEnvironment = hostingEnvironment ?? throw new ArgumentNullException(nameof(hostingEnvironment));
+     }
+ 
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+     public void Configure(MvcRazorRuntimeCompilationOptions options)
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+     {
+         ArgumentNullException.ThrowIfNull(options);
+ 
+diff --git a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/DependencyInjection/RazorRuntimeCompilationMvcBuilderExtensions.cs b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/DependencyInjection/RazorRuntimeCompilationMvcBuilderExtensions.cs
+index c6518101b0..071f204bc5 100644
+--- a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/DependencyInjection/RazorRuntimeCompilationMvcBuilderExtensions.cs
++++ b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/DependencyInjection/RazorRuntimeCompilationMvcBuilderExtensions.cs
+@@ -8,6 +8,7 @@ namespace Microsoft.Extensions.DependencyInjection;
+ /// <summary>
+ /// Static class that adds razor compilation extension methods.
+ /// </summary>
++[Obsolete("Razor runtime compilation is obsolete and is not recommended for production scenarios. For production scenarios, use the default build time compilation. For development scenarios, use Hot Reload instead. For more information, visit https://aka.ms/aspnet/deprecate/003.", DiagnosticId = "ASPDEPR003")]
+ public static class RazorRuntimeCompilationMvcBuilderExtensions
+ {
+     /// <summary>
+diff --git a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/DependencyInjection/RazorRuntimeCompilationMvcCoreBuilderExtensions.cs b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/DependencyInjection/RazorRuntimeCompilationMvcCoreBuilderExtensions.cs
+index c74402f64e..6c94629728 100644
+--- a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/DependencyInjection/RazorRuntimeCompilationMvcCoreBuilderExtensions.cs
++++ b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/DependencyInjection/RazorRuntimeCompilationMvcCoreBuilderExtensions.cs
+@@ -20,6 +20,7 @@ namespace Microsoft.Extensions.DependencyInjection;
+ /// <summary>
+ /// Static class that adds razor runtime compilation extension methods.
+ /// </summary>
++[Obsolete("Razor runtime compilation is obsolete and is not recommended for production scenarios. For production scenarios, use the default build time compilation. For development scenarios, use Hot Reload instead. For more information, visit https://aka.ms/aspnet/deprecate/003.", DiagnosticId = "ASPDEPR003")]
+ public static class RazorRuntimeCompilationMvcCoreBuilderExtensions
+ {
+     /// <summary>
+diff --git a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/FileProviderRazorProjectFileSystem.cs b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/FileProviderRazorProjectFileSystem.cs
+index d6045545f4..6313959101 100644
+--- a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/FileProviderRazorProjectFileSystem.cs
++++ b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/FileProviderRazorProjectFileSystem.cs
+@@ -34,7 +34,9 @@ internal sealed class FileProviderRazorProjectFileSystem : RazorProjectFileSyste
+         path = NormalizeAndEnsureValidPath(path);
+         var fileInfo = FileProvider.GetFileInfo(path);
+ 
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+         return new FileProviderRazorProjectItem(fileInfo, basePath: string.Empty, filePath: path, root: _hostingEnvironment.ContentRootPath, fileKind);
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+     }
+ 
+     public override IEnumerable<RazorProjectItem> EnumerateItems(string path)
+@@ -63,7 +65,9 @@ internal sealed class FileProviderRazorProjectFileSystem : RazorProjectFileSyste
+                 {
+                     var filePath = prefix + "/" + fileInfo.Name;
+ 
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+                     yield return new FileProviderRazorProjectItem(fileInfo, basePath, filePath: filePath, root: _hostingEnvironment.ContentRootPath);
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+                 }
+             }
+         }
+diff --git a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/FileProviderRazorProjectItem.cs b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/FileProviderRazorProjectItem.cs
+index 2a05375f5c..b867ac2d8e 100644
+--- a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/FileProviderRazorProjectItem.cs
++++ b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/FileProviderRazorProjectItem.cs
+@@ -9,6 +9,7 @@ namespace Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation;
+ /// <summary>
+ /// A file provider <see cref="RazorProjectItem"/>.
+ /// </summary>
++[Obsolete("Razor runtime compilation is obsolete and is not recommended for production scenarios. For production scenarios, use the default build time compilation. For development scenarios, use Hot Reload instead. For more information, visit https://aka.ms/aspnet/deprecate/003.", DiagnosticId = "ASPDEPR003")]
+ public class FileProviderRazorProjectItem : RazorProjectItem
+ {
+     private readonly string _root;
+diff --git a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/MvcRazorRuntimeCompilationOptions.cs b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/MvcRazorRuntimeCompilationOptions.cs
+index dc4d8017b9..bf352f4911 100644
+--- a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/MvcRazorRuntimeCompilationOptions.cs
++++ b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/MvcRazorRuntimeCompilationOptions.cs
+@@ -10,6 +10,7 @@ namespace Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation;
+ /// <summary>
+ /// Used to configure razor compilation.
+ /// </summary>
++[Obsolete("Razor runtime compilation is obsolete and is not recommended for production scenarios. For production scenarios, use the default build time compilation. For development scenarios, use Hot Reload instead. For more information, visit https://aka.ms/aspnet/deprecate/003.", DiagnosticId = "ASPDEPR003")]
+ public class MvcRazorRuntimeCompilationOptions
+ {
+     /// <summary>
+diff --git a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/RazorReferenceManager.cs b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/RazorReferenceManager.cs
+index 6e077cbe71..20ed11166d 100644
+--- a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/RazorReferenceManager.cs
++++ b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/RazorReferenceManager.cs
+@@ -14,14 +14,18 @@ internal class RazorReferenceManager
+ #pragma warning restore CA1852 // Seal internal types
+ {
+     private readonly ApplicationPartManager _partManager;
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+     private readonly MvcRazorRuntimeCompilationOptions _options;
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+     private object _compilationReferencesLock = new object();
+     private bool _compilationReferencesInitialized;
+     private IReadOnlyList<MetadataReference>? _compilationReferences;
+ 
+     public RazorReferenceManager(
+         ApplicationPartManager partManager,
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+         IOptions<MvcRazorRuntimeCompilationOptions> options)
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+     {
+         _partManager = partManager;
+         _options = options.Value;
+diff --git a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/RazorRuntimeCompilationHostingStartup.cs b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/RazorRuntimeCompilationHostingStartup.cs
+index 51f5959709..055104676e 100644
+--- a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/RazorRuntimeCompilationHostingStartup.cs
++++ b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/RazorRuntimeCompilationHostingStartup.cs
+@@ -11,6 +11,8 @@ internal sealed class RazorRuntimeCompilationHostingStartup : IHostingStartup
+     public void Configure(IWebHostBuilder builder)
+     {
+         // Add Razor services
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+         builder.ConfigureServices(RazorRuntimeCompilationMvcCoreBuilderExtensions.AddServices);
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+     }
+ }
+diff --git a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/RuntimeCompilationFileProvider.cs b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/RuntimeCompilationFileProvider.cs
+index 1a91234521..228f3b33c3 100644
+--- a/src/Mvc/Mvc.Razor.RuntimeCompilation/src/RuntimeCompilationFileProvider.cs
++++ b/src/Mvc/Mvc.Razor.RuntimeCompilation/src/RuntimeCompilationFileProvider.cs
+@@ -8,10 +8,14 @@ namespace Microsoft.AspNetCore.Mvc.Razor.RuntimeCompilation;
+ 
+ internal sealed class RuntimeCompilationFileProvider
+ {
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+     private readonly MvcRazorRuntimeCompilationOptions _options;
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+     private IFileProvider? _compositeFileProvider;
+ 
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+     public RuntimeCompilationFileProvider(IOptions<MvcRazorRuntimeCompilationOptions> options)
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+     {
+         ArgumentNullException.ThrowIfNull(options);
+ 
+@@ -31,15 +35,19 @@ internal sealed class RuntimeCompilationFileProvider
+         }
+     }
+ 
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+     private static IFileProvider GetCompositeFileProvider(MvcRazorRuntimeCompilationOptions options)
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+     {
+         var fileProviders = options.FileProviders;
+         if (fileProviders.Count == 0)
+         {
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+             var message = Resources.FormatFileProvidersAreRequired(
+                 typeof(MvcRazorRuntimeCompilationOptions).FullName,
+                 nameof(MvcRazorRuntimeCompilationOptions.FileProviders),
+                 typeof(IFileProvider).FullName);
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+             throw new InvalidOperationException(message);
+         }
+         else if (fileProviders.Count == 1)
+diff --git a/src/Mvc/Mvc.Razor.RuntimeCompilation/test/DependencyInjection/RazorRuntimeCompilationMvcCoreBuilderExtensionsTest.cs b/src/Mvc/Mvc.Razor.RuntimeCompilation/test/DependencyInjection/RazorRuntimeCompilationMvcCoreBuilderExtensionsTest.cs
+index e0fb216256..ebcc077929 100644
+--- a/src/Mvc/Mvc.Razor.RuntimeCompilation/test/DependencyInjection/RazorRuntimeCompilationMvcCoreBuilderExtensionsTest.cs
++++ b/src/Mvc/Mvc.Razor.RuntimeCompilation/test/DependencyInjection/RazorRuntimeCompilationMvcCoreBuilderExtensionsTest.cs
+@@ -19,7 +19,9 @@ public class RazorRuntimeCompilationMvcCoreBuilderExtensionsTest
+             .AddSingleton<IViewCompilerProvider, DefaultViewCompilerProvider>();
+ 
+         // Act
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+         RazorRuntimeCompilationMvcCoreBuilderExtensions.AddServices(services);
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+ 
+         // Assert
+         var serviceDescriptor = Assert.Single(services, service => service.ServiceType == typeof(IViewCompilerProvider));
+@@ -34,7 +36,9 @@ public class RazorRuntimeCompilationMvcCoreBuilderExtensionsTest
+             .AddSingleton<IActionDescriptorProvider, CompiledPageActionDescriptorProvider>();
+ 
+         // Act
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+         RazorRuntimeCompilationMvcCoreBuilderExtensions.AddServices(services);
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+ 
+         // Assert
+         var serviceDescriptor = Assert.Single(services, service => service.ServiceType == typeof(IActionDescriptorProvider));
+diff --git a/src/Mvc/Mvc.Razor.RuntimeCompilation/test/FileProviderRazorProjectFileSystemTest.cs b/src/Mvc/Mvc.Razor.RuntimeCompilation/test/FileProviderRazorProjectFileSystemTest.cs
+index 2a38a5c4bc..65a95ce68a 100644
+--- a/src/Mvc/Mvc.Razor.RuntimeCompilation/test/FileProviderRazorProjectFileSystemTest.cs
++++ b/src/Mvc/Mvc.Razor.RuntimeCompilation/test/FileProviderRazorProjectFileSystemTest.cs
+@@ -243,10 +243,12 @@ public class FileProviderRazorProjectFileSystemTest
+         TestFileProvider fileProvider,
+         string contentRootPath = "BasePath")
+     {
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+         var options = Options.Create(new MvcRazorRuntimeCompilationOptions
+         {
+             FileProviders = { fileProvider }
+         });
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+         var compilationFileProvider = new RuntimeCompilationFileProvider(options);
+         var fileSystem = new FileProviderRazorProjectFileSystem(
+             compilationFileProvider,
+diff --git a/src/Mvc/Mvc.Razor.RuntimeCompilation/test/RazorReferenceManagerTest.cs b/src/Mvc/Mvc.Razor.RuntimeCompilation/test/RazorReferenceManagerTest.cs
+index cc82836ea1..9eedd521d4 100644
+--- a/src/Mvc/Mvc.Razor.RuntimeCompilation/test/RazorReferenceManagerTest.cs
++++ b/src/Mvc/Mvc.Razor.RuntimeCompilation/test/RazorReferenceManagerTest.cs
+@@ -15,7 +15,9 @@ public class RazorReferenceManagerTest
+     public void GetCompilationReferences_CombinesApplicationPartAndOptionMetadataReferences()
+     {
+         // Arrange
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+         var options = new MvcRazorRuntimeCompilationOptions();
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+         var additionalReferencePath = "additional-path";
+         options.AdditionalReferencePaths.Add(additionalReferencePath);
+ 
+diff --git a/src/Mvc/Mvc.Razor.RuntimeCompilation/test/RuntimeCompilationFileProviderTest.cs b/src/Mvc/Mvc.Razor.RuntimeCompilation/test/RuntimeCompilationFileProviderTest.cs
+index 9e16d6a51a..ce2ead2dfd 100644
+--- a/src/Mvc/Mvc.Razor.RuntimeCompilation/test/RuntimeCompilationFileProviderTest.cs
++++ b/src/Mvc/Mvc.Razor.RuntimeCompilation/test/RuntimeCompilationFileProviderTest.cs
+@@ -12,11 +12,13 @@ public class RuntimeCompilationFileProviderTest
+     public void GetFileProvider_ThrowsIfNoConfiguredFileProviders()
+     {
+         // Arrange
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+         var expected =
+             $"'{typeof(MvcRazorRuntimeCompilationOptions).FullName}.{nameof(MvcRazorRuntimeCompilationOptions.FileProviders)}' must " +
+             $"not be empty. At least one '{typeof(IFileProvider).FullName}' is required to locate a view for " +
+             "rendering.";
+         var options = Options.Create(new MvcRazorRuntimeCompilationOptions());
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+ 
+         var fileProvider = new RuntimeCompilationFileProvider(options);
+ 
+diff --git a/src/Mvc/Mvc.Razor.RuntimeCompilation/test/RuntimeViewCompilerTest.cs b/src/Mvc/Mvc.Razor.RuntimeCompilation/test/RuntimeViewCompilerTest.cs
+index 8ed2580b44..ca19f82a31 100644
+--- a/src/Mvc/Mvc.Razor.RuntimeCompilation/test/RuntimeViewCompilerTest.cs
++++ b/src/Mvc/Mvc.Razor.RuntimeCompilation/test/RuntimeViewCompilerTest.cs
+@@ -824,10 +824,12 @@ this should fail";
+         CSharpCompiler csharpCompiler = null)
+     {
+         fileProvider = fileProvider ?? new TestFileProvider();
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+         var options = Options.Create(new MvcRazorRuntimeCompilationOptions
+         {
+             FileProviders = { fileProvider }
+         });
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+         var compilationFileProvider = new RuntimeCompilationFileProvider(options);
+ 
+         referenceManager = referenceManager ?? CreateReferenceManager();
+@@ -855,7 +857,9 @@ this should fail";
+         var assembly = typeof(RuntimeViewCompilerTest).Assembly;
+         applicationPartManager.ApplicationParts.Add(new AssemblyPart(assembly));
+ 
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+         return new RazorReferenceManager(applicationPartManager, Options.Create(new MvcRazorRuntimeCompilationOptions()));
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+     }
+ 
+     private class TestRazorViewCompiler : RuntimeViewCompiler
+diff --git a/src/Mvc/Mvc.Razor.RuntimeCompilation/test/TestInfrastructure/TestRazorReferenceManager.cs b/src/Mvc/Mvc.Razor.RuntimeCompilation/test/TestInfrastructure/TestRazorReferenceManager.cs
+index bf0e446704..285ce2842f 100644
+--- a/src/Mvc/Mvc.Razor.RuntimeCompilation/test/TestInfrastructure/TestRazorReferenceManager.cs
++++ b/src/Mvc/Mvc.Razor.RuntimeCompilation/test/TestInfrastructure/TestRazorReferenceManager.cs
+@@ -12,7 +12,9 @@ internal class TestRazorReferenceManager : RazorReferenceManager
+     public TestRazorReferenceManager()
+         : base(
+             new ApplicationPartManager(),
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+             Options.Create(new MvcRazorRuntimeCompilationOptions()))
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+     {
+         CompilationReferences = Array.Empty<MetadataReference>();
+     }
+diff --git a/src/Mvc/test/Mvc.FunctionalTests/ErrorPageTests.cs b/src/Mvc/test/Mvc.FunctionalTests/ErrorPageTests.cs
+index fd6c9f793e..87747166f3 100644
+--- a/src/Mvc/test/Mvc.FunctionalTests/ErrorPageTests.cs
++++ b/src/Mvc/test/Mvc.FunctionalTests/ErrorPageTests.cs
+@@ -50,7 +50,9 @@ public class ErrorPageTests : LoggedTest
+     {
+         // Arrange
+         var factory = Factory.WithWebHostBuilder(b => b.UseStartup<ErrorPageMiddlewareWebSite.Startup>());
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+         factory = factory.WithWebHostBuilder(b => b.ConfigureTestServices(serviceCollection => serviceCollection.Configure<MvcRazorRuntimeCompilationOptions>(ConfigureRuntimeCompilationOptions)));
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+ 
+         var client = factory.CreateDefaultClient();
+         client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("text/html"));
+@@ -70,6 +72,7 @@ public class ErrorPageTests : LoggedTest
+         Assert.Contains(expected, content);
+         Assert.DoesNotContain(PreserveCompilationContextMessage, content);
+ 
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+         static void ConfigureRuntimeCompilationOptions(MvcRazorRuntimeCompilationOptions options)
+         {
+             options.AdditionalReferencePaths.Add(typeof(string).Assembly.Location);
+@@ -81,6 +84,7 @@ public class ErrorPageTests : LoggedTest
+                 options.AdditionalReferencePaths.Add(path);
+             }
+         }
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+     }
+ 
+     [Fact]
+diff --git a/src/Mvc/test/Mvc.FunctionalTests/RazorBuildTest.cs b/src/Mvc/test/Mvc.FunctionalTests/RazorBuildTest.cs
+index 482b45fbd7..1808e82019 100644
+--- a/src/Mvc/test/Mvc.FunctionalTests/RazorBuildTest.cs
++++ b/src/Mvc/test/Mvc.FunctionalTests/RazorBuildTest.cs
+@@ -24,6 +24,7 @@ public class RazorBuildTest : LoggedTest
+     protected override void Initialize(TestContext context, MethodInfo methodInfo, object[] testMethodArguments, ITestOutputHelper testOutputHelper)
+     {
+         base.Initialize(context, methodInfo, testMethodArguments, testOutputHelper);
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+         Factory = new MvcTestFixture<RazorBuildWebSite.Startup>(LoggerFactory)
+             .WithWebHostBuilder(b => b.ConfigureTestServices(serviceCollection => serviceCollection.Configure<MvcRazorRuntimeCompilationOptions>(ConfigureRuntimeCompilationOptions)));
+ 
+@@ -36,6 +37,7 @@ public class RazorBuildTest : LoggedTest
+                 options.AdditionalReferencePaths.Add(path);
+             }
+         }
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+         Client = Factory.CreateDefaultClient();
+     }
+ 
+diff --git a/src/Mvc/test/Mvc.FunctionalTests/RazorRuntimeCompilationHostingStartupTest.cs b/src/Mvc/test/Mvc.FunctionalTests/RazorRuntimeCompilationHostingStartupTest.cs
+index 1f718596d5..da884b5210 100644
+--- a/src/Mvc/test/Mvc.FunctionalTests/RazorRuntimeCompilationHostingStartupTest.cs
++++ b/src/Mvc/test/Mvc.FunctionalTests/RazorRuntimeCompilationHostingStartupTest.cs
+@@ -21,6 +21,7 @@ public class RazorRuntimeCompilationHostingStartupTest : LoggedTest
+     protected override void Initialize(TestContext context, MethodInfo methodInfo, object[] testMethodArguments, ITestOutputHelper testOutputHelper)
+     {
+         base.Initialize(context, methodInfo, testMethodArguments, testOutputHelper);
++#pragma warning disable ASPDEPR003 // Type or member is obsolete
+         Factory = new MvcTestFixture<RazorBuildWebSite.StartupWithHostingStartup>(LoggerFactory)
+             .WithWebHostBuilder(b => b.UseStartup<RazorBuildWebSite.StartupWithHostingStartup>())
+             .WithWebHostBuilder(b => b.ConfigureTestServices(serviceCollection => serviceCollection.Configure<MvcRazorRuntimeCompilationOptions>(ConfigureRuntimeCompilationOptions)));
+@@ -34,6 +35,7 @@ public class RazorRuntimeCompilationHostingStartupTest : LoggedTest
+                 options.AdditionalReferencePaths.Add(path);
+             }
+         }
++#pragma warning restore ASPDEPR003 // Type or member is obsolete
+         Client = Factory.CreateDefaultClient();
+     }
+ 

@@ -1,0 +1,351 @@
+From 3de9b6c7a7a021238cfce43b9eb86d3deb84b685 Mon Sep 17 00:00:00 2001
+From: Issam Mani <issamouu69@gmail.com>
+Date: Mon, 16 Feb 2026 11:09:27 +0100
+Subject: [PATCH] Add FXIOS-14899 [Summarizer] Move `URLSessionProtocol` to
+ `BrowserKit` package for easier network testing (#32114)
+
+* chore: move urlsession protocol to Shared package
+
+* chore: move urlsession mock to TestKit
+
+* chore: fix tests
+---
+ BrowserKit/Package.swift                      |  5 ++-
+ .../URLSessionDataTaskProtocol.swift          |  4 +-
+ .../URLSession/URLSessionProtocol.swift       | 13 ++++---
+ .../Sources/TestKit}/MockURLSession.swift     | 38 +++++++++----------
+ firefox-ios/Client.xcodeproj/project.pbxproj  | 20 ----------
+ .../UnifiedAdsUserDataRemoverTests.swift      |  1 +
+ .../Utils/GleanOhttpUploaderTests.swift       |  2 +
+ .../WallpaperNetworkingModuleTests.swift      |  1 +
+ 8 files changed, 35 insertions(+), 49 deletions(-)
+ rename {firefox-ios/Client/Protocols => BrowserKit/Sources/Shared}/URLSession/URLSessionDataTaskProtocol.swift (84%)
+ rename {firefox-ios/Client/Protocols => BrowserKit/Sources/Shared}/URLSession/URLSessionProtocol.swift (89%)
+ rename {firefox-ios/firefox-ios-tests/Tests/ClientTests/Wallpaper/Mocks => BrowserKit/Sources/TestKit}/MockURLSession.swift (61%)
+
+diff --git a/BrowserKit/Package.swift b/BrowserKit/Package.swift
+index 19200f8b5..0a542158d 100644
+--- a/BrowserKit/Package.swift
++++ b/BrowserKit/Package.swift
+@@ -180,7 +180,7 @@ let package = Package(
+             swiftSettings: [
+             ]
+         ),
+-        .target(name: "TestKit"),
++        .target(name: "TestKit", dependencies: ["Shared"]),
+         .target(
+             name: "ToolbarKit",
+             dependencies: ["Common"],
+@@ -209,7 +209,8 @@ let package = Package(
+             dependencies: [
+                 "Common",
+                 "ComponentLibrary",
+-                "Down"
++                "Down",
++                "JWTKit"
+             ],
+             swiftSettings: [
+                 .unsafeFlags(["-enable-testing"]),
+diff --git a/firefox-ios/Client/Protocols/URLSession/URLSessionDataTaskProtocol.swift b/BrowserKit/Sources/Shared/URLSession/URLSessionDataTaskProtocol.swift
+similarity index 84%
+rename from firefox-ios/Client/Protocols/URLSession/URLSessionDataTaskProtocol.swift
+rename to BrowserKit/Sources/Shared/URLSession/URLSessionDataTaskProtocol.swift
+index 1db635c76..7273e2130 100644
+--- a/firefox-ios/Client/Protocols/URLSession/URLSessionDataTaskProtocol.swift
++++ b/BrowserKit/Sources/Shared/URLSession/URLSessionDataTaskProtocol.swift
+@@ -4,13 +4,13 @@
+ 
+ import Foundation
+ 
+-protocol URLSessionDataTaskProtocol {
++public protocol URLSessionDataTaskProtocol {
+     func resume()
+ }
+ 
+ extension URLSessionDataTask: URLSessionDataTaskProtocol {}
+ 
+-protocol URLSessionUploadTaskProtocol {
++public protocol URLSessionUploadTaskProtocol {
+     var countOfBytesClientExpectsToSend: Int64 { get set }
+     var countOfBytesClientExpectsToReceive: Int64 { get set }
+     func resume()
+diff --git a/firefox-ios/Client/Protocols/URLSession/URLSessionProtocol.swift b/BrowserKit/Sources/Shared/URLSession/URLSessionProtocol.swift
+similarity index 89%
+rename from firefox-ios/Client/Protocols/URLSession/URLSessionProtocol.swift
+rename to BrowserKit/Sources/Shared/URLSession/URLSessionProtocol.swift
+index c438c17a8..6e3829d76 100644
+--- a/firefox-ios/Client/Protocols/URLSession/URLSessionProtocol.swift
++++ b/BrowserKit/Sources/Shared/URLSession/URLSessionProtocol.swift
+@@ -4,7 +4,7 @@
+ 
+ import Foundation
+ 
+-protocol URLSessionProtocol: Sendable {
++public protocol URLSessionProtocol: Sendable {
+     typealias DataTaskResult = @Sendable (Data?, URLResponse?, Error?) -> Void
+ 
+     func data(from url: URL) async throws -> (Data, URLResponse)
+@@ -35,7 +35,7 @@ protocol URLSessionProtocol: Sendable {
+ /// Attempting to use the default one here will yield a runtime assertion failure.
+ /// The throw is just to satisfy the async‑throws signature.
+ extension URLSessionProtocol {
+-    func bytes(for request: URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse) {
++    public func bytes(for request: URLRequest) async throws -> (URLSession.AsyncBytes, URLResponse) {
+         assertionFailure("Fallback bytes(for:) called! Conforming types provide their own implementation")
+         throw URLError(.unsupportedURL)
+     }
+@@ -54,20 +54,21 @@ extension URLSession: URLSessionProtocol {
+         return try await bytes(for: request, delegate: nil)
+     }
+ 
+-    func dataTaskWith(
++    public func dataTaskWith(
+         request: URLRequest,
+         completionHandler: @escaping @Sendable (Data?, URLResponse?, Error?) -> Void
+     ) -> URLSessionDataTaskProtocol {
+         return dataTask(with: request, completionHandler: completionHandler)
+     }
+ 
+-    func dataTaskWith(_ url: URL,
+-                      completionHandler: @escaping DataTaskResult
++    public func dataTaskWith(
++        _ url: URL,
++        completionHandler: @escaping DataTaskResult
+     ) -> URLSessionDataTaskProtocol {
+         dataTask(with: url, completionHandler: completionHandler) as URLSessionDataTaskProtocol
+     }
+ 
+-    func uploadTaskWith(
++    public func uploadTaskWith(
+         with request: URLRequest,
+         from bodyData: Data?,
+         completionHandler: @escaping  @Sendable (Data?, URLResponse?, (any Error)?) -> Void
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Wallpaper/Mocks/MockURLSession.swift b/BrowserKit/Sources/TestKit/MockURLSession.swift
+similarity index 61%
+rename from firefox-ios/firefox-ios-tests/Tests/ClientTests/Wallpaper/Mocks/MockURLSession.swift
+rename to BrowserKit/Sources/TestKit/MockURLSession.swift
+index e05227bdd..d0d3ec296 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Wallpaper/Mocks/MockURLSession.swift
++++ b/BrowserKit/Sources/TestKit/MockURLSession.swift
+@@ -3,25 +3,24 @@
+ // file, You can obtain one at http://mozilla.org/MPL/2.0/
+ 
+ import Foundation
++import Shared
+ 
+-@testable import Client
+-
+-final class MockURLSessionDataTask: URLSessionDataTaskProtocol {
++public final class MockURLSessionDataTask: URLSessionDataTaskProtocol {
+     private(set) var resumeWasCalled = false
+ 
+-    func resume() {
++    public func resume() {
+         resumeWasCalled = true
+     }
+ }
+ 
+-final class MockURLSession: URLSessionProtocol, @unchecked Sendable {
+-    var dataTask = MockURLSessionDataTask()
+-    var uploadTask = MockURLSessionUploadTask()
++public final class MockURLSession: URLSessionProtocol, @unchecked Sendable {
++    public var dataTask = MockURLSessionDataTask()
++    public var uploadTask = MockURLSessionUploadTask()
+     private let data: Data?
+     private let response: URLResponse?
+     private let error: Error?
+ 
+-    init(
++    public init(
+         with data: Data? = nil,
+         response: URLResponse? = nil,
+         and error: Error? = nil
+@@ -31,7 +30,7 @@ final class MockURLSession: URLSessionProtocol, @unchecked Sendable {
+         self.error = error
+     }
+ 
+-    func data(from url: URL) async throws -> (Data, URLResponse) {
++    public func data(from url: URL) async throws -> (Data, URLResponse) {
+         if let error = error {
+             throw error
+         }
+@@ -39,25 +38,26 @@ final class MockURLSession: URLSessionProtocol, @unchecked Sendable {
+         return (data ?? Data(), response ?? URLResponse())
+     }
+ 
+-    func data(from urlRequest: URLRequest) async throws -> (Data, URLResponse) {
++    public func data(from urlRequest: URLRequest) async throws -> (Data, URLResponse) {
+         try await data(from: urlRequest.url!)
+     }
+ 
+-    func dataTaskWith(_ url: URL,
+-                      completionHandler completion: @escaping DataTaskResult
++    public func dataTaskWith(
++        _ url: URL,
++        completionHandler completion: @escaping DataTaskResult
+     ) -> URLSessionDataTaskProtocol {
+         completion(data, response, error)
+         return dataTask
+     }
+ 
+-    func dataTaskWith(
++    public func dataTaskWith(
+         request: URLRequest,
+         completionHandler: @escaping @Sendable (Data?, URLResponse?, Error?) -> Void
+     ) -> URLSessionDataTaskProtocol {
+         return MockURLSessionDataTask()
+     }
+ 
+-    func uploadTaskWith(
++    public func uploadTaskWith(
+         with request: URLRequest,
+         from bodyData: Data?,
+         completionHandler: @escaping (Data?, URLResponse?, (any Error)?) -> Void
+@@ -67,11 +67,11 @@ final class MockURLSession: URLSessionProtocol, @unchecked Sendable {
+     }
+ }
+ 
+-class MockURLSessionUploadTask: URLSessionUploadTaskProtocol {
+-    var resumeCount = 0
+-    var countOfBytesClientExpectsToSend: Int64 = 0
+-    var countOfBytesClientExpectsToReceive: Int64 = 0
+-    func resume() {
++public class MockURLSessionUploadTask: URLSessionUploadTaskProtocol {
++    public var resumeCount = 0
++    public var countOfBytesClientExpectsToSend: Int64 = 0
++    public var countOfBytesClientExpectsToReceive: Int64 = 0
++    public func resume() {
+         resumeCount += 1
+     }
+ }
+diff --git a/firefox-ios/Client.xcodeproj/project.pbxproj b/firefox-ios/Client.xcodeproj/project.pbxproj
+index 573ee54ae..8eb3b6fc2 100644
+--- a/firefox-ios/Client.xcodeproj/project.pbxproj
++++ b/firefox-ios/Client.xcodeproj/project.pbxproj
+@@ -953,8 +953,6 @@
+ 		8A4880882E68D41F00AD43D5 /* MockGleanPingUploadRequest.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A4880872E68D41F00AD43D5 /* MockGleanPingUploadRequest.swift */; };
+ 		8A48808A2E68DC4300AD43D5 /* MockASOHttpManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A4880892E68DC4300AD43D5 /* MockASOHttpManager.swift */; };
+ 		8A48808C2E68DD8100AD43D5 /* PingUploaderProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A48808B2E68DD8000AD43D5 /* PingUploaderProtocol.swift */; };
+-		8A4AC0EB28C929D700439F83 /* URLSessionDataTaskProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A4AC0E928C929D700439F83 /* URLSessionDataTaskProtocol.swift */; };
+-		8A4AC0EC28C929D700439F83 /* URLSessionProtocol.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A4AC0EA28C929D700439F83 /* URLSessionProtocol.swift */; };
+ 		8A4B14852CF8D67800FCE2D0 /* UnifiedTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A4B14842CF8D67300FCE2D0 /* UnifiedTile.swift */; };
+ 		8A4B14872CF8D81800FCE2D0 /* UnifiedAdsProviderTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A4B14862CF8D80F00FCE2D0 /* UnifiedAdsProviderTests.swift */; };
+ 		8A4B66422D1DC96A008C5B64 /* ContextMenuConfigurationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A4B66412D1DC962008C5B64 /* ContextMenuConfigurationTests.swift */; };
+@@ -1677,7 +1675,6 @@
+ 		C869915E28917811007ACC5C /* wallpaperBadLastUpdatedDate.json in Resources */ = {isa = PBXBuildFile; fileRef = C869913A28917770007ACC5C /* wallpaperBadLastUpdatedDate.json */; };
+ 		C869915F28917811007ACC5C /* wallpaperGoodData.json in Resources */ = {isa = PBXBuildFile; fileRef = C86991392891776F007ACC5C /* wallpaperGoodData.json */; };
+ 		C869916328918C36007ACC5C /* WallpaperNetworkingModuleTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C869916228918C36007ACC5C /* WallpaperNetworkingModuleTests.swift */; };
+-		C869916528918C8E007ACC5C /* MockURLSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = C869916428918C8E007ACC5C /* MockURLSession.swift */; };
+ 		C874FB3A2660E8B900EBE86E /* CredentialProviderPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = C874FB392660E8B900EBE86E /* CredentialProviderPresenter.swift */; };
+ 		C874FC652661367900EBE86E /* MainInterface.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = C874FC642661367900EBE86E /* MainInterface.storyboard */; };
+ 		C877037A25222F30006E38EB /* Localizations.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 288A2D861AB8B3260023ABC3 /* Localizations.framework */; };
+@@ -9016,8 +9013,6 @@
+ 		8A4880872E68D41F00AD43D5 /* MockGleanPingUploadRequest.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockGleanPingUploadRequest.swift; sourceTree = "<group>"; };
+ 		8A4880892E68DC4300AD43D5 /* MockASOHttpManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockASOHttpManager.swift; sourceTree = "<group>"; };
+ 		8A48808B2E68DD8000AD43D5 /* PingUploaderProtocol.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PingUploaderProtocol.swift; sourceTree = "<group>"; };
+-		8A4AC0E928C929D700439F83 /* URLSessionDataTaskProtocol.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = URLSessionDataTaskProtocol.swift; sourceTree = "<group>"; };
+-		8A4AC0EA28C929D700439F83 /* URLSessionProtocol.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = URLSessionProtocol.swift; sourceTree = "<group>"; };
+ 		8A4B14842CF8D67300FCE2D0 /* UnifiedTile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedTile.swift; sourceTree = "<group>"; };
+ 		8A4B14862CF8D80F00FCE2D0 /* UnifiedAdsProviderTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UnifiedAdsProviderTests.swift; sourceTree = "<group>"; };
+ 		8A4B66412D1DC962008C5B64 /* ContextMenuConfigurationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContextMenuConfigurationTests.swift; sourceTree = "<group>"; };
+@@ -10170,7 +10165,6 @@
+ 		C869914E289177A6007ACC5C /* WallpaperDataServiceTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WallpaperDataServiceTests.swift; sourceTree = "<group>"; };
+ 		C869914F289177A6007ACC5C /* WallpaperNetworkingTests.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = WallpaperNetworkingTests.swift; sourceTree = "<group>"; };
+ 		C869916228918C36007ACC5C /* WallpaperNetworkingModuleTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WallpaperNetworkingModuleTests.swift; sourceTree = "<group>"; };
+-		C869916428918C8E007ACC5C /* MockURLSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockURLSession.swift; sourceTree = "<group>"; };
+ 		C874FB392660E8B900EBE86E /* CredentialProviderPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CredentialProviderPresenter.swift; sourceTree = "<group>"; };
+ 		C874FC642661367900EBE86E /* MainInterface.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; path = MainInterface.storyboard; sourceTree = "<group>"; };
+ 		C87A121928C2451A0097ED51 /* WallpaperMigrationUtility.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WallpaperMigrationUtility.swift; sourceTree = "<group>"; };
+@@ -13379,15 +13373,6 @@
+ 			path = Mocks;
+ 			sourceTree = "<group>";
+ 		};
+-		8A4AC0ED28C929DD00439F83 /* URLSession */ = {
+-			isa = PBXGroup;
+-			children = (
+-				8A4AC0E928C929D700439F83 /* URLSessionDataTaskProtocol.swift */,
+-				8A4AC0EA28C929D700439F83 /* URLSessionProtocol.swift */,
+-			);
+-			path = URLSession;
+-			sourceTree = "<group>";
+-		};
+ 		8A5189C62C1B5F6C00CDB668 /* Search */ = {
+ 			isa = PBXGroup;
+ 			children = (
+@@ -14874,7 +14859,6 @@
+ 			children = (
+ 				C869914C28917789007ACC5C /* NetworkingMock.swift */,
+ 				E1390FB728B42EF200C9EF3E /* WallpaperManagerMock.swift */,
+-				C869916428918C8E007ACC5C /* MockURLSession.swift */,
+ 			);
+ 			path = Mocks;
+ 			sourceTree = "<group>";
+@@ -15519,7 +15503,6 @@
+ 				8AC5D55E28BFE6C8001F6F7F /* Presenter.swift */,
+ 				8AE1E1D127B1ADC40024C45E /* TopBottomInterchangeable.swift */,
+ 				21E78A7128F9A93100F8D687 /* UIDeviceInterface.swift */,
+-				8A4AC0ED28C929DD00439F83 /* URLSession */,
+ 			);
+ 			path = Protocols;
+ 			sourceTree = "<group>";
+@@ -18433,7 +18416,6 @@
+ 			isa = PBXSourcesBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
+-				8A4AC0EC28C929D700439F83 /* URLSessionProtocol.swift in Sources */,
+ 				C2A72A672A76938C002ACCE2 /* DownloadsCoordinator.swift in Sources */,
+ 				5FC276552894AEFF00AF2721 /* LibraryPanelHelper.swift in Sources */,
+ 				602A2B9827F6256200C3CB78 /* FxNimbus.swift in Sources */,
+@@ -18597,7 +18579,6 @@
+ 				80967F802D0A36890057F0C7 /* RecordedNimbusContext.swift in Sources */,
+ 				8AF99B4F29EF1BA700108DEC /* BrowserDelegate.swift in Sources */,
+ 				C87D8B802818333F00A6307D /* NimbusManager.swift in Sources */,
+-				8A4AC0EB28C929D700439F83 /* URLSessionDataTaskProtocol.swift in Sources */,
+ 				C45F44691D087DB600CB7EF0 /* TopTabsViewController.swift in Sources */,
+ 				8A0727462B4890B50071BB9F /* WebviewTelemetry.swift in Sources */,
+ 				8ADC2A212A3399DC00543DAA /* YourRightsSetting.swift in Sources */,
+@@ -19476,7 +19457,6 @@
+ 			files = (
+ 				2151EF572F2AB94A007B67A6 /* BrowserViewControllerConstraintTests.swift in Sources */,
+ 				E4CD9F1D1A6D9C2800318571 /* WebServerTests.swift in Sources */,
+-				C869916528918C8E007ACC5C /* MockURLSession.swift in Sources */,
+ 				961577942A39008100391E8D /* SponsoredTileDataUtilityTests.swift in Sources */,
+ 				1D2A1B592F3BAB5200157ACB /* RelayMaskSettingsViewControllerTests.swift in Sources */,
+ 				8A093D812A4B58330099ABA5 /* MockSettingsFlowDelegate.swift in Sources */,
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/UnifiedAds/UnifiedAdsUserDataRemoverTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/UnifiedAds/UnifiedAdsUserDataRemoverTests.swift
+index 4332726ab..a5ad48fd7 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/UnifiedAds/UnifiedAdsUserDataRemoverTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Homepage/UnifiedAds/UnifiedAdsUserDataRemoverTests.swift
+@@ -3,6 +3,7 @@
+ // file, You can obtain one at http://mozilla.org/MPL/2.0/
+ 
+ import XCTest
++import TestKit
+ 
+ @testable import Client
+ 
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Utils/GleanOhttpUploaderTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Utils/GleanOhttpUploaderTests.swift
+index c70441678..073f4c814 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Utils/GleanOhttpUploaderTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Utils/GleanOhttpUploaderTests.swift
+@@ -4,6 +4,8 @@
+ 
+ import Glean
+ import XCTest
++import TestKit
++
+ @testable import Client
+ 
+ class GleanOhttpUploaderTests: XCTestCase {
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Wallpaper/WallpaperNetworkingModuleTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Wallpaper/WallpaperNetworkingModuleTests.swift
+index 4d46bcdc8..e885d3e89 100644
+--- a/firefox-ios/firefox-ios-tests/Tests/ClientTests/Wallpaper/WallpaperNetworkingModuleTests.swift
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/Wallpaper/WallpaperNetworkingModuleTests.swift
+@@ -4,6 +4,7 @@
+ 
+ import Foundation
+ import XCTest
++import TestKit
+ 
+ @testable import Client
+ 

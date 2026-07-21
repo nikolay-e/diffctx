@@ -1,0 +1,373 @@
+From 2a0f0e07211a043f76f44fbd75000420566c50e4 Mon Sep 17 00:00:00 2001
+From: Copilot <198982749+Copilot@users.noreply.github.com>
+Date: Tue, 23 Jun 2026 07:01:12 +0000
+Subject: [PATCH] [Blazor] Rename EnvironmentBoundary component to
+ EnvironmentView (#67369)
+
+---
+ ...ironmentBoundary.cs => EnvironmentView.cs} | 14 ++--
+ .../Web/src/PublicAPI.Unshipped.txt           | 16 ++---
+ ...BoundaryTest.cs => EnvironmentViewTest.cs} | 66 +++++++++----------
+ ...BoundaryTest.cs => EnvironmentViewTest.cs} |  6 +-
+ ...r.razor => EnvironmentViewContainer.razor} | 22 +++----
+ .../test/testassets/BasicTestApp/Index.razor  |  2 +-
+ 6 files changed, 63 insertions(+), 63 deletions(-)
+ rename src/Components/Web/src/{EnvironmentBoundary.cs => EnvironmentView.cs} (92%)
+ rename src/Components/Web/test/{EnvironmentBoundaryTest.cs => EnvironmentViewTest.cs} (75%)
+ rename src/Components/test/E2ETest/Tests/{EnvironmentBoundaryTest.cs => EnvironmentViewTest.cs} (95%)
+ rename src/Components/test/testassets/BasicTestApp/{EnvironmentBoundaryContainer.razor => EnvironmentViewContainer.razor} (70%)
+
+diff --git a/src/Components/Web/src/EnvironmentBoundary.cs b/src/Components/Web/src/EnvironmentView.cs
+similarity index 92%
+rename from src/Components/Web/src/EnvironmentBoundary.cs
+rename to src/Components/Web/src/EnvironmentView.cs
+index 2118f4e217..27e972cdd2 100644
+--- a/src/Components/Web/src/EnvironmentBoundary.cs
++++ b/src/Components/Web/src/EnvironmentView.cs
+@@ -17,23 +17,23 @@ namespace Microsoft.AspNetCore.Components.Web;
+ /// <example>
+ /// The following example shows how to conditionally render content based on the environment:
+ /// <code>
+-/// &lt;EnvironmentBoundary Include="Development"&gt;
++/// &lt;EnvironmentView Include="Development"&gt;
+ ///     &lt;div class="alert alert-warning"&gt;
+ ///         You are running in Development mode. Debug features are enabled.
+ ///     &lt;/div&gt;
+-/// &lt;/EnvironmentBoundary&gt;
++/// &lt;/EnvironmentView&gt;
+ ///
+-/// &lt;EnvironmentBoundary Include="Development, Staging"&gt;
++/// &lt;EnvironmentView Include="Development, Staging"&gt;
+ ///     &lt;p&gt;This is a pre-production environment.&lt;/p&gt;
+-/// &lt;/EnvironmentBoundary&gt;
++/// &lt;/EnvironmentView&gt;
+ ///
+-/// &lt;EnvironmentBoundary Exclude="Production"&gt;
++/// &lt;EnvironmentView Exclude="Production"&gt;
+ ///     &lt;p&gt;Debug information: @DateTime.Now&lt;/p&gt;
+-/// &lt;/EnvironmentBoundary&gt;
++/// &lt;/EnvironmentView&gt;
+ /// </code>
+ /// </example>
+ /// </remarks>
+-public sealed class EnvironmentBoundary : ComponentBase
++public sealed class EnvironmentView : ComponentBase
+ {
+     private const char NameSeparator = ',';
+ 
+diff --git a/src/Components/Web/src/PublicAPI.Unshipped.txt b/src/Components/Web/src/PublicAPI.Unshipped.txt
+index e317fb8686..91f60195b7 100644
+--- a/src/Components/Web/src/PublicAPI.Unshipped.txt
++++ b/src/Components/Web/src/PublicAPI.Unshipped.txt
+@@ -1,12 +1,12 @@
+ #nullable enable
+-Microsoft.AspNetCore.Components.Web.EnvironmentBoundary
+-Microsoft.AspNetCore.Components.Web.EnvironmentBoundary.ChildContent.get -> Microsoft.AspNetCore.Components.RenderFragment?
+-Microsoft.AspNetCore.Components.Web.EnvironmentBoundary.ChildContent.set -> void
+-Microsoft.AspNetCore.Components.Web.EnvironmentBoundary.EnvironmentBoundary() -> void
+-Microsoft.AspNetCore.Components.Web.EnvironmentBoundary.Exclude.get -> string?
+-Microsoft.AspNetCore.Components.Web.EnvironmentBoundary.Exclude.set -> void
+-Microsoft.AspNetCore.Components.Web.EnvironmentBoundary.Include.get -> string?
+-Microsoft.AspNetCore.Components.Web.EnvironmentBoundary.Include.set -> void
++Microsoft.AspNetCore.Components.Web.EnvironmentView
++Microsoft.AspNetCore.Components.Web.EnvironmentView.ChildContent.get -> Microsoft.AspNetCore.Components.RenderFragment?
++Microsoft.AspNetCore.Components.Web.EnvironmentView.ChildContent.set -> void
++Microsoft.AspNetCore.Components.Web.EnvironmentView.EnvironmentView() -> void
++Microsoft.AspNetCore.Components.Web.EnvironmentView.Exclude.get -> string?
++Microsoft.AspNetCore.Components.Web.EnvironmentView.Exclude.set -> void
++Microsoft.AspNetCore.Components.Web.EnvironmentView.Include.get -> string?
++Microsoft.AspNetCore.Components.Web.EnvironmentView.Include.set -> void
+ Microsoft.AspNetCore.Components.Routing.NavLink.RelativeToCurrentUri.get -> bool
+ Microsoft.AspNetCore.Components.Routing.NavLink.RelativeToCurrentUri.set -> void
+ *REMOVED*Microsoft.AspNetCore.Components.Forms.RemoteBrowserFileStreamOptions
+diff --git a/src/Components/Web/test/EnvironmentBoundaryTest.cs b/src/Components/Web/test/EnvironmentViewTest.cs
+similarity index 75%
+rename from src/Components/Web/test/EnvironmentBoundaryTest.cs
+rename to src/Components/Web/test/EnvironmentViewTest.cs
+index 95e1aa9017..5be56aa2cc 100644
+--- a/src/Components/Web/test/EnvironmentBoundaryTest.cs
++++ b/src/Components/Web/test/EnvironmentViewTest.cs
+@@ -9,7 +9,7 @@ using Moq;
+ 
+ namespace Microsoft.AspNetCore.Components;
+ 
+-public class EnvironmentBoundaryTest
++public class EnvironmentViewTest
+ {
+     [Theory]
+     [InlineData("Development", "Development")]
+@@ -58,12 +58,12 @@ public class EnvironmentBoundaryTest
+     {
+         // When no Include is specified and Exclude is not specified or empty,
+         // the component should render its content
+-        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++        var (renderer, componentId) = CreateEnvironmentViewComponent(environmentName);
+ 
+         var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
+         {
+-            { nameof(EnvironmentBoundary.Include), includeAttribute },
+-            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++            { nameof(EnvironmentView.Include), includeAttribute },
++            { nameof(EnvironmentView.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
+         });
+ 
+         renderer.RenderRootComponent(componentId, parameters);
+@@ -81,12 +81,12 @@ public class EnvironmentBoundaryTest
+     [InlineData("Production,Staging", "Development")]
+     public void ShowsContentWhenCurrentEnvironmentIsNotInExcludeList(string excludeAttribute, string environmentName)
+     {
+-        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++        var (renderer, componentId) = CreateEnvironmentViewComponent(environmentName);
+ 
+         var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
+         {
+-            { nameof(EnvironmentBoundary.Exclude), excludeAttribute },
+-            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++            { nameof(EnvironmentView.Exclude), excludeAttribute },
++            { nameof(EnvironmentView.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
+         });
+ 
+         renderer.RenderRootComponent(componentId, parameters);
+@@ -105,12 +105,12 @@ public class EnvironmentBoundaryTest
+     [InlineData("Production,Development", "Development")]
+     public void HidesContentWhenCurrentEnvironmentIsInExcludeList(string excludeAttribute, string environmentName)
+     {
+-        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++        var (renderer, componentId) = CreateEnvironmentViewComponent(environmentName);
+ 
+         var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
+         {
+-            { nameof(EnvironmentBoundary.Exclude), excludeAttribute },
+-            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++            { nameof(EnvironmentView.Exclude), excludeAttribute },
++            { nameof(EnvironmentView.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
+         });
+ 
+         renderer.RenderRootComponent(componentId, parameters);
+@@ -126,13 +126,13 @@ public class EnvironmentBoundaryTest
+     [InlineData("Development,Staging", "Staging", "Staging")] // In include, also in exclude -> hide
+     public void ExcludeTakesPrecedenceOverInclude(string includeAttribute, string excludeAttribute, string environmentName)
+     {
+-        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++        var (renderer, componentId) = CreateEnvironmentViewComponent(environmentName);
+ 
+         var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
+         {
+-            { nameof(EnvironmentBoundary.Include), includeAttribute },
+-            { nameof(EnvironmentBoundary.Exclude), excludeAttribute },
+-            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++            { nameof(EnvironmentView.Include), includeAttribute },
++            { nameof(EnvironmentView.Exclude), excludeAttribute },
++            { nameof(EnvironmentView.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
+         });
+ 
+         renderer.RenderRootComponent(componentId, parameters);
+@@ -148,13 +148,13 @@ public class EnvironmentBoundaryTest
+     [InlineData("Development,Staging", "Production", "Staging")] // In include, not in exclude -> show
+     public void ShowsContentWhenInIncludeButNotInExclude(string includeAttribute, string excludeAttribute, string environmentName)
+     {
+-        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++        var (renderer, componentId) = CreateEnvironmentViewComponent(environmentName);
+ 
+         var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
+         {
+-            { nameof(EnvironmentBoundary.Include), includeAttribute },
+-            { nameof(EnvironmentBoundary.Exclude), excludeAttribute },
+-            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++            { nameof(EnvironmentView.Include), includeAttribute },
++            { nameof(EnvironmentView.Exclude), excludeAttribute },
++            { nameof(EnvironmentView.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
+         });
+ 
+         renderer.RenderRootComponent(componentId, parameters);
+@@ -173,12 +173,12 @@ public class EnvironmentBoundaryTest
+     [InlineData("\t")]
+     public void HidesContentWhenEnvironmentNameIsNullOrEmpty(string environmentName)
+     {
+-        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++        var (renderer, componentId) = CreateEnvironmentViewComponent(environmentName);
+ 
+         var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
+         {
+-            { nameof(EnvironmentBoundary.Include), "Development" },
+-            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++            { nameof(EnvironmentView.Include), "Development" },
++            { nameof(EnvironmentView.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
+         });
+ 
+         renderer.RenderRootComponent(componentId, parameters);
+@@ -197,11 +197,11 @@ public class EnvironmentBoundaryTest
+     {
+         // For consistency with MVC EnvironmentTagHelper, render content when environment name is not set
+         // and no Include/Exclude are specified.
+-        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++        var (renderer, componentId) = CreateEnvironmentViewComponent(environmentName);
+ 
+         var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
+         {
+-            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++            { nameof(EnvironmentView.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
+         });
+ 
+         renderer.RenderRootComponent(componentId, parameters);
+@@ -215,11 +215,11 @@ public class EnvironmentBoundaryTest
+     [Fact]
+     public void RendersNothingWhenChildContentIsNull()
+     {
+-        var (renderer, componentId) = CreateEnvironmentBoundaryComponent("Development");
++        var (renderer, componentId) = CreateEnvironmentViewComponent("Development");
+ 
+         var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
+         {
+-            { nameof(EnvironmentBoundary.Include), "Development" },
++            { nameof(EnvironmentView.Include), "Development" },
+         });
+ 
+         renderer.RenderRootComponent(componentId, parameters);
+@@ -230,12 +230,12 @@ public class EnvironmentBoundaryTest
+ 
+     private void ShouldShowContentWithInclude(string includeAttribute, string environmentName)
+     {
+-        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++        var (renderer, componentId) = CreateEnvironmentViewComponent(environmentName);
+ 
+         var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
+         {
+-            { nameof(EnvironmentBoundary.Include), includeAttribute },
+-            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++            { nameof(EnvironmentView.Include), includeAttribute },
++            { nameof(EnvironmentView.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
+         });
+ 
+         renderer.RenderRootComponent(componentId, parameters);
+@@ -248,12 +248,12 @@ public class EnvironmentBoundaryTest
+ 
+     private void ShouldHideContentWithInclude(string includeAttribute, string environmentName)
+     {
+-        var (renderer, componentId) = CreateEnvironmentBoundaryComponent(environmentName);
++        var (renderer, componentId) = CreateEnvironmentViewComponent(environmentName);
+ 
+         var parameters = ParameterView.FromDictionary(new Dictionary<string, object>
+         {
+-            { nameof(EnvironmentBoundary.Include), includeAttribute },
+-            { nameof(EnvironmentBoundary.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
++            { nameof(EnvironmentView.Include), includeAttribute },
++            { nameof(EnvironmentView.ChildContent), (RenderFragment)(builder => builder.AddContent(0, "Test Content")) },
+         });
+ 
+         renderer.RenderRootComponent(componentId, parameters);
+@@ -264,7 +264,7 @@ public class EnvironmentBoundaryTest
+             frame.TextContent == "Test Content");
+     }
+ 
+-    private static (TestRenderer Renderer, int ComponentId) CreateEnvironmentBoundaryComponent(string environmentName)
++    private static (TestRenderer Renderer, int ComponentId) CreateEnvironmentViewComponent(string environmentName)
+     {
+         var serviceProvider = new TestServiceProvider();
+         var hostEnvironment = new Mock<IHostEnvironment>();
+@@ -272,7 +272,7 @@ public class EnvironmentBoundaryTest
+         serviceProvider.AddService<IHostEnvironment>(hostEnvironment.Object);
+ 
+         var renderer = new TestRenderer(serviceProvider);
+-        var component = (EnvironmentBoundary)renderer.InstantiateComponent<EnvironmentBoundary>();
++        var component = (EnvironmentView)renderer.InstantiateComponent<EnvironmentView>();
+         var componentId = renderer.AssignRootComponentId(component);
+ 
+         return (renderer, componentId);
+diff --git a/src/Components/test/E2ETest/Tests/EnvironmentBoundaryTest.cs b/src/Components/test/E2ETest/Tests/EnvironmentViewTest.cs
+similarity index 95%
+rename from src/Components/test/E2ETest/Tests/EnvironmentBoundaryTest.cs
+rename to src/Components/test/E2ETest/Tests/EnvironmentViewTest.cs
+index bbf642efcb..ed0b2bc023 100644
+--- a/src/Components/test/E2ETest/Tests/EnvironmentBoundaryTest.cs
++++ b/src/Components/test/E2ETest/Tests/EnvironmentViewTest.cs
+@@ -10,9 +10,9 @@ using Xunit.Abstractions;
+ 
+ namespace Microsoft.AspNetCore.Components.E2ETest.Tests;
+ 
+-public class EnvironmentBoundaryTest : ServerTestBase<ToggleExecutionModeServerFixture<Program>>
++public class EnvironmentViewTest : ServerTestBase<ToggleExecutionModeServerFixture<Program>>
+ {
+-    public EnvironmentBoundaryTest(
++    public EnvironmentViewTest(
+         BrowserFixture browserFixture,
+         ToggleExecutionModeServerFixture<Program> serverFixture,
+         ITestOutputHelper output)
+@@ -23,7 +23,7 @@ public class EnvironmentBoundaryTest : ServerTestBase<ToggleExecutionModeServerF
+     protected override void InitializeAsyncCore()
+     {
+         Navigate(ServerPathBase);
+-        Browser.MountTestComponent<EnvironmentBoundaryContainer>();
++        Browser.MountTestComponent<EnvironmentViewContainer>();
+     }
+ 
+     private string GetCurrentEnvironment()
+diff --git a/src/Components/test/testassets/BasicTestApp/EnvironmentBoundaryContainer.razor b/src/Components/test/testassets/BasicTestApp/EnvironmentViewContainer.razor
+similarity index 70%
+rename from src/Components/test/testassets/BasicTestApp/EnvironmentBoundaryContainer.razor
+rename to src/Components/test/testassets/BasicTestApp/EnvironmentViewContainer.razor
+index 015a1bd342..558d77775d 100644
+--- a/src/Components/test/testassets/BasicTestApp/EnvironmentBoundaryContainer.razor
++++ b/src/Components/test/testassets/BasicTestApp/EnvironmentViewContainer.razor
+@@ -1,37 +1,37 @@
+ @using Microsoft.AspNetCore.Components.Web
+ 
+-<h1>Environment Boundary Test</h1>
++<h1>Environment View Test</h1>
+ 
+ <div id="environment-boundary-test">
+-    <EnvironmentBoundary Include="Development">
++    <EnvironmentView Include="Development">
+         <div id="dev-only-content" class="visible">
+             This content is only visible in Development.
+         </div>
+-    </EnvironmentBoundary>
++    </EnvironmentView>
+ 
+-    <EnvironmentBoundary Exclude="Production">
++    <EnvironmentView Exclude="Production">
+         <div id="non-production-content" class="visible">
+             This content is visible in all environments except Production.
+         </div>
+-    </EnvironmentBoundary>
++    </EnvironmentView>
+ 
+-    <EnvironmentBoundary Include="Development, Staging">
++    <EnvironmentView Include="Development, Staging">
+         <div id="dev-staging-content" class="visible">
+             This content is visible in Development and Staging.
+         </div>
+-    </EnvironmentBoundary>
++    </EnvironmentView>
+ 
+-    <EnvironmentBoundary Include="Production">
++    <EnvironmentView Include="Production">
+         <div id="prod-only-content" class="visible">
+             This content is only visible in Production.
+         </div>
+-    </EnvironmentBoundary>
++    </EnvironmentView>
+ 
+-    <EnvironmentBoundary Exclude="Development">
++    <EnvironmentView Exclude="Development">
+         <div id="non-dev-content" class="visible">
+             This content is visible in all environments except Development.
+         </div>
+-    </EnvironmentBoundary>
++    </EnvironmentView>
+ </div>
+ 
+ <p id="current-environment">Current Environment: @HostEnvironment.EnvironmentName</p>
+diff --git a/src/Components/test/testassets/BasicTestApp/Index.razor b/src/Components/test/testassets/BasicTestApp/Index.razor
+index a1e71d14a3..15e799c265 100644
+--- a/src/Components/test/testassets/BasicTestApp/Index.razor
++++ b/src/Components/test/testassets/BasicTestApp/Index.razor
+@@ -32,7 +32,7 @@
+         <option value="BasicTestApp.DynamicComponentRendering">DynamicComponent rendering</option>
+         <option value="BasicTestApp.ElementFocusComponent">Element focus component</option>
+         <option value="BasicTestApp.ElementRefComponent">Element ref component</option>
+-        <option value="BasicTestApp.EnvironmentBoundaryContainer">Environment boundary</option>
++        <option value="BasicTestApp.EnvironmentViewContainer">Environment view</option>
+         <option value="BasicTestApp.ErrorComponent">Error throwing</option>
+         <option value="BasicTestApp.ErrorBoundaryTest.ErrorBoundaryContainer">Error boundary cases</option>
+         <option value="BasicTestApp.EventBubblingComponent">Event bubbling</option>

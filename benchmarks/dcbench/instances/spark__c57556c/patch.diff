@@ -1,0 +1,322 @@
+From c57556c9769fd99cd9f25b359c655ff6ac817cb5 Mon Sep 17 00:00:00 2001
+From: Anish Shrigondekar <anish.shrigondekar@databricks.com>
+Date: Fri, 18 Jul 2025 11:56:58 -0700
+Subject: [PATCH] [SPARK-52787][SS] Reorganize streaming execution dir around
+ runtime and checkpoint areas
+
+### What changes were proposed in this pull request?
+Reorganize streaming execution dir around runtime and checkpoint areas
+
+### Why are the changes needed?
+Refactoring for ease of future changes in this area
+
+### Does this PR introduce _any_ user-facing change?
+No
+
+### How was this patch tested?
+Existing unit tests
+
+### Was this patch authored or co-authored using generative AI tooling?
+No
+
+Closes #51477 from anishshri-db/task/SPARK-52787.
+
+Authored-by: Anish Shrigondekar <anish.shrigondekar@databricks.com>
+Signed-off-by: Anish Shrigondekar <anish.shrigondekar@databricks.com>
+---
+ .../execution/streaming/{ => checkpointing}/AsyncCommitLog.scala  | 0
+ .../streaming/{ => checkpointing}/AsyncOffsetSeqLog.scala         | 0
+ .../streaming/{ => checkpointing}/CheckpointFileManager.scala     | 0
+ .../sql/execution/streaming/{ => checkpointing}/CommitLog.scala   | 0
+ .../execution/streaming/{ => checkpointing}/HDFSMetadataLog.scala | 0
+ .../sql/execution/streaming/{ => checkpointing}/MetadataLog.scala | 0
+ .../streaming/{ => checkpointing}/MetadataVersionUtil.scala       | 0
+ .../sql/execution/streaming/{ => checkpointing}/OffsetSeq.scala   | 0
+ .../execution/streaming/{ => checkpointing}/OffsetSeqLog.scala    | 0
+ .../{ => operators/stateful}/EventTimeWatermarkExec.scala         | 0
+ .../streaming/{ => runtime}/AcceptsLatestSeenOffsetHandler.scala  | 0
+ .../sql/execution/streaming/{ => runtime}/AsyncLogPurge.scala     | 0
+ .../{ => runtime}/AsyncProgressTrackingMicroBatchExecution.scala  | 0
+ .../{ => runtime}/AsyncStreamingQueryCheckpointMetadata.scala     | 0
+ .../streaming/{ => runtime}/AvailableNowDataStreamWrapper.scala   | 0
+ .../{ => runtime}/AvailableNowMicroBatchStreamWrapper.scala       | 0
+ .../streaming/{ => runtime}/AvailableNowSourceWrapper.scala       | 0
+ .../streaming/{ => runtime}/CompactibleFileStreamLog.scala        | 0
+ .../streaming/{ => runtime}/ContinuousRecordEndpoint.scala        | 0
+ .../sql/execution/streaming/{ => runtime}/ErrorNotifier.scala     | 0
+ .../sql/execution/streaming/{ => runtime}/FileStreamOptions.scala | 0
+ .../sql/execution/streaming/{ => runtime}/FileStreamSource.scala  | 0
+ .../execution/streaming/{ => runtime}/FileStreamSourceLog.scala   | 0
+ .../streaming/{ => runtime}/FileStreamSourceOffset.scala          | 0
+ .../execution/streaming/{ => runtime}/IncrementalExecution.scala  | 0
+ .../spark/sql/execution/streaming/{ => runtime}/LongOffset.scala  | 0
+ .../streaming/{ => runtime}/ManifestFileCommitProtocol.scala      | 0
+ .../execution/streaming/{ => runtime}/MetadataLogFileIndex.scala  | 0
+ .../sql/execution/streaming/{ => runtime}/MetricsReporter.scala   | 0
+ .../execution/streaming/{ => runtime}/MicroBatchExecution.scala   | 0
+ .../sql/execution/streaming/{ => runtime}/ProgressReporter.scala  | 0
+ .../sql/execution/streaming/{ => runtime}/RateStreamOffset.scala  | 0
+ .../execution/streaming/{ => runtime}/ResolveWriteToStream.scala  | 0
+ .../sql/execution/streaming/{ => runtime}/SerializedOffset.scala  | 0
+ .../apache/spark/sql/execution/streaming/{ => runtime}/Sink.scala | 0
+ .../spark/sql/execution/streaming/{ => runtime}/Source.scala      | 0
+ .../sql/execution/streaming/{ => runtime}/StreamExecution.scala   | 0
+ .../streaming/{ => runtime}/StreamExecutionContext.scala          | 0
+ .../sql/execution/streaming/{ => runtime}/StreamMetadata.scala    | 0
+ .../sql/execution/streaming/{ => runtime}/StreamProgress.scala    | 0
+ .../streaming/{ => runtime}/StreamingCheckpointConstants.scala    | 0
+ .../{ => runtime}/StreamingQueryCheckpointMetadata.scala          | 0
+ .../streaming/{ => runtime}/StreamingQueryListenerBus.scala       | 0
+ .../execution/streaming/{ => runtime}/StreamingQueryWrapper.scala | 0
+ .../sql/execution/streaming/{ => runtime}/StreamingRelation.scala | 0
+ .../sql/execution/streaming/{ => runtime}/TriggerExecutor.scala   | 0
+ .../execution/streaming/{ => runtime}/WatermarkPropagator.scala   | 0
+ .../sql/execution/streaming/{ => runtime}/WatermarkTracker.scala  | 0
+ .../spark/sql/execution/streaming/{ => runtime}/memory.scala      | 0
+ 49 files changed, 0 insertions(+), 0 deletions(-)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => checkpointing}/AsyncCommitLog.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => checkpointing}/AsyncOffsetSeqLog.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => checkpointing}/CheckpointFileManager.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => checkpointing}/CommitLog.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => checkpointing}/HDFSMetadataLog.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => checkpointing}/MetadataLog.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => checkpointing}/MetadataVersionUtil.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => checkpointing}/OffsetSeq.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => checkpointing}/OffsetSeqLog.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => operators/stateful}/EventTimeWatermarkExec.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/AcceptsLatestSeenOffsetHandler.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/AsyncLogPurge.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/AsyncProgressTrackingMicroBatchExecution.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/AsyncStreamingQueryCheckpointMetadata.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/AvailableNowDataStreamWrapper.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/AvailableNowMicroBatchStreamWrapper.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/AvailableNowSourceWrapper.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/CompactibleFileStreamLog.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/ContinuousRecordEndpoint.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/ErrorNotifier.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/FileStreamOptions.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/FileStreamSource.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/FileStreamSourceLog.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/FileStreamSourceOffset.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/IncrementalExecution.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/LongOffset.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/ManifestFileCommitProtocol.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/MetadataLogFileIndex.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/MetricsReporter.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/MicroBatchExecution.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/ProgressReporter.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/RateStreamOffset.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/ResolveWriteToStream.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/SerializedOffset.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/Sink.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/Source.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/StreamExecution.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/StreamExecutionContext.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/StreamMetadata.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/StreamProgress.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/StreamingCheckpointConstants.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/StreamingQueryCheckpointMetadata.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/StreamingQueryListenerBus.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/StreamingQueryWrapper.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/StreamingRelation.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/TriggerExecutor.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/WatermarkPropagator.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/WatermarkTracker.scala (100%)
+ rename sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/{ => runtime}/memory.scala (100%)
+
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AsyncCommitLog.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/AsyncCommitLog.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AsyncCommitLog.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/AsyncCommitLog.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AsyncOffsetSeqLog.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/AsyncOffsetSeqLog.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AsyncOffsetSeqLog.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/AsyncOffsetSeqLog.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/CheckpointFileManager.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/CheckpointFileManager.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/CheckpointFileManager.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/CheckpointFileManager.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/CommitLog.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/CommitLog.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/CommitLog.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/CommitLog.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/HDFSMetadataLog.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/HDFSMetadataLog.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/HDFSMetadataLog.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/HDFSMetadataLog.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/MetadataLog.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/MetadataLog.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/MetadataLog.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/MetadataLog.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/MetadataVersionUtil.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/MetadataVersionUtil.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/MetadataVersionUtil.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/MetadataVersionUtil.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/OffsetSeq.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/OffsetSeq.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/OffsetSeq.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/OffsetSeq.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/OffsetSeqLog.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/OffsetSeqLog.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/OffsetSeqLog.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/checkpointing/OffsetSeqLog.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/EventTimeWatermarkExec.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/operators/stateful/EventTimeWatermarkExec.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/EventTimeWatermarkExec.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/operators/stateful/EventTimeWatermarkExec.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AcceptsLatestSeenOffsetHandler.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/AcceptsLatestSeenOffsetHandler.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AcceptsLatestSeenOffsetHandler.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/AcceptsLatestSeenOffsetHandler.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AsyncLogPurge.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/AsyncLogPurge.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AsyncLogPurge.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/AsyncLogPurge.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AsyncProgressTrackingMicroBatchExecution.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/AsyncProgressTrackingMicroBatchExecution.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AsyncProgressTrackingMicroBatchExecution.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/AsyncProgressTrackingMicroBatchExecution.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AsyncStreamingQueryCheckpointMetadata.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/AsyncStreamingQueryCheckpointMetadata.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AsyncStreamingQueryCheckpointMetadata.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/AsyncStreamingQueryCheckpointMetadata.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AvailableNowDataStreamWrapper.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/AvailableNowDataStreamWrapper.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AvailableNowDataStreamWrapper.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/AvailableNowDataStreamWrapper.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AvailableNowMicroBatchStreamWrapper.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/AvailableNowMicroBatchStreamWrapper.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AvailableNowMicroBatchStreamWrapper.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/AvailableNowMicroBatchStreamWrapper.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AvailableNowSourceWrapper.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/AvailableNowSourceWrapper.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/AvailableNowSourceWrapper.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/AvailableNowSourceWrapper.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/CompactibleFileStreamLog.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/CompactibleFileStreamLog.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/CompactibleFileStreamLog.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/CompactibleFileStreamLog.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/ContinuousRecordEndpoint.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/ContinuousRecordEndpoint.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/ContinuousRecordEndpoint.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/ContinuousRecordEndpoint.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/ErrorNotifier.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/ErrorNotifier.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/ErrorNotifier.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/ErrorNotifier.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/FileStreamOptions.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/FileStreamOptions.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/FileStreamOptions.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/FileStreamOptions.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/FileStreamSource.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/FileStreamSource.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/FileStreamSource.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/FileStreamSource.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/FileStreamSourceLog.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/FileStreamSourceLog.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/FileStreamSourceLog.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/FileStreamSourceLog.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/FileStreamSourceOffset.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/FileStreamSourceOffset.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/FileStreamSourceOffset.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/FileStreamSourceOffset.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/IncrementalExecution.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/IncrementalExecution.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/IncrementalExecution.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/IncrementalExecution.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/LongOffset.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/LongOffset.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/LongOffset.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/LongOffset.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/ManifestFileCommitProtocol.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/ManifestFileCommitProtocol.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/ManifestFileCommitProtocol.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/ManifestFileCommitProtocol.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/MetadataLogFileIndex.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/MetadataLogFileIndex.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/MetadataLogFileIndex.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/MetadataLogFileIndex.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/MetricsReporter.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/MetricsReporter.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/MetricsReporter.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/MetricsReporter.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/MicroBatchExecution.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/MicroBatchExecution.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/MicroBatchExecution.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/MicroBatchExecution.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/ProgressReporter.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/ProgressReporter.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/ProgressReporter.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/ProgressReporter.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/RateStreamOffset.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/RateStreamOffset.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/RateStreamOffset.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/RateStreamOffset.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/ResolveWriteToStream.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/ResolveWriteToStream.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/ResolveWriteToStream.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/ResolveWriteToStream.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/SerializedOffset.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/SerializedOffset.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/SerializedOffset.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/SerializedOffset.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/Sink.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/Sink.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/Sink.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/Sink.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/Source.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/Source.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/Source.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/Source.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamExecution.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamExecution.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamExecution.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamExecution.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamExecutionContext.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamExecutionContext.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamExecutionContext.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamExecutionContext.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamMetadata.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamMetadata.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamMetadata.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamMetadata.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamProgress.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamProgress.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamProgress.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamProgress.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamingCheckpointConstants.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamingCheckpointConstants.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamingCheckpointConstants.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamingCheckpointConstants.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamingQueryCheckpointMetadata.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamingQueryCheckpointMetadata.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamingQueryCheckpointMetadata.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamingQueryCheckpointMetadata.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamingQueryListenerBus.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamingQueryListenerBus.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamingQueryListenerBus.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamingQueryListenerBus.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamingQueryWrapper.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamingQueryWrapper.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamingQueryWrapper.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamingQueryWrapper.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamingRelation.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamingRelation.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/StreamingRelation.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/StreamingRelation.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/TriggerExecutor.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/TriggerExecutor.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/TriggerExecutor.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/TriggerExecutor.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/WatermarkPropagator.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/WatermarkPropagator.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/WatermarkPropagator.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/WatermarkPropagator.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/WatermarkTracker.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/WatermarkTracker.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/WatermarkTracker.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/WatermarkTracker.scala
+diff --git a/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/memory.scala b/sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/memory.scala
+similarity index 100%
+rename from sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/memory.scala
+rename to sql/core/src/main/scala/org/apache/spark/sql/execution/streaming/runtime/memory.scala

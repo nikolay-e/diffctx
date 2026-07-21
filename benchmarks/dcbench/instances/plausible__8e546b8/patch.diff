@@ -1,0 +1,2240 @@
+From 8e546b89e8d318d58d68a43530234aa9d7550ea1 Mon Sep 17 00:00:00 2001
+From: RobertJoonas <56999674+RobertJoonas@users.noreply.github.com>
+Date: Tue, 3 Mar 2026 12:49:47 +0000
+Subject: [PATCH] Move Top Stats to new internal stats endpoint (#6035)
+
+* add new internal query endpoint
+
+* add an API interface on FE and use it for top stats
+
+* prevent all time from showing comparison arrows
+
+* fixup: keep metric label the same as is
+
+* FE: always ask for time on page and bounce rate
+
+* BE: sometimes drop time on page
+
+* update changelog
+
+* remove strict comparisons and change defaults
+
+* fixup: make FE unaware of drop_unavailable_time_on_page
+
+* make kw list syntax less noisy
+
+* remove console log
+
+* hotfix: avoid duplicate IDs
+
+* fix test
+---
+ CHANGELOG.md                                  |   2 +
+ assets/js/dashboard/api.ts                    |  33 ++
+ assets/js/dashboard/dashboard-time-periods.ts |   1 +
+ assets/js/dashboard/stats-query.ts            |  82 ++++
+ .../stats/graph/fetch-top-stats.test.ts       | 251 ++++++++++++
+ .../dashboard/stats/graph/fetch-top-stats.ts  | 197 +++++++++
+ assets/js/dashboard/stats/graph/top-stats.js  |  48 +--
+ .../js/dashboard/stats/graph/visitor-graph.js |  62 +--
+ assets/js/dashboard/util/filters.js           |   4 +
+ lib/plausible/stats/api_query_parser.ex       |  23 +-
+ lib/plausible/stats/dashboard/query_parser.ex | 218 +++-------
+ lib/plausible/stats/metrics.ex                |  14 -
+ lib/plausible/stats/query_include.ex          |   4 +-
+ lib/plausible/stats/query_optimizer.ex        |  24 +-
+ lib/plausible/stats/query_result.ex           |  73 ++--
+ .../controllers/api/stats_controller.ex       |  28 +-
+ lib/plausible_web/router.ex                   |   1 +
+ .../stats/dashboard/query_parser_test.exs     | 375 +++++++-----------
+ test/plausible/stats/query/query_test.exs     | 110 -----
+ .../internal_query_api_test.exs               |  79 ++++
+ 20 files changed, 1020 insertions(+), 609 deletions(-)
+ create mode 100644 assets/js/dashboard/stats-query.ts
+ create mode 100644 assets/js/dashboard/stats/graph/fetch-top-stats.test.ts
+ create mode 100644 assets/js/dashboard/stats/graph/fetch-top-stats.ts
+ create mode 100644 test/plausible_web/controllers/api/stats_controller/internal_query_api_test.exs
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 41015ed37..1ed4550af 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -6,6 +6,8 @@ All notable changes to this project will be documented in this file.
+ 
+ ### Added
+ 
++- Add `bounce_rate` to page-filtered Top Stats even when imports are included, but render a metric warning about imported data not included in `bounce_rate` tooltip.
++- Add `time_on_page` to page-filtered Top Stats even when imports are included, unless legacy time on page is in view. 
+ - Adds team_id to query debug metadata (saved in system.query_log log_comment column)
+ - Add "Unknown" option to Countries shield, for when the country code is unrecognized
+ - Add "Last 24 Hours" to dashboard time range picker and Stats API v2
+diff --git a/assets/js/dashboard/api.ts b/assets/js/dashboard/api.ts
+index 57ab30ba6..1df15abaf 100644
+--- a/assets/js/dashboard/api.ts
++++ b/assets/js/dashboard/api.ts
+@@ -1,10 +1,28 @@
++import { Metric } from '../types/query-api'
+ import { DashboardState } from './dashboard-state'
++import { PlausibleSite } from './site-context'
++import { StatsQuery } from './stats-query'
+ import { formatISO } from './util/date'
+ import { serializeApiFilters } from './util/filters'
++import * as url from './util/url'
+ 
+ let abortController = new AbortController()
+ let SHARED_LINK_AUTH: null | string = null
+ 
++export type QueryApiResponse = {
++  query: {
++    metrics: Metric[]
++    date_range: [string, string]
++    comparison_date_range: [string, string]
++  }
++  meta: Record<string, unknown>
++  results: {
++    metrics: Array<number>
++    dimensions: Array<string>
++    comparison: { metrics: Array<number>; change: Array<number> }
++  }[]
++}
++
+ export class ApiError extends Error {
+   payload: unknown
+   constructor(message: string, payload: unknown) {
+@@ -94,6 +112,21 @@ function getSharedLinkSearchParams(): Record<string, string> {
+   return SHARED_LINK_AUTH ? { auth: SHARED_LINK_AUTH } : {}
+ }
+ 
++export async function stats(site: PlausibleSite, statsQuery: StatsQuery) {
++  const response = await fetch(url.apiPath(site, '/query'), {
++    method: 'POST',
++    signal: abortController.signal,
++    headers: {
++      ...getHeaders(),
++      'Content-Type': 'application/json',
++      Accept: 'application/json'
++    },
++    body: JSON.stringify(statsQuery)
++  })
++
++  return handleApiResponse(response)
++}
++
+ export async function get(
+   url: string,
+   dashboardState?: DashboardState,
+diff --git a/assets/js/dashboard/dashboard-time-periods.ts b/assets/js/dashboard/dashboard-time-periods.ts
+index 4ed6a260f..340cb5a53 100644
+--- a/assets/js/dashboard/dashboard-time-periods.ts
++++ b/assets/js/dashboard/dashboard-time-periods.ts
+@@ -27,6 +27,7 @@ import { getDomainScopedStorageKey, getItem, setItem } from './util/storage'
+ 
+ export enum DashboardPeriod {
+   'realtime' = 'realtime',
++  'realtime_30m' = 'realtime_30m',
+   'day' = 'day',
+   'month' = 'month',
+   '7d' = '7d',
+diff --git a/assets/js/dashboard/stats-query.ts b/assets/js/dashboard/stats-query.ts
+new file mode 100644
+index 000000000..1378bb893
+--- /dev/null
++++ b/assets/js/dashboard/stats-query.ts
+@@ -0,0 +1,82 @@
++import { Metric } from '../types/query-api'
++import { DashboardState, Filter } from './dashboard-state'
++import { ComparisonMode, DashboardPeriod } from './dashboard-time-periods'
++import { formatISO } from './util/date'
++import { remapToApiFilters } from './util/filters'
++
++type DateRange = DashboardPeriod | [string, string]
++type IncludeCompare =
++  | ComparisonMode.previous_period
++  | ComparisonMode.year_over_year
++  | string[]
++  | null
++
++type QueryInclude = {
++  imports: boolean
++  imports_meta: boolean
++  time_labels: boolean
++  compare: IncludeCompare
++  compare_match_day_of_week: boolean
++}
++
++export type ReportParams = {
++  metrics: Metric[]
++  dimensions?: string[]
++  include?: Partial<QueryInclude>
++}
++
++export type StatsQuery = {
++  date_range: DateRange
++  relative_date: string | null
++  filters: Filter[]
++  dimensions: string[]
++  metrics: Metric[]
++  include: QueryInclude
++}
++
++export function createStatsQuery(
++  dashboardState: DashboardState,
++  reportParams: ReportParams
++): StatsQuery {
++  return {
++    date_range: createDateRange(dashboardState),
++    relative_date: dashboardState.date ? formatISO(dashboardState.date) : null,
++    dimensions: reportParams.dimensions || [],
++    metrics: reportParams.metrics,
++    filters: remapToApiFilters(dashboardState.filters),
++    include: {
++      imports: dashboardState.with_imported,
++      imports_meta: reportParams.include?.imports_meta || false,
++      time_labels: reportParams.include?.time_labels || false,
++      compare: createIncludeCompare(dashboardState),
++      compare_match_day_of_week: dashboardState.match_day_of_week
++    }
++  }
++}
++
++function createDateRange(dashboardState: DashboardState): DateRange {
++  if (dashboardState.period === DashboardPeriod.custom) {
++    return [formatISO(dashboardState.from), formatISO(dashboardState.to)]
++  } else {
++    return dashboardState.period
++  }
++}
++
++function createIncludeCompare(dashboardState: DashboardState) {
++  switch (dashboardState.comparison) {
++    case ComparisonMode.custom:
++      return [
++        formatISO(dashboardState.compare_from),
++        formatISO(dashboardState.compare_to)
++      ]
++
++    case ComparisonMode.previous_period:
++      return ComparisonMode.previous_period
++
++    case ComparisonMode.year_over_year:
++      return ComparisonMode.year_over_year
++
++    default:
++      return null
++  }
++}
+diff --git a/assets/js/dashboard/stats/graph/fetch-top-stats.test.ts b/assets/js/dashboard/stats/graph/fetch-top-stats.test.ts
+new file mode 100644
+index 000000000..a57082511
+--- /dev/null
++++ b/assets/js/dashboard/stats/graph/fetch-top-stats.test.ts
+@@ -0,0 +1,251 @@
++import {
++  DashboardState,
++  dashboardStateDefaultValue,
++  Filter
++} from '../../dashboard-state'
++import { ComparisonMode, DashboardPeriod } from '../../dashboard-time-periods'
++import { PlausibleSite, siteContextDefaultValue } from '../../site-context'
++import { StatsQuery } from '../../stats-query'
++import { remapToApiFilters } from '../../util/filters'
++import { chooseMetrics, MetricDef, topStatsQueries } from './fetch-top-stats'
++
++const aGoalFilter = ['is', 'goal', ['any goal']] as Filter
++const aPageFilter = ['is', 'page', ['/any/page']] as Filter
++const aPeriodNotRealtime = DashboardPeriod['28d']
++
++const expectedBaseInclude: StatsQuery['include'] = {
++  compare: ComparisonMode.previous_period,
++  compare_match_day_of_week: true,
++  imports: true,
++  imports_meta: true,
++  time_labels: false
++}
++
++const expectedRealtimeVisitorsQuery: StatsQuery = {
++  date_range: DashboardPeriod.realtime,
++  dimensions: [],
++  filters: [],
++  include: {
++    ...expectedBaseInclude,
++    compare: null,
++    imports_meta: false
++  },
++  metrics: ['visitors'],
++  relative_date: null
++}
++
++type TestCase = [
++  /** situation */
++  string,
++  /** input dashboard state & site state */
++  Pick<DashboardState, 'filters' | 'period'> &
++    Partial<{ site?: Pick<PlausibleSite, 'revenueGoals'> }>,
++  /** expected metrics */
++  MetricDef[],
++  /** expected queries */
++  [StatsQuery, null | StatsQuery]
++]
++
++const cases: TestCase[] = [
++  [
++    'realtime and goal filter',
++    { period: DashboardPeriod.realtime, filters: [aGoalFilter] },
++    [
++      { key: 'visitors', label: 'Unique conversions (last 30 min)' },
++      { key: 'events', label: 'Total conversions (last 30 min)' }
++    ],
++    [
++      {
++        date_range: DashboardPeriod.realtime_30m,
++        dimensions: [],
++        filters: remapToApiFilters([aGoalFilter]),
++        include: { ...expectedBaseInclude, compare: null },
++        metrics: ['visitors', 'events'],
++        relative_date: null
++      },
++      expectedRealtimeVisitorsQuery
++    ]
++  ],
++
++  [
++    'realtime',
++    { period: DashboardPeriod.realtime, filters: [] },
++    [
++      { key: 'visitors', label: 'Unique visitors (last 30 min)' },
++      { key: 'pageviews', label: 'Pageviews (last 30 min)' }
++    ],
++    [
++      {
++        date_range: DashboardPeriod.realtime_30m,
++        dimensions: [],
++        filters: [],
++        include: {
++          ...expectedBaseInclude,
++          compare: null
++        },
++        metrics: ['visitors', 'pageviews'],
++        relative_date: null
++      },
++      expectedRealtimeVisitorsQuery
++    ]
++  ],
++
++  [
++    'goal filter with revenue metrics',
++    {
++      period: aPeriodNotRealtime,
++      filters: [aGoalFilter],
++      site: {
++        revenueGoals: [{ display_name: 'a revenue goal', currency: 'USD' }]
++      }
++    },
++    [
++      { key: 'visitors', label: 'Unique conversions' },
++      { key: 'events', label: 'Total conversions' },
++      { key: 'total_revenue', label: 'Total revenue' },
++      { key: 'average_revenue', label: 'Average revenue' },
++      { key: 'conversion_rate', label: 'Conversion rate' }
++    ],
++    [
++      {
++        date_range: aPeriodNotRealtime,
++        dimensions: [],
++        filters: remapToApiFilters([aGoalFilter]),
++        include: expectedBaseInclude,
++        metrics: [
++          'visitors',
++          'events',
++          'total_revenue',
++          'average_revenue',
++          'conversion_rate'
++        ],
++        relative_date: null
++      },
++      null
++    ]
++  ],
++
++  [
++    'goal filter',
++    { period: aPeriodNotRealtime, filters: [aGoalFilter] },
++    [
++      { key: 'visitors', label: 'Unique conversions' },
++      { key: 'events', label: 'Total conversions' },
++      { key: 'conversion_rate', label: 'Conversion rate' }
++    ],
++    [
++      {
++        date_range: aPeriodNotRealtime,
++        dimensions: [],
++        filters: remapToApiFilters([aGoalFilter]),
++        include: expectedBaseInclude,
++        metrics: ['visitors', 'events', 'conversion_rate'],
++        relative_date: null
++      },
++      null
++    ]
++  ],
++
++  [
++    'page filter',
++    {
++      period: aPeriodNotRealtime,
++      filters: [aPageFilter]
++    },
++    [
++      { key: 'visitors', label: 'Unique visitors' },
++      { key: 'visits', label: 'Total visits' },
++      { key: 'pageviews', label: 'Total pageviews' },
++      { key: 'bounce_rate', label: 'Bounce rate' },
++      { key: 'scroll_depth', label: 'Scroll depth' },
++      { key: 'time_on_page', label: 'Time on page' }
++    ],
++
++    [
++      {
++        date_range: aPeriodNotRealtime,
++        dimensions: [],
++        filters: remapToApiFilters([aPageFilter]),
++        include: { ...expectedBaseInclude },
++        metrics: [
++          'visitors',
++          'visits',
++          'pageviews',
++          'bounce_rate',
++          'scroll_depth',
++          'time_on_page'
++        ],
++        relative_date: null
++      },
++      null
++    ]
++  ],
++
++  [
++    'default',
++    { period: aPeriodNotRealtime, filters: [] },
++    [
++      { key: 'visitors', label: 'Unique visitors' },
++      { key: 'visits', label: 'Total visits' },
++      { key: 'pageviews', label: 'Total pageviews' },
++      { key: 'views_per_visit', label: 'Views per visit' },
++      { key: 'bounce_rate', label: 'Bounce rate' },
++      { key: 'visit_duration', label: 'Visit duration' }
++    ],
++    [
++      {
++        date_range: aPeriodNotRealtime,
++        dimensions: [],
++        filters: [],
++        include: expectedBaseInclude,
++        metrics: [
++          'visitors',
++          'visits',
++          'pageviews',
++          'views_per_visit',
++          'bounce_rate',
++          'visit_duration'
++        ],
++        relative_date: null
++      },
++      null
++    ]
++  ]
++]
++
++describe(`${chooseMetrics.name}`, () => {
++  test.each(
++    cases.map(([name, inputDashboardState, expectedMetrics]) => [
++      name,
++      inputDashboardState,
++      expectedMetrics
++    ])
++  )(
++    'for %s dashboard, top stats metrics are as expected',
++    (_, { site, ...inputDashboardState }, expectedMetrics) => {
++      const dashboardState = {
++        ...dashboardStateDefaultValue,
++        resolvedFilters: inputDashboardState.filters,
++        ...inputDashboardState
++      }
++      expect(
++        chooseMetrics({ ...siteContextDefaultValue, ...site }, dashboardState)
++      ).toEqual(expectedMetrics)
++    }
++  )
++})
++
++describe(`${topStatsQueries.name}`, () => {
++  test.each(cases)(
++    'for %s dashboard, queries are as expected',
++    (_, { site: _site, ...inputDashboardState }, metrics, expectedQueries) => {
++      const dashboardState = {
++        ...dashboardStateDefaultValue,
++        resolvedFilters: inputDashboardState.filters,
++        ...inputDashboardState
++      }
++      const queries = topStatsQueries(dashboardState, metrics)
++      expect(queries).toEqual(expectedQueries)
++    }
++  )
++})
+diff --git a/assets/js/dashboard/stats/graph/fetch-top-stats.ts b/assets/js/dashboard/stats/graph/fetch-top-stats.ts
+new file mode 100644
+index 000000000..86bffcb5e
+--- /dev/null
++++ b/assets/js/dashboard/stats/graph/fetch-top-stats.ts
+@@ -0,0 +1,197 @@
++import { Metric } from '../../../types/query-api'
++import * as api from '../../api'
++import { DashboardState } from '../../dashboard-state'
++import {
++  ComparisonMode,
++  DashboardPeriod,
++  isComparisonEnabled,
++  isComparisonForbidden
++} from '../../dashboard-time-periods'
++import { PlausibleSite } from '../../site-context'
++import { createStatsQuery, ReportParams, StatsQuery } from '../../stats-query'
++import {
++  hasConversionGoalFilter,
++  hasPageFilter,
++  isRealTimeDashboard
++} from '../../util/filters'
++
++export function topStatsQueries(
++  dashboardState: DashboardState,
++  metrics: MetricDef[]
++): [StatsQuery, StatsQuery | null] {
++  let currentVisitorsQuery = null
++
++  if (isRealTimeDashboard(dashboardState)) {
++    currentVisitorsQuery = createStatsQuery(dashboardState, {
++      metrics: ['visitors']
++    })
++
++    currentVisitorsQuery.filters = []
++  }
++  const topStatsQuery = constructTopStatsQuery(dashboardState, metrics)
++
++  return [topStatsQuery, currentVisitorsQuery]
++}
++
++export async function fetchTopStats(
++  site: PlausibleSite,
++  dashboardState: DashboardState
++) {
++  const metrics = chooseMetrics(site, dashboardState)
++  const [topStatsQuery, currentVisitorsQuery] = topStatsQueries(
++    dashboardState,
++    metrics
++  )
++  const topStatsPromise = api.stats(site, topStatsQuery)
++
++  const currentVisitorsPromise = currentVisitorsQuery
++    ? api.stats(site, currentVisitorsQuery)
++    : null
++
++  const [topStatsResponse, currentVisitorsResponse] = await Promise.all([
++    topStatsPromise,
++    currentVisitorsPromise
++  ])
++
++  return formatTopStatsData(topStatsResponse, currentVisitorsResponse, metrics)
++}
++
++export type MetricDef = { key: Metric; label: string }
++
++export function chooseMetrics(
++  site: Pick<PlausibleSite, 'revenueGoals'>,
++  dashboardState: DashboardState
++): MetricDef[] {
++  const revenueMetrics: MetricDef[] =
++    site.revenueGoals.length > 0
++      ? [
++          { key: 'total_revenue', label: 'Total revenue' },
++          { key: 'average_revenue', label: 'Average revenue' }
++        ]
++      : []
++
++  if (
++    isRealTimeDashboard(dashboardState) &&
++    hasConversionGoalFilter(dashboardState)
++  ) {
++    return [
++      { key: 'visitors', label: 'Unique conversions (last 30 min)' },
++      { key: 'events', label: 'Total conversions (last 30 min)' }
++    ]
++  } else if (isRealTimeDashboard(dashboardState)) {
++    return [
++      { key: 'visitors', label: 'Unique visitors (last 30 min)' },
++      { key: 'pageviews', label: 'Pageviews (last 30 min)' }
++    ]
++  } else if (hasConversionGoalFilter(dashboardState)) {
++    return [
++      { key: 'visitors', label: 'Unique conversions' },
++      { key: 'events', label: 'Total conversions' },
++      ...revenueMetrics,
++      { key: 'conversion_rate', label: 'Conversion rate' }
++    ]
++  } else if (hasPageFilter(dashboardState)) {
++    return [
++      { key: 'visitors', label: 'Unique visitors' },
++      { key: 'visits', label: 'Total visits' },
++      { key: 'pageviews', label: 'Total pageviews' },
++      { key: 'bounce_rate', label: 'Bounce rate' },
++      { key: 'scroll_depth', label: 'Scroll depth' },
++      { key: 'time_on_page', label: 'Time on page' }
++    ]
++  } else {
++    return [
++      { key: 'visitors', label: 'Unique visitors' },
++      { key: 'visits', label: 'Total visits' },
++      { key: 'pageviews', label: 'Total pageviews' },
++      { key: 'views_per_visit', label: 'Views per visit' },
++      { key: 'bounce_rate', label: 'Bounce rate' },
++      { key: 'visit_duration', label: 'Visit duration' }
++    ]
++  }
++}
++
++function constructTopStatsQuery(
++  dashboardState: DashboardState,
++  metrics: MetricDef[]
++): StatsQuery {
++  const reportParams: ReportParams = {
++    metrics: metrics.map((m) => m.key),
++    include: { imports_meta: true }
++  }
++
++  const statsQuery = createStatsQuery(dashboardState, reportParams)
++
++  if (
++    !isComparisonEnabled(dashboardState.comparison) &&
++    !isComparisonForbidden({
++      period: dashboardState.period,
++      segmentIsExpanded: false
++    })
++  ) {
++    statsQuery.include.compare = ComparisonMode.previous_period
++  }
++
++  if (isRealTimeDashboard(dashboardState)) {
++    statsQuery.date_range = DashboardPeriod.realtime_30m
++  }
++
++  return statsQuery
++}
++
++type TopStatItem = {
++  metric: Metric
++  value: number
++  name: string
++  graphable: boolean
++  change?: number
++  comparisonValue?: number
++}
++
++function formatTopStatsData(
++  topStatsResponse: api.QueryApiResponse,
++  currentVisitorsResponse: api.QueryApiResponse | null,
++  metrics: MetricDef[]
++) {
++  const { query, meta, results } = topStatsResponse
++
++  const topStats: TopStatItem[] = []
++
++  if (currentVisitorsResponse) {
++    topStats.push({
++      metric: currentVisitorsResponse.query.metrics[0],
++      value: currentVisitorsResponse.results[0].metrics[0],
++      name: 'Current visitors',
++      graphable: false
++    })
++  }
++
++  for (let i = 0; i < query.metrics.length; i++) {
++    const metricKey = query.metrics[i]
++    const metricDef = metrics.find((m) => m.key === metricKey)
++
++    if (!metricDef) {
++      throw new Error('API response returned a metric that was not asked for')
++    }
++
++    topStats.push({
++      metric: metricKey,
++      value: results[0].metrics[i],
++      name: metricDef.label,
++      graphable: true,
++      change: results[0].comparison?.change[i],
++      comparisonValue: results[0].comparison?.metrics[i]
++    })
++  }
++
++  const [from, to] = query.date_range.map((d) => d.split('T')[0])
++
++  const comparingFrom = query.comparison_date_range
++    ? query.comparison_date_range[0].split('T')[0]
++    : null
++  const comparingTo = query.comparison_date_range
++    ? query.comparison_date_range[1].split('T')[0]
++    : null
++
++  return { topStats, meta, from, to, comparingFrom, comparingTo }
++}
+diff --git a/assets/js/dashboard/stats/graph/top-stats.js b/assets/js/dashboard/stats/graph/top-stats.js
+index 47b818a09..d5cd59388 100644
+--- a/assets/js/dashboard/stats/graph/top-stats.js
++++ b/assets/js/dashboard/stats/graph/top-stats.js
+@@ -23,32 +23,27 @@ function topStatNumberLong(metric, value) {
+   return formatter(value)
+ }
+ 
+-export default function TopStats({
+-  data,
+-  onMetricUpdate,
+-  tooltipBoundary,
+-  graphableMetrics
+-}) {
++export default function TopStats({ data, onMetricUpdate, tooltipBoundary }) {
+   const { dashboardState } = useDashboardStateContext()
+   const lastLoadTimestamp = useLastLoadContext()
+   const site = useSiteContext()
+ 
+-  const isComparison = dashboardState.comparison && data && data.comparing_from
++  const isComparison =
++    (dashboardState.comparison && data && data.comparingFrom !== null) || false
+ 
+   function tooltip(stat) {
+     let statName = stat.name.toLowerCase()
+-    const warning = warningText(stat.graph_metric, site)
++    const warning = warningText(stat.metric, site)
+     statName = stat.value === 1 ? statName.replace(/s$/, '') : statName
+ 
+     return (
+       <div>
+         {isComparison && (
+           <div className="whitespace-nowrap">
+-            {topStatNumberLong(stat.graph_metric, stat.value)} vs.{' '}
+-            {topStatNumberLong(stat.graph_metric, stat.comparison_value)}{' '}
+-            {statName}
++            {topStatNumberLong(stat.metric, stat.value)} vs.{' '}
++            {topStatNumberLong(stat.metric, stat.comparisonValue)} {statName}
+             <ChangeArrow
+-              metric={stat.graph_metric}
++              metric={stat.metric}
+               change={stat.change}
+               className="pl-4 text-xs text-gray-100"
+             />
+@@ -57,7 +52,7 @@ export default function TopStats({
+ 
+         {!isComparison && (
+           <div className="whitespace-nowrap">
+-            {topStatNumberLong(stat.graph_metric, stat.value)} {statName}
++            {topStatNumberLong(stat.metric, stat.value)} {statName}
+           </div>
+         )}
+ 
+@@ -103,13 +98,13 @@ export default function TopStats({
+   }
+ 
+   function canMetricBeGraphed(stat) {
+-    return graphableMetrics.includes(stat.graph_metric)
++    return stat.graphable
+   }
+ 
+   function maybeUpdateMetric(stat) {
+     if (canMetricBeGraphed(stat)) {
+-      storage.setItem(`metric__${site.domain}`, stat.graph_metric)
+-      onMetricUpdate(stat.graph_metric)
++      storage.setItem(`metric__${site.domain}`, stat.metric)
++      onMetricUpdate(stat.metric)
+     }
+   }
+ 
+@@ -128,7 +123,8 @@ export default function TopStats({
+   }
+ 
+   function renderStatName(stat) {
+-    const isSelected = stat.graph_metric === getStoredMetric()
++    const isSelected =
++      canMetricBeGraphed(stat) && stat.metric === getStoredMetric()
+ 
+     const [statDisplayName, statExtraName] = stat.name.split(/(\(.+\))/g)
+ 
+@@ -148,7 +144,7 @@ export default function TopStats({
+         {statExtraName && (
+           <span className="hidden sm:inline-block ml-1">{statExtraName}</span>
+         )}
+-        {warningText(stat.graph_metric) && (
++        {warningText(stat.metric) && (
+           <span className="inline-block ml-1">*</span>
+         )}
+       </div>
+@@ -180,13 +176,17 @@ export default function TopStats({
+             <span className="flex items-center justify-between whitespace-nowrap">
+               <p
+                 className="font-bold text-xl dark:text-gray-100"
+-                id={stat.graph_metric}
++                id={
++                  stat.name === 'Current visitors'
++                    ? 'current_visitors'
++                    : stat.metric
++                }
+               >
+-                {topStatNumberShort(stat.graph_metric, stat.value)}
++                {topStatNumberShort(stat.metric, stat.value)}
+               </p>
+               {!isComparison && stat.change != null ? (
+                 <ChangeArrow
+-                  metric={stat.graph_metric}
++                  metric={stat.metric}
+                   change={stat.change}
+                   className="pl-2 text-xs dark:text-gray-100"
+                 />
+@@ -202,10 +202,10 @@ export default function TopStats({
+           {isComparison ? (
+             <div>
+               <p className="font-bold text-xl text-gray-500 dark:text-gray-400">
+-                {topStatNumberShort(stat.graph_metric, stat.comparison_value)}
++                {topStatNumberShort(stat.metric, stat.comparisonValue)}
+               </p>
+               <p className="text-xs text-gray-500 dark:text-gray-400">
+-                {formatDateRange(site, data.comparing_from, data.comparing_to)}
++                {formatDateRange(site, data.comparingFrom, data.comparingTo)}
+               </p>
+             </div>
+           ) : null}
+@@ -215,7 +215,7 @@ export default function TopStats({
+   }
+ 
+   const stats =
+-    data && data.top_stats.filter((stat) => stat.value !== null).map(renderStat)
++    data && data.topStats.filter((stat) => stat.value !== null).map(renderStat)
+ 
+   if (stats && dashboardState.period === 'realtime') {
+     stats.push(blinkingDot())
+diff --git a/assets/js/dashboard/stats/graph/visitor-graph.js b/assets/js/dashboard/stats/graph/visitor-graph.js
+index 196b7b4e5..f88afa7e9 100644
+--- a/assets/js/dashboard/stats/graph/visitor-graph.js
++++ b/assets/js/dashboard/stats/graph/visitor-graph.js
+@@ -3,30 +3,17 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
+ import * as api from '../../api'
+ import * as storage from '../../util/storage'
+ import TopStats from './top-stats'
++import { fetchTopStats } from './fetch-top-stats'
+ import { IntervalPicker, getCurrentInterval } from './interval-picker'
+ import StatsExport from './stats-export'
+ import WithImportedSwitch from './with-imported-switch'
+ import { getSamplingNotice, NoticesIcon } from './notices'
+ import FadeIn from '../../fade-in'
+ import * as url from '../../util/url'
+-import { isComparisonEnabled } from '../../dashboard-time-periods'
+ import LineGraphWithRouter from './line-graph'
+ import { useDashboardStateContext } from '../../dashboard-state-context'
+ import { useSiteContext } from '../../site-context'
+ 
+-function fetchTopStats(site, dashboardState) {
+-  const q = { ...dashboardState }
+-
+-  if (
+-    !isComparisonEnabled(q.comparison) &&
+-    dashboardState.period !== 'realtime'
+-  ) {
+-    q.comparison = 'previous_period'
+-  }
+-
+-  return api.get(url.apiPath(site, '/top-stats'), q)
+-}
+-
+ function fetchMainGraph(site, dashboardState, metric, interval) {
+   const params = { metric, interval }
+   return api.get(url.apiPath(site, '/main-graph'), dashboardState, params)
+@@ -92,10 +79,14 @@ export default function VisitorGraph({ updateImportedDataInView }) {
+   }, [topStatData])
+ 
+   async function fetchTopStatsAndGraphData() {
+-    const response = await fetchTopStats(site, dashboardState)
++    const formattedTopStatsResponse = await fetchTopStats(site, dashboardState)
++    const { topStats, meta } = formattedTopStatsResponse
+ 
+     let metric = getStoredMetric()
+-    const availableMetrics = response.graphable_metrics
++
++    const availableMetrics = topStats
++      .filter((stat) => stat.graphable)
++      .map((stat) => stat.metric)
+ 
+     if (!availableMetrics.includes(metric)) {
+       metric = availableMetrics[0]
+@@ -104,11 +95,11 @@ export default function VisitorGraph({ updateImportedDataInView }) {
+ 
+     const interval = getCurrentInterval(site, dashboardState)
+ 
+-    if (response.updateImportedDataInView) {
+-      updateImportedDataInView(response.includes_imported)
++    if (typeof updateImportedDataInView === 'function') {
++      updateImportedDataInView(meta.imports_included)
+     }
+ 
+-    setTopStatData(response)
++    setTopStatData(formattedTopStatsResponse)
+     setTopStatsLoading(false)
+ 
+     fetchGraphData(metric, interval)
+@@ -147,11 +138,36 @@ export default function VisitorGraph({ updateImportedDataInView }) {
+ 
+   function importedSwitchVisible() {
+     return (
+-      !!topStatData?.with_imported_switch &&
+-      topStatData?.with_imported_switch.visible
++      topStatData &&
++      !['no_imported_data', 'out_of_range'].includes(
++        topStatData.meta.imports_skip_reason
++      )
++    )
++  }
++
++  function importedSwitchDisabled() {
++    return (
++      topStatData &&
++      topStatData.meta.imports_skip_reason === 'unsupported_query'
+     )
+   }
+ 
++  function importedSwitchTooltip() {
++    if (!topStatData) {
++      return
++    }
++
++    if (importedSwitchDisabled()) {
++      return 'Imported data cannot be included'
++    }
++
++    if (topStatData.meta.imports_included) {
++      return 'Click to exclude imported data'
++    }
++
++    return 'Click to include imported data'
++  }
++
+   function getImportedIntervalUnsupportedNotice() {
+     const unsupportedInterval = ['hour', 'minute'].includes(
+       getCurrentInterval(site, dashboardState)
+@@ -199,8 +215,8 @@ export default function VisitorGraph({ updateImportedDataInView }) {
+             {!isRealtime && <StatsExport />}
+             {importedSwitchVisible() && (
+               <WithImportedSwitch
+-                tooltipMessage={topStatData.with_imported_switch.tooltip_msg}
+-                disabled={!topStatData.with_imported_switch.togglable}
++                tooltipMessage={importedSwitchTooltip()}
++                disabled={importedSwitchDisabled()}
+               />
+             )}
+             <IntervalPicker onIntervalUpdate={onIntervalUpdate} />
+diff --git a/assets/js/dashboard/util/filters.js b/assets/js/dashboard/util/filters.js
+index d4f19394f..4e15f3ef8 100644
+--- a/assets/js/dashboard/util/filters.js
++++ b/assets/js/dashboard/util/filters.js
+@@ -124,6 +124,10 @@ export function isFilteringOnFixedValue(
+   return false
+ }
+ 
++export function hasPageFilter(dashboardState) {
++  return dashboardState.resolvedFilters.some(hasDimensionPrefix('page'))
++}
++
+ export function hasConversionGoalFilter(dashboardState) {
+   const resolvedGoalFilters = dashboardState.resolvedFilters.filter(
+     hasDimensionPrefix('goal')
+diff --git a/lib/plausible/stats/api_query_parser.ex b/lib/plausible/stats/api_query_parser.ex
+index eca5bf26f..1aea69dcb 100644
+--- a/lib/plausible/stats/api_query_parser.ex
++++ b/lib/plausible/stats/api_query_parser.ex
+@@ -13,8 +13,7 @@ defmodule Plausible.Stats.ApiQueryParser do
+     trim_relative_date_range: false,
+     compare: nil,
+     compare_match_day_of_week: false,
+-    legacy_time_on_page_cutoff: nil,
+-    dashboard_metric_labels: false
++    legacy_time_on_page_cutoff: nil
+   }
+ 
+   def default_include(), do: @default_include
+@@ -46,7 +45,7 @@ defmodule Plausible.Stats.ApiQueryParser do
+     end
+   end
+ 
+-  defp parse_metrics(metrics) when is_list(metrics) do
++  def parse_metrics(metrics) when is_list(metrics) do
+     parse_list(metrics, &parse_metric/1)
+   end
+ 
+@@ -173,13 +172,13 @@ defmodule Plausible.Stats.ApiQueryParser do
+     {:ok, []}
+   end
+ 
+-  defp parse_input_date_range("day"), do: {:ok, :day}
+-  defp parse_input_date_range("24h"), do: {:ok, :"24h"}
+-  defp parse_input_date_range("month"), do: {:ok, :month}
+-  defp parse_input_date_range("year"), do: {:ok, :year}
+-  defp parse_input_date_range("all"), do: {:ok, :all}
++  def parse_input_date_range("day"), do: {:ok, :day}
++  def parse_input_date_range("24h"), do: {:ok, :"24h"}
++  def parse_input_date_range("month"), do: {:ok, :month}
++  def parse_input_date_range("year"), do: {:ok, :year}
++  def parse_input_date_range("all"), do: {:ok, :all}
+ 
+-  defp parse_input_date_range(shorthand) when is_binary(shorthand) do
++  def parse_input_date_range(shorthand) when is_binary(shorthand) do
+     case Integer.parse(shorthand) do
+       {n, "d"} when n > 0 and n <= 5_000 ->
+         {:ok, {:last_n_days, n}}
+@@ -193,18 +192,18 @@ defmodule Plausible.Stats.ApiQueryParser do
+     end
+   end
+ 
+-  defp parse_input_date_range([from, to]) when is_binary(from) and is_binary(to) do
++  def parse_input_date_range([from, to]) when is_binary(from) and is_binary(to) do
+     case parse_date_strings(from, to) do
+       {:ok, dates} -> {:ok, dates}
+       {:error, _} -> parse_timestamp_strings(from, to)
+     end
+   end
+ 
+-  defp parse_input_date_range(unknown) do
++  def parse_input_date_range(unknown) do
+     {:error, %QueryError{code: :invalid_date_range, message: "Invalid date_range #{i(unknown)}"}}
+   end
+ 
+-  defp parse_date_strings(from, to) do
++  def parse_date_strings(from, to) do
+     with {:ok, from_date} <- Date.from_iso8601(from),
+          {:ok, to_date} <- Date.from_iso8601(to) do
+       {:ok, {:date_range, from_date, to_date}}
+diff --git a/lib/plausible/stats/dashboard/query_parser.ex b/lib/plausible/stats/dashboard/query_parser.ex
+index ee5459e97..641ddbc3e 100644
+--- a/lib/plausible/stats/dashboard/query_parser.ex
++++ b/lib/plausible/stats/dashboard/query_parser.ex
+@@ -5,46 +5,7 @@ defmodule Plausible.Stats.Dashboard.QueryParser do
+   to be filled in by each specific report.
+   """
+ 
+-  alias Plausible.Stats.{ParsedQueryParams, QueryInclude}
+-
+-  @default_include %QueryInclude{
+-    imports: true,
+-    # `include.imports_meta` can be true even when `include.imports`
+-    # is false. Even if we don't want to include imported data, we
+-    # might still want to know whether imported data can be toggled
+-    # on/off on the dashboard.
+-    imports_meta: false,
+-    time_labels: false,
+-    total_rows: false,
+-    trim_relative_date_range: true,
+-    compare: nil,
+-    compare_match_day_of_week: true,
+-    legacy_time_on_page_cutoff: nil,
+-    dashboard_metric_labels: true
+-  }
+-
+-  def default_include(), do: @default_include
+-
+-  @default_pagination nil
+-
+-  def default_pagination(), do: @default_pagination
+-
+-  @valid_period_shorthands %{
+-    "realtime" => :realtime,
+-    "day" => :day,
+-    "month" => :month,
+-    "year" => :year,
+-    "all" => :all,
+-    "7d" => {:last_n_days, 7},
+-    "24h" => :"24h",
+-    "28d" => {:last_n_days, 28},
+-    "30d" => {:last_n_days, 30},
+-    "91d" => {:last_n_days, 91},
+-    "6mo" => {:last_n_months, 6},
+-    "12mo" => {:last_n_months, 12}
+-  }
+-
+-  @valid_period_shorthand_keys Map.keys(@valid_period_shorthands)
++  alias Plausible.Stats.{ParsedQueryParams, QueryInclude, ApiQueryParser, QueryError}
+ 
+   @valid_comparison_shorthands %{
+     "previous_period" => :previous_period,
+@@ -53,153 +14,106 @@ defmodule Plausible.Stats.Dashboard.QueryParser do
+ 
+   @valid_comparison_shorthand_keys Map.keys(@valid_comparison_shorthands)
+ 
+-  def parse(query_string, site, user_prefs) when is_binary(query_string) do
+-    query_string = String.trim_leading(query_string, "?")
+-    params_map = URI.decode_query(query_string)
+-
+-    with {:ok, filters} <- parse_filters(query_string),
+-         {:ok, relative_date} <- parse_relative_date(params_map) do
+-      input_date_range = parse_input_date_range(params_map, site, user_prefs)
+-
+-      include =
+-        Map.merge(@default_include, %{
+-          imports: parse_include_imports(params_map),
+-          compare: parse_include_compare(params_map, user_prefs),
+-          compare_match_day_of_week: parse_match_day_of_week(params_map, user_prefs)
+-        })
+-
++  def parse(params) do
++    with {:ok, input_date_range} <- parse_input_date_range(params),
++         {:ok, relative_date} <- parse_relative_date(params),
++         {:ok, filters} <- parse_filters(params),
++         {:ok, metrics} <- parse_metrics(params),
++         {:ok, include} <- parse_include(params) do
+       {:ok,
+        ParsedQueryParams.new!(%{
+          input_date_range: input_date_range,
+          relative_date: relative_date,
+          filters: filters,
++         metrics: metrics,
+          include: include
+        })}
+     end
+   end
+ 
+-  defp parse_input_date_range(%{"period" => period}, _site, _user_prefs)
+-       when period in @valid_period_shorthand_keys do
+-    @valid_period_shorthands[period]
+-  end
+-
+-  defp parse_input_date_range(
+-         %{"period" => "custom", "from" => from, "to" => to},
+-         _site,
+-         _user_prefs
+-       ) do
+-    from_date = Date.from_iso8601!(String.trim(from))
+-    to_date = Date.from_iso8601!(String.trim(to))
+-    {:date_range, from_date, to_date}
+-  end
+-
+-  defp parse_input_date_range(_params, _site, %{"period" => period})
+-       when period in @valid_period_shorthand_keys do
+-    @valid_period_shorthands[period]
++  defp parse_input_date_range(%{"date_range" => date_range}) do
++    case date_range do
++      "realtime" -> {:ok, :realtime}
++      "realtime_30m" -> {:ok, :realtime_30m}
++      date_range -> ApiQueryParser.parse_input_date_range(date_range)
++    end
+   end
+ 
+-  defp parse_input_date_range(_params, site, _user_prefs) do
+-    if recently_created?(site), do: :day, else: {:last_n_days, 28}
++  defp parse_input_date_range(_) do
++    {:error,
++     %QueryError{code: :invalid_date_range, message: "Required 'date_range' parameter missing"}}
+   end
+ 
+-  defp parse_relative_date(%{"date" => date}) do
++  defp parse_relative_date(%{"relative_date" => date}) when is_binary(date) do
+     case Date.from_iso8601(date) do
+-      {:ok, date} -> {:ok, date}
+-      _ -> {:error, :invalid_date}
++      {:ok, date} ->
++        {:ok, date}
++
++      _ ->
++        {:error,
++         %QueryError{code: :invalid_relative_date, message: "Failed to convert '#{date}' to date"}}
+     end
+   end
+ 
+   defp parse_relative_date(_), do: {:ok, nil}
+ 
+-  defp parse_include_imports(%{"with_imported" => "false"}), do: false
+-  defp parse_include_imports(_), do: true
+-
+-  defp parse_include_compare(%{"comparison" => "off"}, _user_prefs), do: nil
+-
+-  defp parse_include_compare(%{"comparison" => comparison}, _user_prefs)
+-       when comparison in @valid_comparison_shorthand_keys do
+-    @valid_comparison_shorthands[comparison]
+-  end
+-
+-  defp parse_include_compare(%{"comparison" => "custom"} = params, _user_prefs) do
+-    from_date = Date.from_iso8601!(params["compare_from"])
+-    to_date = Date.from_iso8601!(params["compare_to"])
+-    {:date_range, from_date, to_date}
+-  end
+-
+-  defp parse_include_compare(_params, %{"comparison" => comparison})
+-       when comparison in @valid_comparison_shorthand_keys do
+-    @valid_comparison_shorthands[comparison]
++  defp parse_metrics(%{"metrics" => [_ | _] = metrics}) do
++    ApiQueryParser.parse_metrics(metrics)
+   end
+ 
+-  defp parse_include_compare(_params, _user_prefs), do: nil
++  defp parse_metrics(_),
++    do:
++      {:error,
++       %QueryError{
++         code: :invalid_metrics,
++         message: "Expected at least one valid metric in 'metrics'"
++       }}
+ 
+-  defp parse_match_day_of_week(%{"match_day_of_week" => "false"}, _user_prefs), do: false
+-  defp parse_match_day_of_week(%{"match_day_of_week" => "true"}, _user_prefs), do: true
+-  defp parse_match_day_of_week(_params, %{"match_day_of_week" => "false"}), do: false
+-  defp parse_match_day_of_week(_params, _user_prefs), do: true
+-
+-  defp parse_filters(query_string) do
+-    with {:ok, filters} <- decode_filters(query_string) do
+-      Plausible.Stats.ApiQueryParser.parse_filters(filters)
++  defp parse_include(params) do
++    with {:ok, compare} <- parse_include_compare(params["include"]) do
++      {:ok,
++       %QueryInclude{
++         imports: params["include"]["imports"] == true,
++         imports_meta: params["include"]["imports_meta"] == true,
++         compare: compare,
++         compare_match_day_of_week: params["include"]["compare_match_day_of_week"] == true,
++         time_labels: params["include"]["time_labels"] == true,
++         trim_relative_date_range: true,
++         drop_unavailable_time_on_page: true
++       }}
+     end
+   end
+ 
+-  defp decode_filters(query_string) do
+-    query_string
+-    |> URI.query_decoder()
+-    |> Enum.filter(fn {key, _value} -> key == "f" end)
+-    |> Enum.reduce_while({:ok, []}, fn {_, filter_expression}, {:ok, acc} ->
+-      case decode_filter(filter_expression) do
+-        {:ok, filter} -> {:cont, {:ok, acc ++ [filter]}}
+-        {:error, _} -> {:halt, {:error, :invalid_filters}}
+-      end
+-    end)
++  defp parse_include_compare(%{"compare" => compare})
++       when compare in @valid_comparison_shorthand_keys do
++    {:ok, @valid_comparison_shorthands[compare]}
+   end
+ 
+-  defp decode_filter(filter_expression) do
+-    with [operator, dimension | clauses] <- String.split(filter_expression, ","),
+-         dimension = with_prefix(dimension),
+-         {:ok, clauses} <- decode_clauses(clauses, dimension) do
+-      {:ok, [operator, dimension, clauses]}
+-    else
+-      _ -> {:error, :invalid_filter}
+-    end
+-  end
++  defp parse_include_compare(%{"compare" => [from, to] = compare})
++       when is_binary(from) and is_binary(to) do
++    case ApiQueryParser.parse_date_strings(from, to) do
++      {:ok, compare} ->
++        {:ok, compare}
+ 
+-  @event_prefix "event:"
+-  @visit_prefix "visit:"
+-  @no_prefix_dimensions ["segment"]
+-  defp with_prefix(dimension) do
+-    cond do
+-      dimension in @no_prefix_dimensions -> dimension
+-      event_dimension?(dimension) -> @event_prefix <> dimension
+-      true -> @visit_prefix <> dimension
++      {:error, _} ->
++        {:error,
++         %QueryError{
++           code: :invalid_include,
++           message: "Invalid include.compare '#{inspect(compare)}'"
++         }}
+     end
+   end
+ 
+-  @dimensions_with_integer_clauses ["segment", "visit:city"]
+-  defp decode_clauses(clauses, dimension) when dimension in @dimensions_with_integer_clauses do
+-    Enum.reduce_while(clauses, {:ok, []}, fn clause, {:ok, acc} ->
+-      case Integer.parse(clause) do
+-        {int, ""} -> {:cont, {:ok, acc ++ [int]}}
+-        _ -> {:halt, {:error, :invalid_filter}}
+-      end
+-    end)
+-  end
+-
+-  defp decode_clauses(clauses, _dimension) do
+-    {:ok, Enum.map(clauses, &URI.decode_www_form/1)}
++  defp parse_include_compare(%{"compare" => compare}) when not is_nil(compare) do
++    {:error,
++     %QueryError{code: :invalid_include, message: "Invalid include.compare '#{inspect(compare)}'"}}
+   end
+ 
+-  @event_props_prefix "props:"
+-  @event_dimensions ["name", "page", "goal", "hostname"]
+-  defp event_dimension?(dimension) do
+-    dimension in @event_dimensions or String.starts_with?(dimension, @event_props_prefix)
++  defp parse_include_compare(_) do
++    {:ok, nil}
+   end
+ 
+-  defp recently_created?(site) do
+-    stats_start_date = NaiveDateTime.to_date(site.native_stats_start_at)
+-    Date.diff(stats_start_date, Date.utc_today()) >= -1
++  defp parse_filters(%{"filters" => filters}) when is_list(filters) do
++    Plausible.Stats.ApiQueryParser.parse_filters(filters)
+   end
+ end
+diff --git a/lib/plausible/stats/metrics.ex b/lib/plausible/stats/metrics.ex
+index 8023d5bd0..c4673ae73 100644
+--- a/lib/plausible/stats/metrics.ex
++++ b/lib/plausible/stats/metrics.ex
+@@ -55,18 +55,4 @@ defmodule Plausible.Stats.Metrics do
+   def from_string(str) do
+     Map.fetch(@metric_mappings, str)
+   end
+-
+-  def dashboard_metric_label(:visitors, %{realtime?: true}), do: "Current visitors"
+-  def dashboard_metric_label(:visitors, %{goal_filter?: true}), do: "Conversions"
+-
+-  def dashboard_metric_label(:visitors, %{dimensions: ["visit:entry_page"]}),
+-    do: "Unique entrances"
+-
+-  def dashboard_metric_label(:visitors, %{dimensions: ["visit:exit_page"]}), do: "Unique exits"
+-  def dashboard_metric_label(:visitors, _context), do: "Visitors"
+-
+-  def dashboard_metric_label(:conversion_rate, _context), do: "CR"
+-  def dashboard_metric_label(:group_conversion_rate, _context), do: "CR"
+-
+-  def dashboard_metric_label(metric, _context), do: "#{metric}"
+ end
+diff --git a/lib/plausible/stats/query_include.ex b/lib/plausible/stats/query_include.ex
+index 12a559e22..aaf6c5b12 100644
+--- a/lib/plausible/stats/query_include.ex
++++ b/lib/plausible/stats/query_include.ex
+@@ -9,7 +9,7 @@ defmodule Plausible.Stats.QueryInclude do
+             compare: nil,
+             compare_match_day_of_week: false,
+             legacy_time_on_page_cutoff: nil,
+-            dashboard_metric_labels: false
++            drop_unavailable_time_on_page: false
+ 
+   @type date_range_tuple() :: {:date_range, Date.t(), Date.t()}
+   @type datetime_range_tuple() :: {:datetime_range, DateTime.t(), DateTime.t()}
+@@ -24,6 +24,6 @@ defmodule Plausible.Stats.QueryInclude do
+             nil | :previous_period | :year_over_year | date_range_tuple() | datetime_range_tuple(),
+           compare_match_day_of_week: boolean(),
+           legacy_time_on_page_cutoff: any(),
+-          dashboard_metric_labels: boolean()
++          drop_unavailable_time_on_page: boolean()
+         }
+ end
+diff --git a/lib/plausible/stats/query_optimizer.ex b/lib/plausible/stats/query_optimizer.ex
+index b1312f631..004045d32 100644
+--- a/lib/plausible/stats/query_optimizer.ex
++++ b/lib/plausible/stats/query_optimizer.ex
+@@ -55,8 +55,9 @@ defmodule Plausible.Stats.QueryOptimizer do
+       &add_missing_order_by/1,
+       &update_time_in_order_by/1,
+       &extend_hostname_filters_to_visit/1,
+-      &remove_revenue_metrics_if_unavailable/1,
+       &set_time_on_page_data/1,
++      &remove_time_on_page_if_unavailable/1,
++      &remove_revenue_metrics_if_unavailable/1,
+       &trim_relative_date_range/1,
+       &set_sql_join_type/1
+     ]
+@@ -214,6 +215,27 @@ defmodule Plausible.Stats.QueryOptimizer do
+     defp remove_revenue_metrics_if_unavailable(query), do: query
+   end
+ 
++  # Unavailable in this context means not implemented. Imported data is ignored in the
++  # aggregate legacy time on page query, while the legacy breakdown query includes it.
++  # We drop the metric to avoid reporting different numbers in different reports.
++  defp remove_time_on_page_if_unavailable(query) do
++    if query.include.drop_unavailable_time_on_page and time_on_page_unavailable?(query) do
++      Query.set(query, metrics: query.metrics -- [:time_on_page])
++    else
++      query
++    end
++  end
++
++  defp time_on_page_unavailable?(%Query{
++         include_imported: true,
++         dimensions: [],
++         time_on_page_data: %{include_legacy_metric: true}
++       }) do
++    true
++  end
++
++  defp time_on_page_unavailable?(_), do: false
++
+   defp set_time_on_page_data(query) do
+     case {:time_on_page in query.metrics, query.time_on_page_data} do
+       {true, %{new_metric_visible: true, cutoff_date: cutoff_date}} ->
+diff --git a/lib/plausible/stats/query_result.ex b/lib/plausible/stats/query_result.ex
+index a38588188..66e59ca7f 100644
+--- a/lib/plausible/stats/query_result.ex
++++ b/lib/plausible/stats/query_result.ex
+@@ -8,7 +8,7 @@ defmodule Plausible.Stats.QueryResult do
+   """
+ 
+   use Plausible
+-  alias Plausible.Stats.{Query, QueryRunner, QueryInclude, Filters}
++  alias Plausible.Stats.{Query, QueryRunner, Filters}
+ 
+   defstruct results: [],
+             meta: %{},
+@@ -43,25 +43,12 @@ defmodule Plausible.Stats.QueryResult do
+ 
+   `results` should already-built by Plausible.Stats.QueryRunner
+   """
+-  def from(%QueryRunner{site: site, main_query: query, results: results} = runner) do
++  def from(%QueryRunner{results: results} = runner) do
+     struct!(
+       __MODULE__,
+       results: results,
+-      meta: meta(runner) |> Enum.sort_by(&elem(&1, 0)) |> Jason.OrderedObject.new(),
+-      query:
+-        Jason.OrderedObject.new(
+-          site_id: site.domain,
+-          metrics: query.metrics,
+-          date_range: [
+-            to_iso8601(query.utc_time_range.first, query.timezone),
+-            to_iso8601(query.utc_time_range.last, query.timezone)
+-          ],
+-          filters: query.filters,
+-          dimensions: query.dimensions,
+-          order_by: query.order_by |> Enum.map(&Tuple.to_list/1),
+-          include: include(query) |> Map.filter(fn {_key, val} -> val end),
+-          pagination: query.pagination
+-        )
++      meta: meta(runner) |> Jason.OrderedObject.new(),
++      query: query(runner) |> Jason.OrderedObject.new()
+     )
+   end
+ 
+@@ -69,9 +56,9 @@ defmodule Plausible.Stats.QueryResult do
+     %{}
+     |> add_imports_meta(runner.main_query)
+     |> add_metric_warnings_meta(runner.main_query)
+-    |> add_dashboard_metric_labels(runner.main_query)
+     |> add_time_labels_meta(runner.main_query)
+     |> add_total_rows_meta(runner.main_query, runner.total_rows)
++    |> Enum.sort_by(&elem(&1, 0))
+   end
+ 
+   defp add_imports_meta(meta, %Query{include: include} = query) do
+@@ -98,32 +85,6 @@ defmodule Plausible.Stats.QueryResult do
+     end
+   end
+ 
+-  defp add_dashboard_metric_labels(meta, %Query{
+-         include: %QueryInclude{dashboard_metric_labels: false}
+-       }) do
+-    meta
+-  end
+-
+-  defp add_dashboard_metric_labels(meta, query) do
+-    context = %{
+-      goal_filter?:
+-        Filters.filtering_on_dimension?(query, "event:goal",
+-          max_depth: 0,
+-          behavioral_filters: :ignore
+-        ),
+-      realtime?: query.input_date_range in [:realtime, :realtime_30m],
+-      dimensions: query.dimensions
+-    }
+-
+-    metric_labels =
+-      query.metrics
+-      |> Enum.map(fn metric ->
+-        Plausible.Stats.Metrics.dashboard_metric_label(metric, context)
+-      end)
+-
+-    Map.put(meta, :metric_labels, metric_labels)
+-  end
+-
+   defp add_time_labels_meta(meta, query) do
+     if query.include.time_labels do
+       Map.put(meta, :time_labels, Plausible.Stats.Time.time_labels(query))
+@@ -140,6 +101,30 @@ defmodule Plausible.Stats.QueryResult do
+     end
+   end
+ 
++  defp query(%QueryRunner{site: site, main_query: query}) do
++    [
++      site_id: site.domain,
++      metrics: query.metrics,
++      date_range: [
++        to_iso8601(query.utc_time_range.first, query.timezone),
++        to_iso8601(query.utc_time_range.last, query.timezone)
++      ],
++      comparison_date_range:
++        if(query.include.compare,
++          do: [
++            to_iso8601(query.comparison_utc_time_range.first, query.timezone),
++            to_iso8601(query.comparison_utc_time_range.last, query.timezone)
++          ]
++        ),
++      filters: query.filters,
++      dimensions: query.dimensions,
++      order_by: query.order_by |> Enum.map(&Tuple.to_list/1),
++      include: include(query) |> Map.filter(fn {_key, val} -> val end),
++      pagination: query.pagination
++    ]
++    |> Enum.reject(fn {_k, v} -> is_nil(v) end)
++  end
++
+   defp include(query) do
+     case query.include.compare do
+       {:date_range, first, last} ->
+diff --git a/lib/plausible_web/controllers/api/stats_controller.ex b/lib/plausible_web/controllers/api/stats_controller.ex
+index ff4cef88f..9d471c664 100644
+--- a/lib/plausible_web/controllers/api/stats_controller.ex
++++ b/lib/plausible_web/controllers/api/stats_controller.ex
+@@ -5,7 +5,20 @@ defmodule PlausibleWeb.Api.StatsController do
+   use PlausibleWeb.Plugs.ErrorHandler
+ 
+   alias Plausible.Stats
+-  alias Plausible.Stats.{Query, Comparisons, Filters, Time, TableDecider, TimeOnPage}
++
++  alias Plausible.Stats.{
++    Query,
++    Comparisons,
++    Filters,
++    Time,
++    TableDecider,
++    TimeOnPage,
++    Dashboard,
++    ParsedQueryParams,
++    QueryBuilder,
++    QueryError
++  }
++
+   alias PlausibleWeb.Api.Helpers, as: H
+ 
+   require Logger
+@@ -13,9 +26,20 @@ defmodule PlausibleWeb.Api.StatsController do
+   @revenue_metrics on_ee(do: Plausible.Stats.Goal.Revenue.revenue_metrics(), else: [])
+   @not_set "(not set)"
+ 
+-  plug(:date_validation_plug)
++  plug(:date_validation_plug when action not in [:query])
+   plug(:validate_required_filters_plug when action not in [:current_visitors])
+ 
++  def query(conn, params) do
++    site = conn.assigns.site
++
++    with {:ok, %ParsedQueryParams{} = params} <- Dashboard.QueryParser.parse(params),
++         {:ok, %Query{} = query} <- QueryBuilder.build(site, params, debug_metadata(conn)) do
++      json(conn, Plausible.Stats.query(site, query))
++    else
++      {:error, %QueryError{message: message}} -> bad_request(conn, message)
++    end
++  end
++
+   @doc """
+   Returns a time-series based on given parameters.
+ 
+diff --git a/lib/plausible_web/router.ex b/lib/plausible_web/router.ex
+index a57f4fb77..157e4bb41 100644
+--- a/lib/plausible_web/router.ex
++++ b/lib/plausible_web/router.ex
+@@ -279,6 +279,7 @@ defmodule PlausibleWeb.Router do
+       end
+ 
+       scope private: %{allow_consolidated_views: true} do
++        post "/:domain/query", StatsController, :query
+         get "/:domain/current-visitors", StatsController, :current_visitors
+         get "/:domain/main-graph", StatsController, :main_graph
+         get "/:domain/top-stats", StatsController, :top_stats
+diff --git a/test/plausible/stats/dashboard/query_parser_test.exs b/test/plausible/stats/dashboard/query_parser_test.exs
+index ec1ab1731..d7704ec44 100644
+--- a/test/plausible/stats/dashboard/query_parser_test.exs
++++ b/test/plausible/stats/dashboard/query_parser_test.exs
+@@ -1,54 +1,40 @@
+ defmodule Plausible.Stats.Dashboard.QueryParserTest do
+   use Plausible.DataCase
+   import Plausible.Stats.Dashboard.QueryParser
+-  alias Plausible.Stats.ParsedQueryParams
+-
+-  @default_include default_include()
+-
+-  @yesterday NaiveDateTime.utc_now(:second) |> NaiveDateTime.add(-1, :day)
+-  @before_yesterday @yesterday |> NaiveDateTime.add(-1, :day)
+-
+-  test "parses an empty query string" do
+-    {:ok, parsed} = parse("", build(:site), %{})
+-
+-    expected = %Plausible.Stats.ParsedQueryParams{
+-      input_date_range: {:last_n_days, 28},
+-      relative_date: nil,
+-      metrics: [],
+-      filters: [],
+-      dimensions: [],
+-      order_by: nil,
+-      pagination: nil,
+-      include: default_include()
++  alias Plausible.Stats.{ParsedQueryParams, QueryError}
++
++  @base_params %{
++    "date_range" => "28d",
++    "relative_date" => nil,
++    "filters" => [],
++    "dimensions" => [],
++    "metrics" => ["visitors"],
++    "include" => %{
++      "imports" => true,
++      "imports_meta" => false,
++      "compare" => nil,
++      "compare_match_day_of_week" => true
+     }
++  }
+ 
+-    assert parsed == expected
+-  end
++  describe "input_date_range" do
++    test "is required" do
++      params = Map.drop(@base_params, ["date_range"])
++      assert {:error, %QueryError{code: :invalid_date_range}} = parse(params)
++    end
+ 
+-  describe "period -> input_date_range" do
+     for period <- [:realtime, :day, :month, :year, :all] do
+-      test "parses #{period} period" do
+-        {:ok, parsed} = parse("?period=#{Atom.to_string(unquote(period))}", build(:site), %{})
+-        assert_matches %ParsedQueryParams{input_date_range: ^unquote(period)} = parsed
+-      end
+-
+-      test "parses #{period} period from user prefs" do
+-        {:ok, parsed} = parse("", build(:site), %{"period" => Atom.to_string(unquote(period))})
++      test "parses #{period} date_range" do
++        params = Map.merge(@base_params, %{"date_range" => Atom.to_string(unquote(period))})
++        {:ok, parsed} = parse(params)
+         assert_matches %ParsedQueryParams{input_date_range: ^unquote(period)} = parsed
+       end
+     end
+ 
+     for i <- [7, 28, 30, 91] do
+-      test "parses #{i}d period" do
+-        {:ok, parsed} = parse("?period=#{unquote(i)}d", build(:site), %{})
+-
+-        assert_matches %ParsedQueryParams{
+-                         input_date_range: {:last_n_days, ^unquote(i)}
+-                       } = parsed
+-      end
+-
+-      test "parses #{i}d period from user_prefs" do
+-        {:ok, parsed} = parse("", build(:site), %{"period" => "#{unquote(i)}d"})
++      test "parses #{i}d date_range" do
++        params = Map.merge(@base_params, %{"date_range" => "#{unquote(i)}d"})
++        {:ok, parsed} = parse(params)
+ 
+         assert_matches %ParsedQueryParams{
+                          input_date_range: {:last_n_days, ^unquote(i)}
+@@ -57,27 +43,15 @@ defmodule Plausible.Stats.Dashboard.QueryParserTest do
+     end
+ 
+     test "parses 24h period" do
+-      {:ok, parsed} = parse("?period=24h", build(:site), %{})
+-      assert_matches %ParsedQueryParams{input_date_range: :"24h"} = parsed
+-    end
+-
+-    test "parses 24h period from user prefs" do
+-      {:ok, parsed} = parse("", build(:site), %{"period" => "24h"})
++      params = Map.merge(@base_params, %{"date_range" => "24h"})
++      {:ok, parsed} = parse(params)
+       assert_matches %ParsedQueryParams{input_date_range: :"24h"} = parsed
+     end
+ 
+     for i <- [6, 12] do
+-      test "parses #{i}mo period" do
+-        {:ok, parsed} = parse("?period=#{unquote(i)}mo", build(:site), %{})
+-
+-        assert_matches %ParsedQueryParams{
+-                         input_date_range: {:last_n_months, ^unquote(i)}
+-                       } =
+-                         parsed
+-      end
+-
+-      test "parses #{i}mo period from user prefs" do
+-        {:ok, parsed} = parse("", build(:site), %{"period" => "#{unquote(i)}mo"})
++      test "parses #{i}mo date_range" do
++        params = Map.merge(@base_params, %{"date_range" => "#{unquote(i)}mo"})
++        {:ok, parsed} = parse(params)
+ 
+         assert_matches %ParsedQueryParams{
+                          input_date_range: {:last_n_months, ^unquote(i)}
+@@ -86,248 +60,199 @@ defmodule Plausible.Stats.Dashboard.QueryParserTest do
+       end
+     end
+ 
+-    test "parses custom period" do
+-      {:ok, parsed} = parse("?period=custom&from=2021-01-01&to=2021-03-05", build(:site), %{})
++    test "parses custom date_range" do
++      params = Map.merge(@base_params, %{"date_range" => ["2021-01-01", "2021-03-05"]})
++      {:ok, parsed} = parse(params)
+ 
+       assert %ParsedQueryParams{
+                input_date_range: {:date_range, ~D[2021-01-01], ~D[2021-03-05]}
+              } = parsed
+     end
+-
+-    test "falls back to last 28 days when site created before yesterday" do
+-      site = build(:site, native_stats_start_at: @before_yesterday)
+-      {:ok, parsed} = parse("", site, %{})
+-      assert %ParsedQueryParams{input_date_range: {:last_n_days, 28}} = parsed
+-    end
+-
+-    test "falls back to :day for a recently created site" do
+-      site = build(:site, native_stats_start_at: @yesterday)
+-      {:ok, parsed} = parse("", site, %{})
+-      assert %ParsedQueryParams{input_date_range: :day} = parsed
+-    end
+-
+-    test "falls back to valid user preference" do
+-      {:ok, parsed} = parse("", build(:site), %{"period" => "year"})
+-      assert %ParsedQueryParams{input_date_range: :year} = parsed
+-    end
+-
+-    test "falls back to valid user preference when period in query string is invalid" do
+-      {:ok, parsed} = parse("?period=invalid", build(:site), %{"period" => "month"})
+-      assert %ParsedQueryParams{input_date_range: :month} = parsed
+-    end
+-
+-    test "valid period param in query string takes precedence over valid user preference" do
+-      {:ok, parsed} = parse("?period=all", build(:site), %{"period" => "month"})
+-      assert %ParsedQueryParams{input_date_range: :all} = parsed
+-    end
+-
+-    test "falls back to site default when both query string and user preference period are invalid" do
+-      site = build(:site, native_stats_start_at: @yesterday)
+-      {:ok, parsed} = parse("?period=invalid", site, %{"period" => "invalid"})
+-      assert %ParsedQueryParams{input_date_range: :day} = parsed
+-    end
+   end
+ 
+-  describe "date -> relative_date" do
++  describe "relative_date" do
+     test "parses a valid iso8601 date string" do
+-      {:ok, parsed} = parse("?date=2021-05-05", build(:site), %{})
+-      assert %ParsedQueryParams{relative_date: ~D[2021-05-05], include: @default_include} = parsed
++      params = Map.merge(@base_params, %{"relative_date" => "2021-05-05"})
++      {:ok, parsed} = parse(params)
++      assert %ParsedQueryParams{relative_date: ~D[2021-05-05]} = parsed
++    end
++
++    test "nil is accepted" do
++      params = Map.merge(@base_params, %{"relative_date" => nil})
++      {:ok, parsed} = parse(params)
++      assert %ParsedQueryParams{relative_date: nil} = parsed
+     end
+ 
+     test "errors when invalid date" do
+-      {:error, :invalid_date} = parse("?date=2021-13-32", build(:site), %{})
++      params = Map.merge(@base_params, %{"relative_date" => "2021-13-32"})
++      {:error, %QueryError{code: :invalid_relative_date}} = parse(params)
+     end
+   end
+ 
+-  describe "with_imported -> include.imports" do
++  describe "include.imports" do
+     test "true -> true" do
+-      {:ok, parsed} = parse("?with_imported=true", build(:site), %{})
+-      assert %ParsedQueryParams{include: @default_include} = parsed
++      params = %{@base_params | "include" => %{@base_params["include"] | "imports" => true}}
++      {:ok, parsed} = parse(params)
++      assert parsed.include.imports == true
+     end
+ 
+-    test "invalid -> true" do
+-      {:ok, parsed} = parse("?with_imported=foo", build(:site), %{})
+-      assert %ParsedQueryParams{include: @default_include} = parsed
++    test "invalid -> false" do
++      params = %{@base_params | "include" => %{@base_params["include"] | "imports" => "foo"}}
++      {:ok, parsed} = parse(params)
++      assert parsed.include.imports == false
+     end
+ 
+     test "false -> false" do
+-      {:ok, parsed} = parse("?with_imported=false", build(:site), %{})
+-      expected_include = Map.put(@default_include, :imports, false)
+-      assert %ParsedQueryParams{include: ^expected_include} = parsed
++      params = %{@base_params | "include" => %{@base_params["include"] | "imports" => false}}
++      {:ok, parsed} = parse(params)
++      assert parsed.include.imports == false
+     end
+   end
+ 
+-  describe "comparison -> include.compare" do
++  describe "include.compare" do
+     for mode <- [:previous_period, :year_over_year] do
+       test "parses #{mode} mode" do
+-        {:ok, parsed} = parse("?comparison=#{unquote(mode)}", build(:site), %{})
+-        expected_include = Map.put(@default_include, :compare, unquote(mode))
+-        assert_matches %ParsedQueryParams{include: ^expected_include} = parsed
+-      end
++        params = %{
++          @base_params
++          | "include" => %{@base_params["include"] | "compare" => "#{unquote(mode)}"}
++        }
+ 
+-      test "parses #{mode} mode from user prefs" do
+-        {:ok, parsed} = parse("", build(:site), %{"comparison" => "#{unquote(mode)}"})
+-        expected_include = Map.put(@default_include, :compare, unquote(mode))
+-        assert_matches %ParsedQueryParams{include: ^expected_include} = parsed
++        {:ok, parsed} = parse(params)
++        assert parsed.include.compare == unquote(mode)
+       end
+     end
+ 
+     test "parses custom date range mode" do
+-      {:ok, parsed} =
+-        parse(
+-          "?comparison=custom&compare_from=2021-01-01&compare_to=2021-04-30",
+-          build(:site),
+-          %{}
+-        )
+-
+-      expected_include =
+-        Map.put(@default_include, :compare, {:date_range, ~D[2021-01-01], ~D[2021-04-30]})
+-
+-      assert_matches %ParsedQueryParams{include: ^expected_include} = parsed
+-    end
+-
+-    test "custom comparison in query string takes precedence over user prefs" do
+-      {:ok, parsed} =
+-        parse(
+-          "?comparison=custom&compare_from=2021-01-01&compare_to=2021-04-30",
+-          build(:site),
+-          %{"comparison" => "year_over_year"}
+-        )
+-
+-      expected_include =
+-        Map.put(@default_include, :compare, {:date_range, ~D[2021-01-01], ~D[2021-04-30]})
++      params = %{
++        @base_params
++        | "include" => %{@base_params["include"] | "compare" => ["2021-01-01", "2021-04-30"]}
++      }
+ 
+-      assert_matches %ParsedQueryParams{include: ^expected_include} = parsed
++      {:ok, parsed} = parse(params)
++      assert parsed.include.compare == {:date_range, ~D[2021-01-01], ~D[2021-04-30]}
+     end
+ 
+-    test "falls back to user preference when query string comparison param is invalid" do
+-      {:ok, parsed} =
+-        parse("?comparison=invalid_mode", build(:site), %{"comparison" => "previous_period"})
++    test "fails with invalid custom dates" do
++      params = %{
++        @base_params
++        | "include" => %{@base_params["include"] | "compare" => ["2021-13-01", "2021-04-30"]}
++      }
+ 
+-      expected_include =
+-        Map.put(@default_include, :compare, :previous_period)
+-
+-      assert_matches %ParsedQueryParams{include: ^expected_include} = parsed
++      assert {:error, %QueryError{code: :invalid_include}} = parse(params)
+     end
+ 
+-    test "comparison=off in query string skips stored comparison mode" do
+-      {:ok, parsed} =
+-        parse("?comparison=off", build(:site), %{"comparison" => "previous_period"})
++    test "fails with random invalid compare value" do
++      params = %{
++        @base_params
++        | "include" => %{@base_params["include"] | "compare" => "foo"}
++      }
+ 
+-      assert %ParsedQueryParams{include: @default_include} = parsed
++      assert {:error, %QueryError{code: :invalid_include}} = parse(params)
+     end
+ 
+-    test "falls back to nil when comparison param in both query string and user prefs is invalid" do
+-      {:ok, parsed} =
+-        parse("?comparison=invalid_mode", build(:site), %{"comparison" => "invalid_mode"})
++    test "compare is nil if not provided" do
++      params = %{
++        @base_params
++        | "include" => Map.drop(@base_params["include"], ["compare"])
++      }
+ 
+-      assert %ParsedQueryParams{include: @default_include} = parsed
++      {:ok, parsed} = parse(params)
++      assert parsed.include.compare == nil
+     end
+   end
+ 
+-  describe "match_day_of_week -> include.compare_match_day_of_week" do
++  describe "include.compare_match_day_of_week" do
+     test "true -> true" do
+-      {:ok, parsed} = parse("?match_day_of_week=true", build(:site), %{})
+-      assert %ParsedQueryParams{include: @default_include} = parsed
+-    end
++      params = %{
++        @base_params
++        | "include" => %{@base_params["include"] | "compare_match_day_of_week" => true}
++      }
+ 
+-    test "invalid -> true" do
+-      {:ok, parsed} = parse("?match_day_of_week=foo", build(:site), %{})
+-      assert %ParsedQueryParams{include: @default_include} = parsed
+-    end
+-
+-    test "false -> false" do
+-      {:ok, parsed} = parse("?match_day_of_week=false", build(:site), %{})
+-      expected_include = Map.put(@default_include, :compare_match_day_of_week, false)
+-      assert %ParsedQueryParams{include: ^expected_include} = parsed
++      {:ok, parsed} = parse(params)
++      assert parsed.include.compare_match_day_of_week == true
+     end
+ 
+-    test "'true' in query string takes precedence over 'false' in user prefs" do
+-      {:ok, parsed} =
+-        parse("?match_day_of_week=true", build(:site), %{"match_day_of_week" => "false"})
++    test "invalid -> false" do
++      params = %{
++        @base_params
++        | "include" => %{@base_params["include"] | "compare_match_day_of_week" => "foo"}
++      }
+ 
+-      assert %ParsedQueryParams{include: @default_include} = parsed
++      {:ok, parsed} = parse(params)
++      assert parsed.include.compare_match_day_of_week == false
+     end
+ 
+-    test "'false' in query string takes precedence over 'true' in user prefs" do
+-      {:ok, parsed} =
+-        parse("?match_day_of_week=false", build(:site), %{"match_day_of_week" => "true"})
+-
+-      expected_include = Map.put(@default_include, :compare_match_day_of_week, false)
+-      assert %ParsedQueryParams{include: ^expected_include} = parsed
+-    end
+-
+-    test "falls back to user pref when value in query string is invalid" do
+-      {:ok, parsed} =
+-        parse("?match_day_of_week=foo", build(:site), %{"match_day_of_week" => "false"})
+-
+-      expected_include = Map.put(@default_include, :compare_match_day_of_week, false)
+-      assert %ParsedQueryParams{include: ^expected_include} = parsed
+-    end
+-
+-    test "falls back to 'true' when invalid values in both query string and user prefs" do
+-      {:ok, parsed} =
+-        parse("?match_day_of_week=foo", build(:site), %{"match_day_of_week" => "bar"})
++    test "false -> false" do
++      params = %{
++        @base_params
++        | "include" => %{@base_params["include"] | "compare_match_day_of_week" => false}
++      }
+ 
+-      assert %ParsedQueryParams{include: @default_include} = parsed
++      {:ok, parsed} = parse(params)
++      assert parsed.include.compare_match_day_of_week == false
+     end
+   end
+ 
+   describe "filters" do
+     test "parses valid filters" do
+-      {:ok, parsed} =
+-        parse(
+-          "?f=is,exit_page,/:dashboard&f=is,source,Bing&f=is,props:theme,system",
+-          build(:site),
+-          %{}
+-        )
++      params =
++        Map.merge(@base_params, %{
++          "filters" => [
++            ["has_not_done", ["is", "event:goal", ["Signup"]]],
++            ["contains", "visit:exit_page", ["/:dashboard"]],
++            ["is", "visit:source", ["Bing"]],
++            ["is_not", "event:props:theme", ["system", "(none)"]]
++          ]
++        })
+ 
+-      assert %ParsedQueryParams{
+-               filters: [
+-                 [:is, "visit:exit_page", ["/:dashboard"]],
+-                 [:is, "visit:source", ["Bing"]],
+-                 [:is, "event:props:theme", ["system"]]
+-               ],
+-               include: @default_include
+-             } = parsed
++      {:ok, parsed} = parse(params)
++
++      assert parsed.filters == [
++               [:has_not_done, [:is, "event:goal", ["Signup"]]],
++               [:contains, "visit:exit_page", ["/:dashboard"]],
++               [:is, "visit:source", ["Bing"]],
++               [:is_not, "event:props:theme", ["system", "(none)"]]
++             ]
+     end
+ 
+     test "parses city filter with multiple clauses" do
+-      {:ok, parsed} =
+-        parse("?f=is,city,2988507,2950159", build(:site), %{})
++      params =
++        Map.merge(@base_params, %{
++          "filters" => [["is", "visit:city", ["2988507", "2950159"]]]
++        })
+ 
+-      assert %ParsedQueryParams{
+-               filters: [[:is, "visit:city", [2_988_507, 2_950_159]]],
+-               include: @default_include
+-             } = parsed
++      {:ok, parsed} = parse(params)
++
++      assert parsed.filters == [[:is, "visit:city", ["2988507", "2950159"]]]
+     end
+ 
+     test "parses a segment filter" do
+-      {:ok, parsed} = parse("?f=is,segment,123", build(:site), %{})
++      params =
++        Map.merge(@base_params, %{
++          "filters" => [["is", "segment", [123]]]
++        })
+ 
+-      assert %ParsedQueryParams{
+-               filters: [[:is, "segment", [123]]],
+-               include: @default_include
+-             } = parsed
+-    end
++      {:ok, parsed} = parse(params)
+ 
+-    test "errors when filter structure is wrong" do
+-      assert {:error, :invalid_filters} = parse("?f=is,page,/&f=what", build(:site), %{})
++      assert parsed.filters == [[:is, "segment", [123]]]
+     end
++  end
+ 
+-    test "errors when city filter cannot be parsed to integer" do
+-      assert {:error, :invalid_filters} = parse("?f=is,city,Berlin", build(:site), %{})
++  describe "metrics" do
++    test "valid metrics" do
++      params = Map.merge(@base_params, %{"metrics" => ["visitors", "group_conversion_rate"]})
++      assert {:ok, parsed} = parse(params)
++      assert parsed.metrics == [:visitors, :group_conversion_rate]
+     end
+ 
+-    test "errors when segment filter cannot be parsed to integer" do
+-      assert {:error, :invalid_filters} = parse("?f=is,segment,MySegment", build(:site), %{})
++    test "at least one metric required" do
++      params = Map.merge(@base_params, %{"metrics" => []})
++      assert {:error, %QueryError{code: :invalid_metrics}} = parse(params)
+     end
+ 
+     test "now can't be fixed externally" do
+-      {:ok, parsed} =
+-        parse("?now=2026-02-17T10:08:52.272894Z", build(:site), %{
+-          "now" => "2026-02-17T10:08:52.272894Z"
+-        })
++      params = Map.merge(@base_params, %{"now" => "2026-02-17T10:08:52.272894Z"})
++      {:ok, parsed} = parse(params)
+ 
+       assert parsed.now == nil
+     end
+diff --git a/test/plausible/stats/query/query_test.exs b/test/plausible/stats/query/query_test.exs
+index 280ad17a1..90c4671aa 100644
+--- a/test/plausible/stats/query/query_test.exs
++++ b/test/plausible/stats/query/query_test.exs
+@@ -125,114 +125,4 @@ defmodule Plausible.Stats.QueryTest do
+              ]
+     end
+   end
+-
+-  describe "include.dashboard_metric_labels" do
+-    test "visitors -> Visitors (default)", %{site: site} do
+-      {:ok, query} =
+-        QueryBuilder.build(site,
+-          metrics: [:visitors],
+-          input_date_range: :all,
+-          include: [dashboard_metric_labels: true]
+-        )
+-
+-      %Stats.QueryResult{meta: meta} = Stats.query(site, query)
+-      assert ["Visitors"] = meta[:metric_labels]
+-    end
+-
+-    test "visitors -> Current visitors (realtime)", %{site: site} do
+-      {:ok, query} =
+-        QueryBuilder.build(site,
+-          metrics: [:visitors],
+-          input_date_range: :realtime,
+-          include: [dashboard_metric_labels: true]
+-        )
+-
+-      %Stats.QueryResult{meta: meta} = Stats.query(site, query)
+-      assert ["Current visitors"] = meta[:metric_labels]
+-    end
+-
+-    test "visitors -> Current visitors (realtime and goal filtered)", %{site: site} do
+-      insert(:goal, site: site, event_name: "Signup")
+-
+-      {:ok, query} =
+-        QueryBuilder.build(site,
+-          metrics: [:visitors],
+-          input_date_range: :realtime,
+-          filters: [[:is, "event:goal", ["Signup"]]],
+-          include: [dashboard_metric_labels: true]
+-        )
+-
+-      %Stats.QueryResult{meta: meta} = Stats.query(site, query)
+-      assert ["Current visitors"] = meta[:metric_labels]
+-    end
+-
+-    test "visitors -> Conversions (goal filtered)", %{site: site} do
+-      insert(:goal, site: site, event_name: "Signup")
+-
+-      {:ok, query} =
+-        QueryBuilder.build(site,
+-          metrics: [:visitors],
+-          input_date_range: :all,
+-          filters: [[:is, "event:goal", ["Signup"]]],
+-          include: [dashboard_metric_labels: true]
+-        )
+-
+-      %Stats.QueryResult{meta: meta} = Stats.query(site, query)
+-      assert ["Conversions"] = meta[:metric_labels]
+-    end
+-
+-    test "visitors -> Unique entrances (visit:entry_page dimension)", %{site: site} do
+-      {:ok, query} =
+-        QueryBuilder.build(site,
+-          metrics: [:visitors],
+-          input_date_range: :all,
+-          dimensions: ["visit:entry_page"],
+-          include: [dashboard_metric_labels: true]
+-        )
+-
+-      %Stats.QueryResult{meta: meta} = Stats.query(site, query)
+-      assert ["Unique entrances"] = meta[:metric_labels]
+-    end
+-
+-    test "visitors -> Unique exits (visit:exit_page dimension)", %{site: site} do
+-      {:ok, query} =
+-        QueryBuilder.build(site,
+-          metrics: [:visitors],
+-          input_date_range: :all,
+-          dimensions: ["visit:exit_page"],
+-          include: [dashboard_metric_labels: true]
+-        )
+-
+-      %Stats.QueryResult{meta: meta} = Stats.query(site, query)
+-      assert ["Unique exits"] = meta[:metric_labels]
+-    end
+-
+-    test "conversion_rate -> CR (default)", %{site: site} do
+-      {:ok, query} =
+-        QueryBuilder.build(site,
+-          metrics: [:conversion_rate],
+-          input_date_range: :all,
+-          dimensions: ["event:goal"],
+-          include: [dashboard_metric_labels: true]
+-        )
+-
+-      %Stats.QueryResult{meta: meta} = Stats.query(site, query)
+-      assert ["CR"] = meta[:metric_labels]
+-    end
+-
+-    test "maintains order with multiple metrics", %{site: site} do
+-      insert(:goal, site: site, event_name: "Signup")
+-
+-      {:ok, query} =
+-        QueryBuilder.build(site,
+-          metrics: [:conversion_rate, :visitors],
+-          input_date_range: :all,
+-          filters: [[:is, "event:goal", ["Signup"]]],
+-          include: [dashboard_metric_labels: true]
+-        )
+-
+-      %Stats.QueryResult{meta: meta} = Stats.query(site, query)
+-      assert ["CR", "Conversions"] = meta[:metric_labels]
+-    end
+-  end
+ end
+diff --git a/test/plausible_web/controllers/api/stats_controller/internal_query_api_test.exs b/test/plausible_web/controllers/api/stats_controller/internal_query_api_test.exs
+new file mode 100644
+index 000000000..f97edfd23
+--- /dev/null
++++ b/test/plausible_web/controllers/api/stats_controller/internal_query_api_test.exs
+@@ -0,0 +1,79 @@
++defmodule PlausibleWeb.Api.StatsController.InternalQueryApiTest do
++  use PlausibleWeb.ConnCase
++
++  defp do_query_success(conn, site, params) do
++    conn
++    |> post("/api/stats/#{site.domain}/query", params)
++    |> json_response(200)
++  end
++
++  setup [:create_user, :log_in, :create_site]
++
++  describe "aggregates (e.g. top stats)" do
++    test "returns empty metrics when no data", %{conn: conn, site: site} do
++      requested_metrics = [
++        "visitors",
++        "visits",
++        "pageviews",
++        "views_per_visit",
++        "bounce_rate",
++        "visit_duration"
++      ]
++
++      params = %{
++        "date_range" => "all",
++        "filters" => [],
++        "metrics" => requested_metrics
++      }
++
++      response = do_query_success(conn, site, params)
++
++      assert response["query"]["metrics"] == requested_metrics
++      assert response["results"] == [%{"dimensions" => [], "metrics" => [0, 0, 0, 0.0, 0, 0]}]
++    end
++
++    test "returns information about imports with the imports_meta option", %{
++      conn: conn,
++      site: site
++    } do
++      params = %{
++        "date_range" => "all",
++        "filters" => [],
++        "metrics" => ["visitors"],
++        "include" => %{"imports" => false, "imports_meta" => true}
++      }
++
++      response = do_query_success(conn, site, params)
++
++      assert response["meta"] == %{
++               "imports_included" => false,
++               "imports_skip_reason" => "no_imported_data"
++             }
++    end
++
++    test "drops time on page if unavailable", %{conn: conn, site: site} do
++      site_import =
++        insert(:site_import, site: site, start_date: ~D[2021-01-01], end_date: ~D[2022-01-01])
++
++      site = Plausible.Sites.update_legacy_time_on_page_cutoff!(site, ~D[2023-01-01])
++
++      populate_stats(site, site_import.id, [
++        build(:pageview, pathname: "/"),
++        build(:imported_pages, page: "/", date: ~D[2021-01-01])
++      ])
++
++      params = %{
++        "date_range" => "all",
++        "filters" => [["is", "event:page", ["/"]]],
++        "metrics" => ["visitors", "time_on_page"],
++        "include" => %{"imports" => true}
++      }
++
++      response = do_query_success(conn, site, params)
++
++      assert response["meta"]["imports_included"]
++      assert response["query"]["metrics"] == ["visitors"]
++      assert response["results"] == [%{"dimensions" => [], "metrics" => [2]}]
++    end
++  end
++end

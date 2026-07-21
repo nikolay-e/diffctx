@@ -1,0 +1,1927 @@
+From 8854c583048646b78c7156fbdb498df6cbf9ae13 Mon Sep 17 00:00:00 2001
+From: Javier Calvarro Nelson <jacalvar@microsoft.com>
+Date: Tue, 16 Jun 2026 11:57:55 +0200
+Subject: [PATCH] [Blazor] Align gateway and templates with Aspire
+ implementation (#67048)
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+* Align blazor-wasm-servicedefaults template with Aspire client defaults
+
+Fixes #67032: the WASM app threw CircularDependencyException
+(ILoggerFactory) on startup when OTEL_EXPORTER_OTLP_ENDPOINT was not
+configured, because the OTel logger provider activates
+OtlpExporterOptions while the LoggerFactory is being constructed and our
+IPostConfigureOptions resolved ILoggerFactory from the same container.
+
+- Skip OpenTelemetry wiring entirely when OTEL_EXPORTER_OTLP_ENDPOINT
+  is empty. This is the contract Aspire's BlazorHosted /
+  BlazorStandalone ClientServiceDefaults already follow.
+- Resolve the OTLP path against HostEnvironment.BaseAddress and set
+  per-signal endpoints (v1/logs, v1/metrics, v1/traces) so telemetry
+  flows through the same origin as the WASM page.
+- Use a fixed serviceInstanceId so all browser tabs report as a single
+  instance in the dashboard.
+- Drop the redundant AddComponentsMetrics / AddComponentsTracing calls;
+  WebAssemblyHostBuilder registers them automatically on net11+ when
+  Meter.IsSupported is true (now the default).
+- console.warn on /_blazor/_configuration fetch failures in the
+  standalone JS initializer so the no-gateway case is diagnosable.
+- Add Run-BlazorWasmServiceDefaults-Locally.ps1 to iterate on the
+  template content the same way every other web template does.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+* Bring Components.Gateway up to parity with Aspire BlazorGateway
+
+Port the production-readiness pieces from Aspire's Gateway.cs.in into
+Microsoft.AspNetCore.Components.Gateway so the framework-shipped gateway
+behaves like the Aspire copy at runtime:
+
+- ConfigureOpenTelemetry: OTel logging with formatted message + scopes,
+  metrics for AspNetCore/HttpClient/Runtime, tracing with the app source
+  + AspNetCore/HttpClient instrumentation, anti-feedback-loop filters
+  for /_otlp/ requests and outbound /v1/* calls, and UseOtlpExporter()
+  gated on OTEL_EXPORTER_OTLP_ENDPOINT.
+- Suppress per-request log noise from StaticAssets, Routing, and the
+  OtlpExporter HttpClient.
+- HSTS in non-development.
+- Conditional HTTPS redirect only for document navigations
+  (Sec-Fetch-Dest: document), so OTLP/API fetches are never redirected.
+- /health and /alive health endpoints in development.
+- ServiceDiscovery + StandardResilience on HttpClient defaults.
+
+Skipped from Aspire's port because 11.0 makes them unnecessary:
+- Per-app .Add(ep => reb.Order = int.MaxValue) hack — StaticAsset
+  manifests now carry Order (#65975) and NegotiationMatcherPolicy
+  respects routing priority (#65973), and the gateway already uses
+  MapFallbackToFile for the SPA fallback.
+- File-based-app properties (#:property ...) are net10.0-only.
+
+Add OpenTelemetryInstrumentationAspNetCoreVersion to eng/Versions.props
+and reference the OpenTelemetry + Http.Resilience packages directly from
+the gateway csproj (it already opts into DisablePackageReferenceRestrictions).
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+* Move gateway dev-only log filters from code to RunArguments
+
+The unconditional Microsoft.AspNetCore.StaticAssets / Routing and
+System.Net.Http.HttpClient.OtlpExporter filters ported from Aspire's
+Gateway.cs.in suppressed useful per-request logging in production.
+
+Drop them from BlazorGateway.ConfigureOpenTelemetry and instead pass the
+log-level overrides as --Logging:LogLevel:* command-line arguments from
+Microsoft.AspNetCore.Components.Gateway.targets, alongside the existing
+--environment Development argument. The args only take effect when the
+gateway is launched via 'dotnet run' / IDE F5 through the package's
+RunCommand, so production hosts (Aspire AppHost, direct
+'dotnet blazor-gateway.dll' execution, integration tests) get the full
+ASP.NET Core defaults.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+* Add BlazorGatewayOptions for configurable gateway behavior
+
+Replace the hardcoded paths and feature toggles in BlazorGateway with a
+typed options object bound from the BlazorGateway configuration section.
+Source-generated configuration binding is implicit once PublishAot is
+enabled on the gateway, so the call sites stay AOT-clean.
+
+- Switch to WebApplication.CreateSlimBuilder for AOT readiness.
+- Bind BlazorGatewayOptions from the 'BlazorGateway' section. Defaults
+  live as property initializers on the options POCO.
+- Gate every feature on the bound options:
+  - Hsts.Enabled (only outside Development)
+  - HttpsRedirection.Enabled (Sec-Fetch-Dest: document scope is fixed)
+  - HealthChecks.Enabled + Path/LivenessPath/LivenessTag (only mapped
+    in Development)
+  - Telemetry.Enabled with configurable ExcludePaths /
+    ExcludeOutboundPaths driving the AspNetCore + HttpClient
+    instrumentation filters
+  - HttpClient.ServiceDiscovery / StandardResilience
+  - PathBase
+- Drop the legacy lowercase 'pathbase' flat config key (replaced by
+  BlazorGateway:PathBase). No backward-compatibility shim.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+* Add integration tests for Microsoft.AspNetCore.Components.Gateway
+
+Replace the configuration-binding and telemetry-filter unit tests with
+end-to-end coverage that boots BlazorGateway inside an in-process
+TestServer and exercises each option through real HTTP traffic.
+
+- Refactor BlazorGateway.BuildWebHost to expose an internal overload
+  that accepts a pre-configured WebApplicationBuilder so tests can
+  install UseTestServer before the gateway is built.
+- Add explicit usings to BlazorGateway.cs so the file compiles outside
+  Microsoft.NET.Sdk.Web's GlobalUsings (the test project consumes the
+  source via Compile Include and uses Microsoft.NET.Sdk).
+- Drop BlazorGatewayOptionsTests and TelemetryFiltersTests in favor of
+  the new BlazorGatewayTests scenarios.
+
+Scenarios covered (14 tests, all passing):
+  HealthChecks_ReturnsOk_InDevelopment_WithDefaultOptions
+  HealthChecks_NotMapped_InProduction
+  HealthChecks_Disabled_ReturnsNotFound_EvenInDevelopment
+  HealthChecks_HonorsCustomPaths
+  Hsts_HeaderEmitted_InProduction_WithDefaultOptions
+  Hsts_HeaderAbsent_InDevelopment
+  Hsts_Disabled_DoesNotEmitHeader_InProduction
+  HttpsRedirection_RedirectsTopLevelNavigations_WithDefaultOptions
+  HttpsRedirection_LeavesProgrammaticRequestsAlone
+  HttpsRedirection_Disabled_DoesNotRedirectDocumentNavigations
+  PathBase_MountsEndpointsUnderConfiguredPrefix
+  ClientApps_ConfigEndpoint_ReturnsConfiguredJson
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+* Remove inspectUri from Blazor template launchSettings.json
+
+The inspectUri property steered F5 debugging through the legacy
+DOTNET_MODIFIABLE_ASSEMBLIES Mono runtime debug proxy at
+/_framework/debug/ws-proxy. The .NET 11 WASM debugger no longer
+needs this hint, so drop it from the WASM and Blazor Web templates.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+* Fix Components.TestServer build break from BlazorGateway.cs changes
+
+BlazorGateway.cs is compiled into Components.TestServer via a Compile
+Include, but the new using directives (HealthChecks, OpenTelemetry)
+introduced by this PR were not available to TestServer:
+
+- Add <Reference> entries for Microsoft.AspNetCore.Diagnostics.HealthChecks
+  and Microsoft.Extensions.Diagnostics.HealthChecks to TestServer.csproj.
+- Add <Reference> entries for all OpenTelemetry and Http.Resilience packages
+  used by BlazorGateway.cs.
+- Also add Compile Include for BlazorGatewayOptions.cs and TelemetryFilters.cs
+  which are now part of the gateway source.
+- Register the new packages in eng/Dependencies.props as LatestPackageReference
+  so they can be used via <Reference> in repo projects.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+* Add Microsoft.AspNetCore.HttpsPolicy to Components.TestServer
+
+BlazorGateway.cs uses UseHsts() and UseHttpsRedirection() which are
+defined in Microsoft.AspNetCore.HttpsPolicy. Components.TestServer
+compiles BlazorGateway.cs directly via Compile Include but was
+missing this reference, causing:
+
+  CS1061: 'WebApplication' does not contain a definition for 'UseHsts'
+  CS1061: 'IApplicationBuilder' does not contain a definition for 'UseHttpsRedirection'
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+* Make BlazorGateway liveness check shutdown-aware
+
+Mirrors the AspNetCore.HealthChecks.ApplicationStatus behavior used by
+the YARP container application (inline, no third-party dependency):
+the 'self' check flips to Unhealthy as soon as IHostApplicationLifetime
+signals ApplicationStopping, so Kubernetes/ACA stop routing new requests
+to the pod during the drain window while in-flight requests complete.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+* Add BlazorGateway proxy and service-discovery test coverage
+
+- Extract shared GatewayTestHelpers (StartGatewayAsync, StartUpstreamAsync)
+  so tests can spin up a real Kestrel-hosted upstream alongside the
+  TestServer-hosted gateway.
+- Add BlazorGatewayProxyTests covering: no-config 404 fallback, request
+  forwarding, path/query preservation, service-discovery resolution from
+  configuration, and service-discovery disabled behavior.
+- Only register the YARP service-discovery destination resolver when
+  Gateway:HttpClient:ServiceDiscovery is enabled; otherwise YARP fails
+  unrelated unresolved-service addresses at startup.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+* Remove BlazorGateway StandardResilience toggle
+
+ConfigureHttpClientDefaults + AddStandardResilienceHandler only applies to
+IHttpClientFactory clients. YARP's IForwarderHttpClientFactory builds an
+HttpMessageInvoker directly around a SocketsHttpHandler and bypasses
+IHttpClientFactory, so the toggle had no observable effect on proxied
+traffic. The gateway has no other IHttpClientFactory consumers by default,
+making the option dead code.
+
+Remove the toggle, the registration, and the Microsoft.Extensions.Http.Resilience
+package references from both src and test csproj files. Users who add their
+own HttpClient consumers to the gateway can call AddStandardResilienceHandler
+explicitly.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+* Make BlazorGateway service discovery unconditional; always map /alive
+
+YARP container application treats service discovery as part of the contract
+(always registers AddServiceDiscovery + AddServiceDiscoveryDestinationResolver
+on the proxy). Match that:
+
+- Remove the Gateway:HttpClient:ServiceDiscovery toggle and the now-empty
+  HttpClientDefaultsOptions class.
+- Always call AddServiceDiscovery() and AddServiceDiscoveryDestinationResolver().
+- Drop the ConfigureHttpClientDefaults block (it only existed to add SD to all
+  IHttpClientFactory clients, but the gateway has no such consumers OOB).
+
+Also decouple the /alive liveness probe from /health: /alive is now mapped in
+all environments (so external orchestrators can probe a running deployment)
+while /health (the broader aggregate that can leak dependency status) remains
+dev-only.
+
+Tests updated:
+- ServiceDiscovery_Disabled_LeavesUnresolvedAddress → ServiceDiscovery_UnresolvedAddress_FailsAtRequestTime.
+- HealthChecks_NotMapped_InProduction → HealthChecks_Liveness_AlwaysMapped_Health_OnlyInDevelopment.
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+
+* Incorporate PR #66887: rename shortName to blazorwasm-servicedefaults, add IDE icon
+
+Co-authored-by: javiercn <6995051+javiercn@users.noreply.github.com>
+
+* Update src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/wwwroot/BlazorWasm.ServiceDefaults1.lib.module.js
+
+* Add GatewayDisableDefaultLoggingFilters MSBuild toggle for dev logging verbosity
+
+Co-authored-by: javiercn <6995051+javiercn@users.noreply.github.com>
+
+---------
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>
+Co-authored-by: copilot-swe-agent[bot] <198982749+Copilot@users.noreply.github.com>
+---
+ eng/Dependencies.props                        |   7 +
+ eng/Versions.props                            |   1 +
+ src/Components/Gateway/src/BlazorGateway.cs   | 114 +++++++++-
+ .../Gateway/src/BlazorGatewayOptions.cs       |  44 ++++
+ ...osoft.AspNetCore.Components.Gateway.csproj |   5 +
+ .../Gateway/src/TelemetryFilters.cs           |  58 +++++
+ ...soft.AspNetCore.Components.Gateway.targets |   5 +-
+ .../Gateway/test/BlazorGatewayProxyTests.cs   | 115 ++++++++++
+ .../Gateway/test/BlazorGatewayTests.cs        | 214 ++++++++++++++++++
+ .../Gateway/test/GatewayTestHelpers.cs        |  84 +++++++
+ src/Components/Gateway/test/GlobalUsings.cs   |  15 ++
+ ...AspNetCore.Components.Gateway.Tests.csproj |  31 +++
+ .../Components.TestServer.csproj              |  11 +
+ .../.template.config/ide.host.json            |   3 +-
+ .../.template.config/ide/icon.ico             | Bin 0 -> 59873 bytes
+ .../.template.config/template.json            |   2 +-
+ .../Extensions.cs                             |  27 ++-
+ .../BlazorWasm.ServiceDefaults1.lib.module.js |   1 +
+ .../Properties/launchSettings.json            |   6 -
+ .../Properties/launchSettings.json            |   2 -
+ .../Run-BlazorWasmServiceDefaults-Locally.ps1 |  35 +++
+ .../BlazorWasmServiceDefaultsTemplateTest.cs  |   4 +-
+ .../Templates.Tests/template-baselines.json   |   6 +-
+ 23 files changed, 757 insertions(+), 33 deletions(-)
+ create mode 100644 src/Components/Gateway/src/BlazorGatewayOptions.cs
+ create mode 100644 src/Components/Gateway/src/TelemetryFilters.cs
+ create mode 100644 src/Components/Gateway/test/BlazorGatewayProxyTests.cs
+ create mode 100644 src/Components/Gateway/test/BlazorGatewayTests.cs
+ create mode 100644 src/Components/Gateway/test/GatewayTestHelpers.cs
+ create mode 100644 src/Components/Gateway/test/GlobalUsings.cs
+ create mode 100644 src/Components/Gateway/test/Microsoft.AspNetCore.Components.Gateway.Tests.csproj
+ create mode 100644 src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/ide/icon.ico
+ create mode 100644 src/ProjectTemplates/scripts/Run-BlazorWasmServiceDefaults-Locally.ps1
+
+diff --git a/eng/Dependencies.props b/eng/Dependencies.props
+index 01cfd08371..da9aad5e73 100644
+--- a/eng/Dependencies.props
++++ b/eng/Dependencies.props
+@@ -251,6 +251,13 @@ may be turned into `<PackageReference>` items in projects.
+     <LatestPackageReference Include="Yarp.ReverseProxy" Version="$(YarpReverseProxyVersion)" />
+     <LatestPackageReference Include="Microsoft.Extensions.ServiceDiscovery" />
+     <LatestPackageReference Include="Microsoft.Extensions.ServiceDiscovery.Yarp" />
++    <!-- Components.Gateway OpenTelemetry + resilience dependencies -->
++    <LatestPackageReference Include="Microsoft.Extensions.Http.Resilience" Version="$(MicrosoftExtensionsHttpResilienceVersion)" />
++    <LatestPackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="$(OpenTelemetryExporterOpenTelemetryProtocolVersion)" />
++    <LatestPackageReference Include="OpenTelemetry.Extensions.Hosting" Version="$(OpenTelemetryExtensionsHostingVersion)" />
++    <LatestPackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="$(OpenTelemetryInstrumentationAspNetCoreVersion)" />
++    <LatestPackageReference Include="OpenTelemetry.Instrumentation.Http" Version="$(OpenTelemetryInstrumentationHttpVersion)" />
++    <LatestPackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="$(OpenTelemetryInstrumentationRuntimeVersion)" />
+   </ItemGroup>
+ 
+   <ItemGroup Label="Dependencies with versions.">
+diff --git a/eng/Versions.props b/eng/Versions.props
+index 6f657f31d6..992c76c215 100644
+--- a/eng/Versions.props
++++ b/eng/Versions.props
+@@ -169,6 +169,7 @@
+     <OpenTelemetryExporterOpenTelemetryProtocolVersion>1.15.3</OpenTelemetryExporterOpenTelemetryProtocolVersion>
+     <OpenTelemetryExtensionsHostingVersion>1.15.3</OpenTelemetryExtensionsHostingVersion>
+     <OpenTelemetryInstrumentationHttpVersion>1.15.1</OpenTelemetryInstrumentationHttpVersion>
++    <OpenTelemetryInstrumentationAspNetCoreVersion>1.15.1</OpenTelemetryInstrumentationAspNetCoreVersion>
+     <OpenTelemetryInstrumentationRuntimeVersion>1.15.1</OpenTelemetryInstrumentationRuntimeVersion>
+     <PhotinoNETVersion>2.5.2</PhotinoNETVersion>
+     <MicrosoftPlaywrightVersion>1.60.0</MicrosoftPlaywrightVersion>
+diff --git a/src/Components/Gateway/src/BlazorGateway.cs b/src/Components/Gateway/src/BlazorGateway.cs
+index 2c36d6a527..06aafaf984 100644
+--- a/src/Components/Gateway/src/BlazorGateway.cs
++++ b/src/Components/Gateway/src/BlazorGateway.cs
+@@ -1,6 +1,12 @@
+ // Licensed to the .NET Foundation under one or more agreements.
+ // The .NET Foundation licenses this file to you under the MIT license.
+ 
++using Microsoft.AspNetCore.Diagnostics.HealthChecks;
++using Microsoft.Extensions.Diagnostics.HealthChecks;
++using OpenTelemetry;
++using OpenTelemetry.Metrics;
++using OpenTelemetry.Trace;
++
+ namespace Microsoft.AspNetCore.Components.Gateway;
+ 
+ /// <summary>
+@@ -12,9 +18,26 @@ public static class BlazorGateway
+     /// Builds a <see cref="WebApplication"/> configured as a Blazor Gateway.
+     /// Reads ClientApps config section for endpoint manifests and YARP reverse proxy configuration.
+     /// </summary>
+-    public static WebApplication BuildWebHost(string[] args)
++    public static WebApplication BuildWebHost(string[] args) =>
++        BuildWebHost(WebApplication.CreateSlimBuilder(args));
++
++    internal static WebApplication BuildWebHost(WebApplicationBuilder builder)
+     {
+-        var builder = WebApplication.CreateBuilder(args);
++        var options = new BlazorGatewayOptions();
++        builder.Configuration.GetSection(BlazorGatewayOptions.SectionName).Bind(options);
++
++        if (options.Telemetry.Enabled)
++        {
++            builder.ConfigureOpenTelemetry(options.Telemetry);
++        }
++
++        if (options.HealthChecks.Enabled)
++        {
++            builder.Services.AddHealthChecks()
++                .AddCheck<LivenessHealthCheck>("self", tags: [options.HealthChecks.LivenessTag]);
++        }
++
++        builder.Services.AddServiceDiscovery();
+ 
+         builder.WebHost.UseStaticWebAssets();
+ 
+@@ -33,10 +56,45 @@ public static class BlazorGateway
+ 
+         var app = builder.Build();
+ 
+-        var pathBase = builder.Configuration.GetValue<string>("pathbase");
+-        if (!string.IsNullOrEmpty(pathBase))
++        // HSTS tells browsers to always use HTTPS for this host, preventing future HTTP requests.
++        // Only enable in non-development to avoid interfering with dev certificates and localhost.
++        // See https://aka.ms/aspnetcore-hsts
++        if (!app.Environment.IsDevelopment() && options.Hsts.Enabled)
++        {
++            app.UseHsts();
++        }
++
++        if (options.HttpsRedirection.Enabled)
++        {
++            // Only redirect top-level navigations (browser URL bar) from HTTP to HTTPS.
++            // The Sec-Fetch-Dest header distinguishes navigations from subresource loads
++            // and API fetches. This ensures the served document loads on HTTPS when
++            // available, making subsequent fetch/XHR requests same-origin.
++            // See https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Headers/Sec-Fetch-Dest
++            app.UseWhen(
++                context => string.Equals(
++                    context.Request.Headers["Sec-Fetch-Dest"].ToString(),
++                    "document",
++                    StringComparison.OrdinalIgnoreCase),
++                branch => branch.UseHttpsRedirection());
++        }
++
++        if (!string.IsNullOrEmpty(options.PathBase))
++        {
++            app.UsePathBase(options.PathBase);
++        }
++
++        if (app.Environment.IsDevelopment() && options.HealthChecks.Enabled)
+         {
+-            app.UsePathBase(pathBase);
++            app.MapHealthChecks(options.HealthChecks.Path);
++        }
++
++        if (options.HealthChecks.Enabled)
++        {
++            app.MapHealthChecks(options.HealthChecks.LivenessPath, new HealthCheckOptions
++            {
++                Predicate = r => r.Tags.Contains(options.HealthChecks.LivenessTag)
++            });
+         }
+ 
+         if (hasProxy)
+@@ -60,6 +118,41 @@ public static class BlazorGateway
+ 
+         return app;
+     }
++
++    private static IHostApplicationBuilder ConfigureOpenTelemetry(this IHostApplicationBuilder builder, BlazorGatewayOptions.TelemetryOptions telemetry)
++    {
++        builder.Logging.AddOpenTelemetry(logging =>
++        {
++            logging.IncludeFormattedMessage = true;
++            logging.IncludeScopes = true;
++        });
++
++        builder.Services.AddOpenTelemetry()
++            .WithMetrics(metrics =>
++            {
++                metrics.AddAspNetCoreInstrumentation()
++                    .AddHttpClientInstrumentation()
++                    .AddRuntimeInstrumentation();
++            })
++            .WithTracing(tracing =>
++            {
++                tracing.AddSource(builder.Environment.ApplicationName)
++                    .AddAspNetCoreInstrumentation(options =>
++                        options.Filter = context => TelemetryFilters.ShouldTraceInboundRequest(context.Request.Path, telemetry.ExcludePaths))
++                    .AddHttpClientInstrumentation(options =>
++                        // Filter out the gateway's own OTLP export calls to the dashboard
++                        // to prevent a feedback loop (exporting traces creates new traces).
++                        options.FilterHttpRequestMessage = request => TelemetryFilters.ShouldTraceOutboundRequest(request.RequestUri, telemetry.ExcludeOutboundPaths));
++            });
++
++        var useOtlpExporter = !string.IsNullOrWhiteSpace(builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"]);
++        if (useOtlpExporter)
++        {
++            builder.Services.AddOpenTelemetry().UseOtlpExporter();
++        }
++
++        return builder;
++    }
+ }
+ 
+ sealed class ClientAppConfiguration
+@@ -69,3 +162,14 @@ sealed class ClientAppConfiguration
+     public string? ConfigEndpointPath { get; set; }
+     public string? ConfigResponse { get; set; }
+ }
++
++// Liveness check that flips to Unhealthy as soon as the host begins shutting down,
++// so orchestrators (Kubernetes, ACA) stop routing new requests during the
++// terminationGracePeriodSeconds drain window while in-flight requests complete.
++internal sealed class LivenessHealthCheck(IHostApplicationLifetime lifetime) : IHealthCheck
++{
++    public Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken cancellationToken) =>
++        Task.FromResult(lifetime.ApplicationStopping.IsCancellationRequested
++            ? HealthCheckResult.Unhealthy("Application is shutting down.")
++            : HealthCheckResult.Healthy());
++}
+diff --git a/src/Components/Gateway/src/BlazorGatewayOptions.cs b/src/Components/Gateway/src/BlazorGatewayOptions.cs
+new file mode 100644
+index 0000000000..66e3e15a87
+--- /dev/null
++++ b/src/Components/Gateway/src/BlazorGatewayOptions.cs
+@@ -0,0 +1,44 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++namespace Microsoft.AspNetCore.Components.Gateway;
++
++internal sealed class BlazorGatewayOptions
++{
++    public const string SectionName = "Gateway";
++
++    public string? PathBase { get; set; }
++
++    public HstsOptions Hsts { get; set; } = new();
++
++    public HttpsRedirectionOptions HttpsRedirection { get; set; } = new();
++
++    public HealthCheckOptions HealthChecks { get; set; } = new();
++
++    public TelemetryOptions Telemetry { get; set; } = new();
++
++    internal sealed class HstsOptions
++    {
++        public bool Enabled { get; set; } = true;
++    }
++
++    internal sealed class HttpsRedirectionOptions
++    {
++        public bool Enabled { get; set; } = true;
++    }
++
++    internal sealed class HealthCheckOptions
++    {
++        public bool Enabled { get; set; } = true;
++        public string Path { get; set; } = "/health";
++        public string LivenessPath { get; set; } = "/alive";
++        public string LivenessTag { get; set; } = "live";
++    }
++
++    internal sealed class TelemetryOptions
++    {
++        public bool Enabled { get; set; } = true;
++        public List<string> ExcludePaths { get; set; } = new() { "/health", "/alive", "/_otlp/" };
++        public List<string> ExcludeOutboundPaths { get; set; } = new() { "/v1/" };
++    }
++}
+diff --git a/src/Components/Gateway/src/Microsoft.AspNetCore.Components.Gateway.csproj b/src/Components/Gateway/src/Microsoft.AspNetCore.Components.Gateway.csproj
+index 3ab6d8cf4e..3e9b889c58 100644
+--- a/src/Components/Gateway/src/Microsoft.AspNetCore.Components.Gateway.csproj
++++ b/src/Components/Gateway/src/Microsoft.AspNetCore.Components.Gateway.csproj
+@@ -32,6 +32,11 @@
+     <Reference Include="Yarp.ReverseProxy" />
+     <Reference Include="Microsoft.Extensions.ServiceDiscovery" />
+     <Reference Include="Microsoft.Extensions.ServiceDiscovery.Yarp" />
++    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="$(OpenTelemetryExporterOpenTelemetryProtocolVersion)" />
++    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="$(OpenTelemetryExtensionsHostingVersion)" />
++    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="$(OpenTelemetryInstrumentationAspNetCoreVersion)" />
++    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="$(OpenTelemetryInstrumentationHttpVersion)" />
++    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="$(OpenTelemetryInstrumentationRuntimeVersion)" />
+   </ItemGroup>
+ 
+   <Target Name="_CreateRuntimeConfig" BeforeTargets="CoreBuild">
+diff --git a/src/Components/Gateway/src/TelemetryFilters.cs b/src/Components/Gateway/src/TelemetryFilters.cs
+new file mode 100644
+index 0000000000..19a8c0dac9
+--- /dev/null
++++ b/src/Components/Gateway/src/TelemetryFilters.cs
+@@ -0,0 +1,58 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++namespace Microsoft.AspNetCore.Components.Gateway;
++
++internal static class TelemetryFilters
++{
++    public static bool ShouldTraceInboundRequest(PathString requestPath, IList<string> excludePaths)
++    {
++        if (!requestPath.HasValue)
++        {
++            return true;
++        }
++
++        foreach (var excluded in excludePaths)
++        {
++            if (requestPath.StartsWithSegments(NormalizeExcludeSegment(excluded)))
++            {
++                return false;
++            }
++        }
++
++        return true;
++    }
++
++    public static bool ShouldTraceOutboundRequest(Uri? requestUri, IList<string> excludeOutboundPaths)
++    {
++        if (requestUri is null)
++        {
++            return true;
++        }
++
++        foreach (var excluded in excludeOutboundPaths)
++        {
++            if (requestUri.AbsolutePath.StartsWith(excluded, StringComparison.OrdinalIgnoreCase))
++            {
++                return false;
++            }
++        }
++
++        return true;
++    }
++
++    private static PathString NormalizeExcludeSegment(string excluded)
++    {
++        if (string.IsNullOrEmpty(excluded))
++        {
++            return PathString.Empty;
++        }
++
++        if (excluded.Length > 1 && excluded[^1] == '/')
++        {
++            return new PathString(excluded[..^1]);
++        }
++
++        return new PathString(excluded);
++    }
++}
+diff --git a/src/Components/Gateway/src/build/Microsoft.AspNetCore.Components.Gateway.targets b/src/Components/Gateway/src/build/Microsoft.AspNetCore.Components.Gateway.targets
+index 4047ddb3f8..4814b3d45f 100644
+--- a/src/Components/Gateway/src/build/Microsoft.AspNetCore.Components.Gateway.targets
++++ b/src/Components/Gateway/src/build/Microsoft.AspNetCore.Components.Gateway.targets
+@@ -8,7 +8,10 @@
+          which reads properties directly without running the ComputeRunArguments target. -->
+     <_GatewayStaticWebAssetsManifest>$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'staticwebassets.development.json'))</_GatewayStaticWebAssetsManifest>
+     <_GatewayEndpointsManifest>$([System.IO.Path]::Combine('$(MSBuildProjectDirectory)', '$(IntermediateOutputPath)', 'staticwebassets.build.endpoints.json'))</_GatewayEndpointsManifest>
++    <!-- Logging filters that suppress noisy framework and OTLP categories during local development.
++         Set GatewayDisableDefaultLoggingFilters=true to get full default logging levels instead. -->
++    <_GatewayDefaultLoggingFiltersArgs Condition="'$(GatewayDisableDefaultLoggingFilters)' != 'true'"> --Logging:LogLevel:Microsoft=Warning --Logging:LogLevel:Microsoft.Hosting.Lifetime=Information --Logging:LogLevel:System.Net.Http.HttpClient.OtlpExporter=Warning</_GatewayDefaultLoggingFiltersArgs>
+     <RunCommand>dotnet</RunCommand>
+-    <RunArguments>&quot;$(_BlazorGatewayDll)&quot; --environment Development --staticWebAssets &quot;$(_GatewayStaticWebAssetsManifest)&quot; --ClientApps:app:EndpointsManifest &quot;$(_GatewayEndpointsManifest)&quot; --ClientApps:app:PathPrefix &quot;&quot;</RunArguments>
++    <RunArguments>&quot;$(_BlazorGatewayDll)&quot; --environment Development --staticWebAssets &quot;$(_GatewayStaticWebAssetsManifest)&quot; --ClientApps:app:EndpointsManifest &quot;$(_GatewayEndpointsManifest)&quot; --ClientApps:app:PathPrefix &quot;&quot;$(_GatewayDefaultLoggingFiltersArgs)</RunArguments>
+   </PropertyGroup>
+ </Project>
+diff --git a/src/Components/Gateway/test/BlazorGatewayProxyTests.cs b/src/Components/Gateway/test/BlazorGatewayProxyTests.cs
+new file mode 100644
+index 0000000000..a6b69a73b6
+--- /dev/null
++++ b/src/Components/Gateway/test/BlazorGatewayProxyTests.cs
+@@ -0,0 +1,115 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using System.Collections.Generic;
++using System.Net;
++using System.Net.Http;
++using Microsoft.AspNetCore.Builder;
++using Microsoft.AspNetCore.Hosting;
++using Microsoft.AspNetCore.Http;
++using Microsoft.Extensions.Hosting;
++
++namespace Microsoft.AspNetCore.Components.Gateway;
++
++public class BlazorGatewayProxyTests
++{
++    [Fact]
++    public async Task ReverseProxy_NotMapped_WhenSectionMissing()
++    {
++        await using var gateway = await GatewayTestHelpers.StartGatewayAsync(Environments.Development);
++
++        // No ReverseProxy config and no ClientApps → unknown path is 404.
++        Assert.Equal(HttpStatusCode.NotFound, (await gateway.Client.GetAsync("/anything")).StatusCode);
++    }
++
++    [Fact]
++    public async Task ReverseProxy_ForwardsRequestToConfiguredUpstream()
++    {
++        await using var upstream = await GatewayTestHelpers.StartUpstreamAsync(app =>
++            app.MapGet("/api/echo", () => "hello from upstream"));
++
++        await using var gateway = await GatewayTestHelpers.StartGatewayAsync(
++            Environments.Development,
++            ProxyConfig("upstream", upstream.BaseUrl, route: "/api/{**catch-all}"));
++
++        var response = await gateway.Client.GetAsync("/api/echo");
++
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        Assert.Equal("hello from upstream", await response.Content.ReadAsStringAsync());
++    }
++
++    [Fact]
++    public async Task ReverseProxy_PreservesRequestPathAndQuery()
++    {
++        await using var upstream = await GatewayTestHelpers.StartUpstreamAsync(app =>
++            app.MapGet("/api/items/{id}", (string id, HttpRequest request) =>
++                $"{id}{request.QueryString.Value}"));
++
++        await using var gateway = await GatewayTestHelpers.StartGatewayAsync(
++            Environments.Development,
++            ProxyConfig("upstream", upstream.BaseUrl, route: "/api/{**catch-all}"));
++
++        var response = await gateway.Client.GetAsync("/api/items/42?expand=true");
++
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        Assert.Equal("42?expand=true", await response.Content.ReadAsStringAsync());
++    }
++
++    [Fact]
++    public async Task ServiceDiscovery_ResolvesAddressFromConfiguration()
++    {
++        await using var upstream = await GatewayTestHelpers.StartUpstreamAsync(app =>
++            app.MapGet("/api/ping", () => "pong"));
++
++        var upstreamUri = new Uri(upstream.BaseUrl);
++
++        // Microsoft.Extensions.ServiceDiscovery reads endpoints from configuration keys of the
++        // form `services:<service>:<endpoint>:<index>`. YARP's service-discovery destination
++        // resolver translates `http://upstream` into the configured `host:port` for endpoint
++        // `default` (when present) or matched by scheme.
++        var cfg = ProxyConfig("upstream", "http://upstream", route: "/api/{**catch-all}");
++        cfg["services:upstream:default:0"] = $"{upstreamUri.Host}:{upstreamUri.Port}";
++
++        await using var gateway = await GatewayTestHelpers.StartGatewayAsync(Environments.Development, cfg);
++
++        var response = await gateway.Client.GetAsync("/api/ping");
++
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        Assert.Equal("pong", await response.Content.ReadAsStringAsync());
++    }
++
++    [Fact]
++    public async Task ServiceDiscovery_UnresolvedAddress_FailsAtRequestTime()
++    {
++        var cfg = ProxyConfig("upstream", "http://_does-not-exist", route: "/api/{**catch-all}");
++
++        await using var gateway = await GatewayTestHelpers.StartGatewayAsync(Environments.Development, cfg);
++
++        // Service discovery is always on; an address that references an unknown
++        // service-discovery name fails when the proxy attempts to dispatch the
++        // request (surfaced as a gateway error).
++        var response = await gateway.Client.GetAsync("/api/whatever");
++
++        Assert.True(
++            response.StatusCode is HttpStatusCode.BadGateway
++                or HttpStatusCode.ServiceUnavailable
++                or HttpStatusCode.GatewayTimeout
++                or HttpStatusCode.InternalServerError,
++            $"Expected gateway error, got {response.StatusCode}.");
++    }
++
++    private static Dictionary<string, string?> ProxyConfig(
++        string clusterId,
++        string destinationAddress,
++        string route)
++    {
++        var routeId = $"{clusterId}-route";
++
++        return new Dictionary<string, string?>
++        {
++            [$"ReverseProxy:Routes:{routeId}:ClusterId"] = clusterId,
++            [$"ReverseProxy:Routes:{routeId}:Match:Path"] = route,
++            [$"ReverseProxy:Clusters:{clusterId}:Destinations:dest1:Address"] = destinationAddress,
++        };
++    }
++}
+diff --git a/src/Components/Gateway/test/BlazorGatewayTests.cs b/src/Components/Gateway/test/BlazorGatewayTests.cs
+new file mode 100644
+index 0000000000..300932bd45
+--- /dev/null
++++ b/src/Components/Gateway/test/BlazorGatewayTests.cs
+@@ -0,0 +1,214 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using System.Net;
++using System.Net.Http;
++using Microsoft.AspNetCore.Builder;
++using Microsoft.AspNetCore.Hosting;
++using Microsoft.AspNetCore.TestHost;
++using Microsoft.Extensions.Configuration;
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Hosting;
++
++namespace Microsoft.AspNetCore.Components.Gateway;
++
++public class BlazorGatewayTests
++{
++    [Fact]
++    public async Task HealthChecks_ReturnsOk_InDevelopment_WithDefaultOptions()
++    {
++        await using var gateway = await StartGatewayAsync(Environments.Development);
++
++        Assert.Equal(HttpStatusCode.OK, (await gateway.Client.GetAsync("/health")).StatusCode);
++        Assert.Equal(HttpStatusCode.OK, (await gateway.Client.GetAsync("/alive")).StatusCode);
++    }
++
++    [Fact]
++    public async Task HealthChecks_Liveness_AlwaysMapped_Health_OnlyInDevelopment()
++    {
++        await using var gateway = await StartGatewayAsync(Environments.Production);
++
++        // /alive is mapped in all environments so external orchestrators can probe
++        // a running deployment; the broader /health aggregate is dev-only because
++        // exposing it publicly leaks dependency status.
++        Assert.Equal(HttpStatusCode.OK, (await gateway.Client.GetAsync("/alive")).StatusCode);
++        Assert.Equal(HttpStatusCode.NotFound, (await gateway.Client.GetAsync("/health")).StatusCode);
++    }
++
++    [Fact]
++    public async Task HealthChecks_Disabled_ReturnsNotFound_EvenInDevelopment()
++    {
++        await using var gateway = await StartGatewayAsync(Environments.Development, new()
++        {
++            ["Gateway:HealthChecks:Enabled"] = "false",
++        });
++
++        Assert.Equal(HttpStatusCode.NotFound, (await gateway.Client.GetAsync("/health")).StatusCode);
++        Assert.Equal(HttpStatusCode.NotFound, (await gateway.Client.GetAsync("/alive")).StatusCode);
++    }
++
++    [Fact]
++    public async Task HealthChecks_HonorsCustomPaths()
++    {
++        await using var gateway = await StartGatewayAsync(Environments.Development, new()
++        {
++            ["Gateway:HealthChecks:Path"] = "/healthz",
++            ["Gateway:HealthChecks:LivenessPath"] = "/livez",
++        });
++
++        Assert.Equal(HttpStatusCode.OK, (await gateway.Client.GetAsync("/healthz")).StatusCode);
++        Assert.Equal(HttpStatusCode.OK, (await gateway.Client.GetAsync("/livez")).StatusCode);
++        Assert.Equal(HttpStatusCode.NotFound, (await gateway.Client.GetAsync("/health")).StatusCode);
++        Assert.Equal(HttpStatusCode.NotFound, (await gateway.Client.GetAsync("/alive")).StatusCode);
++    }
++
++    [Fact]
++    public async Task HealthChecks_Liveness_FlipsToUnhealthy_DuringShutdown()
++    {
++        await using var gateway = await StartGatewayAsync(Environments.Development);
++
++        Assert.Equal(HttpStatusCode.OK, (await gateway.Client.GetAsync("/alive")).StatusCode);
++        Assert.Equal(HttpStatusCode.OK, (await gateway.Client.GetAsync("/health")).StatusCode);
++
++        var lifetime = gateway.App.Services.GetRequiredService<IHostApplicationLifetime>();
++        lifetime.StopApplication();
++
++        // The shutdown-aware "self" check is tagged "live" so it surfaces on both
++        // the liveness endpoint (/alive, predicate-filtered) and the aggregate
++        // /health endpoint (no predicate). Both should fail so orchestrators stop
++        // routing new traffic during the drain window.
++        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await gateway.Client.GetAsync("/alive")).StatusCode);
++        Assert.Equal(HttpStatusCode.ServiceUnavailable, (await gateway.Client.GetAsync("/health")).StatusCode);
++    }
++
++    [Fact]
++    public async Task Hsts_HeaderEmitted_InProduction_WithDefaultOptions()
++    {
++        await using var gateway = await StartGatewayAsync(Environments.Production);
++        gateway.Client.BaseAddress = new Uri("https://www.example.com/");
++
++        var response = await gateway.Client.GetAsync("/does-not-matter");
++
++        Assert.True(response.Headers.Contains("Strict-Transport-Security"));
++    }
++
++    [Fact]
++    public async Task Hsts_HeaderAbsent_InDevelopment()
++    {
++        await using var gateway = await StartGatewayAsync(Environments.Development);
++        gateway.Client.BaseAddress = new Uri("https://www.example.com/");
++
++        var response = await gateway.Client.GetAsync("/does-not-matter");
++
++        Assert.False(response.Headers.Contains("Strict-Transport-Security"));
++    }
++
++    [Fact]
++    public async Task Hsts_Disabled_DoesNotEmitHeader_InProduction()
++    {
++        await using var gateway = await StartGatewayAsync(Environments.Production, new()
++        {
++            ["Gateway:Hsts:Enabled"] = "false",
++        });
++        gateway.Client.BaseAddress = new Uri("https://www.example.com/");
++
++        var response = await gateway.Client.GetAsync("/does-not-matter");
++
++        Assert.False(response.Headers.Contains("Strict-Transport-Security"));
++    }
++
++    [Fact]
++    public async Task HttpsRedirection_RedirectsTopLevelNavigations_WithDefaultOptions()
++    {
++        await using var gateway = await StartGatewayAsync(Environments.Production, new()
++        {
++            ["HTTPS_PORT"] = "443",
++        });
++
++        var request = new HttpRequestMessage(HttpMethod.Get, "http://localhost/anywhere");
++        request.Headers.Add("Sec-Fetch-Dest", "document");
++
++        var response = await gateway.Client.SendAsync(request);
++
++        Assert.True(IsRedirect(response.StatusCode), $"Expected redirect, got {response.StatusCode}.");
++    }
++
++    [Fact]
++    public async Task HttpsRedirection_LeavesProgrammaticRequestsAlone()
++    {
++        await using var gateway = await StartGatewayAsync(Environments.Production, new()
++        {
++            ["HTTPS_PORT"] = "443",
++        });
++
++        var request = new HttpRequestMessage(HttpMethod.Get, "http://localhost/anywhere");
++        request.Headers.Add("Sec-Fetch-Dest", "empty");
++
++        var response = await gateway.Client.SendAsync(request);
++
++        Assert.False(IsRedirect(response.StatusCode), $"Did not expect redirect, got {response.StatusCode}.");
++    }
++
++    [Fact]
++    public async Task HttpsRedirection_Disabled_DoesNotRedirectDocumentNavigations()
++    {
++        await using var gateway = await StartGatewayAsync(Environments.Production, new()
++        {
++            ["HTTPS_PORT"] = "443",
++            ["Gateway:HttpsRedirection:Enabled"] = "false",
++        });
++
++        var request = new HttpRequestMessage(HttpMethod.Get, "http://localhost/anywhere");
++        request.Headers.Add("Sec-Fetch-Dest", "document");
++
++        var response = await gateway.Client.SendAsync(request);
++
++        Assert.False(IsRedirect(response.StatusCode), $"Did not expect redirect, got {response.StatusCode}.");
++    }
++
++    [Fact]
++    public async Task PathBase_MountsEndpointsUnderConfiguredPrefix()
++    {
++        await using var gateway = await StartGatewayAsync(Environments.Development, new()
++        {
++            ["Gateway:PathBase"] = "/app",
++        });
++
++        Assert.Equal(HttpStatusCode.OK, (await gateway.Client.GetAsync("/app/health")).StatusCode);
++    }
++
++    [Fact]
++    public async Task ClientApps_ConfigEndpoint_ReturnsConfiguredJson()
++    {
++        const string json = """{"webAssembly":{"environment":{"OTEL_SERVICE_NAME":"my-app"}}}""";
++
++        await using var gateway = await StartGatewayAsync(Environments.Development, new()
++        {
++            ["ClientApps:app:ConfigEndpointPath"] = "/myapp/_blazor/_configuration",
++            ["ClientApps:app:ConfigResponse"] = json,
++        });
++
++        var request = new HttpRequestMessage(HttpMethod.Get, "/myapp/_blazor/_configuration");
++        request.Headers.AcceptEncoding.ParseAdd("identity");
++        var response = await gateway.Client.SendAsync(request);
++        var body = await response.Content.ReadAsStringAsync();
++
++        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
++        Assert.Equal("application/json", response.Content.Headers.ContentType?.MediaType);
++        Assert.Equal(json, body, ignoreLineEndingDifferences: true);
++    }
++
++    private static bool IsRedirect(HttpStatusCode status) =>
++        status is HttpStatusCode.MovedPermanently
++            or HttpStatusCode.Found
++            or HttpStatusCode.TemporaryRedirect
++            or HttpStatusCode.PermanentRedirect;
++
++    private static Task<GatewayUnderTest> StartGatewayAsync(string environment) =>
++        GatewayTestHelpers.StartGatewayAsync(environment);
++
++    private static Task<GatewayUnderTest> StartGatewayAsync(
++        string environment,
++        Dictionary<string, string?> configuration) =>
++        GatewayTestHelpers.StartGatewayAsync(environment, configuration);
++}
+diff --git a/src/Components/Gateway/test/GatewayTestHelpers.cs b/src/Components/Gateway/test/GatewayTestHelpers.cs
+new file mode 100644
+index 0000000000..0374fedcdf
+--- /dev/null
++++ b/src/Components/Gateway/test/GatewayTestHelpers.cs
+@@ -0,0 +1,84 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using System.Collections.Generic;
++using System.Net.Http;
++using Microsoft.AspNetCore.Builder;
++using Microsoft.AspNetCore.Hosting;
++using Microsoft.AspNetCore.Hosting.Server;
++using Microsoft.AspNetCore.Hosting.Server.Features;
++using Microsoft.AspNetCore.TestHost;
++using Microsoft.Extensions.Configuration;
++using Microsoft.Extensions.DependencyInjection;
++using Microsoft.Extensions.Hosting;
++
++namespace Microsoft.AspNetCore.Components.Gateway;
++
++internal static class GatewayTestHelpers
++{
++    public static Task<GatewayUnderTest> StartGatewayAsync(string environment) =>
++        StartGatewayAsync(environment, new Dictionary<string, string?>());
++
++    public static async Task<GatewayUnderTest> StartGatewayAsync(
++        string environment,
++        Dictionary<string, string?> configuration)
++    {
++        var builder = WebApplication.CreateSlimBuilder(new WebApplicationOptions
++        {
++            EnvironmentName = environment,
++        });
++
++        if (configuration.Count > 0)
++        {
++            builder.Configuration.AddInMemoryCollection(configuration);
++        }
++
++        builder.WebHost.UseTestServer();
++
++        var app = BlazorGateway.BuildWebHost(builder);
++        await app.StartAsync();
++
++        return new GatewayUnderTest(app);
++    }
++
++    /// <summary>
++    /// Spins up a real Kestrel-hosted upstream <see cref="WebApplication"/> on a random
++    /// loopback port. The gateway's reverse proxy can be configured to forward to the
++    /// resulting <see cref="UpstreamApp.BaseUrl"/>.
++    /// </summary>
++    public static async Task<UpstreamApp> StartUpstreamAsync(Action<WebApplication> configure)
++    {
++        var builder = WebApplication.CreateSlimBuilder();
++        builder.WebHost.UseUrls("http://127.0.0.1:0");
++        builder.Logging.ClearProviders();
++
++        var app = builder.Build();
++        configure(app);
++        await app.StartAsync();
++
++        var address = app.Services.GetRequiredService<IServer>()
++            .Features.Get<IServerAddressesFeature>()!.Addresses.First();
++
++        return new UpstreamApp(app, address);
++    }
++}
++
++internal sealed class GatewayUnderTest(WebApplication app) : IAsyncDisposable
++{
++    public WebApplication App { get; } = app;
++    public HttpClient Client { get; } = app.GetTestClient();
++
++    public async ValueTask DisposeAsync()
++    {
++        Client.Dispose();
++        await App.DisposeAsync();
++    }
++}
++
++internal sealed class UpstreamApp(WebApplication app, string baseUrl) : IAsyncDisposable
++{
++    public WebApplication App { get; } = app;
++    public string BaseUrl { get; } = baseUrl;
++
++    public async ValueTask DisposeAsync() => await App.DisposeAsync();
++}
+diff --git a/src/Components/Gateway/test/GlobalUsings.cs b/src/Components/Gateway/test/GlobalUsings.cs
+new file mode 100644
+index 0000000000..0c9ef4f5a5
+--- /dev/null
++++ b/src/Components/Gateway/test/GlobalUsings.cs
+@@ -0,0 +1,15 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++// These usings are provided as GlobalUsings by Microsoft.NET.Sdk.Web but not
++// Microsoft.NET.Sdk, which this test project uses. They are needed because
++// BlazorGateway.cs is compiled here via a Compile Include.
++global using Microsoft.AspNetCore.Builder;
++global using Microsoft.AspNetCore.Hosting;
++global using Microsoft.AspNetCore.Http;
++global using Microsoft.AspNetCore.Routing;
++global using Microsoft.AspNetCore.StaticAssets;
++global using Microsoft.Extensions.Configuration;
++global using Microsoft.Extensions.DependencyInjection;
++global using Microsoft.Extensions.Hosting;
++global using Microsoft.Extensions.Logging;
+diff --git a/src/Components/Gateway/test/Microsoft.AspNetCore.Components.Gateway.Tests.csproj b/src/Components/Gateway/test/Microsoft.AspNetCore.Components.Gateway.Tests.csproj
+new file mode 100644
+index 0000000000..ea64cf3c37
+--- /dev/null
++++ b/src/Components/Gateway/test/Microsoft.AspNetCore.Components.Gateway.Tests.csproj
+@@ -0,0 +1,31 @@
++<Project Sdk="Microsoft.NET.Sdk">
++
++  <PropertyGroup>
++    <TargetFramework>$(DefaultNetCoreTargetFramework)</TargetFramework>
++    <RootNamespace>Microsoft.AspNetCore.Components.Gateway</RootNamespace>
++    <Nullable>enable</Nullable>
++    <DisablePackageReferenceRestrictions>true</DisablePackageReferenceRestrictions>
++    <UseAspNetCoreSharedRuntime>true</UseAspNetCoreSharedRuntime>
++    <DoNotApplyWorkaroundsToMicrosoftAspNetCoreApp>true</DoNotApplyWorkaroundsToMicrosoftAspNetCoreApp>
++  </PropertyGroup>
++
++  <ItemGroup>
++    <Compile Include="..\src\BlazorGateway.cs" />
++    <Compile Include="..\src\BlazorGatewayOptions.cs" />
++    <Compile Include="..\src\TelemetryFilters.cs" />
++  </ItemGroup>
++
++  <ItemGroup>
++    <FrameworkReference Include="Microsoft.AspNetCore.App" />
++    <Reference Include="Microsoft.AspNetCore.TestHost" />
++    <Reference Include="Microsoft.Extensions.ServiceDiscovery" />
++    <Reference Include="Microsoft.Extensions.ServiceDiscovery.Yarp" />
++    <Reference Include="Yarp.ReverseProxy" />
++    <PackageReference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" Version="$(OpenTelemetryExporterOpenTelemetryProtocolVersion)" />
++    <PackageReference Include="OpenTelemetry.Extensions.Hosting" Version="$(OpenTelemetryExtensionsHostingVersion)" />
++    <PackageReference Include="OpenTelemetry.Instrumentation.AspNetCore" Version="$(OpenTelemetryInstrumentationAspNetCoreVersion)" />
++    <PackageReference Include="OpenTelemetry.Instrumentation.Http" Version="$(OpenTelemetryInstrumentationHttpVersion)" />
++    <PackageReference Include="OpenTelemetry.Instrumentation.Runtime" Version="$(OpenTelemetryInstrumentationRuntimeVersion)" />
++  </ItemGroup>
++
++</Project>
+diff --git a/src/Components/test/testassets/Components.TestServer/Components.TestServer.csproj b/src/Components/test/testassets/Components.TestServer/Components.TestServer.csproj
+index 79189b446f..2bd78767ba 100644
+--- a/src/Components/test/testassets/Components.TestServer/Components.TestServer.csproj
++++ b/src/Components/test/testassets/Components.TestServer/Components.TestServer.csproj
+@@ -44,6 +44,9 @@
+     <Reference Include="Microsoft.AspNetCore.Components.Server" />
+     <Reference Include="Microsoft.AspNetCore.Diagnostics" />
+     <Reference Include="Microsoft.AspNetCore.Diagnostics.Abstractions" />
++    <Reference Include="Microsoft.AspNetCore.Diagnostics.HealthChecks" />
++    <Reference Include="Microsoft.AspNetCore.HttpsPolicy" />
++    <Reference Include="Microsoft.Extensions.Diagnostics.HealthChecks" />
+     <Reference Include="Microsoft.AspNetCore.Hosting" />
+     <Reference Include="Microsoft.AspNetCore.Hosting.Abstractions" />
+     <Reference Include="Microsoft.AspNetCore.Hosting.Server.Abstractions" />
+@@ -98,12 +101,20 @@
+ 
+   <ItemGroup>
+     <Compile Include="..\..\..\Gateway\src\BlazorGateway.cs" />
++    <Compile Include="..\..\..\Gateway\src\BlazorGatewayOptions.cs" />
++    <Compile Include="..\..\..\Gateway\src\TelemetryFilters.cs" />
+   </ItemGroup>
+ 
+   <ItemGroup>
+     <Reference Include="Yarp.ReverseProxy" />
+     <Reference Include="Microsoft.Extensions.ServiceDiscovery" />
+     <Reference Include="Microsoft.Extensions.ServiceDiscovery.Yarp" />
++    <Reference Include="Microsoft.Extensions.Http.Resilience" />
++    <Reference Include="OpenTelemetry.Exporter.OpenTelemetryProtocol" />
++    <Reference Include="OpenTelemetry.Extensions.Hosting" />
++    <Reference Include="OpenTelemetry.Instrumentation.AspNetCore" />
++    <Reference Include="OpenTelemetry.Instrumentation.Http" />
++    <Reference Include="OpenTelemetry.Instrumentation.Runtime" />
+   </ItemGroup>
+ 
+   <!-- YARP NuGet packages transitively add a FrameworkReference to Microsoft.AspNetCore.App
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/ide.host.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/ide.host.json
+index db55886957..37a4c1ff55 100644
+--- a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/ide.host.json
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/ide.host.json
+@@ -1,4 +1,5 @@
+ {
+   "$schema": "https://json.schemastore.org/ide.host",
+-  "order": 650
++  "order": 650,
++  "icon": "ide/icon.ico"
+ }
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/ide/icon.ico b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/ide/icon.ico
+new file mode 100644
+index 0000000000000000000000000000000000000000..ae1de0053ae083471c801aa8fa15face92ff06ce
+GIT binary patch
+literal 59873
+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
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/template.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/template.json
+index dfb622b8c4..21ad401b2e 100644
+--- a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/template.json
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/template.json
+@@ -13,7 +13,7 @@
+   "groupIdentity": "Microsoft.Web.Blazor.Wasm.ServiceDefaults",
+   "precedence": "10000",
+   "identity": "Microsoft.Web.Blazor.Wasm.ServiceDefaults.CSharp.11.0",
+-  "shortName": "blazor-wasm-servicedefaults",
++  "shortName": "blazorwasm-servicedefaults",
+   "thirdPartyNotices": "https://aka.ms/aspnetcore/11.0-third-party-notices",
+   "tags": {
+     "language": "C#",
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/Extensions.cs b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/Extensions.cs
+index 2fcab8abaf..0cf00f2c3a 100644
+--- a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/Extensions.cs
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/Extensions.cs
+@@ -2,20 +2,17 @@
+ // The .NET Foundation licenses this file to you under the MIT license.
+ 
+ using BlazorWasm.ServiceDefaults1;
+-using Microsoft.AspNetCore.Components.Infrastructure;
+ using Microsoft.AspNetCore.Components.WebAssembly.Hosting;
+ using Microsoft.Extensions.DependencyInjection;
+ using Microsoft.Extensions.Http.Resilience;
+ using Microsoft.Extensions.Logging;
+ using Microsoft.Extensions.Options;
+-using OpenTelemetry;
+ using OpenTelemetry.Exporter;
+ using OpenTelemetry.Logs;
+ using OpenTelemetry.Metrics;
+ using OpenTelemetry.Resources;
+ using OpenTelemetry.Trace;
+ using Polly;
+-using Polly.Retry;
+ 
+ namespace Microsoft.Extensions.Hosting;
+ 
+@@ -23,9 +20,6 @@ public static class BlazorClientExtensions
+ {
+     public static WebAssemblyHostBuilder AddBlazorClientServiceDefaults(this WebAssemblyHostBuilder builder)
+     {
+-        ComponentsMetricsServiceCollectionExtensions.AddComponentsMetrics(builder.Services);
+-        ComponentsMetricsServiceCollectionExtensions.AddComponentsTracing(builder.Services);
+-
+         builder.ConfigureBlazorClientOpenTelemetry();
+ 
+         builder.Services.AddServiceDiscovery();
+@@ -40,8 +34,14 @@ public static class BlazorClientExtensions
+ 
+     private static WebAssemblyHostBuilder ConfigureBlazorClientOpenTelemetry(this WebAssemblyHostBuilder builder)
+     {
++        var otlpPathBase = builder.Configuration["OTEL_EXPORTER_OTLP_ENDPOINT"];
++        if (string.IsNullOrEmpty(otlpPathBase))
++        {
++            return builder;
++        }
++
+         // Read the service name from configuration (set by Aspire hosting via the gateway).
+-        var serviceName = builder.Configuration["OTEL_SERVICE_NAME"] ?? "BlazorWasm.ServiceDefaults1";
++        var serviceName = builder.Configuration["OTEL_SERVICE_NAME"]!;
+ 
+         // Build a resilience pipeline for OTLP export retries.
+         // The OTel SDK's built-in retry uses Thread.Sleep which would deadlock on WASM,
+@@ -58,6 +58,9 @@ public static class BlazorClientExtensions
+             })
+             .Build();
+ 
++        var baseAddress = new Uri(builder.HostEnvironment.BaseAddress);
++        var otlpEndpoint = new Uri(baseAddress, $"{otlpPathBase}/");
++
+         // Wire HttpClientFactory for all OTLP exporter instances via IPostConfigureOptions.
+         // The fire-and-forget handler works around the OTel SDK's sync-over-async deadlock
+         // on WASM: OtlpExportClient.SendHttpRequest() calls SendAsync().GetAwaiter().GetResult()
+@@ -76,24 +79,24 @@ public static class BlazorClientExtensions
+         {
+             logging.IncludeFormattedMessage = true;
+             logging.IncludeScopes = true;
+-            logging.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(serviceName));
+-            logging.AddOtlpExporter();
++            logging.SetResourceBuilder(ResourceBuilder.CreateDefault().AddService(serviceName, serviceInstanceId: serviceName));
++            logging.AddOtlpExporter(o => o.Endpoint = new Uri(otlpEndpoint, "v1/logs"));
+         });
+ 
+         builder.Services.AddOpenTelemetry()
+-            .ConfigureResource(r => r.AddService(serviceName))
++            .ConfigureResource(r => r.AddService(serviceName, serviceInstanceId: serviceName))
+             .WithMetrics(metrics =>
+             {
+                 metrics.AddMeter("Microsoft.AspNetCore.Components");
+                 metrics.AddMeter("Microsoft.AspNetCore.Components.Lifecycle");
+                 metrics.AddHttpClientInstrumentation();
+-                metrics.AddOtlpExporter();
++                metrics.AddOtlpExporter(o => o.Endpoint = new Uri(otlpEndpoint, "v1/metrics"));
+             })
+             .WithTracing(tracing =>
+             {
+                 tracing.AddSource("Microsoft.AspNetCore.Components")
+                     .AddHttpClientInstrumentation();
+-                tracing.AddOtlpExporter();
++                tracing.AddOtlpExporter(o => o.Endpoint = new Uri(otlpEndpoint, "v1/traces"));
+             });
+ 
+         return builder;
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/wwwroot/BlazorWasm.ServiceDefaults1.lib.module.js b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/wwwroot/BlazorWasm.ServiceDefaults1.lib.module.js
+index aa7572cb58..be70e030a1 100644
+--- a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/wwwroot/BlazorWasm.ServiceDefaults1.lib.module.js
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/wwwroot/BlazorWasm.ServiceDefaults1.lib.module.js
+@@ -18,5 +18,6 @@ export async function onRuntimeConfigLoaded(config) {
+             }
+         }
+     } catch (error) {
++        console.warn('Failed to load the client configuration from the host:', error);
+     }
+ }
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/BlazorWebCSharp.1/Properties/launchSettings.json b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/BlazorWebCSharp.1/Properties/launchSettings.json
+index c4b5b76926..02e531206d 100644
+--- a/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/BlazorWebCSharp.1/Properties/launchSettings.json
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/BlazorWebCSharp.1/Properties/launchSettings.json
+@@ -6,9 +6,6 @@
+         "commandName": "Project",
+         "dotnetRunMessages": true,
+         "launchBrowser": true,
+-        //#if (UseWebAssembly)
+-        "inspectUri": "{wsProtocol}://{url.hostname}:{url.port}/_framework/debug/ws-proxy?browser={browserInspectUri}",
+-        //#endif
+         //#if (LocalhostTld)
+         "applicationUrl": "http://LocalhostTldHostNamePrefix.dev.localhost:5500",
+         //#else
+@@ -28,9 +25,6 @@
+         "commandName": "Project",
+         "dotnetRunMessages": true,
+         "launchBrowser": true,
+-        //#if (UseWebAssembly)
+-        "inspectUri": "{wsProtocol}://{url.hostname}:{url.port}/_framework/debug/ws-proxy?browser={browserInspectUri}",
+-        //#endif
+         //#if (LocalhostTld)
+         "applicationUrl": "https://LocalhostTldHostNamePrefix.dev.localhost:5501;http://LocalhostTldHostNamePrefix.dev.localhost:5500",
+         //#else
+diff --git a/src/ProjectTemplates/Web.ProjectTemplates/content/ComponentsWebAssembly-CSharp/Properties/launchSettings.json b/src/ProjectTemplates/Web.ProjectTemplates/content/ComponentsWebAssembly-CSharp/Properties/launchSettings.json
+index 167c237f02..ce615249fb 100644
+--- a/src/ProjectTemplates/Web.ProjectTemplates/content/ComponentsWebAssembly-CSharp/Properties/launchSettings.json
++++ b/src/ProjectTemplates/Web.ProjectTemplates/content/ComponentsWebAssembly-CSharp/Properties/launchSettings.json
+@@ -6,7 +6,6 @@
+       "commandName": "Project",
+       "dotnetRunMessages": true,
+       "launchBrowser": true,
+-      "inspectUri": "{wsProtocol}://{url.hostname}:{url.port}/_framework/debug/ws-proxy?browser={browserInspectUri}",
+       "applicationUrl": "http://localhost:5000",
+       "environmentVariables": {
+         "ASPNETCORE_ENVIRONMENT": "Development"
+@@ -22,7 +21,6 @@
+       "commandName": "Project",
+       "dotnetRunMessages": true,
+       "launchBrowser": true,
+-      "inspectUri": "{wsProtocol}://{url.hostname}:{url.port}/_framework/debug/ws-proxy?browser={browserInspectUri}",
+       "applicationUrl": "https://localhost:5001;http://localhost:5000",
+       "environmentVariables": {
+         "ASPNETCORE_ENVIRONMENT": "Development"
+diff --git a/src/ProjectTemplates/scripts/Run-BlazorWasmServiceDefaults-Locally.ps1 b/src/ProjectTemplates/scripts/Run-BlazorWasmServiceDefaults-Locally.ps1
+new file mode 100644
+index 0000000000..7ee5e46672
+--- /dev/null
++++ b/src/ProjectTemplates/scripts/Run-BlazorWasmServiceDefaults-Locally.ps1
+@@ -0,0 +1,35 @@
++#!/usr/bin/env pwsh
++#requires -version 4
++
++# This script packages, installs and creates the blazorwasm-servicedefaults
++# template to help with rapid iteration on the template content.
++[CmdletBinding(PositionalBinding = $false)]
++param(
++    [ValidateSet("net11.0")]
++    [string] $Framework = "net11.0",
++    [Parameter(Mandatory = $false)]
++    [switch] $Hosted,
++    [Parameter(Mandatory = $false)]
++    [ValidateSet("Debug", "Release")]
++    [string] $Configuration = "Release",
++    [Parameter(ValueFromRemainingArguments = $true)]
++    [string[]] $Args
++)
++
++Set-StrictMode -Version 2
++$ErrorActionPreference = 'Stop'
++
++$templateArguments = @("blazorwasm-servicedefaults");
++
++if ($Hosted) {
++    $templateArguments += "--hosted"
++}
++
++Import-Module -Name "$PSScriptRoot/Test-Template.psm1";
++
++Test-Template `
++    -TemplateName "MyBlazorWasmServiceDefaults" `
++    -TemplateArguments $templateArguments `
++    -TargetFramework $Framework `
++    -Configuration $Configuration `
++    -Verbose:$VerbosePreference;
+diff --git a/src/ProjectTemplates/test/Templates.Tests/BlazorWasmServiceDefaultsTemplateTest.cs b/src/ProjectTemplates/test/Templates.Tests/BlazorWasmServiceDefaultsTemplateTest.cs
+index 847486a23a..d61cd07272 100644
+--- a/src/ProjectTemplates/test/Templates.Tests/BlazorWasmServiceDefaultsTemplateTest.cs
++++ b/src/ProjectTemplates/test/Templates.Tests/BlazorWasmServiceDefaultsTemplateTest.cs
+@@ -35,7 +35,7 @@ public class BlazorWasmServiceDefaultsTemplateTest : LoggedTest
+     {
+         var project = await ProjectFactory.CreateProject(Output);
+ 
+-        await project.RunDotNetNewAsync("blazor-wasm-servicedefaults");
++        await project.RunDotNetNewAsync("blazorwasm-servicedefaults");
+ 
+         await project.RunDotNetPublishAsync();
+ 
+@@ -51,7 +51,7 @@ public class BlazorWasmServiceDefaultsTemplateTest : LoggedTest
+     {
+         var project = await ProjectFactory.CreateProject(Output);
+ 
+-        await project.RunDotNetNewAsync("blazor-wasm-servicedefaults", args: new[] { "--hosted" });
++        await project.RunDotNetNewAsync("blazorwasm-servicedefaults", args: new[] { "--hosted" });
+ 
+         await project.RunDotNetPublishAsync();
+ 
+diff --git a/src/ProjectTemplates/test/Templates.Tests/template-baselines.json b/src/ProjectTemplates/test/Templates.Tests/template-baselines.json
+index 154c905637..c908aad661 100644
+--- a/src/ProjectTemplates/test/Templates.Tests/template-baselines.json
++++ b/src/ProjectTemplates/test/Templates.Tests/template-baselines.json
+@@ -3757,10 +3757,10 @@
+       ]
+     }
+   },
+-  "blazor-wasm-servicedefaults": {
++  "blazorwasm-servicedefaults": {
+     "Default": {
+-      "Template": "blazor-wasm-servicedefaults",
+-      "Arguments": "new blazor-wasm-servicedefaults",
++      "Template": "blazorwasm-servicedefaults",
++      "Arguments": "new blazorwasm-servicedefaults",
+       "Files": [
+         "BackgroundExportHandler.cs",
+         "Extensions.cs",

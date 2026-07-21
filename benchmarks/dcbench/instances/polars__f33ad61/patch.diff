@@ -1,0 +1,3149 @@
+From f33ad61dd8c5ac632d5b82f2610bcaedf5838bd0 Mon Sep 17 00:00:00 2001
+From: Amber Sprenkels <amber@polars.tech>
+Date: Thu, 9 Oct 2025 14:01:53 +0200
+Subject: [PATCH] feat: Implement `{Expr,Series}.rolling_rank()` (#24776)
+
+---
+ Cargo.lock                                    |  12 +-
+ Cargo.toml                                    |   1 -
+ crates/polars-compute/Cargo.toml              |   1 -
+ crates/polars-compute/src/rolling/mod.rs      |  30 +-
+ .../src/rolling/no_nulls/mean.rs              |   2 +-
+ .../src/rolling/no_nulls/min_max.rs           |   2 +-
+ .../src/rolling/no_nulls/mod.rs               |  34 +-
+ .../src/rolling/no_nulls/moment.rs            |   6 +-
+ .../src/rolling/no_nulls/quantile.rs          |  15 +-
+ .../src/rolling/no_nulls/rank.rs              | 150 ++++
+ .../src/rolling/no_nulls/sum.rs               |   4 +-
+ .../polars-compute/src/rolling/nulls/mean.rs  |   4 +-
+ .../src/rolling/nulls/min_max.rs              |   8 +-
+ .../polars-compute/src/rolling/nulls/mod.rs   |  21 +-
+ .../src/rolling/nulls/moment.rs               |   6 +-
+ .../src/rolling/nulls/quantile.rs             |  17 +-
+ .../polars-compute/src/rolling/nulls/rank.rs  | 157 ++++
+ .../polars-compute/src/rolling/nulls/sum.rs   |   4 +-
+ crates/polars-compute/src/rolling/rank.rs     |  92 +++
+ crates/polars-compute/src/rolling/window.rs   |  42 +-
+ crates/polars-core/src/prelude.rs             |   4 +-
+ crates/polars-plan/dsl-schema-hashes.json     |   7 +-
+ .../src/dsl/function_expr/rolling.rs          |   2 +
+ .../src/dsl/function_expr/rolling_by.rs       |   2 +
+ crates/polars-plan/src/dsl/mod.rs             |  10 +
+ .../src/plans/aexpr/function_expr/mod.rs      |   2 +
+ .../src/plans/aexpr/function_expr/rolling.rs  |   9 +
+ .../plans/aexpr/function_expr/rolling_by.rs   |  12 +
+ .../src/plans/aexpr/function_expr/schema.rs   |  22 +-
+ .../plans/conversion/dsl_to_ir/functions.rs   |   2 +
+ .../src/plans/conversion/ir_to_dsl.rs         |   2 +
+ crates/polars-python/src/conversion/mod.rs    |  18 +
+ crates/polars-python/src/expr/rolling.rs      |  47 ++
+ .../src/lazyframe/visitor/expr_nodes.rs       |   3 +
+ .../chunkedarray/rolling_window/dispatch.rs   |  40 ++
+ .../rolling_kernels/no_nulls.rs               | 145 +++-
+ crates/polars-utils/Cargo.toml                |   1 +
+ crates/polars-utils/src/lib.rs                |   1 +
+ .../polars-utils/src/order_statistic_tree.rs  | 674 ++++++++++++++++++
+ .../reference/expressions/computation.rst     |   2 +
+ .../source/reference/series/computation.rst   |   2 +
+ py-polars/src/polars/_plr.pyi                 |  17 +
+ py-polars/src/polars/expr/expr.py             | 180 +++++
+ py-polars/src/polars/series/series.py         | 155 ++++
+ .../unit/operations/rolling/test_rolling.py   | 104 ++-
+ py-polars/tests/unit/series/test_rolling.py   |  14 +
+ 46 files changed, 1944 insertions(+), 141 deletions(-)
+ create mode 100644 crates/polars-compute/src/rolling/no_nulls/rank.rs
+ create mode 100644 crates/polars-compute/src/rolling/nulls/rank.rs
+ create mode 100644 crates/polars-compute/src/rolling/rank.rs
+ create mode 100644 crates/polars-utils/src/order_statistic_tree.rs
+
+diff --git a/Cargo.lock b/Cargo.lock
+index 208156c8d..cfb497067 100644
+--- a/Cargo.lock
++++ b/Cargo.lock
+@@ -3131,7 +3131,6 @@ dependencies = [
+  "ryu",
+  "schemars",
+  "serde",
+- "skiplist",
+  "strength_reduce",
+  "strum_macros 0.27.1",
+  "version_check",
+@@ -3678,6 +3677,7 @@ dependencies = [
+  "memmap2",
+  "num-traits",
+  "polars-error",
++ "proptest",
+  "pyo3",
+  "rand 0.9.1",
+  "raw-cpuid",
+@@ -4763,16 +4763,6 @@ version = "1.0.1"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "56199f7ddabf13fe5074ce809e7d3f42b42ae711800501b5b16ea82ad029c39d"
+ 
+-[[package]]
+-name = "skiplist"
+-version = "0.6.0"
+-source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "f354fd282d3177c2951004953e2fdc4cb342fa159bbee8b829852b6a081c8ea1"
+-dependencies = [
+- "rand 0.9.1",
+- "thiserror 2.0.12",
+-]
+-
+ [[package]]
+ name = "slab"
+ version = "0.4.10"
+diff --git a/Cargo.toml b/Cargo.toml
+index d1b01a5cc..d64bc3216 100644
+--- a/Cargo.toml
++++ b/Cargo.toml
+@@ -86,7 +86,6 @@ serde_stacker = "0.1.12"
+ sha2 = "0.10"
+ simd-json = { version = "0.15", features = ["known-key"] }
+ simdutf8 = "0.1.4"
+-skiplist = "0.6.0"
+ slotmap = "1"
+ sqlparser = "0.53"
+ stacker = "0.1"
+diff --git a/crates/polars-compute/Cargo.toml b/crates/polars-compute/Cargo.toml
+index 08cd1c18c..7f1d2c7fa 100644
+--- a/crates/polars-compute/Cargo.toml
++++ b/crates/polars-compute/Cargo.toml
+@@ -24,7 +24,6 @@ rand = { workspace = true }
+ ryu = { workspace = true, optional = true }
+ schemars = { workspace = true, optional = true }
+ serde = { workspace = true, optional = true }
+-skiplist = { workspace = true }
+ strength_reduce = { workspace = true }
+ strum_macros = { workspace = true }
+ 
+diff --git a/crates/polars-compute/src/rolling/mod.rs b/crates/polars-compute/src/rolling/mod.rs
+index 89d20d842..81487b4c3 100644
+--- a/crates/polars-compute/src/rolling/mod.rs
++++ b/crates/polars-compute/src/rolling/mod.rs
+@@ -1,10 +1,12 @@
+ mod mean;
+ mod min_max;
+-pub mod moment;
++mod moment;
+ pub mod no_nulls;
+ pub mod nulls;
+ pub mod quantile_filter;
++mod rank;
+ mod sum;
++
+ pub(super) mod window;
+ use std::hash::Hash;
+ use std::ops::{Add, AddAssign, Div, Mul, Sub, SubAssign};
+@@ -50,8 +52,17 @@ pub type QuantileInterpolOptions = QuantileMethod;
+ pub enum RollingFnParams {
+     Quantile(RollingQuantileParams),
+     Var(RollingVarParams),
+-    Skew { bias: bool },
+-    Kurtosis { fisher: bool, bias: bool },
++    Rank {
++        method: RollingRankMethod,
++        seed: Option<u64>,
++    },
++    Skew {
++        bias: bool,
++    },
++    Kurtosis {
++        fisher: bool,
++        bias: bool,
++    },
+ }
+ 
+ fn det_offsets(i: Idx, window_size: WindowSize, _len: Len) -> (usize, usize) {
+@@ -128,3 +139,16 @@ impl Hash for RollingQuantileParams {
+         self.method.hash(state);
+     }
+ }
++
++#[derive(Clone, Copy, PartialEq, Eq, Debug, Default, Hash, IntoStaticStr)]
++#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
++#[cfg_attr(feature = "dsl-schema", derive(schemars::JsonSchema))]
++#[strum(serialize_all = "snake_case")]
++pub enum RollingRankMethod {
++    #[default]
++    Average,
++    Min,
++    Max,
++    Dense,
++    Random,
++}
+diff --git a/crates/polars-compute/src/rolling/no_nulls/mean.rs b/crates/polars-compute/src/rolling/no_nulls/mean.rs
+index 4f43d3397..e28846d1e 100644
+--- a/crates/polars-compute/src/rolling/no_nulls/mean.rs
++++ b/crates/polars-compute/src/rolling/no_nulls/mean.rs
+@@ -19,7 +19,7 @@ where
+         false => det_offsets,
+     };
+     match weights {
+-        None => rolling_apply_agg_window::<MeanWindow<_>, _, _>(
++        None => rolling_apply_agg_window::<MeanWindow<_>, _, _, _>(
+             values,
+             window_size,
+             min_periods,
+diff --git a/crates/polars-compute/src/rolling/no_nulls/min_max.rs b/crates/polars-compute/src/rolling/no_nulls/min_max.rs
+index 1d34171a3..637cec0b7 100644
+--- a/crates/polars-compute/src/rolling/no_nulls/min_max.rs
++++ b/crates/polars-compute/src/rolling/no_nulls/min_max.rs
+@@ -37,7 +37,7 @@ macro_rules! rolling_minmax_func {
+                 false => det_offsets,
+             };
+             match weights {
+-                None => rolling_apply_agg_window::<MinMaxWindow<T, $policy>, _, _>(
++                None => rolling_apply_agg_window::<MinMaxWindow<T, $policy>, _, _, _>(
+                     values,
+                     window_size,
+                     min_periods,
+diff --git a/crates/polars-compute/src/rolling/no_nulls/mod.rs b/crates/polars-compute/src/rolling/no_nulls/mod.rs
+index cf1ae935a..0e90e4af2 100644
+--- a/crates/polars-compute/src/rolling/no_nulls/mod.rs
++++ b/crates/polars-compute/src/rolling/no_nulls/mod.rs
+@@ -1,8 +1,3 @@
+-mod mean;
+-mod min_max;
+-mod moment;
+-mod quantile;
+-mod sum;
+ use std::fmt::Debug;
+ 
+ use arrow::array::PrimitiveArray;
+@@ -10,16 +5,25 @@ use arrow::datatypes::ArrowDataType;
+ use arrow::legacy::error::PolarsResult;
+ use arrow::legacy::utils::CustomIterTools;
+ use arrow::types::NativeType;
++use num_traits::{Float, Num, NumCast};
++
++mod mean;
++mod min_max;
++mod moment;
++mod quantile;
++pub mod rank;
++mod sum;
++
+ pub use mean::*;
+ pub use min_max::*;
+ pub use moment::*;
+-use num_traits::{Float, Num, NumCast};
+ pub use quantile::*;
++pub use rank::*;
+ pub use sum::*;
+ 
+ use super::*;
+ 
+-pub trait RollingAggWindowNoNulls<'a, T: NativeType> {
++pub trait RollingAggWindowNoNulls<'a, T: NativeType, Out: NativeType = T> {
+     fn new(
+         slice: &'a [T],
+         start: usize,
+@@ -32,11 +36,11 @@ pub trait RollingAggWindowNoNulls<'a, T: NativeType> {
+     ///
+     /// # Safety
+     /// `start` and `end` must be within the windows bounds
+-    unsafe fn update(&mut self, start: usize, end: usize) -> Option<T>;
++    unsafe fn update(&mut self, start: usize, end: usize) -> Option<Out>;
+ }
+ 
+ // Use an aggregation window that maintains the state
+-pub(super) fn rolling_apply_agg_window<'a, Agg, T, Fo>(
++pub(super) fn rolling_apply_agg_window<'a, Agg, T, O, Fo>(
+     values: &'a [T],
+     window_size: usize,
+     min_periods: usize,
+@@ -45,21 +49,13 @@ pub(super) fn rolling_apply_agg_window<'a, Agg, T, Fo>(
+ ) -> PolarsResult<ArrayRef>
+ where
+     Fo: Fn(Idx, WindowSize, Len) -> (Start, End),
+-    Agg: RollingAggWindowNoNulls<'a, T>,
++    Agg: RollingAggWindowNoNulls<'a, T, O>,
+     T: Debug + NativeType + Num,
++    O: Debug + NativeType + Num,
+ {
+     let len = values.len();
+     let (start, end) = det_offsets_fn(0, window_size, len);
+     let mut agg_window = Agg::new(values, start, end, params, Some(window_size));
+-    if let Some(validity) = create_validity(min_periods, len, window_size, &det_offsets_fn) {
+-        if validity.iter().all(|x| !x) {
+-            return Ok(Box::new(PrimitiveArray::<T>::new_null(
+-                T::PRIMITIVE.into(),
+-                len,
+-            )));
+-        }
+-    }
+-
+     let out = (0..len).map(|idx| {
+         let (start, end) = det_offsets_fn(idx, window_size, len);
+         if end - start < min_periods {
+diff --git a/crates/polars-compute/src/rolling/no_nulls/moment.rs b/crates/polars-compute/src/rolling/no_nulls/moment.rs
+index 359e6f23b..264cccddd 100644
+--- a/crates/polars-compute/src/rolling/no_nulls/moment.rs
++++ b/crates/polars-compute/src/rolling/no_nulls/moment.rs
+@@ -99,7 +99,7 @@ where
+         false => det_offsets,
+     };
+     match weights {
+-        None => rolling_apply_agg_window::<MomentWindow<_, VarianceMoment>, _, _>(
++        None => rolling_apply_agg_window::<MomentWindow<_, VarianceMoment>, _, _, _>(
+             values,
+             window_size,
+             min_periods,
+@@ -143,7 +143,7 @@ where
+         true => det_offsets_center,
+         false => det_offsets,
+     };
+-    rolling_apply_agg_window::<MomentWindow<_, SkewMoment>, _, _>(
++    rolling_apply_agg_window::<MomentWindow<_, SkewMoment>, _, _, _>(
+         values,
+         window_size,
+         min_periods,
+@@ -166,7 +166,7 @@ where
+         true => det_offsets_center,
+         false => det_offsets,
+     };
+-    rolling_apply_agg_window::<MomentWindow<_, KurtosisMoment>, _, _>(
++    rolling_apply_agg_window::<MomentWindow<_, KurtosisMoment>, _, _, _>(
+         values,
+         window_size,
+         min_periods,
+diff --git a/crates/polars-compute/src/rolling/no_nulls/quantile.rs b/crates/polars-compute/src/rolling/no_nulls/quantile.rs
+index aa0690c96..3bd9ffdf8 100644
+--- a/crates/polars-compute/src/rolling/no_nulls/quantile.rs
++++ b/crates/polars-compute/src/rolling/no_nulls/quantile.rs
+@@ -63,10 +63,8 @@ impl<
+                     Some(self.sorted.get(idx))
+                 } else {
+                     let proportion = T::from(float_idx_top - idx as f64).unwrap();
+-                    let mut vals = self.sorted.index_range(idx..top_idx + 1);
+-                    let vi = *vals.next().unwrap();
+-                    let vj = *vals.next().unwrap();
+-
++                    let vi = self.sorted.get(idx);
++                    let vj = self.sorted.get(idx + 1);
+                     Some(proportion * (vj - vi) + vi)
+                 };
+             },
+@@ -79,11 +77,8 @@ impl<
+                 return if top_idx == idx {
+                     Some(self.sorted.get(idx))
+                 } else {
+-                    let top_idx = idx + 1;
+-                    let mut vals = self.sorted.index_range(idx..top_idx + 1);
+-                    let mid = *vals.next().unwrap();
+-                    let mid_plus_1 = *vals.next().unwrap();
+-
++                    let mid = self.sorted.get(idx);
++                    let mid_plus_1 = self.sorted.get(idx + 1);
+                     Some((mid + mid_plus_1) / (T::one() + T::one()))
+                 };
+             },
+@@ -152,7 +147,7 @@ where
+                 )));
+             }
+ 
+-            rolling_apply_agg_window::<QuantileWindow<_>, _, _>(
++            rolling_apply_agg_window::<QuantileWindow<_>, _, _, _>(
+                 values,
+                 window_size,
+                 min_periods,
+diff --git a/crates/polars-compute/src/rolling/no_nulls/rank.rs b/crates/polars-compute/src/rolling/no_nulls/rank.rs
+new file mode 100644
+index 000000000..ae0f174d7
+--- /dev/null
++++ b/crates/polars-compute/src/rolling/no_nulls/rank.rs
+@@ -0,0 +1,150 @@
++use std::marker::PhantomData;
++
++use polars_utils::IdxSize;
++use polars_utils::order_statistic_tree::OrderStatisticTree;
++
++use super::super::rank::*;
++use super::*;
++
++#[derive(Debug)]
++pub struct RankWindow<'a, T, Out, P>
++where
++    T: NativeType,
++    Out: NativeType,
++    P: RankPolicy<T, Out>,
++{
++    slice: &'a [T],
++    last_start: usize,
++    last_end: usize,
++    ost: OrderStatisticTree<&'a T>,
++    policy: P,
++    _out: PhantomData<Out>,
++}
++
++impl<'a, T, Out, P> RollingAggWindowNoNulls<'a, T, Out> for RankWindow<'a, T, Out, P>
++where
++    T: NativeType,
++    Out: NativeType,
++    P: RankPolicy<T, Out>,
++{
++    fn new(
++        slice: &'a [T],
++        start: usize,
++        end: usize,
++        params: Option<RollingFnParams>,
++        window_size: Option<usize>,
++    ) -> Self {
++        let cmp = |a: &&T, b: &&T| T::tot_cmp(*a, *b);
++        let ost = match window_size {
++            Some(ws) => OrderStatisticTree::with_capacity(ws, cmp),
++            None => OrderStatisticTree::new(cmp),
++        };
++        let policy = P::new(&params.unwrap());
++        let mut slf = Self {
++            slice,
++            last_start: 0,
++            last_end: 0,
++            ost,
++            policy,
++            _out: PhantomData,
++        };
++        unsafe {
++            slf.update(start, end);
++        }
++        slf
++    }
++
++    unsafe fn update(&mut self, new_start: usize, new_end: usize) -> Option<Out> {
++        debug_assert!(self.ost.len() == self.last_end - self.last_start);
++        debug_assert!(self.last_start <= self.last_end);
++        debug_assert!(self.last_end <= self.slice.len());
++        debug_assert!(new_start <= new_end);
++        debug_assert!(new_end <= self.slice.len());
++        debug_assert!(self.last_start <= new_start);
++        debug_assert!(self.last_end <= new_end);
++
++        for i in self.last_end..new_end {
++            self.ost.insert(unsafe { self.slice.get_unchecked(i) });
++        }
++        for i in self.last_start..new_start {
++            self.ost
++                .remove(&unsafe { self.slice.get_unchecked(i) })
++                .expect("previously added value is missing");
++        }
++        self.last_start = new_start;
++        self.last_end = new_end;
++        if self.last_end == 0 {
++            return None;
++        }
++        let cur = unsafe { self.slice.get_unchecked(self.last_end - 1) };
++        self.policy.rank(&self.ost, cur)
++    }
++}
++
++pub type RankWindowAvg<'a, T> = RankWindow<'a, T, f64, RankPolicyAverage>;
++pub type RankWindowMin<'a, T> = RankWindow<'a, T, IdxSize, RankPolicyMin>;
++pub type RankWindowMax<'a, T> = RankWindow<'a, T, IdxSize, RankPolicyMax>;
++pub type RankWindowDense<'a, T> = RankWindow<'a, T, IdxSize, RankPolicyDense>;
++pub type RankWindowRandom<'a, T> = RankWindow<'a, T, IdxSize, RankPolicyRandom>;
++
++pub fn rolling_rank<T>(
++    values: &[T],
++    window_size: usize,
++    min_periods: usize,
++    center: bool,
++    weights: Option<&[f64]>,
++    params: Option<RollingFnParams>,
++) -> PolarsResult<ArrayRef>
++where
++    T: NativeType + num_traits::Num,
++{
++    assert!(weights.is_none(), "weights are not supported for rank");
++
++    let offset_fn = match center {
++        true => det_offsets_center,
++        false => det_offsets,
++    };
++    let method = if let Some(RollingFnParams::Rank { method, .. }) = params {
++        method
++    } else {
++        unreachable!("expected RollingFnParams::Rank");
++    };
++
++    match method {
++        RollingRankMethod::Average => rolling_apply_agg_window::<RankWindowAvg<T>, _, _, _>(
++            values,
++            window_size,
++            min_periods,
++            offset_fn,
++            params,
++        ),
++        RollingRankMethod::Min => rolling_apply_agg_window::<RankWindowMin<T>, _, _, _>(
++            values,
++            window_size,
++            min_periods,
++            offset_fn,
++            params,
++        ),
++        RollingRankMethod::Max => rolling_apply_agg_window::<RankWindowMax<T>, _, _, _>(
++            values,
++            window_size,
++            min_periods,
++            offset_fn,
++            params,
++        ),
++        RollingRankMethod::Dense => rolling_apply_agg_window::<RankWindowDense<T>, _, _, _>(
++            values,
++            window_size,
++            min_periods,
++            offset_fn,
++            params,
++        ),
++        RollingRankMethod::Random => rolling_apply_agg_window::<RankWindowRandom<T>, _, _, _>(
++            values,
++            window_size,
++            min_periods,
++            offset_fn,
++            params,
++        ),
++    }
++}
+diff --git a/crates/polars-compute/src/rolling/no_nulls/sum.rs b/crates/polars-compute/src/rolling/no_nulls/sum.rs
+index f6e5c06d1..aae4a5d04 100644
+--- a/crates/polars-compute/src/rolling/no_nulls/sum.rs
++++ b/crates/polars-compute/src/rolling/no_nulls/sum.rs
+@@ -22,14 +22,14 @@ where
+         + PartialOrd,
+ {
+     match (center, weights) {
+-        (true, None) => rolling_apply_agg_window::<SumWindow<T, T>, _, _>(
++        (true, None) => rolling_apply_agg_window::<SumWindow<T, T>, _, _, _>(
+             values,
+             window_size,
+             min_periods,
+             det_offsets_center,
+             None,
+         ),
+-        (false, None) => rolling_apply_agg_window::<SumWindow<T, T>, _, _>(
++        (false, None) => rolling_apply_agg_window::<SumWindow<T, T>, _, _, _>(
+             values,
+             window_size,
+             min_periods,
+diff --git a/crates/polars-compute/src/rolling/nulls/mean.rs b/crates/polars-compute/src/rolling/nulls/mean.rs
+index f5b6cca6b..7016dac1b 100644
+--- a/crates/polars-compute/src/rolling/nulls/mean.rs
++++ b/crates/polars-compute/src/rolling/nulls/mean.rs
+@@ -25,7 +25,7 @@ where
+         panic!("weights not yet supported on array with null values")
+     }
+     if center {
+-        rolling_apply_agg_window::<MeanWindow<_>, _, _>(
++        rolling_apply_agg_window::<MeanWindow<T>, _, _, _>(
+             arr.values().as_slice(),
+             arr.validity().as_ref().unwrap(),
+             window_size,
+@@ -34,7 +34,7 @@ where
+             None,
+         )
+     } else {
+-        rolling_apply_agg_window::<MeanWindow<_>, _, _>(
++        rolling_apply_agg_window::<MeanWindow<T>, _, _, _>(
+             arr.values().as_slice(),
+             arr.validity().as_ref().unwrap(),
+             window_size,
+diff --git a/crates/polars-compute/src/rolling/nulls/min_max.rs b/crates/polars-compute/src/rolling/nulls/min_max.rs
+index 9db62256b..bdc16df2e 100644
+--- a/crates/polars-compute/src/rolling/nulls/min_max.rs
++++ b/crates/polars-compute/src/rolling/nulls/min_max.rs
+@@ -22,7 +22,7 @@ where
+         panic!("weights not yet supported on array with null values")
+     }
+     if center {
+-        rolling_apply_agg_window::<MinMaxWindow<T, MinPropagateNan>, _, _>(
++        rolling_apply_agg_window::<MinMaxWindow<T, MinPropagateNan>, _, _, _>(
+             arr.values().as_slice(),
+             arr.validity().as_ref().unwrap(),
+             window_size,
+@@ -31,7 +31,7 @@ where
+             None,
+         )
+     } else {
+-        rolling_apply_agg_window::<MinMaxWindow<T, MinPropagateNan>, _, _>(
++        rolling_apply_agg_window::<MinMaxWindow<T, MinPropagateNan>, _, _, _>(
+             arr.values().as_slice(),
+             arr.validity().as_ref().unwrap(),
+             window_size,
+@@ -57,7 +57,7 @@ where
+         panic!("weights not yet supported on array with null values")
+     }
+     if center {
+-        rolling_apply_agg_window::<MinMaxWindow<T, MaxPropagateNan>, _, _>(
++        rolling_apply_agg_window::<MinMaxWindow<T, MaxPropagateNan>, _, _, _>(
+             arr.values().as_slice(),
+             arr.validity().as_ref().unwrap(),
+             window_size,
+@@ -66,7 +66,7 @@ where
+             None,
+         )
+     } else {
+-        rolling_apply_agg_window::<MinMaxWindow<T, MaxPropagateNan>, _, _>(
++        rolling_apply_agg_window::<MinMaxWindow<T, MaxPropagateNan>, _, _, _>(
+             arr.values().as_slice(),
+             arr.validity().as_ref().unwrap(),
+             window_size,
+diff --git a/crates/polars-compute/src/rolling/nulls/mod.rs b/crates/polars-compute/src/rolling/nulls/mod.rs
+index 9285a0ba5..8c2008ef4 100644
+--- a/crates/polars-compute/src/rolling/nulls/mod.rs
++++ b/crates/polars-compute/src/rolling/nulls/mod.rs
+@@ -2,6 +2,7 @@ mod mean;
+ mod min_max;
+ mod moment;
+ mod quantile;
++mod rank;
+ mod sum;
+ 
+ use arrow::legacy::utils::CustomIterTools;
+@@ -9,11 +10,12 @@ pub use mean::*;
+ pub use min_max::*;
+ pub use moment::*;
+ pub use quantile::*;
++pub use rank::*;
+ pub use sum::*;
+ 
+ use super::*;
+ 
+-pub trait RollingAggWindowNulls<'a, T: NativeType> {
++pub trait RollingAggWindowNulls<'a, T: NativeType, Out: NativeType = T> {
+     /// # Safety
+     /// `start` and `end` must be in bounds for `slice` and `validity`
+     unsafe fn new(
+@@ -27,13 +29,13 @@ pub trait RollingAggWindowNulls<'a, T: NativeType> {
+ 
+     /// # Safety
+     /// `start` and `end` must be in bounds of `slice` and `bitmap`
+-    unsafe fn update(&mut self, start: usize, end: usize) -> Option<T>;
++    unsafe fn update(&mut self, start: usize, end: usize) -> Option<Out>;
+ 
+     fn is_valid(&self, min_periods: usize) -> bool;
+ }
+ 
+ // Use an aggregation window that maintains the state
+-pub(super) fn rolling_apply_agg_window<'a, Agg, T, Fo>(
++pub(super) fn rolling_apply_agg_window<'a, Agg, T, Out, Fo>(
+     values: &'a [T],
+     validity: &'a Bitmap,
+     window_size: usize,
+@@ -42,9 +44,10 @@ pub(super) fn rolling_apply_agg_window<'a, Agg, T, Fo>(
+     params: Option<RollingFnParams>,
+ ) -> ArrayRef
+ where
++    Agg: RollingAggWindowNulls<'a, T, Out>,
++    T: NativeType,
++    Out: NativeType,
+     Fo: Fn(Idx, WindowSize, Len) -> (Start, End) + Copy,
+-    Agg: RollingAggWindowNulls<'a, T>,
+-    T: IsFloat + NativeType,
+ {
+     let len = values.len();
+     let (start, end) = det_offsets_fn(0, window_size, len);
+@@ -72,20 +75,20 @@ where
+                     } else {
+                         // SAFETY: we are in bounds
+                         unsafe { validity.set_unchecked(idx, false) };
+-                        T::default()
++                        Out::default()
+                     }
+                 },
+                 None => {
+                     // SAFETY: we are in bounds
+                     unsafe { validity.set_unchecked(idx, false) };
+-                    T::default()
++                    Out::default()
+                 },
+             }
+         })
+         .collect_trusted::<Vec<_>>();
+ 
+     Box::new(PrimitiveArray::new(
+-        T::PRIMITIVE.into(),
++        Out::PRIMITIVE.into(),
+         out.into(),
+         Some(validity.into()),
+     ))
+@@ -249,7 +252,7 @@ mod test {
+ 
+         let arr = Int32Array::new(ArrowDataType::Int32, vals.into(), Some(validity));
+ 
+-        let out = rolling_apply_agg_window::<MinMaxWindow<i32, MaxIgnoreNan>, _, _>(
++        let out = rolling_apply_agg_window::<MinMaxWindow<i32, MaxIgnoreNan>, _, _, _>(
+             arr.values().as_slice(),
+             arr.validity().as_ref().unwrap(),
+             window_size,
+diff --git a/crates/polars-compute/src/rolling/nulls/moment.rs b/crates/polars-compute/src/rolling/nulls/moment.rs
+index af60df5d4..a8f31bc51 100644
+--- a/crates/polars-compute/src/rolling/nulls/moment.rs
++++ b/crates/polars-compute/src/rolling/nulls/moment.rs
+@@ -149,7 +149,7 @@ where
+     } else {
+         det_offsets
+     };
+-    rolling_apply_agg_window::<MomentWindow<_, VarianceMoment>, _, _>(
++    rolling_apply_agg_window::<MomentWindow<_, VarianceMoment>, _, _, _>(
+         arr.values().as_slice(),
+         arr.validity().as_ref().unwrap(),
+         window_size,
+@@ -174,7 +174,7 @@ where
+     } else {
+         det_offsets
+     };
+-    rolling_apply_agg_window::<MomentWindow<_, SkewMoment>, _, _>(
++    rolling_apply_agg_window::<MomentWindow<_, SkewMoment>, _, _, _>(
+         arr.values().as_slice(),
+         arr.validity().as_ref().unwrap(),
+         window_size,
+@@ -199,7 +199,7 @@ where
+     } else {
+         det_offsets
+     };
+-    rolling_apply_agg_window::<MomentWindow<_, KurtosisMoment>, _, _>(
++    rolling_apply_agg_window::<MomentWindow<_, KurtosisMoment>, _, _, _>(
+         arr.values().as_slice(),
+         arr.validity().as_ref().unwrap(),
+         window_size,
+diff --git a/crates/polars-compute/src/rolling/nulls/quantile.rs b/crates/polars-compute/src/rolling/nulls/quantile.rs
+index f49b2ca6b..9eaf243a8 100644
+--- a/crates/polars-compute/src/rolling/nulls/quantile.rs
++++ b/crates/polars-compute/src/rolling/nulls/quantile.rs
+@@ -73,11 +73,8 @@ impl<
+ 
+                 debug_assert!(idx <= top_idx);
+                 let v = if idx != top_idx {
+-                    let mut vals = self
+-                        .sorted
+-                        .index_range(idx + null_count..top_idx + null_count + 1);
+-                    let low = vals.next().unwrap().unwrap();
+-                    let high = vals.next().unwrap().unwrap();
++                    let low = self.sorted.get(idx + null_count).unwrap();
++                    let high = self.sorted.get(idx + null_count + 1).unwrap();
+                     (low + high) / T::from::<f64>(2.0f64).unwrap()
+                 } else {
+                     self.sorted.get(idx + null_count).unwrap()
+@@ -92,12 +89,8 @@ impl<
+                 if top_idx == idx {
+                     Some(self.sorted.get(idx + null_count).unwrap())
+                 } else {
+-                    let mut vals = self
+-                        .sorted
+-                        .index_range(idx + null_count..top_idx + null_count + 1);
+-                    let low = vals.next().unwrap().unwrap();
+-                    let high = vals.next().unwrap().unwrap();
+-
++                    let low = self.sorted.get(idx + null_count).unwrap();
++                    let high = self.sorted.get(top_idx + null_count).unwrap();
+                     let proportion = T::from(float_idx - idx as f64).unwrap();
+                     Some(proportion * (high - low) + low)
+                 }
+@@ -161,7 +154,7 @@ where
+         return Box::new(out);
+     }
+     */
+-    rolling_apply_agg_window::<QuantileWindow<_>, _, _>(
++    rolling_apply_agg_window::<QuantileWindow<T>, _, _, _>(
+         arr.values().as_slice(),
+         arr.validity().as_ref().unwrap(),
+         window_size,
+diff --git a/crates/polars-compute/src/rolling/nulls/rank.rs b/crates/polars-compute/src/rolling/nulls/rank.rs
+new file mode 100644
+index 000000000..a65ef583d
+--- /dev/null
++++ b/crates/polars-compute/src/rolling/nulls/rank.rs
+@@ -0,0 +1,157 @@
++use std::marker::PhantomData;
++
++use polars_utils::IdxSize;
++use polars_utils::order_statistic_tree::OrderStatisticTree;
++
++use super::super::rank::*;
++use super::*;
++
++pub struct RankWindow<'a, T, Out, P> {
++    slice: &'a [T],
++    validity: &'a Bitmap,
++    last_start: usize,
++    last_end: usize,
++    ost: OrderStatisticTree<&'a T>,
++    policy: P,
++    _out: PhantomData<Out>,
++}
++
++impl<'a, T, Out, P> RollingAggWindowNulls<'a, T, Out> for RankWindow<'a, T, Out, P>
++where
++    T: NativeType,
++    Out: NativeType,
++    P: RankPolicy<T, Out>,
++{
++    unsafe fn new(
++        slice: &'a [T],
++        validity: &'a Bitmap,
++        start: usize,
++        end: usize,
++        params: Option<RollingFnParams>,
++        window_size: Option<usize>,
++    ) -> Self {
++        let cmp = |a: &&T, b: &&T| T::tot_cmp(*a, *b);
++        let ost: OrderStatisticTree<&T> = match window_size {
++            Some(ws) => OrderStatisticTree::with_capacity(ws, cmp),
++            None => OrderStatisticTree::new(cmp),
++        };
++        let mut slf = Self {
++            slice,
++            validity,
++            last_start: 0,
++            last_end: 0,
++            ost,
++            policy: P::new(&params.unwrap()),
++            _out: PhantomData,
++        };
++        unsafe {
++            slf.update(start, end);
++        }
++        slf
++    }
++
++    unsafe fn update(&mut self, new_start: usize, new_end: usize) -> Option<Out> {
++        debug_assert!(self.last_start <= self.last_end);
++        debug_assert!(self.last_end <= self.slice.len());
++        debug_assert!(new_start <= new_end);
++        debug_assert!(new_end <= self.slice.len());
++        debug_assert!(self.last_start <= new_start);
++        debug_assert!(self.last_end <= new_end);
++
++        for i in self.last_end..new_end {
++            if !self.validity.get(i).unwrap() {
++                continue;
++            }
++            self.ost.insert(unsafe { self.slice.get_unchecked(i) });
++        }
++        for i in self.last_start..new_start {
++            if !self.validity.get(i).unwrap() {
++                continue;
++            }
++            self.ost
++                .remove(&unsafe { self.slice.get_unchecked(i) })
++                .expect("previously added value is missing");
++        }
++        self.last_start = new_start;
++        self.last_end = new_end;
++        let cur = unsafe { self.slice.get_unchecked(self.last_end - 1) };
++        self.policy.rank(&self.ost, cur)
++    }
++
++    fn is_valid(&self, _min_periods: usize) -> bool {
++        self.validity.get(self.last_end - 1).unwrap()
++    }
++}
++
++type RankWindowAvg<'a, T> = RankWindow<'a, T, f64, RankPolicyAverage>;
++type RankWindowMin<'a, T> = RankWindow<'a, T, IdxSize, RankPolicyMin>;
++type RankWindowMax<'a, T> = RankWindow<'a, T, IdxSize, RankPolicyMax>;
++type RankWindowDense<'a, T> = RankWindow<'a, T, IdxSize, RankPolicyDense>;
++type RankWindowRandom<'a, T> = RankWindow<'a, T, IdxSize, RankPolicyRandom>;
++
++pub fn rolling_rank<T>(
++    arr: &PrimitiveArray<T>,
++    window_size: usize,
++    min_periods: usize,
++    center: bool,
++    weights: Option<&[f64]>,
++    params: Option<RollingFnParams>,
++) -> ArrayRef
++where
++    T: NativeType,
++{
++    assert!(weights.is_none(), "weights are not supported for rank");
++
++    let offset_fn = match center {
++        true => det_offsets_center,
++        false => det_offsets,
++    };
++    let method = if let Some(RollingFnParams::Rank { method, .. }) = params {
++        method
++    } else {
++        unreachable!("expected RollingFnParams::Rank");
++    };
++
++    match method {
++        RollingRankMethod::Average => rolling_apply_agg_window::<RankWindowAvg<T>, _, _, _>(
++            arr.values().as_slice(),
++            arr.validity().as_ref().unwrap(),
++            window_size,
++            min_periods,
++            offset_fn,
++            params,
++        ),
++        RollingRankMethod::Min => rolling_apply_agg_window::<RankWindowMin<T>, _, _, _>(
++            arr.values().as_slice(),
++            arr.validity().as_ref().unwrap(),
++            window_size,
++            min_periods,
++            offset_fn,
++            params,
++        ),
++        RollingRankMethod::Max => rolling_apply_agg_window::<RankWindowMax<T>, _, _, _>(
++            arr.values().as_slice(),
++            arr.validity().as_ref().unwrap(),
++            window_size,
++            min_periods,
++            offset_fn,
++            params,
++        ),
++        RollingRankMethod::Dense => rolling_apply_agg_window::<RankWindowDense<T>, _, _, _>(
++            arr.values().as_slice(),
++            arr.validity().as_ref().unwrap(),
++            window_size,
++            min_periods,
++            offset_fn,
++            params,
++        ),
++        RollingRankMethod::Random => rolling_apply_agg_window::<RankWindowRandom<T>, _, _, _>(
++            arr.values().as_slice(),
++            arr.validity().as_ref().unwrap(),
++            window_size,
++            min_periods,
++            offset_fn,
++            params,
++        ),
++    }
++}
+diff --git a/crates/polars-compute/src/rolling/nulls/sum.rs b/crates/polars-compute/src/rolling/nulls/sum.rs
+index 9163ec31f..8ca244aa9 100644
+--- a/crates/polars-compute/src/rolling/nulls/sum.rs
++++ b/crates/polars-compute/src/rolling/nulls/sum.rs
+@@ -24,7 +24,7 @@ where
+         panic!("weights not yet supported on array with null values")
+     }
+     if center {
+-        rolling_apply_agg_window::<SumWindow<T, T>, _, _>(
++        rolling_apply_agg_window::<SumWindow<T, T>, _, _, _>(
+             arr.values().as_slice(),
+             arr.validity().as_ref().unwrap(),
+             window_size,
+@@ -33,7 +33,7 @@ where
+             None,
+         )
+     } else {
+-        rolling_apply_agg_window::<SumWindow<T, T>, _, _>(
++        rolling_apply_agg_window::<SumWindow<T, T>, _, _, _>(
+             arr.values().as_slice(),
+             arr.validity().as_ref().unwrap(),
+             window_size,
+diff --git a/crates/polars-compute/src/rolling/rank.rs b/crates/polars-compute/src/rolling/rank.rs
+new file mode 100644
+index 000000000..8ecc6005f
+--- /dev/null
++++ b/crates/polars-compute/src/rolling/rank.rs
+@@ -0,0 +1,92 @@
++use std::fmt::Debug;
++
++use polars_utils::IdxSize;
++use polars_utils::order_statistic_tree::OrderStatisticTree;
++use rand::rngs::SmallRng;
++use rand::{Rng, SeedableRng};
++
++use super::*;
++
++pub trait RankPolicy<T, Out>: Debug
++where
++    T: NativeType,
++    Out: NativeType,
++{
++    fn new(params: &RollingFnParams) -> Self;
++    fn rank<'a>(&mut self, ost: &OrderStatisticTree<&'a T>, value: &'a T) -> Option<Out>;
++}
++
++#[derive(Debug)]
++pub struct RankPolicyAverage;
++
++impl<T: NativeType> RankPolicy<T, f64> for RankPolicyAverage {
++    fn new(_params: &RollingFnParams) -> Self {
++        Self
++    }
++    fn rank<'a>(&mut self, ost: &OrderStatisticTree<&'a T>, value: &'a T) -> Option<f64> {
++        let rank_range = ost.rank_range(&value).ok()?;
++        let rank_lo = (rank_range.start() + 1) as f64;
++        let rank_hi = (rank_range.end() + 1) as f64;
++        Some((rank_lo + rank_hi) / 2.0)
++    }
++}
++
++#[derive(Debug)]
++pub struct RankPolicyMin;
++
++impl<T: NativeType> RankPolicy<T, IdxSize> for RankPolicyMin {
++    fn new(_params: &RollingFnParams) -> Self {
++        Self
++    }
++    fn rank<'a>(&mut self, ost: &OrderStatisticTree<&'a T>, value: &'a T) -> Option<IdxSize> {
++        Some(IdxSize::try_from(ost.rank_range(&value).ok()?.start() + 1).unwrap())
++    }
++}
++
++#[derive(Debug)]
++pub struct RankPolicyMax;
++
++impl<T: NativeType> RankPolicy<T, IdxSize> for RankPolicyMax {
++    fn new(_params: &RollingFnParams) -> Self {
++        Self
++    }
++    fn rank<'a>(&mut self, ost: &OrderStatisticTree<&'a T>, value: &'a T) -> Option<IdxSize> {
++        Some(IdxSize::try_from(*ost.rank_range(&value).ok()?.end() + 1).unwrap())
++    }
++}
++
++#[derive(Debug)]
++pub struct RankPolicyDense;
++
++impl<T: NativeType> RankPolicy<T, IdxSize> for RankPolicyDense {
++    fn new(_params: &RollingFnParams) -> Self {
++        Self
++    }
++    fn rank<'a>(&mut self, ost: &OrderStatisticTree<&'a T>, value: &'a T) -> Option<IdxSize> {
++        Some(IdxSize::try_from(ost.rank_unique(&value).ok()? + 1).unwrap())
++    }
++}
++
++#[derive(Debug)]
++pub struct RankPolicyRandom {
++    rng: SmallRng,
++}
++
++impl<T: NativeType> RankPolicy<T, IdxSize> for RankPolicyRandom {
++    fn new(params: &RollingFnParams) -> Self {
++        let RollingFnParams::Rank { seed, .. } = params else {
++            unreachable!("expected RollingFnParams::Rank");
++        };
++        let rng = match seed {
++            Some(s) => SmallRng::seed_from_u64(*s),
++            None => SmallRng::from_os_rng(),
++        };
++        Self { rng }
++    }
++    fn rank<'a>(&mut self, ost: &OrderStatisticTree<&'a T>, value: &'a T) -> Option<IdxSize> {
++        let rank_range = ost.rank_range(&value).ok()?;
++        let rank_lo = rank_range.start() + 1;
++        let rank_hi = rank_range.end() + 1;
++        Some(IdxSize::try_from(self.rng.random_range(rank_lo..=rank_hi)).unwrap())
++    }
++}
+diff --git a/crates/polars-compute/src/rolling/window.rs b/crates/polars-compute/src/rolling/window.rs
+index 7295aa3bc..704475fb2 100644
+--- a/crates/polars-compute/src/rolling/window.rs
++++ b/crates/polars-compute/src/rolling/window.rs
+@@ -1,4 +1,4 @@
+-use ::skiplist::OrderedSkipList;
++use polars_utils::order_statistic_tree::OrderStatisticTree;
+ use polars_utils::total_ord::TotalOrd;
+ 
+ use super::*;
+@@ -9,7 +9,7 @@ pub(super) struct SortedBuf<'a, T: NativeType> {
+     last_start: usize,
+     last_end: usize,
+     // values within the window that we keep sorted
+-    buf: OrderedSkipList<T>,
++    buf: OrderStatisticTree<T>,
+ }
+ 
+ impl<'a, T: NativeType + PartialOrd + Copy> SortedBuf<'a, T> {
+@@ -19,12 +19,11 @@ impl<'a, T: NativeType + PartialOrd + Copy> SortedBuf<'a, T> {
+         end: usize,
+         max_window_size: Option<usize>,
+     ) -> Self {
+-        let mut buf = if let Some(max_window_size) = max_window_size {
+-            OrderedSkipList::with_capacity(max_window_size)
++        let buf = if let Some(max_window_size) = max_window_size {
++            OrderStatisticTree::with_capacity(max_window_size, TotalOrd::tot_cmp)
+         } else {
+-            OrderedSkipList::new()
++            OrderStatisticTree::new(TotalOrd::tot_cmp)
+         };
+-        unsafe { buf.sort_by(TotalOrd::tot_cmp) };
+         let mut out = Self {
+             slice,
+             last_start: start,
+@@ -74,19 +73,12 @@ impl<'a, T: NativeType + PartialOrd + Copy> SortedBuf<'a, T> {
+     }
+ 
+     pub(super) fn get(&self, index: usize) -> T {
+-        self.buf[index]
++        self.buf.get(index).copied().unwrap()
+     }
+ 
+     pub(super) fn len(&self) -> usize {
+         self.buf.len()
+     }
+-    // Note: range is not inclusive
+-    pub(super) fn index_range(
+-        &self,
+-        range: std::ops::Range<usize>,
+-    ) -> skiplist::ordered_skiplist::Iter<'_, T> {
+-        self.buf.index_range(range)
+-    }
+ }
+ 
+ pub(super) struct SortedBufNulls<'a, T: NativeType> {
+@@ -96,7 +88,7 @@ pub(super) struct SortedBufNulls<'a, T: NativeType> {
+     last_start: usize,
+     last_end: usize,
+     // non-null values within the window that we keep sorted
+-    buf: OrderedSkipList<T>,
++    buf: OrderStatisticTree<T>,
+     pub null_count: usize,
+ }
+ 
+@@ -123,12 +115,11 @@ impl<'a, T: NativeType + PartialOrd> SortedBufNulls<'a, T> {
+         end: usize,
+         max_window_size: Option<usize>,
+     ) -> Self {
+-        let mut buf = if let Some(max_window_size) = max_window_size {
+-            OrderedSkipList::with_capacity(max_window_size)
++        let buf = if let Some(max_window_size) = max_window_size {
++            OrderStatisticTree::with_capacity(max_window_size, TotalOrd::tot_cmp)
+         } else {
+-            OrderedSkipList::new()
++            OrderStatisticTree::new(TotalOrd::tot_cmp)
+         };
+-        unsafe { buf.sort_by(TotalOrd::tot_cmp) };
+ 
+         // sort_opt_buf(&mut buf);
+         let mut out = Self {
+@@ -152,7 +143,7 @@ impl<'a, T: NativeType + PartialOrd> SortedBufNulls<'a, T> {
+         if start >= self.last_end {
+             unsafe { self.fill_and_sort_buf(start, end) };
+         } else {
+-            // Vemove elements that should leave the window.
++            // Remove elements that should leave the window.
+             for idx in self.last_start..start {
+                 // SAFETY: we are in bounds.
+                 if unsafe { self.validity.get_bit_unchecked(idx) } {
+@@ -188,18 +179,9 @@ impl<'a, T: NativeType + PartialOrd> SortedBufNulls<'a, T> {
+ 
+     pub fn get(&self, idx: usize) -> Option<T> {
+         if idx >= self.null_count {
+-            Some(self.buf[idx - self.null_count])
++            Some(self.buf.get(idx - self.null_count).copied().unwrap())
+         } else {
+             None
+         }
+     }
+-
+-    // Note: range is not inclusive
+-    pub fn index_range(&self, range: std::ops::Range<usize>) -> impl Iterator<Item = Option<T>> {
+-        let nonnull_range =
+-            range.start.saturating_sub(self.null_count)..range.end.saturating_sub(self.null_count);
+-        (0..range.len() - nonnull_range.len())
+-            .map(|_| None)
+-            .chain(self.buf.index_range(nonnull_range).map(|x| Some(*x)))
+-    }
+ }
+diff --git a/crates/polars-core/src/prelude.rs b/crates/polars-core/src/prelude.rs
+index 20db0b5c8..777b674ba 100644
+--- a/crates/polars-core/src/prelude.rs
++++ b/crates/polars-core/src/prelude.rs
+@@ -6,7 +6,9 @@ pub(crate) use arrow::array::*;
+ pub use arrow::datatypes::{ArrowSchema, Field as ArrowField};
+ pub use arrow::legacy::prelude::*;
+ pub(crate) use arrow::trusted_len::TrustedLen;
+-pub use polars_compute::rolling::{QuantileMethod, RollingFnParams, RollingVarParams};
++pub use polars_compute::rolling::{
++    QuantileMethod, RollingFnParams, RollingRankMethod, RollingVarParams,
++};
+ pub use polars_row::RowEncodingOptions;
+ pub use polars_utils::aliases::*;
+ pub use polars_utils::index::{ChunkId, IdxSize, NullableIdxSize};
+diff --git a/crates/polars-plan/dsl-schema-hashes.json b/crates/polars-plan/dsl-schema-hashes.json
+index bc36b4cb1..01ae24b20 100644
+--- a/crates/polars-plan/dsl-schema-hashes.json
++++ b/crates/polars-plan/dsl-schema-hashes.json
+@@ -128,13 +128,14 @@
+   "Result_of_Column_or_String": "983fcffd3071f5c6057c67655eaef040d9495c46b5f00396554e80dbdaeeb85b",
+   "Roll": "dc230ab207ef2823d5a152bf398e51d99e03e8bb16f4a076a272c293090339f9",
+   "RollingCovOptions": "228d120dacb1fe731d1fd63113261da00ec9c3fe51a804d0e1029558b0be81fd",
+-  "RollingFnParams": "a76a631377990594ac614e00e07d4fb445fc0ac61a09f5a9db1913e5ce1d01c4",
+-  "RollingFunction": "822e77d646bb395380985cc99cc8330398b7062631007bc825f1b335bbeaf99c",
+-  "RollingFunctionBy": "3641e2f6ba5e408a91708c230d2d91584929116ea6379796225a7ed44f364459",
++  "RollingFnParams": "b4cfdc593a1e91e4dd2ae5302d3c9281b76ff34b96fd2a6201ced4af62984758",
++  "RollingFunction": "a900e43d759cf607742f4b0466e89395d34d06c640f96980cd23a69d389a506a",
++  "RollingFunctionBy": "646ef7028bb9396391c42fabcd66d2ace69a8fcc121411d959594b856026f7df",
+   "RollingGroupOptions": "47e760345118c9bf06c7971420ecb865bb9ff973401f6294ef57f6e996e07ffe",
+   "RollingOptionsDynamicWindow": "80143ddb25cc48ebc686bb564b190c396c7f60c5e84acb4e00e7b286e935fbfc",
+   "RollingOptionsFixedWindow": "91412a2c46eb3af3b7af2c6910f5043d795c01f94d661cfbaf853033a587617c",
+   "RollingQuantileParams": "faaf5e30b31f39c4f615162ea31029dd7f2f1ea7eefb6e14d420548504df998e",
++  "RollingRankMethod": "52084b557622afd3074d37a1dea7f6175158696913bab7b1b3d4d9797ec83a6a",
+   "RollingVarParams": "20b14d6dc51b5cf22dcd72d5b522ed2403e1eedb4770db4b27c9e0410931e51a",
+   "RoundMode": "159deb0fd11d793a10a8048325755969379cd4da9210e99d38ae8c164400284c",
+   "RowEncodingVariant": "1f47dc5f967919013ddebf9e831733759dbde65d449f521346a9c3fa490d3008",
+diff --git a/crates/polars-plan/src/dsl/function_expr/rolling.rs b/crates/polars-plan/src/dsl/function_expr/rolling.rs
+index e26c2d83e..44379ca63 100644
+--- a/crates/polars-plan/src/dsl/function_expr/rolling.rs
++++ b/crates/polars-plan/src/dsl/function_expr/rolling.rs
+@@ -11,6 +11,7 @@ pub enum RollingFunction {
+     Quantile,
+     Var,
+     Std,
++    Rank,
+     #[cfg(feature = "moment")]
+     Skew,
+     #[cfg(feature = "moment")]
+@@ -36,6 +37,7 @@ impl Display for RollingFunction {
+             Quantile => "quantile",
+             Var => "var",
+             Std => "std",
++            Rank => "rank",
+             #[cfg(feature = "moment")]
+             Skew => "skew",
+             #[cfg(feature = "moment")]
+diff --git a/crates/polars-plan/src/dsl/function_expr/rolling_by.rs b/crates/polars-plan/src/dsl/function_expr/rolling_by.rs
+index 37a177729..acf6b3c58 100644
+--- a/crates/polars-plan/src/dsl/function_expr/rolling_by.rs
++++ b/crates/polars-plan/src/dsl/function_expr/rolling_by.rs
+@@ -11,6 +11,7 @@ pub enum RollingFunctionBy {
+     QuantileBy,
+     VarBy,
+     StdBy,
++    RankBy,
+ }
+ 
+ impl Display for RollingFunctionBy {
+@@ -25,6 +26,7 @@ impl Display for RollingFunctionBy {
+             QuantileBy => "rolling_quantile_by",
+             VarBy => "rolling_var_by",
+             StdBy => "rolling_std_by",
++            RankBy => "rolling_rank_by",
+         };
+ 
+         write!(f, "{name}")
+diff --git a/crates/polars-plan/src/dsl/mod.rs b/crates/polars-plan/src/dsl/mod.rs
+index 83603eba5..bc937d49f 100644
+--- a/crates/polars-plan/src/dsl/mod.rs
++++ b/crates/polars-plan/src/dsl/mod.rs
+@@ -1167,6 +1167,11 @@ impl Expr {
+         self.rolling_quantile_by(by, QuantileMethod::Linear, 0.5, options)
+     }
+ 
++    #[cfg(feature = "rolling_window_by")]
++    pub fn rolling_rank_by(self, by: Expr, options: RollingOptionsDynamicWindow) -> Expr {
++        self.finish_rolling_by(by, options, RollingFunctionBy::RankBy)
++    }
++
+     /// Apply a rolling minimum.
+     ///
+     /// See: [`RollingAgg::rolling_min`]
+@@ -1239,6 +1244,11 @@ impl Expr {
+         self.finish_rolling(options, RollingFunction::Std)
+     }
+ 
++    #[cfg(feature = "rolling_window")]
++    pub fn rolling_rank(self, options: RollingOptionsFixedWindow) -> Expr {
++        self.finish_rolling(options, RollingFunction::Rank)
++    }
++
+     /// Apply a rolling skew.
+     #[cfg(feature = "rolling_window")]
+     #[cfg(feature = "moment")]
+diff --git a/crates/polars-plan/src/plans/aexpr/function_expr/mod.rs b/crates/polars-plan/src/plans/aexpr/function_expr/mod.rs
+index 451f7f926..9a88b3e06 100644
+--- a/crates/polars-plan/src/plans/aexpr/function_expr/mod.rs
++++ b/crates/polars-plan/src/plans/aexpr/function_expr/mod.rs
+@@ -1088,6 +1088,7 @@ impl From<IRFunctionExpr> for SpecialEq<Arc<dyn ColumnsUdf>> {
+                     Quantile => map!(rolling::rolling_quantile, options.clone()),
+                     Var => map!(rolling::rolling_var, options.clone()),
+                     Std => map!(rolling::rolling_std, options.clone()),
++                    Rank => map!(rolling::rolling_rank, options.clone()),
+                     #[cfg(feature = "moment")]
+                     Skew => map!(rolling::rolling_skew, options.clone()),
+                     #[cfg(feature = "moment")]
+@@ -1125,6 +1126,7 @@ impl From<IRFunctionExpr> for SpecialEq<Arc<dyn ColumnsUdf>> {
+                     },
+                     VarBy => map_as_slice!(rolling_by::rolling_var_by, options.clone()),
+                     StdBy => map_as_slice!(rolling_by::rolling_std_by, options.clone()),
++                    RankBy => map_as_slice!(rolling_by::rolling_rank_by, options.clone()),
+                 }
+             },
+             #[cfg(feature = "hist")]
+diff --git a/crates/polars-plan/src/plans/aexpr/function_expr/rolling.rs b/crates/polars-plan/src/plans/aexpr/function_expr/rolling.rs
+index d851e234d..91edaddad 100644
+--- a/crates/polars-plan/src/plans/aexpr/function_expr/rolling.rs
++++ b/crates/polars-plan/src/plans/aexpr/function_expr/rolling.rs
+@@ -18,6 +18,7 @@ pub enum IRRollingFunction {
+     Quantile,
+     Var,
+     Std,
++    Rank,
+     #[cfg(feature = "moment")]
+     Skew,
+     #[cfg(feature = "moment")]
+@@ -43,6 +44,7 @@ impl Display for IRRollingFunction {
+             Quantile => "quantile",
+             Var => "var",
+             Std => "std",
++            Rank => "rank",
+             #[cfg(feature = "moment")]
+             Skew => "skew",
+             #[cfg(feature = "moment")]
+@@ -114,6 +116,13 @@ pub(super) fn rolling_std(s: &Column, options: RollingOptionsFixedWindow) -> Pol
+         .map(Column::from)
+ }
+ 
++pub(super) fn rolling_rank(s: &Column, options: RollingOptionsFixedWindow) -> PolarsResult<Column> {
++    // @scalar-opt
++    s.as_materialized_series()
++        .rolling_rank(options)
++        .map(Column::from)
++}
++
+ #[cfg(feature = "moment")]
+ pub(super) fn rolling_skew(s: &Column, options: RollingOptionsFixedWindow) -> PolarsResult<Column> {
+     // @scalar-opt
+diff --git a/crates/polars-plan/src/plans/aexpr/function_expr/rolling_by.rs b/crates/polars-plan/src/plans/aexpr/function_expr/rolling_by.rs
+index ec4707864..14ff62364 100644
+--- a/crates/polars-plan/src/plans/aexpr/function_expr/rolling_by.rs
++++ b/crates/polars-plan/src/plans/aexpr/function_expr/rolling_by.rs
+@@ -12,6 +12,7 @@ pub enum IRRollingFunctionBy {
+     QuantileBy,
+     VarBy,
+     StdBy,
++    RankBy,
+ }
+ 
+ impl Display for IRRollingFunctionBy {
+@@ -26,6 +27,7 @@ impl Display for IRRollingFunctionBy {
+             QuantileBy => "rolling_quantile_by",
+             VarBy => "rolling_var_by",
+             StdBy => "rolling_std_by",
++            RankBy => "rolling_rank_by",
+         };
+ 
+         write!(f, "{name}")
+@@ -107,3 +109,13 @@ pub(super) fn rolling_std_by(
+         .rolling_std_by(s[1].as_materialized_series(), options)
+         .map(Column::from)
+ }
++
++pub(super) fn rolling_rank_by(
++    s: &[Column],
++    options: RollingOptionsDynamicWindow,
++) -> PolarsResult<Column> {
++    // @scalar-opt
++    s[0].as_materialized_series()
++        .rolling_rank_by(s[1].as_materialized_series(), options)
++        .map(Column::from)
++}
+diff --git a/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs b/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs
+index fa58b68ad..db6110d1b 100644
+--- a/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs
++++ b/crates/polars-plan/src/plans/aexpr/function_expr/schema.rs
+@@ -68,6 +68,14 @@ impl IRFunctionExpr {
+                     Mean | Quantile | Std => mapper.moment_dtype(),
+                     Var => mapper.var_dtype(),
+                     Sum => mapper.sum_dtype(),
++                    Rank => match options.fn_params {
++                        Some(RollingFnParams::Rank {
++                            method: RollingRankMethod::Average,
++                            ..
++                        }) => mapper.with_dtype(DataType::Float64),
++                        Some(RollingFnParams::Rank { .. }) => mapper.with_dtype(IDX_DTYPE),
++                        _ => unreachable!("should be Some(RollingFnParams::Rank)"),
++                    },
+                     #[cfg(feature = "cov")]
+                     CorrCov { .. } => mapper.map_to_float_dtype(),
+                     #[cfg(feature = "moment")]
+@@ -86,13 +94,25 @@ impl IRFunctionExpr {
+                 }
+             },
+             #[cfg(feature = "rolling_window_by")]
+-            RollingExprBy { function_by, .. } => {
++            RollingExprBy {
++                function_by,
++                options,
++                ..
++            } => {
+                 use IRRollingFunctionBy::*;
+                 match function_by {
+                     MinBy | MaxBy => mapper.with_same_dtype(),
+                     MeanBy | QuantileBy | StdBy => mapper.moment_dtype(),
+                     VarBy => mapper.var_dtype(),
+                     SumBy => mapper.sum_dtype(),
++                    RankBy => match options.fn_params {
++                        Some(RollingFnParams::Rank {
++                            method: RollingRankMethod::Average,
++                            ..
++                        }) => mapper.with_dtype(DataType::Float64),
++                        Some(RollingFnParams::Rank { .. }) => mapper.with_dtype(IDX_DTYPE),
++                        _ => unreachable!("should be Some(RollingFnParams::Rank)"),
++                    },
+                 }
+             },
+             Rechunk => mapper.with_same_dtype(),
+diff --git a/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs b/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
+index fb5647ee4..6637a48a9 100644
+--- a/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
++++ b/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
+@@ -694,6 +694,7 @@ pub(super) fn convert_functions(
+                     R::Quantile => IR::Quantile,
+                     R::Var => IR::Var,
+                     R::Std => IR::Std,
++                    R::Rank => IR::Rank,
+                     #[cfg(feature = "moment")]
+                     R::Skew => IR::Skew,
+                     #[cfg(feature = "moment")]
+@@ -728,6 +729,7 @@ pub(super) fn convert_functions(
+                     R::QuantileBy => IR::QuantileBy,
+                     R::VarBy => IR::VarBy,
+                     R::StdBy => IR::StdBy,
++                    R::RankBy => IR::RankBy,
+                 },
+                 options,
+             }
+diff --git a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+index 4240278d8..d39ee5850 100644
+--- a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
++++ b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+@@ -786,6 +786,7 @@ pub fn ir_function_to_dsl(input: Vec<Expr>, function: IRFunctionExpr) -> Expr {
+                     IR::Quantile => R::Quantile,
+                     IR::Var => R::Var,
+                     IR::Std => R::Std,
++                    IR::Rank => R::Rank,
+                     #[cfg(feature = "moment")]
+                     IR::Skew => R::Skew,
+                     #[cfg(feature = "moment")]
+@@ -818,6 +819,7 @@ pub fn ir_function_to_dsl(input: Vec<Expr>, function: IRFunctionExpr) -> Expr {
+                     IR::QuantileBy => R::QuantileBy,
+                     IR::VarBy => R::VarBy,
+                     IR::StdBy => R::StdBy,
++                    IR::RankBy => R::RankBy,
+                 },
+                 options,
+             }
+diff --git a/crates/polars-python/src/conversion/mod.rs b/crates/polars-python/src/conversion/mod.rs
+index 31a1ffc70..17b32a33f 100644
+--- a/crates/polars-python/src/conversion/mod.rs
++++ b/crates/polars-python/src/conversion/mod.rs
+@@ -1114,6 +1114,24 @@ impl<'py> FromPyObject<'py> for Wrap<RankMethod> {
+     }
+ }
+ 
++impl<'py> FromPyObject<'py> for Wrap<RollingRankMethod> {
++    fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
++        let parsed = match &*ob.extract::<PyBackedStr>()? {
++            "min" => RollingRankMethod::Min,
++            "max" => RollingRankMethod::Max,
++            "average" => RollingRankMethod::Average,
++            "dense" => RollingRankMethod::Dense,
++            "random" => RollingRankMethod::Random,
++            v => {
++                return Err(PyValueError::new_err(format!(
++                    "rank `method` must be one of {{'min', 'max', 'average', 'dense', 'random'}}, got {v}",
++                )));
++            },
++        };
++        Ok(Wrap(parsed))
++    }
++}
++
+ impl<'py> FromPyObject<'py> for Wrap<Roll> {
+     fn extract_bound(ob: &Bound<'py, PyAny>) -> PyResult<Self> {
+         let parsed = match &*ob.extract::<PyBackedStr>()? {
+diff --git a/crates/polars-python/src/expr/rolling.rs b/crates/polars-python/src/expr/rolling.rs
+index ece6fd475..4b959ed1a 100644
+--- a/crates/polars-python/src/expr/rolling.rs
++++ b/crates/polars-python/src/expr/rolling.rs
+@@ -322,6 +322,53 @@ impl PyExpr {
+             .into())
+     }
+ 
++    #[pyo3(signature = (window_size, method, seed, min_samples, center))]
++    fn rolling_rank(
++        &self,
++        window_size: usize,
++        method: Wrap<RollingRankMethod>,
++        seed: Option<u64>,
++        min_samples: Option<usize>,
++        center: bool,
++    ) -> Self {
++        let min_samples = min_samples.unwrap_or(window_size);
++        let options = RollingOptionsFixedWindow {
++            window_size,
++            min_periods: min_samples,
++            weights: None,
++            center,
++            fn_params: Some(RollingFnParams::Rank {
++                method: method.0,
++                seed,
++            }),
++        };
++
++        self.inner.clone().rolling_rank(options).into()
++    }
++
++    #[pyo3(signature = (by, window_size, method, seed, min_samples, closed))]
++    fn rolling_rank_by(
++        &self,
++        by: PyExpr,
++        window_size: &str,
++        method: Wrap<RollingRankMethod>,
++        seed: Option<u64>,
++        min_samples: usize,
++        closed: Wrap<ClosedWindow>,
++    ) -> PyResult<Self> {
++        let options = RollingOptionsDynamicWindow {
++            window_size: Duration::try_parse(window_size).map_err(PyPolarsErr::from)?,
++            min_periods: min_samples,
++            closed_window: closed.0,
++            fn_params: Some(RollingFnParams::Rank {
++                method: method.0,
++                seed,
++            }),
++        };
++
++        Ok(self.inner.clone().rolling_rank_by(by.inner, options).into())
++    }
++
+     #[pyo3(signature = (window_size, bias, min_periods, center))]
+     fn rolling_skew(
+         &self,
+diff --git a/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs b/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+index ddf794e95..275ead267 100644
+--- a/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
++++ b/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+@@ -1183,6 +1183,9 @@ pub(crate) fn into_py(py: Python<'_>, expr: &AExpr) -> PyResult<PyObject> {
+                     IRRollingFunctionBy::StdBy => {
+                         return Err(PyNotImplementedError::new_err("rolling std by"));
+                     },
++                    IRRollingFunctionBy::RankBy => {
++                        return Err(PyNotImplementedError::new_err("rolling rank by"));
++                    },
+                 },
+                 IRFunctionExpr::Rechunk => ("rechunk",).into_py_any(py),
+                 IRFunctionExpr::Append { upcast } => ("append", upcast).into_py_any(py),
+diff --git a/crates/polars-time/src/chunkedarray/rolling_window/dispatch.rs b/crates/polars-time/src/chunkedarray/rolling_window/dispatch.rs
+index 7f79a82a2..9a7e7063f 100644
+--- a/crates/polars-time/src/chunkedarray/rolling_window/dispatch.rs
++++ b/crates/polars-time/src/chunkedarray/rolling_window/dispatch.rs
+@@ -532,6 +532,46 @@ pub trait SeriesOpsTime: AsSeries {
+             s
+         })
+     }
++
++    /// Apply a rolling rank to a Series based on another Series.
++    #[cfg(feature = "rolling_window_by")]
++    fn rolling_rank_by(
++        &self,
++        by: &Series,
++        options: RollingOptionsDynamicWindow,
++    ) -> PolarsResult<Series> {
++        let s = self.as_series().clone();
++
++        with_match_physical_numeric_polars_type!(s.dtype(), |$T| {
++            let ca: &ChunkedArray<$T> = s.as_ref().as_ref().as_ref();
++            let mut ca = ca.clone();
++
++            rolling_agg_by(
++                &ca,
++                by,
++                options,
++                &super::rolling_kernels::no_nulls::rolling_rank,
++            )
++        })
++    }
++
++    /// Apply a rolling rank to a Series.
++    #[cfg(feature = "rolling_window")]
++    fn rolling_rank(&self, options: RollingOptionsFixedWindow) -> PolarsResult<Series> {
++        let s = self.as_series();
++
++        with_match_physical_numeric_polars_type!(s.dtype(), |$T| {
++            let ca: &ChunkedArray<$T> = s.as_ref().as_ref().as_ref();
++            let mut ca = ca.clone();
++
++            rolling_agg(
++                &ca,
++                options,
++                &rolling::no_nulls::rolling_rank,
++                &rolling::nulls::rolling_rank,
++            )
++        })
++    }
+ }
+ 
+ impl SeriesOpsTime for Series {}
+diff --git a/crates/polars-time/src/chunkedarray/rolling_window/rolling_kernels/no_nulls.rs b/crates/polars-time/src/chunkedarray/rolling_window/rolling_kernels/no_nulls.rs
+index 7739192e5..9e1ccd57c 100644
+--- a/crates/polars-time/src/chunkedarray/rolling_window/rolling_kernels/no_nulls.rs
++++ b/crates/polars-time/src/chunkedarray/rolling_window/rolling_kernels/no_nulls.rs
+@@ -14,7 +14,7 @@ use super::*;
+ 
+ // Use an aggregation window that maintains the state.
+ // Fastpath if values were known to already be sorted by time.
+-pub(crate) fn rolling_apply_agg_window_sorted<'a, Agg, T, O>(
++pub(crate) fn rolling_apply_agg_window_sorted<'a, Agg, T, O, Out>(
+     values: &'a [T],
+     offsets: O,
+     min_periods: usize,
+@@ -22,9 +22,10 @@ pub(crate) fn rolling_apply_agg_window_sorted<'a, Agg, T, O>(
+ ) -> PolarsResult<ArrayRef>
+ where
+     // items (offset, len) -> so offsets are offset, offset + len
+-    Agg: RollingAggWindowNoNulls<'a, T>,
++    Agg: RollingAggWindowNoNulls<'a, T, Out>,
+     O: Iterator<Item = PolarsResult<(IdxSize, IdxSize)>> + TrustedLen,
+-    T: Debug + IsFloat + NativeType,
++    T: Debug + NativeType,
++    Out: Debug + NativeType,
+ {
+     if values.is_empty() {
+         let out: Vec<T> = vec![];
+@@ -54,7 +55,7 @@ where
+                 }
+             })
+         })
+-        .collect::<PolarsResult<PrimitiveArray<T>>>()?;
++        .collect::<PolarsResult<PrimitiveArray<Out>>>()?;
+ 
+     Ok(Box::new(out))
+ }
+@@ -75,7 +76,7 @@ fn instantiate_bitmap_if_null_and_set_false_at_idx(
+ }
+ 
+ // Use an aggregation window that maintains the state
+-pub(crate) fn rolling_apply_agg_window<'a, Agg, T, O>(
++pub(crate) fn rolling_apply_agg_window<'a, Agg, T, O, Out>(
+     values: &'a [T],
+     offsets: O,
+     min_periods: usize,
+@@ -84,9 +85,10 @@ pub(crate) fn rolling_apply_agg_window<'a, Agg, T, O>(
+ ) -> PolarsResult<ArrayRef>
+ where
+     // items (offset, len) -> so offsets are offset, offset + len
+-    Agg: RollingAggWindowNoNulls<'a, T>,
++    Agg: RollingAggWindowNoNulls<'a, T, Out>,
+     O: Iterator<Item = PolarsResult<(IdxSize, IdxSize)>> + TrustedLen,
+-    T: Debug + IsFloat + NativeType,
++    T: Debug + NativeType,
++    Out: Debug + NativeType,
+ {
+     if values.is_empty() {
+         let out: Vec<T> = vec![];
+@@ -136,7 +138,7 @@ where
+         Ok::<(), PolarsError>(())
+     })?;
+ 
+-    let out = PrimitiveArray::<T>::from_vec(out).with_validity(validity.map(|x| x.into()));
++    let out = PrimitiveArray::<Out>::from_vec(out).with_validity(validity.map(|x| x.into()));
+ 
+     Ok(Box::new(out))
+ }
+@@ -162,14 +164,14 @@ where
+         _ => group_by_values_iter(period, time, closed_window, tu, None),
+     }?;
+     if sorting_indices.is_none() {
+-        rolling_apply_agg_window_sorted::<no_nulls::MinWindow<_>, _, _>(
++        rolling_apply_agg_window_sorted::<no_nulls::MinWindow<_>, _, _, _>(
+             values,
+             offset_iter,
+             min_periods,
+             None,
+         )
+     } else {
+-        rolling_apply_agg_window::<no_nulls::MinWindow<_>, _, _>(
++        rolling_apply_agg_window::<no_nulls::MinWindow<_>, _, _, _>(
+             values,
+             offset_iter,
+             min_periods,
+@@ -200,14 +202,14 @@ where
+         _ => group_by_values_iter(period, time, closed_window, tu, None),
+     }?;
+     if sorting_indices.is_none() {
+-        rolling_apply_agg_window_sorted::<no_nulls::MaxWindow<_>, _, _>(
++        rolling_apply_agg_window_sorted::<no_nulls::MaxWindow<_>, _, _, _>(
+             values,
+             offset_iter,
+             min_periods,
+             None,
+         )
+     } else {
+-        rolling_apply_agg_window::<no_nulls::MaxWindow<_>, _, _>(
++        rolling_apply_agg_window::<no_nulls::MaxWindow<_>, _, _, _>(
+             values,
+             offset_iter,
+             min_periods,
+@@ -247,14 +249,14 @@ where
+         _ => group_by_values_iter(period, time, closed_window, tu, None),
+     }?;
+     if sorting_indices.is_none() {
+-        rolling_apply_agg_window_sorted::<SumWindow<T, T>, _, _>(
++        rolling_apply_agg_window_sorted::<SumWindow<T, T>, _, _, _>(
+             values,
+             offset_iter,
+             min_periods,
+             None,
+         )
+     } else {
+-        rolling_apply_agg_window::<SumWindow<T, T>, _, _>(
++        rolling_apply_agg_window::<SumWindow<T, T>, _, _, _>(
+             values,
+             offset_iter,
+             min_periods,
+@@ -285,14 +287,14 @@ where
+         _ => group_by_values_iter(period, time, closed_window, tu, None),
+     }?;
+     if sorting_indices.is_none() {
+-        rolling_apply_agg_window_sorted::<MeanWindow<_>, _, _>(
++        rolling_apply_agg_window_sorted::<MeanWindow<_>, _, _, _>(
+             values,
+             offset_iter,
+             min_periods,
+             None,
+         )
+     } else {
+-        rolling_apply_agg_window::<MeanWindow<_>, _, _>(
++        rolling_apply_agg_window::<MeanWindow<_>, _, _, _>(
+             values,
+             offset_iter,
+             min_periods,
+@@ -323,14 +325,14 @@ where
+         _ => group_by_values_iter(period, time, closed_window, tu, None),
+     }?;
+     if sorting_indices.is_none() {
+-        rolling_apply_agg_window_sorted::<no_nulls::MomentWindow<_, VarianceMoment>, _, _>(
++        rolling_apply_agg_window_sorted::<no_nulls::MomentWindow<_, VarianceMoment>, _, _, _>(
+             values,
+             offset_iter,
+             min_periods,
+             params,
+         )
+     } else {
+-        rolling_apply_agg_window::<no_nulls::MomentWindow<_, VarianceMoment>, _, _>(
++        rolling_apply_agg_window::<no_nulls::MomentWindow<_, VarianceMoment>, _, _, _>(
+             values,
+             offset_iter,
+             min_periods,
+@@ -361,14 +363,14 @@ where
+         _ => group_by_values_iter(period, time, closed_window, tu, None),
+     }?;
+     if sorting_indices.is_none() {
+-        rolling_apply_agg_window_sorted::<no_nulls::QuantileWindow<_>, _, _>(
++        rolling_apply_agg_window_sorted::<no_nulls::QuantileWindow<_>, _, _, _>(
+             values,
+             offset_iter,
+             min_periods,
+             params,
+         )
+     } else {
+-        rolling_apply_agg_window::<no_nulls::QuantileWindow<_>, _, _>(
++        rolling_apply_agg_window::<no_nulls::QuantileWindow<_>, _, _, _>(
+             values,
+             offset_iter,
+             min_periods,
+@@ -377,3 +379,106 @@ where
+         )
+     }
+ }
++
++#[allow(clippy::too_many_arguments)]
++pub(crate) fn rolling_rank<T>(
++    values: &[T],
++    period: Duration,
++    time: &[i64],
++    closed_window: ClosedWindow,
++    min_periods: usize,
++    tu: TimeUnit,
++    tz: Option<&TimeZone>,
++    params: Option<RollingFnParams>,
++    sorting_indices: Option<&[IdxSize]>,
++) -> PolarsResult<ArrayRef>
++where
++    T: Debug + NativeType,
++{
++    use polars_compute::rolling::no_nulls::rank::*;
++
++    let method = if let Some(RollingFnParams::Rank { method, .. }) = params {
++        method
++    } else {
++        unreachable!("expected RollingFnParams::Rank");
++    };
++
++    let offset_iter = match tz {
++        #[cfg(feature = "timezones")]
++        Some(tz) => group_by_values_iter(period, time, closed_window, tu, tz.parse::<Tz>().ok()),
++        _ => group_by_values_iter(period, time, closed_window, tu, None),
++    }?;
++
++    if sorting_indices.is_none() {
++        match method {
++            RollingRankMethod::Average => rolling_apply_agg_window_sorted::<
++                RankWindowAvg<T>,
++                _,
++                _,
++                _,
++            >(values, offset_iter, min_periods, params),
++            RollingRankMethod::Min => rolling_apply_agg_window_sorted::<RankWindowMin<T>, _, _, _>(
++                values,
++                offset_iter,
++                min_periods,
++                params,
++            ),
++            RollingRankMethod::Max => rolling_apply_agg_window_sorted::<RankWindowMax<T>, _, _, _>(
++                values,
++                offset_iter,
++                min_periods,
++                params,
++            ),
++            RollingRankMethod::Dense => rolling_apply_agg_window_sorted::<
++                RankWindowDense<T>,
++                _,
++                _,
++                _,
++            >(values, offset_iter, min_periods, params),
++            RollingRankMethod::Random => rolling_apply_agg_window_sorted::<
++                RankWindowRandom<T>,
++                _,
++                _,
++                _,
++            >(values, offset_iter, min_periods, params),
++        }
++    } else {
++        match method {
++            RollingRankMethod::Average => rolling_apply_agg_window::<RankWindowAvg<T>, _, _, _>(
++                values,
++                offset_iter,
++                min_periods,
++                params,
++                sorting_indices,
++            ),
++            RollingRankMethod::Min => rolling_apply_agg_window::<RankWindowMin<T>, _, _, _>(
++                values,
++                offset_iter,
++                min_periods,
++                params,
++                sorting_indices,
++            ),
++            RollingRankMethod::Max => rolling_apply_agg_window::<RankWindowMax<T>, _, _, _>(
++                values,
++                offset_iter,
++                min_periods,
++                params,
++                sorting_indices,
++            ),
++            RollingRankMethod::Dense => rolling_apply_agg_window::<RankWindowDense<T>, _, _, _>(
++                values,
++                offset_iter,
++                min_periods,
++                params,
++                sorting_indices,
++            ),
++            RollingRankMethod::Random => rolling_apply_agg_window::<RankWindowRandom<T>, _, _, _>(
++                values,
++                offset_iter,
++                min_periods,
++                params,
++                sorting_indices,
++            ),
++        }
++    }
++}
+diff --git a/crates/polars-utils/Cargo.toml b/crates/polars-utils/Cargo.toml
+index 749221ca0..0344ae51c 100644
+--- a/crates/polars-utils/Cargo.toml
++++ b/crates/polars-utils/Cargo.toml
+@@ -38,6 +38,7 @@ sysinfo = { version = "0.33", default-features = false, features = ["system"], o
+ uuid = { workspace = true }
+ 
+ [dev-dependencies]
++proptest = { workspace = true }
+ rand = { workspace = true }
+ 
+ [build-dependencies]
+diff --git a/crates/polars-utils/src/lib.rs b/crates/polars-utils/src/lib.rs
+index dd8716d73..7c268c2e9 100644
+--- a/crates/polars-utils/src/lib.rs
++++ b/crates/polars-utils/src/lib.rs
+@@ -27,6 +27,7 @@ pub mod idx_mapper;
+ pub mod idx_vec;
+ pub mod mem;
+ pub mod min_max;
++pub mod order_statistic_tree;
+ pub mod parma;
+ pub mod pl_str;
+ pub mod plpath;
+diff --git a/crates/polars-utils/src/order_statistic_tree.rs b/crates/polars-utils/src/order_statistic_tree.rs
+new file mode 100644
+index 000000000..fa2885b8c
+--- /dev/null
++++ b/crates/polars-utils/src/order_statistic_tree.rs
+@@ -0,0 +1,674 @@
++//! This module implements an order statistic multiset, which is implemented
++//! as a weight-balanced tree (WBT).
++//! It is based on the weight-balanced tree based on the following papers:
++//!
++//!   * <https://doi.org/10.1017/S0956796811000104>
++//!   * <https://doi.org/10.1137/1.9781611976007.13>
++//!
++//! Each of the nodes in the tree contains a UnitVec of values to store
++//! multiple values with the same key.
++
++use std::cmp::Ordering;
++use std::fmt::Debug;
++use std::ops::RangeInclusive;
++
++use slotmap::{Key as SlotMapKey, SlotMap, new_key_type};
++
++use crate::UnitVec;
++
++const DELTA: usize = 3;
++const GAMMA: usize = 2;
++
++type CompareFn<T> = fn(&T, &T) -> Ordering;
++
++new_key_type! {
++    struct Key;
++}
++
++#[derive(Debug)]
++struct Node<T> {
++    values: UnitVec<T>,
++    left: Key,
++    right: Key,
++    weight: u32,
++    num_elems: u32,
++}
++
++#[derive(Debug)]
++pub struct OrderStatisticTree<T> {
++    nodes: SlotMap<Key, Node<T>>,
++    root: Key,
++    compare: CompareFn<T>,
++}
++
++impl<T> OrderStatisticTree<T> {
++    #[inline]
++    pub fn new(compare: CompareFn<T>) -> Self {
++        OrderStatisticTree {
++            nodes: SlotMap::with_key(),
++            root: Key::null(),
++            compare,
++        }
++    }
++
++    #[inline]
++    pub fn with_capacity(capacity: usize, compare: CompareFn<T>) -> Self {
++        OrderStatisticTree {
++            nodes: SlotMap::with_capacity_and_key(capacity),
++            root: Key::null(),
++            compare,
++        }
++    }
++
++    #[inline]
++    pub fn is_empty(&self) -> bool {
++        self.len() == 0
++    }
++
++    #[inline]
++    pub fn len(&self) -> usize {
++        self.num_elems(self.root)
++    }
++
++    #[inline]
++    pub fn unique_len(&self) -> usize {
++        self.tree_weight(self.root)
++    }
++
++    #[inline]
++    pub fn clear(&mut self) {
++        self.nodes.clear();
++        self.root = Key::null();
++    }
++
++    /// Returns the total number of elements in the tree rooted at `tree`.
++    fn num_elems(&self, tree: Key) -> usize {
++        if tree.is_null() {
++            return 0;
++        }
++        unsafe { self.nodes.get_unchecked(tree) }.num_elems as usize
++    }
++
++    /// Returns the number of tree nodes, which is equal to the number of unique
++    /// elements, in the tree rooted at `tree`.
++    fn tree_weight(&self, tree: Key) -> usize {
++        if tree.is_null() {
++            return 0;
++        }
++        unsafe { self.nodes.get_unchecked(tree) }.weight as usize
++    }
++
++    #[must_use]
++    fn new_tree_node(&mut self, left: Key, values: UnitVec<T>, right: Key) -> Key {
++        let weight = self.tree_weight(left) + self.tree_weight(right) + 1;
++        let num_elems = self.num_elems(left) + self.num_elems(right) + values.len();
++        let n = Node {
++            values,
++            left,
++            right,
++            weight: weight as u32,
++            num_elems: num_elems as u32,
++        };
++        self.nodes.insert(n)
++    }
++
++    #[must_use]
++    fn new_leaf(&mut self, value: T) -> Key {
++        let mut uv = UnitVec::new();
++        uv.push(value);
++        self.new_tree_node(Key::null(), uv, Key::null())
++    }
++
++    #[must_use]
++    unsafe fn drop_tree_node(&mut self, tree: Key) -> Node<T> {
++        unsafe { self.nodes.remove(tree).unwrap_unchecked() }
++    }
++
++    #[inline]
++    pub fn get(&self, idx: usize) -> Option<&T> {
++        self._get(idx, self.root)
++    }
++
++    fn _get(&self, idx: usize, tree: Key) -> Option<&T> {
++        if tree.is_null() {
++            return None;
++        }
++
++        let n = unsafe { self.nodes.get_unchecked(tree) };
++        let own_elems = self.num_elems(tree);
++        let left_elems = self.num_elems(n.left);
++        let right_elems = self.num_elems(n.right);
++
++        if idx < left_elems {
++            self._get(idx, n.left)
++        } else if idx >= own_elems - right_elems {
++            self._get(idx - (own_elems - right_elems), n.right)
++        } else {
++            n.values.get(idx - left_elems)
++        }
++    }
++
++    #[inline]
++    pub fn insert(&mut self, value: T) {
++        (self.root, _) = self._insert(value, self.root);
++    }
++
++    #[must_use]
++    fn _insert(&mut self, value: T, tree: Key) -> (Key, bool) {
++        if tree.is_null() {
++            return (self.new_leaf(value), true);
++        }
++
++        let n = unsafe { self.nodes.get_unchecked(tree) };
++        match (self.compare)(&value, &n.values[0]) {
++            Ordering::Less => {
++                let (left, node_added) = self._insert(value, n.left);
++                let n = unsafe { self.nodes.get_unchecked_mut(tree) };
++                n.left = left;
++                n.weight += node_added as u32;
++                n.num_elems += 1;
++                (self.balance_r(tree), node_added)
++            },
++            Ordering::Equal => {
++                let n = unsafe { self.nodes.get_unchecked_mut(tree) };
++                n.values.push(value);
++                n.num_elems += 1;
++                (tree, false)
++            },
++            Ordering::Greater => {
++                let (right, node_added) = self._insert(value, n.right);
++                let n = unsafe { self.nodes.get_unchecked_mut(tree) };
++                n.right = right;
++                n.weight += node_added as u32;
++                n.num_elems += 1;
++                (self.balance_l(tree), node_added)
++            },
++        }
++    }
++
++    #[inline]
++    pub fn remove(&mut self, value: &T) -> Option<T> {
++        let deleted;
++        (deleted, self.root, _) = self._remove(value, self.root);
++        deleted
++    }
++
++    #[must_use]
++    fn _remove(&mut self, value: &T, tree: Key) -> (Option<T>, Key, bool) {
++        if tree.is_null() {
++            return (None, tree, false);
++        }
++
++        let n = unsafe { self.nodes.get_unchecked(tree) };
++        match (self.compare)(value, &n.values[0]) {
++            Ordering::Less => {
++                let (deleted, left, node_removed) = self._remove(value, n.left);
++                let n = unsafe { self.nodes.get_unchecked_mut(tree) };
++                n.left = left;
++                n.weight -= node_removed as u32;
++                n.num_elems -= deleted.is_some() as u32;
++                (deleted, self.balance_l(tree), node_removed)
++            },
++            Ordering::Greater => {
++                let (deleted, right, node_removed) = self._remove(value, n.right);
++                let n = unsafe { self.nodes.get_unchecked_mut(tree) };
++                n.right = right;
++                n.weight -= node_removed as u32;
++                n.num_elems -= deleted.is_some() as u32;
++                (deleted, self.balance_r(tree), node_removed)
++            },
++            Ordering::Equal if n.values.len() > 1 => {
++                let n = unsafe { self.nodes.get_unchecked_mut(tree) };
++                let popped_value = unsafe { n.values.pop().unwrap_unchecked() };
++                n.num_elems -= 1;
++                (Some(popped_value), tree, false)
++            },
++            Ordering::Equal => {
++                let mut n = unsafe { self.drop_tree_node(tree) };
++                (
++                    Some(unsafe { n.values.pop().unwrap_unchecked() }),
++                    self.glue(n.left, n.right),
++                    true,
++                )
++            },
++        }
++    }
++
++    #[must_use]
++    fn glue(&mut self, left: Key, right: Key) -> Key {
++        if left.is_null() {
++            right
++        } else if right.is_null() {
++            left
++        } else if self.tree_weight(left) > self.tree_weight(right) {
++            let (deleted, left) = self.remove_max(left);
++            let tree = self.new_tree_node(left, deleted, right);
++            self.balance_r(tree)
++        } else {
++            let (deleted, right) = self.remove_min(right);
++            let tree = self.new_tree_node(left, deleted, right);
++            self.balance_l(tree)
++        }
++    }
++
++    #[must_use]
++    fn remove_min(&mut self, tree: Key) -> (UnitVec<T>, Key) {
++        debug_assert!(!tree.is_null());
++        let n = unsafe { self.nodes.get_unchecked(tree) };
++        if n.left.is_null() {
++            let n = unsafe { self.drop_tree_node(tree) };
++            return (n.values, n.right);
++        }
++        let (deleted, left) = self.remove_min(n.left);
++        let n = unsafe { self.nodes.get_unchecked_mut(tree) };
++        n.left = left;
++        n.weight -= 1;
++        n.num_elems -= deleted.len() as u32;
++        (deleted, self.balance_l(tree))
++    }
++
++    #[must_use]
++    fn remove_max(&mut self, tree: Key) -> (UnitVec<T>, Key) {
++        debug_assert!(!tree.is_null());
++        let n = unsafe { self.nodes.get_unchecked(tree) };
++        if n.right.is_null() {
++            let n = unsafe { self.drop_tree_node(tree) };
++            return (n.values, n.left);
++        }
++        let (deleted, right) = self.remove_max(n.right);
++        let n = unsafe { self.nodes.get_unchecked_mut(tree) };
++        n.right = right;
++        n.weight -= 1;
++        n.num_elems -= deleted.len() as u32;
++        (deleted, self.balance_r(tree))
++    }
++
++    #[inline]
++    pub fn contains(&self, value: &T) -> bool {
++        self._contains(value, self.root)
++    }
++
++    fn _contains(&self, value: &T, tree: Key) -> bool {
++        if tree.is_null() {
++            return false;
++        }
++        let n = unsafe { self.nodes.get_unchecked(tree) };
++        match (self.compare)(value, &n.values[0]) {
++            Ordering::Less => self._contains(value, n.left),
++            Ordering::Equal => true,
++            Ordering::Greater => self._contains(value, n.right),
++        }
++    }
++
++    #[must_use]
++    fn balance_l(&mut self, tree: Key) -> Key {
++        let n = unsafe { self.nodes.get_unchecked(tree) };
++        if self.pair_is_balanced(n.left, n.right) {
++            return tree;
++        }
++        self.rotate_l(tree)
++    }
++
++    #[must_use]
++    fn rotate_l(&mut self, tree: Key) -> Key {
++        let n = unsafe { self.nodes.get_unchecked(tree) };
++        let r = unsafe { self.nodes.get_unchecked(n.right) };
++        if self.is_single(r.left, r.right) {
++            self.single_l(tree)
++        } else {
++            self.double_l(tree)
++        }
++    }
++
++    #[must_use]
++    fn single_l(&mut self, tree: Key) -> Key {
++        let n = unsafe { self.drop_tree_node(tree) };
++        let r = unsafe { self.drop_tree_node(n.right) };
++        let new_left = self.new_tree_node(n.left, n.values, r.left);
++        self.new_tree_node(new_left, r.values, r.right)
++    }
++
++    #[must_use]
++    fn double_l(&mut self, tree: Key) -> Key {
++        let n = unsafe { self.drop_tree_node(tree) };
++        let r = unsafe { self.drop_tree_node(n.right) };
++        let rl = unsafe { self.drop_tree_node(r.left) };
++        let new_left = self.new_tree_node(n.left, n.values, rl.left);
++        let new_right = self.new_tree_node(rl.right, r.values, r.right);
++        self.new_tree_node(new_left, rl.values, new_right)
++    }
++
++    #[must_use]
++    fn balance_r(&mut self, tree: Key) -> Key {
++        let n = unsafe { self.nodes.get_unchecked(tree) };
++        if self.pair_is_balanced(n.right, n.left) {
++            return tree;
++        }
++        self.rotate_r(tree)
++    }
++
++    #[must_use]
++    fn rotate_r(&mut self, tree: Key) -> Key {
++        let n = unsafe { self.nodes.get_unchecked(tree) };
++        let l = unsafe { self.nodes.get_unchecked(n.left) };
++        if self.is_single(l.right, l.left) {
++            self.single_r(tree)
++        } else {
++            self.double_r(tree)
++        }
++    }
++
++    #[must_use]
++    fn single_r(&mut self, tree: Key) -> Key {
++        let n = unsafe { self.drop_tree_node(tree) };
++        let l = unsafe { self.drop_tree_node(n.left) };
++        let new_right = self.new_tree_node(l.right, n.values, n.right);
++        self.new_tree_node(l.left, l.values, new_right)
++    }
++
++    #[must_use]
++    fn double_r(&mut self, tree: Key) -> Key {
++        let n = unsafe { self.drop_tree_node(tree) };
++        let l = unsafe { self.drop_tree_node(n.left) };
++        let lr = unsafe { self.drop_tree_node(l.right) };
++        let new_right = self.new_tree_node(lr.right, n.values, n.right);
++        let new_left = self.new_tree_node(l.left, l.values, lr.left);
++        self.new_tree_node(new_left, lr.values, new_right)
++    }
++
++    #[doc(hidden)]
++    pub fn is_balanced(&self) -> bool {
++        self.tree_is_balanced(self.root)
++    }
++
++    fn tree_is_balanced(&self, tree: Key) -> bool {
++        if tree.is_null() {
++            return true;
++        }
++        let n = unsafe { self.nodes.get_unchecked(tree) };
++        self.pair_is_balanced(n.left, n.right)
++            && self.pair_is_balanced(n.right, n.left)
++            && self.tree_is_balanced(n.left)
++            && self.tree_is_balanced(n.right)
++    }
++
++    fn pair_is_balanced(&self, left: Key, right: Key) -> bool {
++        let a = self.tree_weight(left);
++        let b = self.tree_weight(right);
++        DELTA * (a + 1) >= (b + 1) && DELTA * (b + 1) >= (a + 1)
++    }
++
++    fn is_single(&self, left: Key, right: Key) -> bool {
++        let a = self.tree_weight(left);
++        let b = self.tree_weight(right);
++        a + 1 < GAMMA * (b + 1)
++    }
++
++    #[inline]
++    pub fn rank_range(&self, bound: &T) -> Result<RangeInclusive<usize>, usize> {
++        self._rank_range(bound, self.root)
++    }
++
++    fn _rank_range(&self, value: &T, tree: Key) -> Result<RangeInclusive<usize>, usize> {
++        if tree.is_null() {
++            return Err(0);
++        }
++        let n = unsafe { self.nodes.get_unchecked(tree) };
++        match (self.compare)(value, &n.values[0]) {
++            Ordering::Less => self._rank_range(value, n.left),
++            Ordering::Equal => {
++                let lo = self.num_elems(n.left);
++                let hi = lo + n.values.len() - 1;
++                Ok(lo..=hi)
++            },
++            Ordering::Greater => {
++                let update_rank = |r| self.num_elems(tree) - self.num_elems(n.right) + r;
++                self._rank_range(value, n.right)
++                    .map(|rank| update_rank(*rank.start())..=update_rank(*rank.end()))
++                    .map_err(update_rank)
++            },
++        }
++    }
++
++    #[inline]
++    pub fn rank_unique(&self, value: &T) -> Result<usize, usize> {
++        self._rank_unique(value, self.root)
++    }
++
++    fn _rank_unique(&self, value: &T, tree: Key) -> Result<usize, usize> {
++        if tree.is_null() {
++            return Err(0);
++        }
++        let n = unsafe { self.nodes.get_unchecked(tree) };
++        match (self.compare)(value, &n.values[0]) {
++            Ordering::Less => self._rank_unique(value, n.left),
++            Ordering::Equal => Ok(self.tree_weight(n.left)),
++            Ordering::Greater => self
++                ._rank_unique(value, n.right)
++                .map(|rank| self.tree_weight(tree) - self.tree_weight(n.right) + rank)
++                .map_err(|rank| self.tree_weight(tree) - self.tree_weight(n.right) + rank),
++        }
++    }
++
++    #[inline]
++    pub fn count(&self, value: &T) -> usize {
++        self._count(value, self.root)
++    }
++
++    fn _count(&self, value: &T, tree: Key) -> usize {
++        if tree.is_null() {
++            return 0;
++        }
++        let n = unsafe { self.nodes.get_unchecked(tree) };
++        match (self.compare)(value, &n.values[0]) {
++            Ordering::Less => self._count(value, n.left),
++            Ordering::Equal => n.values.len(),
++            Ordering::Greater => self._count(value, n.right),
++        }
++    }
++}
++
++impl<T> Extend<T> for OrderStatisticTree<T> {
++    fn extend<I: IntoIterator<Item = T>>(&mut self, iterable: I) {
++        let iterator = iterable.into_iter();
++        for element in iterator {
++            self.insert(element);
++        }
++    }
++}
++
++#[cfg(test)]
++mod test {
++
++    use proptest::collection::vec;
++    use proptest::prelude::*;
++    use proptest::test_runner::TestRunner;
++
++    use super::*;
++
++    #[test]
++    fn test_insert() {
++        let mut runner = TestRunner::default();
++        runner
++            .run(&vec((0i32..100, 0i32..100), 0..100), test_insert_inner)
++            .unwrap()
++    }
++
++    fn test_insert_inner(items: Vec<(i32, i32)>) -> Result<(), TestCaseError> {
++        let cmp = |a: &(i32, i32), b: &(i32, i32)| i32::cmp(&a.0, &b.0);
++        let mut ost = OrderStatisticTree::new(cmp);
++        for item in &items {
++            ost.insert(*item);
++            assert!(ost.is_balanced());
++        }
++        assert_eq!(ost.len(), items.len());
++        let mut sorted_items = items.clone();
++        sorted_items.sort();
++        let mut collected_items = Vec::new();
++        let mut i = 0;
++        while let Some(v) = ost.get(i) {
++            collected_items.push(*v);
++            i += 1;
++        }
++        collected_items.sort();
++        assert_eq!(ost.len(), items.len());
++        assert_eq!(&collected_items, &sorted_items);
++        Ok(())
++    }
++
++    #[test]
++    fn test_remove() {
++        let mut runner = TestRunner::default();
++        runner
++            .run(
++                &(vec(0i32..100, 0..100), vec(0i32..100, 0..100)),
++                test_remove_inner,
++            )
++            .unwrap();
++    }
++
++    fn test_remove_inner(input: (Vec<i32>, Vec<i32>)) -> Result<(), TestCaseError> {
++        let (mut items, to_remove) = input;
++        let mut ost = OrderStatisticTree::new(i32::cmp);
++        for item in &items {
++            ost.insert(*item);
++            assert!(ost.is_balanced());
++        }
++        items.sort();
++        for item in &to_remove {
++            let v = ost.remove(item);
++            assert!(ost.is_balanced());
++            let idx = items.binary_search(item);
++            assert_eq!(v.is_some(), idx.is_ok());
++            if let Ok(idx) = idx {
++                items.remove(idx);
++            }
++            assert_eq!(ost.len(), items.len());
++        }
++        assert_eq!(ost.len(), items.len());
++        for item in 0..100 {
++            assert_eq!(ost.contains(&item), items.contains(&item));
++        }
++        Ok(())
++    }
++
++    #[test]
++    fn test_rank() {
++        let mut runner = TestRunner::default();
++        runner
++            .run(&vec(0i32..100, 0..100), test_rank_inner)
++            .unwrap();
++    }
++
++    fn test_rank_inner(mut items: Vec<i32>) -> Result<(), TestCaseError> {
++        let mut ost = OrderStatisticTree::new(i32::cmp);
++        for item in &items {
++            ost.insert(*item);
++        }
++        items.sort();
++        for item in 0..100 {
++            let rank = ost.rank_range(&item);
++
++            let expected_rank = if items.contains(&item) {
++                let expected_rank_lower = items.iter().filter(|&x| *x < item).count();
++                let expected_rank_upper = items.iter().filter(|&x| *x <= item).count() - 1;
++                Ok(expected_rank_lower..=expected_rank_upper)
++            } else {
++                Err(items.iter().filter(|&x| *x < item).count())
++            };
++
++            assert_eq!(rank, expected_rank);
++        }
++        Ok(())
++    }
++
++    #[test]
++    fn test_unique_rank() {
++        let mut runner = TestRunner::default();
++        runner
++            .run(&vec(0i32..50, 0..100), test_unique_rank_inner)
++            .unwrap();
++    }
++
++    fn test_unique_rank_inner(mut items: Vec<i32>) -> Result<(), TestCaseError> {
++        let mut ost = OrderStatisticTree::new(i32::cmp);
++        for item in &items {
++            ost.insert(*item);
++        }
++        assert_eq!(ost.len(), items.len());
++        items.sort();
++        items.dedup();
++        assert_eq!(ost.unique_len(), items.len());
++        for item in 0..50 {
++            let unique_rank = ost.rank_unique(&item);
++            let expected_unique_rank = if items.contains(&item) {
++                Ok(items.iter().filter(|&x| *x < item).count())
++            } else {
++                Err(items.iter().filter(|&x| *x < item).count())
++            };
++            assert_eq!(unique_rank, expected_unique_rank);
++        }
++        Ok(())
++    }
++
++    #[test]
++    fn test_empty() {
++        let ost = OrderStatisticTree::<i32>::new(i32::cmp);
++        assert!(ost.is_empty());
++        assert_eq!(ost.len(), 0);
++        assert_eq!(ost.unique_len(), 0);
++        assert!(ost.is_balanced());
++        assert!(!ost.contains(&1));
++        assert_eq!(ost.rank_range(&1), Err(0));
++        assert_eq!(ost.rank_unique(&1), Err(0));
++    }
++
++    #[test]
++    fn test_clear() {
++        let mut ost = OrderStatisticTree::new(i32::cmp);
++        for item in 0..10 {
++            ost.insert(item);
++        }
++        assert_eq!(ost.len(), 10);
++        assert_eq!(ost.unique_len(), 10);
++        ost.clear();
++        assert!(ost.is_empty());
++    }
++
++    #[test]
++    fn test_extend() {
++        let mut ost = OrderStatisticTree::new(i32::cmp);
++        ost.extend(0..10);
++        assert_eq!(ost.len(), 10);
++        assert_eq!(ost.unique_len(), 10);
++        for item in 0..10 {
++            assert!(ost.contains(&item));
++        }
++    }
++
++    #[test]
++    fn test_count() {
++        let mut ost = OrderStatisticTree::new(i32::cmp);
++        for item in &[1, 2, 2, 3, 3, 3] {
++            ost.insert(*item);
++        }
++        assert_eq!(ost.count(&1), 1);
++        assert_eq!(ost.count(&2), 2);
++        assert_eq!(ost.count(&3), 3);
++        assert_eq!(ost.count(&4), 0);
++    }
++
++    #[test]
++    fn test_get() {
++        let mut ost = OrderStatisticTree::new(i32::cmp);
++        let mut items = [3, 1, 4, 1, 5, 9, 2, 6, 5];
++        for item in items {
++            ost.insert(item);
++        }
++        items.sort();
++        for (i, item) in items.iter().enumerate() {
++            assert_eq!(ost.get(i), Some(item));
++        }
++        assert_eq!(ost.get(items.len()), None);
++    }
++}
+diff --git a/py-polars/docs/source/reference/expressions/computation.rst b/py-polars/docs/source/reference/expressions/computation.rst
+index a11ab5781..3c2e87f9f 100644
+--- a/py-polars/docs/source/reference/expressions/computation.rst
++++ b/py-polars/docs/source/reference/expressions/computation.rst
+@@ -66,6 +66,8 @@ Computation
+     Expr.rolling_min_by
+     Expr.rolling_quantile
+     Expr.rolling_quantile_by
++    Expr.rolling_rank
++    Expr.rolling_rank_by
+     Expr.rolling_skew
+     Expr.rolling_std
+     Expr.rolling_std_by
+diff --git a/py-polars/docs/source/reference/series/computation.rst b/py-polars/docs/source/reference/series/computation.rst
+index a2d9a3a28..867c2f8d0 100644
+--- a/py-polars/docs/source/reference/series/computation.rst
++++ b/py-polars/docs/source/reference/series/computation.rst
+@@ -72,6 +72,8 @@ Computation
+     Series.rolling_min_by
+     Series.rolling_quantile
+     Series.rolling_quantile_by
++    Series.rolling_rank
++    Series.rolling_rank_by
+     Series.rolling_skew
+     Series.rolling_std
+     Series.rolling_std_by
+diff --git a/py-polars/src/polars/_plr.pyi b/py-polars/src/polars/_plr.pyi
+index 85e3b0de1..a81453411 100644
+--- a/py-polars/src/polars/_plr.pyi
++++ b/py-polars/src/polars/_plr.pyi
+@@ -1741,6 +1741,23 @@ class PyExpr:
+         min_periods: int,
+         closed: ClosedWindow,
+     ) -> PyExpr: ...
++    def rolling_rank(
++        self,
++        window_size: int,
++        method: RankMethod,
++        seed: int | None = None,
++        min_periods: int | None = None,
++        center: bool = False,
++    ) -> PyExpr: ...
++    def rolling_rank_by(
++        self,
++        by: PyExpr,
++        window_size: str,
++        method: RankMethod,
++        seed: int | None,
++        min_samples: int,
++        closed: ClosedWindow,
++    ) -> PyExpr: ...
+     def rolling_skew(
+         self,
+         window_size: int,
+diff --git a/py-polars/src/polars/expr/expr.py b/py-polars/src/polars/expr/expr.py
+index 0d122a590..d48ff6f86 100644
+--- a/py-polars/src/polars/expr/expr.py
++++ b/py-polars/src/polars/expr/expr.py
+@@ -7465,6 +7465,103 @@ Consider using {self}.implode() instead"""
+             )
+         )
+ 
++    @unstable()
++    def rolling_rank_by(
++        self,
++        by: IntoExpr,
++        window_size: timedelta | str,
++        method: RankMethod = "average",
++        *,
++        seed: int | None = None,
++        min_samples: int = 1,
++        closed: ClosedInterval = "right",
++    ) -> Expr:
++        """
++        Compute a rolling rank based on another column.
++
++        .. warning::
++            This functionality is considered **unstable**. It may be changed
++            at any point without it being considered a breaking change.
++
++        Given a `by` column `<t_0, t_1, ..., t_n>`, then `closed="right"`
++        (the default) means the windows will be:
++
++            - (t_0 - window_size, t_0]
++            - (t_1 - window_size, t_1]
++            - ...
++            - (t_n - window_size, t_n]
++
++        Parameters
++        ----------
++        by
++            Should be ``DateTime``, ``Date``, ``UInt64``, ``UInt32``, ``Int64``,
++            or ``Int32`` data type (note that the integral ones require using `'i'`
++            in `window size`).
++        window_size
++            The length of the window. Can be a dynamic
++            temporal size indicated by a timedelta or the following string language:
++
++            - 1ns   (1 nanosecond)
++            - 1us   (1 microsecond)
++            - 1ms   (1 millisecond)
++            - 1s    (1 second)
++            - 1m    (1 minute)
++            - 1h    (1 hour)
++            - 1d    (1 calendar day)
++            - 1w    (1 calendar week)
++            - 1mo   (1 calendar month)
++            - 1q    (1 calendar quarter)
++            - 1y    (1 calendar year)
++            - 1i    (1 index count)
++
++            By "calendar day", we mean the corresponding time on the next day
++            (which may not be 24 hours, due to daylight savings). Similarly for
++            "calendar week", "calendar month", "calendar quarter", and
++            "calendar year".
++        method : {'average', 'min', 'max', 'dense', 'random'}
++            The method used to assign ranks to tied elements.
++            The following methods are available (default is 'average'):
++
++            - 'average' : The average of the ranks that would have been assigned to
++              all the tied values is assigned to each value.
++            - 'min' : The minimum of the ranks that would have been assigned to all
++              the tied values is assigned to each value. (This is also referred to
++              as "competition" ranking.)
++            - 'max' : The maximum of the ranks that would have been assigned to all
++              the tied values is assigned to each value.
++            - 'dense' : Like 'min', but the rank of the next highest element is
++              assigned the rank immediately after those assigned to the tied
++              elements.
++            - 'random' : Choose a random rank for each value in a tie.
++        seed
++            Random seed used when `method='random'`. If set to None (default), a
++            random seed is generated for each rolling rank operation.
++        min_samples
++            The number of values in the window that should be non-null before computing
++            a result.
++        closed : {'left', 'right', 'both', 'none'}
++            Define which sides of the temporal interval are closed (inclusive),
++            defaults to `'right'`.
++
++        Returns
++        -------
++        Expr
++            An Expr of data :class:`.Float64` if `method` is `"average"` or,
++            the index size (see :func:`.get_index_type()`) otherwise.
++        """
++        window_size = _prepare_rolling_by_window_args(window_size)
++        by_pyexpr = parse_into_expression(by)
++        return wrap_expr(
++            self._pyexpr.rolling_rank_by(
++                by_pyexpr,
++                window_size,
++                method,
++                seed,
++                min_samples,
++                closed,
++            )
++        )
++
+     @deprecate_renamed_parameter("min_periods", "min_samples", version="1.21.0")
+     def rolling_min(
+         self,
+@@ -8395,6 +8492,89 @@ Consider using {self}.implode() instead"""
+             )
+         )
+ 
++    @unstable()
++    def rolling_rank(
++        self,
++        window_size: int,
++        method: RankMethod = "average",
++        *,
++        seed: int | None = None,
++        min_samples: int | None = None,
++        center: bool = False,
++    ) -> Expr:
++        """
++        Compute a rolling rank.
++
++        .. warning::
++            This functionality is considered **unstable**. It may be changed
++            at any point without it being considered a breaking change.
++
++        A window of length `window_size` will traverse the array. The values
++        that fill this window will be ranked according to the `method`
++        parameter. The resulting values will be the rank of the value that is
++        at the end of the sliding window.
++
++        Parameters
++        ----------
++        window_size
++            Integer size of the rolling window.
++        method : {'average', 'min', 'max', 'dense', 'random'}
++            The method used to assign ranks to tied elements.
++            The following methods are available (default is 'average'):
++
++            - 'average' : The average of the ranks that would have been assigned to
++              all the tied values is assigned to each value.
++            - 'min' : The minimum of the ranks that would have been assigned to all
++              the tied values is assigned to each value. (This is also referred to
++              as "competition" ranking.)
++            - 'max' : The maximum of the ranks that would have been assigned to all
++              the tied values is assigned to each value.
++            - 'dense' : Like 'min', but the rank of the next highest element is
++              assigned the rank immediately after those assigned to the tied
++              elements.
++            - 'random' : Choose a random rank for each value in a tie.
++        seed
++            Random seed used when `method='random'`. If set to None (default), a
++            random seed is generated for each rolling rank operation.
++        min_samples
++            The number of values in the window that should be non-null before computing
++            a result. If set to `None` (default), it will be set equal to `window_size`.
++        center
++            Set the labels at the center of the window.
++
++        Returns
++        -------
++        Expr
++            An Expr of data :class:`.Float64` if `method` is `"average"` or,
++            the index size (see :func:`.get_index_type()`) otherwise.
++
++        Examples
++        --------
++        >>> df = pl.DataFrame({"a": [1, 4, 4, 1, 9]})
++        >>> df.select(pl.col("a").rolling_rank(3, method="average"))
++            shape: (5, 1)
++            ┌──────┐
++            │ a    │
++            │ ---  │
++            │ f64  │
++            ╞══════╡
++            │ null │
++            │ null │
++            │ 2.5  │
++            │ 1.0  │
++            │ 3.0  │
++            └──────┘
++        """
++        return wrap_expr(
++            self._pyexpr.rolling_rank(
++                window_size,
++                method,
++                seed,
++                min_samples,
++                center,
++            )
++        )
++
+     @unstable()
+     def rolling_skew(
+         self,
+diff --git a/py-polars/src/polars/series/series.py b/py-polars/src/polars/series/series.py
+index 9e89d6c96..14b87ace1 100644
+--- a/py-polars/src/polars/series/series.py
++++ b/py-polars/src/polars/series/series.py
+@@ -7457,6 +7457,161 @@ class Series:
+         ]
+         """  # noqa: W505
+ 
++    @unstable()
++    def rolling_rank_by(
++        self,
++        by: IntoExpr,
++        window_size: timedelta | str,
++        method: RankMethod = "average",
++        *,
++        seed: int | None = None,
++        min_samples: int = 1,
++        closed: ClosedInterval = "right",
++    ) -> Series:
++        """
++        Compute a rolling rank based on another column.
++
++        .. warning::
++            This functionality is considered **unstable**. It may be changed
++            at any point without it being considered a breaking change.
++
++        Given a `by` column `<t_0, t_1, ..., t_n>`, then `closed="right"`
++        (the default) means the windows will be:
++
++            - (t_0 - window_size, t_0]
++            - (t_1 - window_size, t_1]
++            - ...
++            - (t_n - window_size, t_n]
++
++        Parameters
++        ----------
++        by
++            Should be ``DateTime``, ``Date``, ``UInt64``, ``UInt32``, ``Int64``,
++            or ``Int32`` data type (note that the integral ones require using `'i'`
++            in `window size`).
++        window_size
++            The length of the window. Can be a dynamic
++            temporal size indicated by a timedelta or the following string language:
++
++            - 1ns   (1 nanosecond)
++            - 1us   (1 microsecond)
++            - 1ms   (1 millisecond)
++            - 1s    (1 second)
++            - 1m    (1 minute)
++            - 1h    (1 hour)
++            - 1d    (1 calendar day)
++            - 1w    (1 calendar week)
++            - 1mo   (1 calendar month)
++            - 1q    (1 calendar quarter)
++            - 1y    (1 calendar year)
++            - 1i    (1 index count)
++
++            By "calendar day", we mean the corresponding time on the next day
++            (which may not be 24 hours, due to daylight savings). Similarly for
++            "calendar week", "calendar month", "calendar quarter", and
++            "calendar year".
++        method : {'average', 'min', 'max', 'dense', 'random'}
++            The method used to assign ranks to tied elements.
++            The following methods are available (default is 'average'):
++
++            - 'average' : The average of the ranks that would have been assigned to
++              all the tied values is assigned to each value.
++            - 'min' : The minimum of the ranks that would have been assigned to all
++              the tied values is assigned to each value. (This is also referred to
++              as "competition" ranking.)
++            - 'max' : The maximum of the ranks that would have been assigned to all
++              the tied values is assigned to each value.
++            - 'dense' : Like 'min', but the rank of the next highest element is
++              assigned the rank immediately after those assigned to the tied
++              elements.
++            - 'random' : Choose a random rank for each value in a tie.
++        seed
++            Random seed used when `method='random'`. If set to None (default), a
++            random seed is generated for each rolling rank operation.
++        min_samples
++            The number of values in the window that should be non-null before computing
++            a result.
++        closed : {'left', 'right', 'both', 'none'}
++            Define which sides of the temporal interval are closed (inclusive),
++            defaults to `'right'`.
++
++        Returns
++        -------
++        Series
++            A Series of data :class:`.Float64` if `method` is `"average"` or,
++            the index size (see :func:`.get_index_type()`) otherwise.
++        """
++
++    @unstable()
++    def rolling_rank(
++        self,
++        window_size: int,
++        method: RankMethod = "average",
++        *,
++        seed: int | None = None,
++        min_samples: int | None = None,
++        center: bool = False,
++    ) -> Series:
++        """
++        Compute a rolling rank.
++
++        .. warning::
++            This functionality is considered **unstable**. It may be changed
++            at any point without it being considered a breaking change.
++
++        A window of length `window_size` will traverse the array. The values
++        that fill this window will be ranked according to the `method`
++        parameter. The resulting values will be the rank of the value that is
++        at the end of the sliding window.
++
++        Parameters
++        ----------
++        window_size
++            Integer size of the rolling window.
++        method : {'average', 'min', 'max', 'dense', 'random'}
++            The method used to assign ranks to tied elements.
++            The following methods are available (default is 'average'):
++
++            - 'average' : The average of the ranks that would have been assigned to
++              all the tied values is assigned to each value.
++            - 'min' : The minimum of the ranks that would have been assigned to all
++              the tied values is assigned to each value. (This is also referred to
++              as "competition" ranking.)
++            - 'max' : The maximum of the ranks that would have been assigned to all
++              the tied values is assigned to each value.
++            - 'dense' : Like 'min', but the rank of the next highest element is
++              assigned the rank immediately after those assigned to the tied
++              elements.
++            - 'random' : Choose a random rank for each value in a tie.
++        seed
++            Random seed used when `method='random'`. If set to None (default), a
++            random seed is generated for each rolling rank operation.
++        min_samples
++            The number of values in the window that should be non-null before computing
++            a result. If set to `None` (default), it will be set equal to `window_size`.
++        center
++            Set the labels at the center of the window.
++
++        Returns
++        -------
++        Series
++            A Series of data :class:`.Float64` if `method` is `"average"` or,
++            the index size (see :func:`.get_index_type()`) otherwise.
++
++        Examples
++        --------
++        >>> pl.Series([1, 4, 4, 1, 9]).rolling_rank(3, method="average")
++        shape: (5,)
++        Series: '' [f64]
++        [
++            null
++            null
++            2.5
++            1.0
++            3.0
++        ]
++        """
++
+     @unstable()
+     def rolling_skew(
+         self,
+diff --git a/py-polars/tests/unit/operations/rolling/test_rolling.py b/py-polars/tests/unit/operations/rolling/test_rolling.py
+index e707d260d..374c2f41e 100644
+--- a/py-polars/tests/unit/operations/rolling/test_rolling.py
++++ b/py-polars/tests/unit/operations/rolling/test_rolling.py
+@@ -14,10 +14,11 @@ from numpy import nan
+ import polars as pl
+ from polars._utils.convert import parse_as_duration_string
+ from polars.exceptions import ComputeError, InvalidOperationError
++from polars.meta.index_type import get_index_type
+ from polars.testing import assert_frame_equal, assert_series_equal
+-from polars.testing.parametric import column, dataframes
++from polars.testing.parametric import column, dataframes, series
+ from polars.testing.parametric.strategies.dtype import _time_units
+-from tests.unit.conftest import INTEGER_DTYPES
++from tests.unit.conftest import INTEGER_DTYPES, NUMERIC_DTYPES
+ 
+ if TYPE_CHECKING:
+     from hypothesis.strategies import SearchStrategy
+@@ -26,6 +27,7 @@ if TYPE_CHECKING:
+         ClosedInterval,
+         PolarsDataType,
+         QuantileMethod,
++        RankMethod,
+         TimeUnit,
+     )
+ 
+@@ -69,6 +71,7 @@ def test_rolling_kernels_and_rolling(
+         pl.col("values")
+         .rolling_quantile_by("dt", period, quantile=0.2, closed=closed)
+         .alias("quantile"),
++        pl.col("values").rolling_rank_by("dt", period, closed=closed).alias("rank"),
+     )
+     out2 = (
+         example_df.set_sorted("dt")
+@@ -80,6 +83,7 @@ def test_rolling_kernels_and_rolling(
+                 pl.col("values").mean().alias("mean"),
+                 pl.col("values").std().alias("std"),
+                 pl.col("values").quantile(quantile=0.2).alias("quantile"),
++                pl.col("values").rank().last().alias("rank"),
+             ]
+         )
+     )
+@@ -241,6 +245,7 @@ def test_rolling_kurtosis() -> None:
+         ("rolling_max_by", [None, 1, 2, 3, 4, 5], pl.Int64),
+         ("rolling_std_by", [None, None, None, None, None, None], pl.Float64),
+         ("rolling_var_by", [None, None, None, None, None, None], pl.Float64),
++        ("rolling_rank_by", [None, 1.0, 1.0, 1.0, 1.0, 1.0], pl.Float64),
+     ],
+ )
+ def test_rolling_crossing_dst(
+@@ -1703,3 +1708,98 @@ def test_rolling_sum_non_finite_23115(with_nulls: bool) -> None:
+         for i in range(1000)
+     ]
+     assert_series_equal(pl.Series(data).rolling_sum(4, min_samples=2), pl.Series(naive))
++
++
++@pytest.mark.parametrize(
++    ("method", "out_dtype"),
++    [
++        ("average", pl.Float64),
++        ("min", get_index_type()),
++        ("max", get_index_type()),
++        ("dense", get_index_type()),
++    ],
++)
++@pytest.mark.parametrize("center", [False, True])
++@given(
++    s=series(name="a", allowed_dtypes=NUMERIC_DTYPES, min_size=1, max_size=50),
++    window_size=st.integers(1, 50),
++)
++def test_rolling_rank(
++    s: pl.Series,
++    window_size: int,
++    method: RankMethod,
++    out_dtype: pl.DataType,
++    center: bool,
++) -> None:
++    df = pl.DataFrame({"a": s})
++    expected = (
++        df.with_row_index()
++        .with_columns(
++            a=pl.col("a")
++            .rank(method=method)
++            .rolling(index_column="index", period=f"{window_size}i")
++            .list.last()
++            .cast(out_dtype)
++        )
++        .with_columns(
++            a=pl.when(pl.col("index") < window_size - 1)
++            .then(None)
++            .otherwise(pl.col("a"))
++        )
++        .drop("index")
++    )
++    if center:
++        expected = expected.with_columns(a=pl.col("a").shift(-((window_size - 1) // 2)))
++    actual = df.lazy().select(
++        pl.col("a").rolling_rank(window_size=window_size, method=method, center=center)
++    )
++
++    try:
++        assert actual.collect_schema() == actual.collect().schema, (
++            f"expected {actual.collect_schema()}, got {actual.collect().schema}"
++        )
++        assert_frame_equal(actual.collect(), expected)
++        print("PASS", file=sys.stderr)
++    except AssertionError:
++        print("FAIL", file=sys.stderr)
++        print(f"{actual.collect() = }", file=sys.stderr)
++        print(f"{expected = }", file=sys.stderr)
++        print(f"{s = }", file=sys.stderr)
++        raise
++
++
++@pytest.mark.parametrize("center", [False, True])
++@given(
++    s=series(name="a", allowed_dtypes=NUMERIC_DTYPES, min_size=1, max_size=50),
++    window_size=st.integers(1, 50),
++)
++def test_rolling_rank_method_random(
++    s: pl.Series, window_size: int, center: bool
++) -> None:
++    df = pl.DataFrame({"a": s})
++    actual = df.lazy().with_columns(
++        lo=pl.col("a").rolling_rank(
++            window_size=window_size, method="min", center=center
++        ),
++        hi=pl.col("a").rolling_rank(
++            window_size=window_size, method="max", center=center
++        ),
++        random=pl.col("a").rolling_rank(
++            window_size=window_size,
++            method="random",
++            center=center,
++        ),
++    )
++
++    assert actual.collect_schema() == actual.collect().schema, (
++        f"expected {actual.collect_schema()}, got {actual.collect().schema}"
++    )
++    assert (
++        actual.select(
++            (
++                (pl.col("lo") <= pl.col("random")) & (pl.col("random") <= pl.col("hi"))
++            ).all()
++        )
++        .collect()
++        .item()
++    )
+diff --git a/py-polars/tests/unit/series/test_rolling.py b/py-polars/tests/unit/series/test_rolling.py
+index 782724412..b9d2e42f2 100644
+--- a/py-polars/tests/unit/series/test_rolling.py
++++ b/py-polars/tests/unit/series/test_rolling.py
+@@ -73,6 +73,12 @@ def test_series_rolling_quantile_by(values: pl.Series, by_col: pl.Series) -> Non
+     assert_series_equal(actual, expected)
+ 
+ 
++def test_series_rolling_rank_by(values: pl.Series, by_col: pl.Series) -> None:
++    actual = values.rolling_rank_by(by_col, "2i", method="average")
++    expected = pl.Series([2.0, 2.0, 2.0, 2.0, 1.0, 1.0, 3.0, 3.0])
++    assert_series_equal(actual, expected)
++
++
+ def test_series_rolling_min_by_temporal(
+     values: pl.Series, by_col_temporal: pl.Series
+ ) -> None:
+@@ -135,3 +141,11 @@ def test_series_rolling_quantile_by_temporal(
+     actual = values.rolling_quantile_by(by_col_temporal, "2h", quantile=0.5)
+     expected = pl.Series([6.0, 9.0, 9.0, 5.0, 8.0, 8.0, 4.0, 7.0])
+     assert_series_equal(actual, expected)
++
++
++def test_series_rolling_rank_by_temporal(
++    values: pl.Series, by_col_temporal: pl.Series
++) -> None:
++    actual = values.rolling_rank_by(by_col_temporal, "2h", method="average")
++    expected = pl.Series([1.0, 2.0, 1.0, 2.0, 2.0, 1.0, 2.0, 2.0])
++    assert_series_equal(actual, expected)

@@ -1,0 +1,184 @@
+From 2cb089a11e26009fe17469c2fe035b5e803e99d0 Mon Sep 17 00:00:00 2001
+From: Emily Toop <etoop@mozilla.com>
+Date: Fri, 12 Feb 2016 13:56:21 +0000
+Subject: [PATCH] Fix bad linking of one password, adjust and sdwebimage
+ through client-bridging-header
+
+---
+ Client-Bridging-Header.h                            | 4 ----
+ Client/Application/AdjustIntegration.swift          | 1 +
+ Client/Application/AppDelegate.swift                | 2 ++
+ Client/Extensions/UIImageViewExtensions.swift       | 1 +
+ Client/Frontend/Browser/BrowserPrompts.swift        | 1 +
+ Client/Frontend/Browser/BrowserViewController.swift | 1 +
+ Client/Frontend/Browser/FaviconManager.swift        | 2 ++
+ Client/Frontend/Browser/TabPeekViewController.swift | 1 +
+ Client/Frontend/Home/TopSitesPanel.swift            | 2 ++
+ Client/Frontend/Settings/Clearables.swift           | 1 +
+ Client/Frontend/Share/ShareExtensionHelper.swift    | 1 +
+ Client/Helpers/SpotlightHelper.swift                | 1 +
+ Utils/FaviconFetcher.swift                          | 2 ++
+ 13 files changed, 16 insertions(+), 4 deletions(-)
+
+diff --git a/Client-Bridging-Header.h b/Client-Bridging-Header.h
+index 0038f50fe..f606680c1 100644
+--- a/Client-Bridging-Header.h
++++ b/Client-Bridging-Header.h
+@@ -11,9 +11,5 @@
+ #import "ThirdParty/Apple/UIImage+ImageEffects.h"
+ #import "ThirdParty/SWTableViewCell/PodFiles/SWTableViewCell.h"
+ #import "ThirdParty/RaptureXML/RXMLElement.h"
+-#import "Carthage/Checkouts/SDWebImage/SDWebImage/UIImageView+WebCache.h"
+-#import "Carthage/Checkouts/SDWebImage/SDWebImage/UIView+WebCacheOperation.h"
+-#import "Carthage/Checkouts/ios_sdk/Adjust/Adjust.h"
+-#import "Carthage/Checkouts/onepassword-extension/OnePasswordExtension.h"
+ 
+ #endif
+diff --git a/Client/Application/AdjustIntegration.swift b/Client/Application/AdjustIntegration.swift
+index c99ae6487..746c27afb 100644
+--- a/Client/Application/AdjustIntegration.swift
++++ b/Client/Application/AdjustIntegration.swift
+@@ -4,6 +4,7 @@
+ 
+ import Foundation
+ import Shared
++import AdjustSdk
+ 
+ private let AdjustIntegrationErrorDomain = "org.mozilla.ios.Firefox.AdjustIntegrationErrorDomain"
+ 
+diff --git a/Client/Application/AppDelegate.swift b/Client/Application/AppDelegate.swift
+index f6fa0a68e..18d8d880a 100644
+--- a/Client/Application/AppDelegate.swift
++++ b/Client/Application/AppDelegate.swift
+@@ -8,6 +8,8 @@ import AVFoundation
+ import XCGLogger
+ import Breakpad
+ import MessageUI
++import WebImage
++
+ 
+ private let log = Logger.browserLogger
+ 
+diff --git a/Client/Extensions/UIImageViewExtensions.swift b/Client/Extensions/UIImageViewExtensions.swift
+index 8316fcc2d..64b99fd1a 100644
+--- a/Client/Extensions/UIImageViewExtensions.swift
++++ b/Client/Extensions/UIImageViewExtensions.swift
+@@ -4,6 +4,7 @@
+ 
+ import UIKit
+ import Storage
++import WebImage
+ 
+ public extension UIImageView {
+     public func setIcon(icon: Favicon?, withPlaceholder placeholder: UIImage) {
+diff --git a/Client/Frontend/Browser/BrowserPrompts.swift b/Client/Frontend/Browser/BrowserPrompts.swift
+index 448ae1fe2..6a62db5d0 100644
+--- a/Client/Frontend/Browser/BrowserPrompts.swift
++++ b/Client/Frontend/Browser/BrowserPrompts.swift
+@@ -3,6 +3,7 @@
+  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+ 
+ import Foundation
++import WebKit
+ 
+ @objc protocol JSPromptAlertControllerDelegate: class {
+     func promptAlertControllerDidDismiss(alertController: JSPromptAlertController)
+diff --git a/Client/Frontend/Browser/BrowserViewController.swift b/Client/Frontend/Browser/BrowserViewController.swift
+index a28afeff2..1637063ab 100644
+--- a/Client/Frontend/Browser/BrowserViewController.swift
++++ b/Client/Frontend/Browser/BrowserViewController.swift
+@@ -13,6 +13,7 @@ import XCGLogger
+ import Alamofire
+ import Account
+ import ReadingList
++import MobileCoreServices
+ 
+ private let log = Logger.browserLogger
+ 
+diff --git a/Client/Frontend/Browser/FaviconManager.swift b/Client/Frontend/Browser/FaviconManager.swift
+index 154d7c708..782f0e7e6 100644
+--- a/Client/Frontend/Browser/FaviconManager.swift
++++ b/Client/Frontend/Browser/FaviconManager.swift
+@@ -5,6 +5,8 @@
+ import Foundation
+ import WebKit
+ import Storage
++import WebImage
++
+ 
+ class FaviconManager : BrowserHelper {
+     let profile: Profile!
+diff --git a/Client/Frontend/Browser/TabPeekViewController.swift b/Client/Frontend/Browser/TabPeekViewController.swift
+index fe0fe354f..a4672c9ab 100644
+--- a/Client/Frontend/Browser/TabPeekViewController.swift
++++ b/Client/Frontend/Browser/TabPeekViewController.swift
+@@ -5,6 +5,7 @@
+ import UIKit
+ import Storage
+ import ReadingList
++import WebKit
+ 
+ @available(iOS 9.0, *)
+ protocol TabPeekDelegate: class {
+diff --git a/Client/Frontend/Home/TopSitesPanel.swift b/Client/Frontend/Home/TopSitesPanel.swift
+index fd54f82d7..36ff3c725 100644
+--- a/Client/Frontend/Home/TopSitesPanel.swift
++++ b/Client/Frontend/Home/TopSitesPanel.swift
+@@ -6,6 +6,8 @@ import UIKit
+ import Shared
+ import XCGLogger
+ import Storage
++import WebImage
++
+ 
+ private let log = Logger.browserLogger
+ 
+diff --git a/Client/Frontend/Settings/Clearables.swift b/Client/Frontend/Settings/Clearables.swift
+index 584229591..a1f9b5fc9 100644
+--- a/Client/Frontend/Settings/Clearables.swift
++++ b/Client/Frontend/Settings/Clearables.swift
+@@ -6,6 +6,7 @@ import Foundation
+ import Shared
+ import WebKit
+ import Deferred
++import WebImage
+ 
+ private let log = Logger.browserLogger
+ 
+diff --git a/Client/Frontend/Share/ShareExtensionHelper.swift b/Client/Frontend/Share/ShareExtensionHelper.swift
+index 824554f0d..02dbb98e5 100644
+--- a/Client/Frontend/Share/ShareExtensionHelper.swift
++++ b/Client/Frontend/Share/ShareExtensionHelper.swift
+@@ -4,6 +4,7 @@
+ 
+ import Foundation
+ import Shared
++import OnePasswordExtension
+ 
+ private let log = Logger.browserLogger
+ 
+diff --git a/Client/Helpers/SpotlightHelper.swift b/Client/Helpers/SpotlightHelper.swift
+index 2f5b447a3..daf6ba40f 100644
+--- a/Client/Helpers/SpotlightHelper.swift
++++ b/Client/Helpers/SpotlightHelper.swift
+@@ -5,6 +5,7 @@
+ import Foundation
+ import Shared
+ import CoreSpotlight
++import MobileCoreServices
+ import WebKit
+ 
+ 
+diff --git a/Utils/FaviconFetcher.swift b/Utils/FaviconFetcher.swift
+index 98407bf7a..509ccb4d0 100644
+--- a/Utils/FaviconFetcher.swift
++++ b/Utils/FaviconFetcher.swift
+@@ -7,6 +7,8 @@ import Shared
+ import Alamofire
+ import XCGLogger
+ import Deferred
++import WebImage
++
+ 
+ private let log = Logger.browserLogger
+ private let queue = dispatch_queue_create("FaviconFetcher", DISPATCH_QUEUE_CONCURRENT)

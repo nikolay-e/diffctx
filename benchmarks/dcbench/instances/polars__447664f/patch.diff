@@ -1,0 +1,585 @@
+From 447664f9922becde740bfba0f34fb4b621c8b806 Mon Sep 17 00:00:00 2001
+From: 0guban0v <153339237+0guban0v@users.noreply.github.com>
+Date: Mon, 18 May 2026 00:34:05 -0700
+Subject: [PATCH] feat: Add Rust backend for Expr.has_nulls (#27590)
+
+---
+ crates/polars-expr/src/dispatch/boolean.rs    |   5 +
+ .../src/dispatch/groups_dispatch.rs           |  57 ++++++++-
+ crates/polars-expr/src/dispatch/mod.rs        |   1 +
+ crates/polars-expr/src/reduce/convert.rs      |   2 +
+ crates/polars-expr/src/reduce/has_nulls.rs    | 111 ++++++++++++++++++
+ crates/polars-expr/src/reduce/mod.rs          |   1 +
+ crates/polars-plan/dsl-schema-hashes.json     |   2 +-
+ .../src/dsl/function_expr/boolean.rs          |   2 +
+ crates/polars-plan/src/dsl/mod.rs             |   5 +
+ crates/polars-plan/src/plans/aexpr/builder.rs |   8 +-
+ .../src/plans/aexpr/function_expr/boolean.rs  |   4 +-
+ .../plans/conversion/dsl_to_ir/functions.rs   |   1 +
+ .../src/plans/conversion/ir_to_dsl.rs         |   1 +
+ crates/polars-python/src/expr/general.rs      |   4 +
+ .../src/lazyframe/visitor/expr_nodes.rs       |   2 +
+ .../src/physical_plan/lower_expr.rs           |   3 +-
+ .../src/physical_plan/lower_group_by.rs       |   3 +-
+ py-polars/src/polars/_plr.pyi                 |   1 +
+ py-polars/src/polars/expr/expr.py             |   2 +-
+ .../tests/unit/operations/test_has_nulls.py   |  80 +++++++++++++
+ 20 files changed, 285 insertions(+), 10 deletions(-)
+ create mode 100644 crates/polars-expr/src/reduce/has_nulls.rs
+
+diff --git a/crates/polars-expr/src/dispatch/boolean.rs b/crates/polars-expr/src/dispatch/boolean.rs
+index aaca9c83b..171db7b48 100644
+--- a/crates/polars-expr/src/dispatch/boolean.rs
++++ b/crates/polars-expr/src/dispatch/boolean.rs
+@@ -16,6 +16,7 @@ pub fn function_expr_to_udf(func: IRBooleanFunction) -> SpecialEq<Arc<dyn Column
+         Any { ignore_nulls } => map!(any, ignore_nulls),
+         All { ignore_nulls } => map!(all, ignore_nulls),
+         IsEmpty { ignore_nulls } => map!(is_empty, ignore_nulls),
++        HasNulls => map!(has_nulls),
+         IsNull => map!(is_null),
+         IsNotNull => map!(is_not_null),
+         IsFinite => map!(is_finite),
+@@ -73,6 +74,10 @@ fn is_empty(s: &Column, ignore_nulls: bool) -> PolarsResult<Column> {
+     Ok(Column::new(s.name().clone(), [out]))
+ }
+ 
++fn has_nulls(s: &Column) -> PolarsResult<Column> {
++    Ok(Column::new(s.name().clone(), [s.has_nulls()]))
++}
++
+ fn is_null(s: &Column) -> PolarsResult<Column> {
+     Ok(s.is_null().into_column())
+ }
+diff --git a/crates/polars-expr/src/dispatch/groups_dispatch.rs b/crates/polars-expr/src/dispatch/groups_dispatch.rs
+index e683542a5..184c2d204 100644
+--- a/crates/polars-expr/src/dispatch/groups_dispatch.rs
++++ b/crates/polars-expr/src/dispatch/groups_dispatch.rs
+@@ -11,8 +11,8 @@ use polars_core::error::{PolarsResult, polars_bail, polars_ensure};
+ use polars_core::frame::DataFrame;
+ use polars_core::prelude::row_encode::encode_rows_unordered;
+ use polars_core::prelude::{
+-    AnyValue, ChunkCast, Column, CompatLevel, Float64Chunked, GroupPositions, GroupsType,
+-    IDX_DTYPE, IntoColumn,
++    AnyValue, BooleanChunked, ChunkCast, Column, CompatLevel, Float64Chunked, GroupPositions,
++    GroupsType, IDX_DTYPE, IntoColumn,
+ };
+ use polars_core::runtime::RAYON;
+ use polars_core::scalar::Scalar;
+@@ -130,6 +130,59 @@ pub fn null_count<'a>(
+     Ok(ac)
+ }
+ 
++pub fn has_nulls<'a>(
++    inputs: &[Arc<dyn PhysicalExpr>],
++    df: &DataFrame,
++    groups: &'a GroupPositions,
++    state: &ExecutionState,
++) -> PolarsResult<AggregationContext<'a>> {
++    assert_eq!(inputs.len(), 1);
++
++    let mut ac = inputs[0].evaluate_on_groups(df, groups, state)?;
++
++    if let AggState::AggregatedScalar(s) | AggState::LiteralScalar(s) = &mut ac.state {
++        *s = s.is_null().into_column();
++        return Ok(ac);
++    }
++
++    ac.groups();
++    let values = ac.flat_naive();
++    let name = values.name().clone();
++    let Some(validity) = values.rechunk_validity() else {
++        ac.state = AggState::AggregatedScalar(Column::new_scalar(name, false.into(), groups.len()));
++        return Ok(ac);
++    };
++
++    RAYON.install(|| {
++        let validity = BitMask::from_bitmap(&validity);
++        let has_nulls: BooleanChunked = match &**ac.groups.as_ref() {
++            GroupsType::Idx(idx) => idx
++                .into_par_iter()
++                .map(|(_, idx)| {
++                    idx.iter()
++                        .any(|i| !unsafe { validity.get_bit_unchecked(*i as usize) })
++                })
++                .collect(),
++            GroupsType::Slice {
++                groups,
++                overlapping: _,
++                monotonic: _,
++            } => groups
++                .into_par_iter()
++                .map(|[start, length]| {
++                    unsafe { validity.sliced_unchecked(*start as usize, *length as usize) }
++                        .unset_bits()
++                        > 0
++                })
++                .collect(),
++        };
++
++        ac.state = AggState::AggregatedScalar(has_nulls.with_name(name).into_column());
++    });
++
++    Ok(ac)
++}
++
+ pub fn any<'a>(
+     inputs: &[Arc<dyn PhysicalExpr>],
+     df: &DataFrame,
+diff --git a/crates/polars-expr/src/dispatch/mod.rs b/crates/polars-expr/src/dispatch/mod.rs
+index 633e0e903..1031d058b 100644
+--- a/crates/polars-expr/src/dispatch/mod.rs
++++ b/crates/polars-expr/src/dispatch/mod.rs
+@@ -570,6 +570,7 @@ pub fn function_expr_to_groups_udf(func: &IRFunctionExpr) -> Option<SpecialEq<Ar
+     Some(match func {
+         F::NullCount => wrap_groups!(groups_dispatch::null_count),
+         F::Reverse => wrap_groups!(groups_dispatch::reverse),
++        F::Boolean(IRBooleanFunction::HasNulls) => wrap_groups!(groups_dispatch::has_nulls),
+         F::Boolean(IRBooleanFunction::Any { ignore_nulls }) => {
+             let ignore_nulls = *ignore_nulls;
+             wrap_groups!(groups_dispatch::any, (ignore_nulls, v: bool))
+diff --git a/crates/polars-expr/src/reduce/convert.rs b/crates/polars-expr/src/reduce/convert.rs
+index 4ba66cd5c..f094f6296 100644
+--- a/crates/polars-expr/src/reduce/convert.rs
++++ b/crates/polars-expr/src/reduce/convert.rs
+@@ -15,6 +15,7 @@ use crate::reduce::count::{CountReduce, NullCountReduce};
+ use crate::reduce::cov::{new_cov_reduction, new_pearson_corr_reduction};
+ use crate::reduce::first_last::{new_first_reduction, new_item_reduction, new_last_reduction};
+ use crate::reduce::first_last_nonnull::{new_first_nonnull_reduction, new_last_nonnull_reduction};
++use crate::reduce::has_nulls::HasNullsReduce;
+ use crate::reduce::implode::new_unordered_implode_reduction;
+ use crate::reduce::is_empty::IsEmptyReduce;
+ use crate::reduce::mean::new_mean_reduction;
+@@ -165,6 +166,7 @@ pub fn into_reduction(
+                     let is_empty = Box::new(IsEmptyReduce::new(*ignore_nulls)) as Box<_>;
+                     (is_empty, input)
+                 },
++                IRBooleanFunction::HasNulls => (Box::new(HasNullsReduce::new()) as Box<_>, input),
+                 _ => unreachable!(),
+             }
+         },
+diff --git a/crates/polars-expr/src/reduce/has_nulls.rs b/crates/polars-expr/src/reduce/has_nulls.rs
+new file mode 100644
+index 000000000..7409cfef6
+--- /dev/null
++++ b/crates/polars-expr/src/reduce/has_nulls.rs
+@@ -0,0 +1,111 @@
++use arrow::array::BooleanArray;
++
++use super::*;
++
++#[derive(Default)]
++pub struct HasNullsReduce {
++    has_nulls: MutableBitmap,
++    evicted_has_nulls: BitmapBuilder,
++}
++
++impl HasNullsReduce {
++    pub fn new() -> Self {
++        Self::default()
++    }
++}
++
++impl GroupedReduction for HasNullsReduce {
++    fn new_empty(&self) -> Box<dyn GroupedReduction> {
++        Box::new(Self::default())
++    }
++
++    fn reserve(&mut self, additional: usize) {
++        self.has_nulls.reserve(additional);
++    }
++
++    fn resize(&mut self, num_groups: IdxSize) {
++        self.has_nulls.resize(num_groups as usize, false);
++    }
++
++    fn update_group(
++        &mut self,
++        values: &[&Column],
++        group_idx: IdxSize,
++        _seq_id: u64,
++    ) -> PolarsResult<()> {
++        let &[values] = values else { unreachable!() };
++        if values.has_nulls() {
++            self.has_nulls.set(group_idx as usize, true);
++        }
++        Ok(())
++    }
++
++    unsafe fn update_groups_while_evicting(
++        &mut self,
++        values: &[&Column],
++        subset: &[IdxSize],
++        group_idxs: &[EvictIdx],
++        _seq_id: u64,
++    ) -> PolarsResult<()> {
++        let &[values] = values else { unreachable!() };
++        assert!(subset.len() == group_idxs.len());
++        let values = values.as_materialized_series(); // @scalar-opt
++        let chunks = values.chunks();
++        assert!(chunks.len() == 1);
++        let arr = &*chunks[0];
++        if arr.has_nulls() {
++            let valid = arr.validity().unwrap();
++            for (i, g) in subset.iter().zip(group_idxs) {
++                let is_null = !valid.get_bit_unchecked(*i as usize);
++                if g.should_evict() {
++                    self.evicted_has_nulls
++                        .push(self.has_nulls.get_unchecked(g.idx()));
++                    self.has_nulls.set_unchecked(g.idx(), is_null);
++                } else {
++                    self.has_nulls.or_pos_unchecked(g.idx(), is_null);
++                }
++            }
++        } else {
++            for (_, g) in subset.iter().zip(group_idxs) {
++                if g.should_evict() {
++                    self.evicted_has_nulls
++                        .push(self.has_nulls.get_unchecked(g.idx()));
++                    self.has_nulls.set_unchecked(g.idx(), false);
++                }
++            }
++        }
++        Ok(())
++    }
++
++    unsafe fn combine_subset(
++        &mut self,
++        other: &dyn GroupedReduction,
++        subset: &[IdxSize],
++        group_idxs: &[IdxSize],
++    ) -> PolarsResult<()> {
++        let other = other.as_any().downcast_ref::<Self>().unwrap();
++        assert!(subset.len() == group_idxs.len());
++        for (i, g) in subset.iter().zip(group_idxs) {
++            self.has_nulls
++                .or_pos_unchecked(*g as usize, other.has_nulls.get_unchecked(*i as usize));
++        }
++        Ok(())
++    }
++
++    fn take_evictions(&mut self) -> Box<dyn GroupedReduction> {
++        Box::new(Self {
++            has_nulls: core::mem::take(&mut self.evicted_has_nulls).into_mut(),
++            evicted_has_nulls: BitmapBuilder::new(),
++        })
++    }
++
++    fn finalize(&mut self) -> PolarsResult<Series> {
++        let v = core::mem::take(&mut self.has_nulls);
++        let arr = BooleanArray::from(v.freeze());
++        Ok(Series::from_array(PlSmallStr::EMPTY, arr))
++    }
++
++    fn as_any(&self) -> &dyn Any {
++        self
++    }
++}
+diff --git a/crates/polars-expr/src/reduce/mod.rs b/crates/polars-expr/src/reduce/mod.rs
+index 5de71f04b..ccf32ee6a 100644
+--- a/crates/polars-expr/src/reduce/mod.rs
++++ b/crates/polars-expr/src/reduce/mod.rs
+@@ -10,6 +10,7 @@ mod count;
+ mod cov;
+ mod first_last;
+ mod first_last_nonnull;
++mod has_nulls;
+ mod implode;
+ mod is_empty;
+ mod mean;
+diff --git a/crates/polars-plan/dsl-schema-hashes.json b/crates/polars-plan/dsl-schema-hashes.json
+index 4822e951a..632e1169e 100644
+--- a/crates/polars-plan/dsl-schema-hashes.json
++++ b/crates/polars-plan/dsl-schema-hashes.json
+@@ -10,7 +10,7 @@
+   "AsofStrategy": "777dd1236ad9111d4d0c5b537364eea2722a67f1771d1a49ee52869e15937830",
+   "BinaryFunction": "6def87cceb014b5519b7037b9838b097c91c7b34f51f2421dbf6ef2b3fd9de2b",
+   "BitwiseFunction": "e7c9312440629f0b299a5970d141db27fa53ed3ed8d39eb047f0f1861f96b62a",
+-  "BooleanFunction": "f51835352d5bb77a4168800ebc78771ff0c62a615404fd5cbfc047997b01c748",
++  "BooleanFunction": "31844376d7570d7e7a0750820dc7730f43e4e0bb8601a689112426e9dc60c765",
+   "BrotliLevel": "87f82fead5f10583225fa4d288e6fd5967b40ffb90c8cbb8539bf1a98bce4a0c",
+   "BusinessFunction": "1b6cb07e9df7e6e7244dd5381ac9198dcd28de984891ee52e82c188dee06a5af",
+   "CallbackSinkType": "3dc3398a7ef7c9326bbfe995d459cc7bc0dc9c974e3151c376cf2b4e14c215cd",
+diff --git a/crates/polars-plan/src/dsl/function_expr/boolean.rs b/crates/polars-plan/src/dsl/function_expr/boolean.rs
+index 9671bece5..0b43c6a67 100644
+--- a/crates/polars-plan/src/dsl/function_expr/boolean.rs
++++ b/crates/polars-plan/src/dsl/function_expr/boolean.rs
+@@ -16,6 +16,7 @@ pub enum BooleanFunction {
+     IsEmpty {
+         ignore_nulls: bool,
+     },
++    HasNulls,
+     IsNull,
+     IsNotNull,
+     IsFinite,
+@@ -66,6 +67,7 @@ impl Display for BooleanFunction {
+                 ignore_nulls: false,
+             } => "is_empty",
+             IsEmpty { ignore_nulls: true } => "is_empty_ignore_nulls",
++            HasNulls => "has_nulls",
+             IsNull => "is_null",
+             IsNotNull => "is_not_null",
+             IsFinite => "is_finite",
+diff --git a/crates/polars-plan/src/dsl/mod.rs b/crates/polars-plan/src/dsl/mod.rs
+index 3719f29aa..ea370ca7b 100644
+--- a/crates/polars-plan/src/dsl/mod.rs
++++ b/crates/polars-plan/src/dsl/mod.rs
+@@ -1546,6 +1546,11 @@ impl Expr {
+         self.map_unary(BooleanFunction::IsEmpty { ignore_nulls })
+     }
+ 
++    /// Returns whether the column contains one or more null values.
++    pub fn has_nulls(self) -> Self {
++        self.map_unary(BooleanFunction::HasNulls)
++    }
++
+     #[cfg(feature = "dtype-struct")]
+     /// Count all unique values and create a struct mapping value to count.
+     /// (Note that it is better to turn parallel off in the aggregation context).
+diff --git a/crates/polars-plan/src/plans/aexpr/builder.rs b/crates/polars-plan/src/plans/aexpr/builder.rs
+index ec44d399e..2d7888784 100644
+--- a/crates/polars-plan/src/plans/aexpr/builder.rs
++++ b/crates/polars-plan/src/plans/aexpr/builder.rs
+@@ -440,9 +440,11 @@ impl AExprBuilder {
+     }
+ 
+     pub fn has_nulls(self, arena: &mut Arena<AExpr>) -> Self {
+-        let nc = self.null_count(arena);
+-        let idx_zero = Self::lit_scalar(Scalar::from(0 as IdxSize), arena);
+-        nc.gt(idx_zero, arena)
++        Self::function(
++            vec![self.expr_ir_unnamed()],
++            IRFunctionExpr::Boolean(IRBooleanFunction::HasNulls),
++            arena,
++        )
+     }
+ 
+     pub fn drop_nulls(self, arena: &mut Arena<AExpr>) -> Self {
+diff --git a/crates/polars-plan/src/plans/aexpr/function_expr/boolean.rs b/crates/polars-plan/src/plans/aexpr/function_expr/boolean.rs
+index a1fadcc81..5166e7e2c 100644
+--- a/crates/polars-plan/src/plans/aexpr/function_expr/boolean.rs
++++ b/crates/polars-plan/src/plans/aexpr/function_expr/boolean.rs
+@@ -16,6 +16,7 @@ pub enum IRBooleanFunction {
+     IsEmpty {
+         ignore_nulls: bool,
+     },
++    HasNulls,
+     IsNull,
+     IsNotNull,
+     IsFinite,
+@@ -70,7 +71,7 @@ impl IRBooleanFunction {
+     pub fn function_options(&self) -> FunctionOptions {
+         use IRBooleanFunction as B;
+         match self {
+-            B::Any { .. } | B::All { .. } | B::IsEmpty { .. } => {
++            B::Any { .. } | B::All { .. } | B::IsEmpty { .. } | B::HasNulls => {
+                 FunctionOptions::aggregation().flag(FunctionFlags::NON_ORDER_OBSERVING)
+             },
+             B::IsNull | B::IsNotNull => FunctionOptions::elementwise(),
+@@ -131,6 +132,7 @@ impl Display for IRBooleanFunction {
+                 ignore_nulls: false,
+             } => "is_empty",
+             IsEmpty { ignore_nulls: true } => "is_empty_ignore_nulls",
++            HasNulls => "has_nulls",
+             IsNull => "is_null",
+             IsNotNull => "is_not_null",
+             IsFinite => "is_finite",
+diff --git a/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs b/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
+index 15a400e02..9a5302bcc 100644
+--- a/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
++++ b/crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
+@@ -445,6 +445,7 @@ pub(super) fn convert_functions(
+                 B::Any { ignore_nulls } => IB::Any { ignore_nulls },
+                 B::All { ignore_nulls } => IB::All { ignore_nulls },
+                 B::IsEmpty { ignore_nulls } => IB::IsEmpty { ignore_nulls },
++                B::HasNulls => IB::HasNulls,
+                 B::IsNull => IB::IsNull,
+                 B::IsNotNull => IB::IsNotNull,
+                 B::IsFinite => IB::IsFinite,
+diff --git a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+index 8f64ed1dc..d7108fcfe 100644
+--- a/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
++++ b/crates/polars-plan/src/plans/conversion/ir_to_dsl.rs
+@@ -675,6 +675,7 @@ pub fn ir_function_to_dsl(input: Vec<Expr>, function: IRFunctionExpr) -> Expr {
+                 IB::Any { ignore_nulls } => B::Any { ignore_nulls },
+                 IB::All { ignore_nulls } => B::All { ignore_nulls },
+                 IB::IsEmpty { ignore_nulls } => B::IsEmpty { ignore_nulls },
++                IB::HasNulls => B::HasNulls,
+                 IB::IsNull => B::IsNull,
+                 IB::IsNotNull => B::IsNotNull,
+                 IB::IsFinite => B::IsFinite,
+diff --git a/crates/polars-python/src/expr/general.rs b/crates/polars-python/src/expr/general.rs
+index f79981fef..33111b9a8 100644
+--- a/crates/polars-python/src/expr/general.rs
++++ b/crates/polars-python/src/expr/general.rs
+@@ -892,6 +892,10 @@ impl PyExpr {
+         self.inner.clone().is_empty(ignore_nulls).into()
+     }
+ 
++    fn has_nulls(&self) -> Self {
++        self.inner.clone().has_nulls().into()
++    }
++
+     fn log(&self, base: PyExpr) -> Self {
+         self.inner.clone().log(base.inner).into()
+     }
+diff --git a/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs b/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+index 1a05fde3f..895e9a3d5 100644
+--- a/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
++++ b/crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+@@ -192,6 +192,7 @@ pub enum PyBooleanFunction {
+     Any,
+     All,
+     IsEmpty,
++    HasNulls,
+     IsNull,
+     IsNotNull,
+     IsFinite,
+@@ -1122,6 +1123,7 @@ pub(crate) fn into_py(py: Python<'_>, expr: &AExpr) -> PyResult<Py<PyAny>> {
+                     IRBooleanFunction::IsEmpty { ignore_nulls } => {
+                         (PyBooleanFunction::IsEmpty, *ignore_nulls).into_py_any(py)
+                     },
++                    IRBooleanFunction::HasNulls => (PyBooleanFunction::HasNulls,).into_py_any(py),
+                     IRBooleanFunction::IsNull => (PyBooleanFunction::IsNull,).into_py_any(py),
+                     IRBooleanFunction::IsNotNull => (PyBooleanFunction::IsNotNull,).into_py_any(py),
+                     IRBooleanFunction::IsFinite => (PyBooleanFunction::IsFinite,).into_py_any(py),
+diff --git a/crates/polars-stream/src/physical_plan/lower_expr.rs b/crates/polars-stream/src/physical_plan/lower_expr.rs
+index 626f38fa8..4fd6eefd1 100644
+--- a/crates/polars-stream/src/physical_plan/lower_expr.rs
++++ b/crates/polars-stream/src/physical_plan/lower_expr.rs
+@@ -2144,7 +2144,8 @@ fn lower_exprs_with_ctx(
+                     IRFunctionExpr::Boolean(
+                         IRBooleanFunction::Any { .. }
+                         | IRBooleanFunction::All { .. }
+-                        | IRBooleanFunction::IsEmpty { .. },
++                        | IRBooleanFunction::IsEmpty { .. }
++                        | IRBooleanFunction::HasNulls,
+                     )
+                     | IRFunctionExpr::MinBy
+                     | IRFunctionExpr::MaxBy
+diff --git a/crates/polars-stream/src/physical_plan/lower_group_by.rs b/crates/polars-stream/src/physical_plan/lower_group_by.rs
+index 61c533a27..fb0459089 100644
+--- a/crates/polars-stream/src/physical_plan/lower_group_by.rs
++++ b/crates/polars-stream/src/physical_plan/lower_group_by.rs
+@@ -389,7 +389,8 @@ fn try_lower_elementwise_scalar_agg_expr(
+                 IRFunctionExpr::Boolean(
+                     IRBooleanFunction::Any { .. }
+                     | IRBooleanFunction::All { .. }
+-                    | IRBooleanFunction::IsEmpty { .. },
++                    | IRBooleanFunction::IsEmpty { .. }
++                    | IRBooleanFunction::HasNulls,
+                 )
+                 | IRFunctionExpr::MinBy
+                 | IRFunctionExpr::MaxBy
+diff --git a/py-polars/src/polars/_plr.pyi b/py-polars/src/polars/_plr.pyi
+index 800edfe40..9f1621913 100644
+--- a/py-polars/src/polars/_plr.pyi
++++ b/py-polars/src/polars/_plr.pyi
+@@ -1416,6 +1416,7 @@ class PyExpr:
+     def any(self, ignore_nulls: bool) -> PyExpr: ...
+     def all(self, ignore_nulls: bool) -> PyExpr: ...
+     def is_empty(self, ignore_nulls: bool) -> PyExpr: ...
++    def has_nulls(self) -> PyExpr: ...
+     def log(self, base: PyExpr) -> PyExpr: ...
+     def log1p(self) -> PyExpr: ...
+     def exp(self) -> PyExpr: ...
+diff --git a/py-polars/src/polars/expr/expr.py b/py-polars/src/polars/expr/expr.py
+index e3d797bee..55c54d86a 100644
+--- a/py-polars/src/polars/expr/expr.py
++++ b/py-polars/src/polars/expr/expr.py
+@@ -3756,7 +3756,7 @@ class Expr:
+         │ true ┆ true ┆ false │
+         └──────┴──────┴───────┘
+         """
+-        return self.null_count() > 0
++        return wrap_expr(self._pyexpr.has_nulls())
+ 
+     def arg_unique(self) -> Expr:
+         """
+diff --git a/py-polars/tests/unit/operations/test_has_nulls.py b/py-polars/tests/unit/operations/test_has_nulls.py
+index 7a78c9a09..d7e1646e3 100644
+--- a/py-polars/tests/unit/operations/test_has_nulls.py
++++ b/py-polars/tests/unit/operations/test_has_nulls.py
+@@ -55,3 +55,83 @@ def test_has_nulls_expr() -> None:
+     result = lf.select(pl.all().has_nulls())
+     expected = pl.LazyFrame({"a": [True], "b": [False]})
+     assert_frame_equal(result, expected)
++
++
++def test_has_nulls_group_by() -> None:
++    lf = pl.LazyFrame(
++        {
++            "g": ["a", "a", "b", "b", "c", "c", "d"],
++            "x": [1, None, 2, 3, None, None, 4],
++        }
++    )
++
++    result = lf.group_by("g").agg(pl.col("x").has_nulls()).sort("g")
++    expected = pl.LazyFrame(
++        {"g": ["a", "b", "c", "d"], "x": [True, False, True, False]}
++    )
++
++    assert_frame_equal(result, expected)
++    assert_frame_equal(
++        result,
++        lf.group_by("g").agg(pl.col("x").null_count() > 0).sort("g"),
++    )
++
++
++def test_has_nulls_group_by_no_nulls() -> None:
++    lf = pl.LazyFrame({"g": ["a", "a", "b", "b"], "x": [1, 2, 3, 4]})
++
++    result = lf.group_by("g").agg(pl.col("x").has_nulls()).sort("g")
++    expected = pl.LazyFrame({"g": ["a", "b"], "x": [False, False]})
++
++    assert_frame_equal(result, expected)
++
++
++def test_has_nulls_group_by_literal() -> None:
++    lf = pl.LazyFrame({"g": ["a", "a", "b"]})
++
++    result = (
++        lf.group_by("g")
++        .agg(
++            pl.lit(None).has_nulls().alias("has_nulls"),
++            pl.lit(1).has_nulls().alias("has_no_nulls"),
++        )
++        .sort("g")
++    )
++    expected = pl.LazyFrame(
++        {
++            "g": ["a", "b"],
++            "has_nulls": [True, True],
++            "has_no_nulls": [False, False],
++        }
++    )
++
++    assert_frame_equal(result, expected)
++
++
++def test_has_nulls_streaming_group_by() -> None:
++    lf = (
++        pl.LazyFrame(
++            {
++                "g": ["a", "b", "a", "b", "c", "c", "d", "d"],
++                "x": [None, 1, 2, 3, None, None, 4, 5],
++            }
++        )
++        .group_by("g")
++        .agg(pl.col("x").has_nulls())
++    )
++
++    assert_frame_equal(
++        lf.collect(engine="streaming").sort("g"),
++        lf.collect(engine="in-memory").sort("g"),
++    )
++
++
++def test_has_nulls_streaming_group_by_no_nulls() -> None:
++    lf = (
++        pl.LazyFrame({"g": ["a", "b", "a", "b"], "x": [1, 2, 3, 4]})
++        .group_by("g")
++        .agg(pl.col("x").has_nulls())
++    )
++
++    expected = pl.DataFrame({"g": ["a", "b"], "x": [False, False]})
++    assert_frame_equal(lf.collect(engine="streaming").sort("g"), expected)

@@ -1,0 +1,1364 @@
+From 86ea7a547bc96d5ed3068cfb7bac3cfdde85fc89 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Ond=C5=99ej=20Rozto=C4=8Dil?= <roztocil@outlook.com>
+Date: Thu, 14 May 2026 19:26:39 +0200
+Subject: [PATCH] Add .NET support for client-side validation in Blazor SSR
+ (#66441)
+
+---
+ ...orComponentsServiceCollectionExtensions.cs |   1 +
+ .../ClientValidation/ClientValidationRule.cs  |  67 ++++
+ ...ntValidationServiceCollectionExtensions.cs |  23 ++
+ .../DefaultClientValidationService.cs         | 243 ++++++++++++
+ .../IClientValidationAdapter.cs               |  21 ++
+ .../IClientValidationService.cs               |  17 +
+ .../Forms/src/DataAnnotationsValidator.cs     |  23 ++
+ .../Forms/src/PublicAPI.Unshipped.txt         |  14 +
+ .../DefaultClientValidationServiceTest.cs     | 348 ++++++++++++++++++
+ src/Components/Web/src/Forms/InputBase.cs     |  33 ++
+ src/Components/Web/src/Forms/InputRadio.cs    |  23 +-
+ .../Web/src/Forms/InputRadioContext.cs        |   3 +
+ .../Web/src/Forms/InputRadioGroup.cs          |  34 ++
+ .../Web/src/Forms/ValidationMessage.cs        |  55 ++-
+ .../Web/src/Forms/ValidationSummary.cs        |  41 ++-
+ .../Forms/InputBaseClientValidationTest.cs    | 156 ++++++++
+ 16 files changed, 1092 insertions(+), 10 deletions(-)
+ create mode 100644 src/Components/Forms/src/ClientValidation/ClientValidationRule.cs
+ create mode 100644 src/Components/Forms/src/ClientValidation/ClientValidationServiceCollectionExtensions.cs
+ create mode 100644 src/Components/Forms/src/ClientValidation/DefaultClientValidationService.cs
+ create mode 100644 src/Components/Forms/src/ClientValidation/IClientValidationAdapter.cs
+ create mode 100644 src/Components/Forms/src/ClientValidation/IClientValidationService.cs
+ create mode 100644 src/Components/Forms/test/DefaultClientValidationServiceTest.cs
+ create mode 100644 src/Components/Web/test/Forms/InputBaseClientValidationTest.cs
+
+diff --git a/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs b/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs
+index ea24ebd37d..dd7b688040 100644
+--- a/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs
++++ b/src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs
+@@ -91,6 +91,7 @@ public static class RazorComponentsServiceCollectionExtensions
+         RegisterPersistentComponentStateServiceCollectionExtensions.AddPersistentServiceRegistration<AntiforgeryStateProvider>(services, RenderMode.InteractiveAuto);
+         services.TryAddScoped<HttpContextFormDataProvider>();
+         services.TryAddScoped<IFormValueMapper, HttpContextFormValueMapper>();
++        services.AddClientValidation();
+ 
+         if (configure != null)
+         {
+diff --git a/src/Components/Forms/src/ClientValidation/ClientValidationRule.cs b/src/Components/Forms/src/ClientValidation/ClientValidationRule.cs
+new file mode 100644
+index 0000000000..f2086d39b2
+--- /dev/null
++++ b/src/Components/Forms/src/ClientValidation/ClientValidationRule.cs
+@@ -0,0 +1,67 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using System.Collections.ObjectModel;
++
++namespace Microsoft.AspNetCore.Components.Forms.ClientValidation;
++
++/// <summary>
++/// Describes a single client-side validation rule produced by an <see cref="IClientValidationAdapter"/>.
++/// </summary>
++public sealed class ClientValidationRule
++{
++    private static readonly IReadOnlyDictionary<string, object?> EmptyParameters = ReadOnlyDictionary<string, object?>.Empty;
++
++    private Dictionary<string, object?>? _parameters;
++
++    /// <summary>
++    /// Creates a new rule with the specified name and error message.
++    /// </summary>
++    /// <param name="name">
++    /// The rule name. Must be non-empty and must match the name recognized by the client-side validator JavaScript.
++    /// </param>
++    /// <param name="errorMessage">
++    /// The formatted error message displayed when the rule fails. Must not be <see langword="null"/>;
++    /// pass <see cref="string.Empty"/> only if an empty message is intentional.
++    /// </param>
++    public ClientValidationRule(string name, string errorMessage)
++    {
++        ArgumentException.ThrowIfNullOrEmpty(name);
++        ArgumentNullException.ThrowIfNull(errorMessage);
++
++        Name = name;
++        ErrorMessage = errorMessage;
++    }
++
++    /// <summary>
++    /// Gets the rule name. Rendered as the suffix of <c>data-val-&lt;Name&gt;</c>.
++    /// </summary>
++    public string Name { get; }
++
++    /// <summary>
++    /// Gets the formatted error message for this rule. Rendered as the value of <c>data-val-&lt;Name&gt;</c>.
++    /// </summary>
++    public string ErrorMessage { get; }
++
++    /// <summary>
++    /// Gets the parameters associated with this rule, keyed by parameter name.
++    /// </summary>
++    public IReadOnlyDictionary<string, object?> Parameters => _parameters ?? EmptyParameters;
++
++    /// <summary>
++    /// Adds or replaces a parameter on the rule.
++    /// </summary>
++    /// <param name="name">The parameter name. Must be non-empty.</param>
++    /// <param name="value">
++    /// The parameter value. Must be JSON-primitive-shaped (string, bool, numeric primitives,
++    /// or <see langword="null"/>).
++    /// </param>
++    /// <returns>The same rule, to allow fluent chaining.</returns>
++    public ClientValidationRule WithParameter(string name, object? value)
++    {
++        ArgumentException.ThrowIfNullOrEmpty(name);
++
++        (_parameters ??= new Dictionary<string, object?>(StringComparer.Ordinal))[name] = value;
++        return this;
++    }
++}
+diff --git a/src/Components/Forms/src/ClientValidation/ClientValidationServiceCollectionExtensions.cs b/src/Components/Forms/src/ClientValidation/ClientValidationServiceCollectionExtensions.cs
+new file mode 100644
+index 0000000000..c0390f0553
+--- /dev/null
++++ b/src/Components/Forms/src/ClientValidation/ClientValidationServiceCollectionExtensions.cs
+@@ -0,0 +1,23 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.AspNetCore.Components.Forms.ClientValidation;
++using Microsoft.Extensions.DependencyInjection.Extensions;
++
++namespace Microsoft.Extensions.DependencyInjection;
++
++/// <summary>
++/// Extension methods for registering client-side validation services.
++/// </summary>
++public static class ClientValidationServiceCollectionExtensions
++{
++    /// <summary>
++    /// Registers the default <see cref="IClientValidationService"/> implementation,
++    /// which generates <c>data-val-*</c> HTML attributes from <c>DataAnnotations</c> validation attributes.
++    /// </summary>
++    public static IServiceCollection AddClientValidation(this IServiceCollection services)
++    {
++        services.TryAddSingleton<IClientValidationService, DefaultClientValidationService>();
++        return services;
++    }
++}
+diff --git a/src/Components/Forms/src/ClientValidation/DefaultClientValidationService.cs b/src/Components/Forms/src/ClientValidation/DefaultClientValidationService.cs
+new file mode 100644
+index 0000000000..8121361cd7
+--- /dev/null
++++ b/src/Components/Forms/src/ClientValidation/DefaultClientValidationService.cs
+@@ -0,0 +1,243 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using System.Collections.Concurrent;
++using System.ComponentModel;
++using System.ComponentModel.DataAnnotations;
++using System.Diagnostics.CodeAnalysis;
++using System.Globalization;
++using System.Linq;
++using System.Reflection;
++
++namespace Microsoft.AspNetCore.Components.Forms.ClientValidation;
++
++using CacheKey = (Type ModelType, string FieldName);
++
++/// <summary>
++/// Default implementation that generates <c>data-val-*</c> HTML attributes from
++/// <see cref="ValidationAttribute"/>s found via reflection on model properties.
++/// Registered as a singleton - results are cached per (Type, FieldName) pair.
++/// </summary>
++internal sealed class DefaultClientValidationService : IClientValidationService
++{
++    // Cache keyed by model type + field name. Safe for concurrent access since the service
++    // is a singleton shared across requests. The computed dictionaries are immutable after creation.
++    private readonly ConcurrentDictionary<CacheKey, IReadOnlyDictionary<string, object>?> _cache = new();
++
++    public IReadOnlyDictionary<string, object>? GetClientValidationAttributes(FieldIdentifier fieldIdentifier)
++    {
++        var cacheKey = (fieldIdentifier.Model.GetType(), fieldIdentifier.FieldName);
++        return _cache.GetOrAdd(cacheKey, static key => ComputeAttributes(key.ModelType, key.FieldName));
++    }
++
++    [UnconditionalSuppressMessage("Trimming", "IL2070", Justification = "Model types are application code and are preserved by default.")]
++    private static Dictionary<string, object>? ComputeAttributes(Type modelType, string fieldName)
++    {
++        var property = modelType.GetProperty(fieldName, BindingFlags.Public | BindingFlags.Instance);
++        if (property is null)
++        {
++            return null;
++        }
++
++        var validationAttributes = property.GetCustomAttributes<ValidationAttribute>(inherit: true);
++        var htmlAttributes = new Dictionary<string, object>();
++        var displayName = GetDisplayName(property) ?? fieldName;
++
++        foreach (var validationAttribute in validationAttributes)
++        {
++            var errorMessage = GetErrorMessage(validationAttribute, displayName);
++            AddAttributes(htmlAttributes, validationAttribute, errorMessage);
++        }
++
++        if (htmlAttributes.Count == 0)
++        {
++            return null;
++        }
++
++        htmlAttributes.TryAdd("data-val", "true");
++        return htmlAttributes;
++    }
++
++    /// <summary>
++    /// Maps a <see cref="ValidationAttribute"/> to the corresponding <c>data-val-*</c> HTML attributes.
++    /// Each supported attribute type has a specific mapping; custom attributes can implement
++    /// <see cref="IClientValidationAdapter"/> to provide their own mappings.
++    /// Uses <c>TryAdd</c> (first-wins) so that if multiple attributes emit the same key,
++    /// the first one takes precedence.
++    /// </summary>
++    private static void AddAttributes(
++        Dictionary<string, object> htmlAttributes,
++        ValidationAttribute validationAttribute,
++        string errorMessage)
++    {
++        switch (validationAttribute)
++        {
++            case RequiredAttribute:
++                htmlAttributes.TryAdd("data-val-required", errorMessage);
++                break;
++
++            case StringLengthAttribute sla:
++                htmlAttributes.TryAdd("data-val-length", errorMessage);
++                if (sla.MaximumLength != int.MaxValue)
++                {
++                    htmlAttributes.TryAdd("data-val-length-max", sla.MaximumLength.ToString(CultureInfo.InvariantCulture));
++                }
++                if (sla.MinimumLength != 0)
++                {
++                    htmlAttributes.TryAdd("data-val-length-min", sla.MinimumLength.ToString(CultureInfo.InvariantCulture));
++                }
++                break;
++
++            case MaxLengthAttribute maxla:
++                htmlAttributes.TryAdd("data-val-maxlength", errorMessage);
++                htmlAttributes.TryAdd("data-val-maxlength-max", maxla.Length.ToString(CultureInfo.InvariantCulture));
++                break;
++
++            case MinLengthAttribute minla:
++                htmlAttributes.TryAdd("data-val-minlength", errorMessage);
++                htmlAttributes.TryAdd("data-val-minlength-min", minla.Length.ToString(CultureInfo.InvariantCulture));
++                break;
++
++            case RangeAttribute ra:
++                // Only emit client-side range attributes for numeric operand types.
++                // The JS validator's range check is numeric (uses Number()), so non-numeric
++                // ranges like RangeAttribute(typeof(DateTime), ...) have no client equivalent
++                // and would emit unparseable values. Server-side validation still applies.
++                if (!IsNumericRangeOperand(ra.OperandType))
++                {
++                    break;
++                }
++                // RangeAttribute lazily converts Minimum/Maximum from strings to OperandType.
++                // Calling IsValid triggers SetupConversion(); same trick MVC's RangeAttributeAdapter uses.
++                ra.IsValid(3);
++                htmlAttributes.TryAdd("data-val-range", errorMessage);
++                htmlAttributes.TryAdd("data-val-range-min", Convert.ToString(ra.Minimum, CultureInfo.InvariantCulture)!);
++                htmlAttributes.TryAdd("data-val-range-max", Convert.ToString(ra.Maximum, CultureInfo.InvariantCulture)!);
++                break;
++
++            case RegularExpressionAttribute rea:
++                htmlAttributes.TryAdd("data-val-regex", errorMessage);
++                htmlAttributes.TryAdd("data-val-regex-pattern", rea.Pattern);
++                break;
++
++            case CompareAttribute ca:
++                htmlAttributes.TryAdd("data-val-equalto", errorMessage);
++                // The "*." prefix is a convention for the JS equalto validator to resolve the
++                // other field relative to the current field's name prefix (e.g., "Model.Password").
++                htmlAttributes.TryAdd("data-val-equalto-other", "*." + ca.OtherProperty);
++                break;
++
++            case EmailAddressAttribute:
++                htmlAttributes.TryAdd("data-val-email", errorMessage);
++                break;
++
++            case UrlAttribute:
++                htmlAttributes.TryAdd("data-val-url", errorMessage);
++                break;
++
++            case PhoneAttribute:
++                htmlAttributes.TryAdd("data-val-phone", errorMessage);
++                break;
++
++            case CreditCardAttribute:
++                htmlAttributes.TryAdd("data-val-creditcard", errorMessage);
++                break;
++
++            case FileExtensionsAttribute fea:
++                htmlAttributes.TryAdd("data-val-fileextensions", errorMessage);
++                var normalizedExtensions = fea.Extensions
++                    .Replace(" ", string.Empty)
++                    .Replace(".", string.Empty)
++                    .ToLowerInvariant();
++                var parsedExtensions = normalizedExtensions
++                    .Split(',')
++                    .Select(e => "." + e);
++                htmlAttributes.TryAdd("data-val-fileextensions-extensions", string.Join(",", parsedExtensions));
++                break;
++
++            default:
++                // Check for custom adapter on the attribute
++                if (validationAttribute is IClientValidationAdapter adapter)
++                {
++                    foreach (var rule in adapter.GetClientValidationRules(errorMessage))
++                    {
++                        EmitRule(htmlAttributes, rule);
++                    }
++                }
++                break;
++        }
++    }
++
++    /// <summary>
++    /// Serializes a <see cref="ClientValidationRule"/> into the flat <c>data-val-*</c> dictionary
++    /// used during rendering. Uses <c>TryAdd</c> (first-wins) so existing entries are preserved.
++    /// Non-string parameter values are formatted with invariant culture; <see langword="null"/>
++    /// values are skipped.
++    /// </summary>
++    private static void EmitRule(Dictionary<string, object> htmlAttributes, ClientValidationRule rule)
++    {
++        htmlAttributes.TryAdd($"data-val-{rule.Name}", rule.ErrorMessage);
++        foreach (var (paramName, paramValue) in rule.Parameters)
++        {
++            if (paramValue is null)
++            {
++                continue;
++            }
++
++            var formatted = paramValue switch
++            {
++                string s => s,
++                bool b => b ? "true" : "false",
++                IFormattable f => f.ToString(format: null, CultureInfo.InvariantCulture),
++                _ => paramValue.ToString() ?? string.Empty,
++            };
++
++            htmlAttributes.TryAdd($"data-val-{rule.Name}-{paramName}", formatted);
++        }
++    }
++
++    /// <summary>
++    /// Returns true if the type is one the JS range validator can compare numerically.
++    /// Excludes <see cref="DateTime"/> and other non-numeric operand types that
++    /// <see cref="RangeAttribute"/> supports server-side but the client cannot.
++    /// </summary>
++    private static bool IsNumericRangeOperand(Type operandType)
++        => operandType == typeof(int)
++        || operandType == typeof(long)
++        || operandType == typeof(short)
++        || operandType == typeof(byte)
++        || operandType == typeof(uint)
++        || operandType == typeof(ulong)
++        || operandType == typeof(ushort)
++        || operandType == typeof(sbyte)
++        || operandType == typeof(double)
++        || operandType == typeof(float)
++        || operandType == typeof(decimal);
++
++    private static string? GetDisplayName(PropertyInfo property)
++    {
++        // TODO: Integrate localization
++        var displayAttribute = property.GetCustomAttribute<DisplayAttribute>();
++
++        if (displayAttribute is not null)
++        {
++            return displayAttribute.GetName();
++        }
++
++        var displayNameAttribute = property.GetCustomAttribute<DisplayNameAttribute>();
++
++        if (displayNameAttribute is not null)
++        {
++            return displayNameAttribute.DisplayName;
++        }
++
++        return null;
++    }
++
++    private static string GetErrorMessage(ValidationAttribute validationAttribute, string displayName)
++    {
++        // TODO: Integrate localization
++        return validationAttribute.FormatErrorMessage(displayName);
++
++    }
++}
+diff --git a/src/Components/Forms/src/ClientValidation/IClientValidationAdapter.cs b/src/Components/Forms/src/ClientValidation/IClientValidationAdapter.cs
+new file mode 100644
+index 0000000000..0a0d52fe88
+--- /dev/null
++++ b/src/Components/Forms/src/ClientValidation/IClientValidationAdapter.cs
+@@ -0,0 +1,21 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++namespace Microsoft.AspNetCore.Components.Forms.ClientValidation;
++
++/// <summary>
++/// Implemented by <see cref="System.ComponentModel.DataAnnotations.ValidationAttribute"/> subclasses
++/// that support client-side validation by emitting <c>data-val-*</c> HTML attributes.
++/// </summary>
++public interface IClientValidationAdapter
++{
++    /// <summary>
++    /// Produces the client-side validation rules for this attribute.
++    /// Return an empty sequence if the attribute should not emit any client-side rule.
++    /// </summary>
++    /// <param name="errorMessage">
++    /// The pre-formatted (optionally localized) error message.
++    /// </param>
++    IEnumerable<ClientValidationRule> GetClientValidationRules(string errorMessage);
++}
++
+diff --git a/src/Components/Forms/src/ClientValidation/IClientValidationService.cs b/src/Components/Forms/src/ClientValidation/IClientValidationService.cs
+new file mode 100644
+index 0000000000..ef85d3a05d
+--- /dev/null
++++ b/src/Components/Forms/src/ClientValidation/IClientValidationService.cs
+@@ -0,0 +1,17 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++namespace Microsoft.AspNetCore.Components.Forms.ClientValidation;
++
++/// <summary>
++/// Provides client-side validation HTML attributes (<c>data-val-*</c>) for form fields
++/// based on their <see cref="System.ComponentModel.DataAnnotations.ValidationAttribute"/>s.
++/// </summary>
++public interface IClientValidationService
++{
++    /// <summary>
++    /// Gets the <c>data-val-*</c> HTML attributes for a form field.
++    /// Returns <see langword="null"/> if no validation attributes apply.
++    /// </summary>
++    IReadOnlyDictionary<string, object>? GetClientValidationAttributes(FieldIdentifier fieldIdentifier);
++}
+diff --git a/src/Components/Forms/src/DataAnnotationsValidator.cs b/src/Components/Forms/src/DataAnnotationsValidator.cs
+index 7cd6521775..e02642c180 100644
+--- a/src/Components/Forms/src/DataAnnotationsValidator.cs
++++ b/src/Components/Forms/src/DataAnnotationsValidator.cs
+@@ -1,10 +1,14 @@
+ // Licensed to the .NET Foundation under one or more agreements.
+ // The .NET Foundation licenses this file to you under the MIT license.
+ 
++using Microsoft.AspNetCore.Components.Forms.ClientValidation;
++
+ namespace Microsoft.AspNetCore.Components.Forms;
+ 
+ /// <summary>
+ /// Adds Data Annotations validation support to an <see cref="EditContext"/>.
++/// When rendering in a static SSR context, also activates client-side validation
++/// by storing an <see cref="IClientValidationService"/> on the <see cref="EditContext.Properties"/>.
+ /// </summary>
+ public class DataAnnotationsValidator : ComponentBase, IDisposable
+ {
+@@ -15,6 +19,12 @@ public class DataAnnotationsValidator : ComponentBase, IDisposable
+ 
+     [Inject] private IServiceProvider ServiceProvider { get; set; } = default!;
+ 
++    /// <summary>
++    /// Gets or sets whether client-side validation attributes (data-val-*) should be emitted
++    /// on input components within this form. Default is <c>true</c>.
++    /// </summary>
++    [Parameter] public bool EnableClientValidation { get; set; } = true;
++
+     /// <inheritdoc />
+     protected override void OnInitialized()
+     {
+@@ -27,6 +37,16 @@ public class DataAnnotationsValidator : ComponentBase, IDisposable
+ 
+         _subscriptions = CurrentEditContext.EnableDataAnnotationsValidation(ServiceProvider);
+         _originalEditContext = CurrentEditContext;
++
++        // Enable client-side validation only in static SSR context.
++        // AssignedRenderMode is null when rendering statically (no interactive mode assigned).
++        if (EnableClientValidation && AssignedRenderMode is null)
++        {
++            if (ServiceProvider.GetService(typeof(IClientValidationService)) is { } service)
++            {
++                CurrentEditContext.Properties[typeof(IClientValidationService)] = service;
++            }
++        }
+     }
+ 
+     /// <inheritdoc />
+@@ -54,6 +74,9 @@ public class DataAnnotationsValidator : ComponentBase, IDisposable
+         _subscriptions?.Dispose();
+         _subscriptions = null;
+ 
++        // Clean up the client validation service reference from EditContext
++        CurrentEditContext?.Properties.Remove(typeof(IClientValidationService));
++
+         Dispose(disposing: true);
+     }
+ }
+diff --git a/src/Components/Forms/src/PublicAPI.Unshipped.txt b/src/Components/Forms/src/PublicAPI.Unshipped.txt
+index 8e50b300e3..7907f2832e 100644
+--- a/src/Components/Forms/src/PublicAPI.Unshipped.txt
++++ b/src/Components/Forms/src/PublicAPI.Unshipped.txt
+@@ -1,3 +1,17 @@
+ #nullable enable
+ *REMOVED*static Microsoft.AspNetCore.Components.Forms.EditContextDataAnnotationsExtensions.AddDataAnnotationsValidation(this Microsoft.AspNetCore.Components.Forms.EditContext! editContext) -> Microsoft.AspNetCore.Components.Forms.EditContext!
+ *REMOVED*static Microsoft.AspNetCore.Components.Forms.EditContextDataAnnotationsExtensions.EnableDataAnnotationsValidation(this Microsoft.AspNetCore.Components.Forms.EditContext! editContext) -> System.IDisposable!
++Microsoft.AspNetCore.Components.Forms.ClientValidation.ClientValidationRule
++Microsoft.AspNetCore.Components.Forms.ClientValidation.ClientValidationRule.ClientValidationRule(string! name, string! errorMessage) -> void
++Microsoft.AspNetCore.Components.Forms.ClientValidation.ClientValidationRule.ErrorMessage.get -> string!
++Microsoft.AspNetCore.Components.Forms.ClientValidation.ClientValidationRule.Name.get -> string!
++Microsoft.AspNetCore.Components.Forms.ClientValidation.ClientValidationRule.Parameters.get -> System.Collections.Generic.IReadOnlyDictionary<string!, object?>!
++Microsoft.AspNetCore.Components.Forms.ClientValidation.ClientValidationRule.WithParameter(string! name, object? value) -> Microsoft.AspNetCore.Components.Forms.ClientValidation.ClientValidationRule!
++Microsoft.AspNetCore.Components.Forms.ClientValidation.IClientValidationAdapter
++Microsoft.AspNetCore.Components.Forms.ClientValidation.IClientValidationAdapter.GetClientValidationRules(string! errorMessage) -> System.Collections.Generic.IEnumerable<Microsoft.AspNetCore.Components.Forms.ClientValidation.ClientValidationRule!>!
++Microsoft.AspNetCore.Components.Forms.ClientValidation.IClientValidationService
++Microsoft.AspNetCore.Components.Forms.ClientValidation.IClientValidationService.GetClientValidationAttributes(Microsoft.AspNetCore.Components.Forms.FieldIdentifier fieldIdentifier) -> System.Collections.Generic.IReadOnlyDictionary<string!, object!>?
++Microsoft.AspNetCore.Components.Forms.DataAnnotationsValidator.EnableClientValidation.get -> bool
++Microsoft.AspNetCore.Components.Forms.DataAnnotationsValidator.EnableClientValidation.set -> void
++Microsoft.Extensions.DependencyInjection.ClientValidationServiceCollectionExtensions
++static Microsoft.Extensions.DependencyInjection.ClientValidationServiceCollectionExtensions.AddClientValidation(this Microsoft.Extensions.DependencyInjection.IServiceCollection! services) -> Microsoft.Extensions.DependencyInjection.IServiceCollection!
+diff --git a/src/Components/Forms/test/DefaultClientValidationServiceTest.cs b/src/Components/Forms/test/DefaultClientValidationServiceTest.cs
+new file mode 100644
+index 0000000000..fa87cd978d
+--- /dev/null
++++ b/src/Components/Forms/test/DefaultClientValidationServiceTest.cs
+@@ -0,0 +1,348 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++#nullable enable
++
++using System.ComponentModel.DataAnnotations;
++using Microsoft.AspNetCore.Components.Forms.ClientValidation;
++
++namespace Microsoft.AspNetCore.Components.Forms;
++
++public class DefaultClientValidationServiceTest
++{
++    private readonly DefaultClientValidationService _service = new();
++
++    [Fact]
++    public void RequiredAttribute_GeneratesDataValRequired()
++    {
++        var attrs = GetAttributes<RequiredModel>(nameof(RequiredModel.Name));
++
++        Assert.NotNull(attrs);
++        Assert.Equal("true", attrs["data-val"]);
++        Assert.True(attrs.ContainsKey("data-val-required"));
++    }
++
++    [Fact]
++    public void StringLengthAttribute_GeneratesDataValLength()
++    {
++        var attrs = GetAttributes<StringLengthModel>(nameof(StringLengthModel.Name));
++
++        Assert.NotNull(attrs);
++        Assert.True(attrs.ContainsKey("data-val-length"));
++        Assert.Equal("2", attrs["data-val-length-min"]);
++        Assert.Equal("100", attrs["data-val-length-max"]);
++    }
++
++    [Fact]
++    public void MaxLengthAttribute_GeneratesDataValMaxlength()
++    {
++        var attrs = GetAttributes<MaxLengthModel>(nameof(MaxLengthModel.Name));
++
++        Assert.NotNull(attrs);
++        Assert.True(attrs.ContainsKey("data-val-maxlength"));
++        Assert.Equal("50", attrs["data-val-maxlength-max"]);
++    }
++
++    [Fact]
++    public void MinLengthAttribute_GeneratesDataValMinlength()
++    {
++        var attrs = GetAttributes<MinLengthModel>(nameof(MinLengthModel.Name));
++
++        Assert.NotNull(attrs);
++        Assert.True(attrs.ContainsKey("data-val-minlength"));
++        Assert.Equal("3", attrs["data-val-minlength-min"]);
++    }
++
++    [Fact]
++    public void RangeAttribute_GeneratesDataValRange()
++    {
++        var attrs = GetAttributes<RangeModel>(nameof(RangeModel.Age));
++
++        Assert.NotNull(attrs);
++        Assert.True(attrs.ContainsKey("data-val-range"));
++        Assert.Equal("18", attrs["data-val-range-min"]);
++        Assert.Equal("120", attrs["data-val-range-max"]);
++    }
++
++    [Fact]
++    public void RegularExpressionAttribute_GeneratesDataValRegex()
++    {
++        var attrs = GetAttributes<RegexModel>(nameof(RegexModel.ZipCode));
++
++        Assert.NotNull(attrs);
++        Assert.True(attrs.ContainsKey("data-val-regex"));
++        Assert.Equal(@"\d{5}", attrs["data-val-regex-pattern"]);
++    }
++
++    [Fact]
++    public void CompareAttribute_GeneratesDataValEqualto()
++    {
++        var attrs = GetAttributes<CompareModel>(nameof(CompareModel.ConfirmPassword));
++
++        Assert.NotNull(attrs);
++        Assert.True(attrs.ContainsKey("data-val-equalto"));
++        Assert.Equal("*.Password", attrs["data-val-equalto-other"]);
++    }
++
++    [Fact]
++    public void EmailAddressAttribute_GeneratesDataValEmail()
++    {
++        var attrs = GetAttributes<EmailModel>(nameof(EmailModel.Email));
++
++        Assert.NotNull(attrs);
++        Assert.True(attrs.ContainsKey("data-val-email"));
++    }
++
++    [Fact]
++    public void UrlAttribute_GeneratesDataValUrl()
++    {
++        var attrs = GetAttributes<UrlModel>(nameof(UrlModel.Website));
++
++        Assert.NotNull(attrs);
++        Assert.True(attrs.ContainsKey("data-val-url"));
++    }
++
++    [Fact]
++    public void PhoneAttribute_GeneratesDataValPhone()
++    {
++        var attrs = GetAttributes<PhoneModel>(nameof(PhoneModel.Phone));
++
++        Assert.NotNull(attrs);
++        Assert.True(attrs.ContainsKey("data-val-phone"));
++    }
++
++    [Fact]
++    public void CreditCardAttribute_GeneratesDataValCreditcard()
++    {
++        var attrs = GetAttributes<CreditCardModel>(nameof(CreditCardModel.Card));
++
++        Assert.NotNull(attrs);
++        Assert.True(attrs.ContainsKey("data-val-creditcard"));
++    }
++
++    [Fact]
++    public void FileExtensionsAttribute_GeneratesDataValFileextensions()
++    {
++        var attrs = GetAttributes<FileExtensionsModel>(nameof(FileExtensionsModel.Avatar));
++
++        Assert.NotNull(attrs);
++        Assert.True(attrs.ContainsKey("data-val-fileextensions"));
++        Assert.Equal(".png,.jpg,.jpeg,.gif", attrs["data-val-fileextensions-extensions"]);
++    }
++
++    [Fact]
++    public void MultipleAttributes_AllGenerated()
++    {
++        var attrs = GetAttributes<MultipleAttrsModel>(nameof(MultipleAttrsModel.Email));
++
++        Assert.NotNull(attrs);
++        Assert.True(attrs.ContainsKey("data-val-required"));
++        Assert.True(attrs.ContainsKey("data-val-email"));
++    }
++
++    [Fact]
++    public void PropertyWithNoValidationAttributes_ReturnsNull()
++    {
++        var attrs = GetAttributes<NoValidationModel>(nameof(NoValidationModel.Name));
++
++        Assert.Null(attrs);
++    }
++
++    [Fact]
++    public void NonExistentProperty_ReturnsNull()
++    {
++        var model = new NoValidationModel();
++        var fieldId = new FieldIdentifier(model, "NonExistent");
++
++        var attrs = _service.GetClientValidationAttributes(fieldId);
++
++        Assert.Null(attrs);
++    }
++
++    [Fact]
++    public void DisplayAttribute_UsedInErrorMessage()
++    {
++        var attrs = GetAttributes<DisplayNameModel>(nameof(DisplayNameModel.Email));
++
++        Assert.NotNull(attrs);
++        var errorMessage = (string)attrs["data-val-required"];
++        Assert.Contains("Email Address", errorMessage);
++    }
++
++    [Fact]
++    public void CachesResultsForSameProperty()
++    {
++        var model1 = new RequiredModel();
++        var model2 = new RequiredModel();
++        var fieldId1 = new FieldIdentifier(model1, nameof(RequiredModel.Name));
++        var fieldId2 = new FieldIdentifier(model2, nameof(RequiredModel.Name));
++
++        var attrs1 = _service.GetClientValidationAttributes(fieldId1);
++        var attrs2 = _service.GetClientValidationAttributes(fieldId2);
++
++        Assert.Same(attrs1, attrs2);
++    }
++
++    [Fact]
++    public void CustomAdapter_GeneratesCustomAttributes()
++    {
++        var attrs = GetAttributes<CustomAdapterModel>(nameof(CustomAdapterModel.Value));
++
++        Assert.NotNull(attrs);
++        Assert.Equal("true", attrs["data-val"]);
++        Assert.True(attrs.ContainsKey("data-val-custom"));
++        Assert.Equal("custom-value", attrs["data-val-custom-param"]);
++    }
++
++    private IReadOnlyDictionary<string, object>? GetAttributes<TModel>(string propertyName) where TModel : new()
++    {
++        var model = new TModel();
++        var fieldId = new FieldIdentifier(model, propertyName);
++        return _service.GetClientValidationAttributes(fieldId);
++    }
++
++    // Test models
++    private class RequiredModel { [Required] public string Name { get; set; } = ""; }
++    private class StringLengthModel { [StringLength(100, MinimumLength = 2)] public string Name { get; set; } = ""; }
++    private class MaxLengthModel { [MaxLength(50)] public string Name { get; set; } = ""; }
++    private class MinLengthModel { [MinLength(3)] public string Name { get; set; } = ""; }
++    private class RangeModel { [Range(18, 120)] public int Age { get; set; } }
++    private class RegexModel { [RegularExpression(@"\d{5}")] public string ZipCode { get; set; } = ""; }
++    private class CompareModel { public string Password { get; set; } = ""; [Compare("Password")] public string ConfirmPassword { get; set; } = ""; }
++    private class EmailModel { [EmailAddress] public string Email { get; set; } = ""; }
++    private class UrlModel { [Url] public string Website { get; set; } = ""; }
++    private class PhoneModel { [Phone] public string Phone { get; set; } = ""; }
++    private class CreditCardModel { [CreditCard] public string Card { get; set; } = ""; }
++    private class FileExtensionsModel { [FileExtensions(Extensions = "png,jpg,jpeg,gif")] public string Avatar { get; set; } = ""; }
++    private class MultipleAttrsModel { [Required][EmailAddress] public string Email { get; set; } = ""; }
++    private class NoValidationModel { public string Name { get; set; } = ""; }
++    private class DisplayNameModel { [Required][Display(Name = "Email Address")] public string Email { get; set; } = ""; }
++    private class CustomAdapterModel { [CustomValidation] public string Value { get; set; } = ""; }
++
++    private class CustomValidationAttribute : ValidationAttribute, IClientValidationAdapter
++    {
++        public IEnumerable<ClientValidationRule> GetClientValidationRules(string errorMessage)
++            => [new ClientValidationRule("custom", errorMessage).WithParameter("param", "custom-value")];
++    }
++
++    // Nested model tests
++    private class ParentModel
++    {
++        public AddressModel Address { get; set; } = new();
++    }
++
++    private class AddressModel
++    {
++        [Required]
++        [StringLength(200)]
++        public string Street { get; set; } = "";
++
++        [Required]
++        [RegularExpression(@"\d{5}")]
++        public string ZipCode { get; set; } = "";
++    }
++
++    [Fact]
++    public void NestedModel_GeneratesAttributesFromNestedType()
++    {
++        // FieldIdentifier for nested model: Model = parentModel.Address, FieldName = "Street"
++        var parent = new ParentModel();
++        var fieldId = new FieldIdentifier(parent.Address, nameof(AddressModel.Street));
++
++        var attrs = _service.GetClientValidationAttributes(fieldId);
++
++        Assert.NotNull(attrs);
++        Assert.Equal("true", attrs["data-val"]);
++        Assert.True(attrs.ContainsKey("data-val-required"));
++        Assert.True(attrs.ContainsKey("data-val-length"));
++        Assert.Equal("200", attrs["data-val-length-max"]);
++    }
++
++    [Fact]
++    public void NestedModel_DifferentFieldsOnSameNestedType()
++    {
++        var parent = new ParentModel();
++        var streetField = new FieldIdentifier(parent.Address, nameof(AddressModel.Street));
++        var zipField = new FieldIdentifier(parent.Address, nameof(AddressModel.ZipCode));
++
++        var streetAttrs = _service.GetClientValidationAttributes(streetField);
++        var zipAttrs = _service.GetClientValidationAttributes(zipField);
++
++        Assert.NotNull(streetAttrs);
++        Assert.NotNull(zipAttrs);
++
++        // Street has StringLength, ZipCode has RegularExpression
++        Assert.True(streetAttrs.ContainsKey("data-val-length"));
++        Assert.False(streetAttrs.ContainsKey("data-val-regex"));
++
++        Assert.True(zipAttrs.ContainsKey("data-val-regex"));
++        Assert.False(zipAttrs.ContainsKey("data-val-length"));
++    }
++
++    [Fact]
++    public void DisplayNameAttribute_UsedInErrorMessage()
++    {
++        var attrs = GetAttributes<DisplayNameAttrModel>(nameof(DisplayNameAttrModel.Name));
++
++        Assert.NotNull(attrs);
++        var errorMessage = (string)attrs["data-val-required"];
++        Assert.Contains("Full Name", errorMessage);
++    }
++
++    [Fact]
++    public void StringLength_MaxOnly_OmitsMinAttribute()
++    {
++        var attrs = GetAttributes<StringLengthMaxOnlyModel>(nameof(StringLengthMaxOnlyModel.Name));
++
++        Assert.NotNull(attrs);
++        Assert.True(attrs.ContainsKey("data-val-length"));
++        Assert.Equal("50", attrs["data-val-length-max"]);
++        Assert.False(attrs.ContainsKey("data-val-length-min"));
++    }
++
++    [Fact]
++    public void Range_DoubleValues_FormatsWithInvariantCulture()
++    {
++        var attrs = GetAttributes<DoubleRangeModel>(nameof(DoubleRangeModel.Score));
++
++        Assert.NotNull(attrs);
++        Assert.Equal("0.5", attrs["data-val-range-min"]);
++        Assert.Equal("99.9", attrs["data-val-range-max"]);
++    }
++
++    [Fact]
++    public void Range_DateTimeOperand_DoesNotEmitDataValRange()
++    {
++        // Non-numeric range types (e.g., DateTime) have no client-side equivalent in the JS validator,
++        // so we skip emitting data-val-range-* for them. Server-side validation still applies.
++        var attrs = GetAttributes<DateTimeRangeModel>(nameof(DateTimeRangeModel.Date));
++
++        Assert.Null(attrs);
++    }
++
++    [Fact]
++    public void PropertyWithNoDisplayAttribute_UsesPropertyNameInErrorMessage()
++    {
++        var attrs = GetAttributes<RequiredModel>(nameof(RequiredModel.Name));
++
++        Assert.NotNull(attrs);
++        var errorMessage = (string)attrs["data-val-required"];
++        Assert.Contains("Name", errorMessage);
++    }
++
++    [Fact]
++    public void InheritedValidationAttributes_AreIncluded()
++    {
++        var attrs = GetAttributes<DerivedModel>(nameof(DerivedModel.BaseProp));
++
++        Assert.NotNull(attrs);
++        Assert.True(attrs.ContainsKey("data-val-required"));
++    }
++
++    private class DisplayNameAttrModel { [Required][System.ComponentModel.DisplayName("Full Name")] public string Name { get; set; } = ""; }
++    private class StringLengthMaxOnlyModel { [StringLength(50)] public string Name { get; set; } = ""; }
++    private class DoubleRangeModel { [Range(0.5, 99.9)] public double Score { get; set; } }
++    private class DateTimeRangeModel { [Range(typeof(DateTime), "2020-01-01", "2030-12-31")] public DateTime Date { get; set; } }
++    private class BaseModel { [Required] public string BaseProp { get; set; } = ""; }
++    private class DerivedModel : BaseModel { }
++}
+diff --git a/src/Components/Web/src/Forms/InputBase.cs b/src/Components/Web/src/Forms/InputBase.cs
+index 9b2a62e390..f3a3fd8143 100644
+--- a/src/Components/Web/src/Forms/InputBase.cs
++++ b/src/Components/Web/src/Forms/InputBase.cs
+@@ -5,6 +5,7 @@ using System.Diagnostics.CodeAnalysis;
+ using System.Globalization;
+ using System.Linq;
+ using System.Linq.Expressions;
++using Microsoft.AspNetCore.Components.Forms.ClientValidation;
+ using Microsoft.AspNetCore.Components.Forms.Mapping;
+ 
+ namespace Microsoft.AspNetCore.Components.Forms;
+@@ -289,6 +290,7 @@ public abstract class InputBase<TValue> : ComponentBase, IDisposable
+         }
+ 
+         UpdateAdditionalValidationAttributes();
++        MergeClientValidationAttributes();
+ 
+         // For derived components, retain the usual lifecycle with OnInit/OnParametersSet/etc.
+         return base.SetParametersAsync(ParameterView.Empty);
+@@ -385,6 +387,37 @@ public abstract class InputBase<TValue> : ComponentBase, IDisposable
+         return newDictionaryCreated;
+     }
+ 
++    /// <summary>
++    /// Merges client-side validation attributes (data-val-*) into AdditionalAttributes when
++    /// an IClientValidationService is available in EditContext.Properties. This is set by
++    /// DataAnnotationsValidator in static SSR mode. Uses first-wins semantics so that
++    /// developer-specified attributes in AdditionalAttributes take precedence over generated ones.
++    /// </summary>
++    private void MergeClientValidationAttributes()
++    {
++        if (EditContext?.Properties.TryGetValue(typeof(IClientValidationService), out var serviceObj) != true
++            || serviceObj is not IClientValidationService service)
++        {
++            return;
++        }
++
++        var htmlAttributes = service.GetClientValidationAttributes(FieldIdentifier);
++        if (htmlAttributes is null)
++        {
++            return;
++        }
++
++        if (ConvertToDictionary(AdditionalAttributes, out var additionalAttributes))
++        {
++            AdditionalAttributes = additionalAttributes;
++        }
++
++        foreach (var (key, value) in htmlAttributes)
++        {
++            additionalAttributes.TryAdd(key, value);
++        }
++    }
++
+     /// <inheritdoc/>
+     protected virtual void Dispose(bool disposing)
+     {
+diff --git a/src/Components/Web/src/Forms/InputRadio.cs b/src/Components/Web/src/Forms/InputRadio.cs
+index 6b7088d37a..8806b88200 100644
+--- a/src/Components/Web/src/Forms/InputRadio.cs
++++ b/src/Components/Web/src/Forms/InputRadio.cs
+@@ -62,16 +62,23 @@ public class InputRadio<[DynamicallyAccessedMembers(DynamicallyAccessedMemberTyp
+     {
+         Debug.Assert(Context != null);
+ 
++        // Render client validation attributes (data-val-*) only on the first radio in the group.
++        // Subsequent radios get null because we clear the context's attributes after consuming them.
++        // The JS validation library only needs to discover the rules once per radio group.
++        var clientValidationAttributes = Context.ClientValidationAttributes;
++        Context.ClientValidationAttributes = null;
++
+         builder.OpenElement(0, "input");
+-        builder.AddMultipleAttributes(1, AdditionalAttributes);
+-        builder.AddAttributeIfNotNullOrEmpty(2, "class", AttributeUtilities.CombineClassNames(AdditionalAttributes, Context.FieldClass));
+-        builder.AddAttribute(3, "type", "radio");
+-        builder.AddAttribute(4, "name", Context.GroupName);
+-        builder.AddAttribute(5, "value", BindConverter.FormatValue(Value?.ToString()));
+-        builder.AddAttribute(6, "checked", Context.CurrentValue?.Equals(Value) == true ? GetToggledTrueValue() : null);
+-        builder.AddAttribute(7, "onchange", Context.ChangeEventCallback);
++        builder.AddMultipleAttributes(1, clientValidationAttributes);
++        builder.AddMultipleAttributes(2, AdditionalAttributes);
++        builder.AddAttributeIfNotNullOrEmpty(3, "class", AttributeUtilities.CombineClassNames(AdditionalAttributes, Context.FieldClass));
++        builder.AddAttribute(4, "type", "radio");
++        builder.AddAttribute(5, "name", Context.GroupName);
++        builder.AddAttribute(6, "value", BindConverter.FormatValue(Value?.ToString()));
++        builder.AddAttribute(7, "checked", Context.CurrentValue?.Equals(Value) == true ? GetToggledTrueValue() : null);
++        builder.AddAttribute(8, "onchange", Context.ChangeEventCallback);
+         builder.SetUpdatesAttributeName("checked");
+-        builder.AddElementReferenceCapture(8, __inputReference => Element = __inputReference);
++        builder.AddElementReferenceCapture(9, __inputReference => Element = __inputReference);
+         builder.CloseElement();
+     }
+ 
+diff --git a/src/Components/Web/src/Forms/InputRadioContext.cs b/src/Components/Web/src/Forms/InputRadioContext.cs
+index 8dc9c2f72b..c319beb81e 100644
+--- a/src/Components/Web/src/Forms/InputRadioContext.cs
++++ b/src/Components/Web/src/Forms/InputRadioContext.cs
+@@ -18,6 +18,9 @@ internal sealed class InputRadioContext
+     public string? GroupName { get; set; }
+     public string? FieldClass { get; set; }
+ 
++    // Client validation attributes (data-val-*) from the parent InputRadioGroup.
++    public IReadOnlyDictionary<string, object>? ClientValidationAttributes { get; set; }
++
+     public InputRadioContext(IInputRadioValueProvider valueProvider, InputRadioContext? parentContext, EventCallback<ChangeEventArgs> changeEventCallback)
+     {
+         _valueProvider = valueProvider;
+diff --git a/src/Components/Web/src/Forms/InputRadioGroup.cs b/src/Components/Web/src/Forms/InputRadioGroup.cs
+index ba258e3052..442fcd5a2a 100644
+--- a/src/Components/Web/src/Forms/InputRadioGroup.cs
++++ b/src/Components/Web/src/Forms/InputRadioGroup.cs
+@@ -63,6 +63,13 @@ public class InputRadioGroup<[DynamicallyAccessedMembers(DynamicallyAccessedMemb
+         }
+ 
+         _context.FieldClass = EditContext?.FieldCssClass(FieldIdentifier);
++
++        // Pass client validation attributes to child InputRadio components via shared context.
++        // Unlike MVC (which uses FormContext to emit data-val-* on only the first radio button),
++        // Blazor's component model renders children independently. We achieve the same first-only
++        // behavior by mutating the shared context: the first InputRadio reads the attributes,
++        // renders them, and clears the property so subsequent radios in the group get nothing.
++        _context.ClientValidationAttributes = ExtractClientValidationAttributes();
+     }
+ 
+     /// <inheritdoc />
+@@ -81,4 +88,31 @@ public class InputRadioGroup<[DynamicallyAccessedMembers(DynamicallyAccessedMemb
+     /// <inheritdoc />
+     protected override bool TryParseValueFromString(string? value, [MaybeNullWhen(false)] out TValue result, [NotNullWhen(false)] out string? validationErrorMessage)
+         => this.TryParseSelectableValueFromString(value, out result, out validationErrorMessage);
++
++    /// <summary>
++    /// Extracts data-val-* client validation attributes from AdditionalAttributes so they
++    /// can be passed to child InputRadio components via InputRadioContext. InputRadioGroup
++    /// itself doesn't render an HTML element, so it can't carry these attributes directly.
++    /// </summary>
++    private IReadOnlyDictionary<string, object>? ExtractClientValidationAttributes()
++    {
++        if (AdditionalAttributes is null)
++        {
++            return null;
++        }
++
++        Dictionary<string, object>? result = null;
++        foreach (var (key, value) in AdditionalAttributes)
++        {
++            // Match "data-val" exactly and "data-val-*" (with dash), but not "data-value" or other unrelated attributes.
++            if (string.Equals(key, "data-val", StringComparison.OrdinalIgnoreCase)
++                || key.StartsWith("data-val-", StringComparison.OrdinalIgnoreCase))
++            {
++                result ??= new();
++                result[key] = value;
++            }
++        }
++
++        return result;
++    }
+ }
+diff --git a/src/Components/Web/src/Forms/ValidationMessage.cs b/src/Components/Web/src/Forms/ValidationMessage.cs
+index cc84a0ab7a..1518485428 100644
+--- a/src/Components/Web/src/Forms/ValidationMessage.cs
++++ b/src/Components/Web/src/Forms/ValidationMessage.cs
+@@ -2,6 +2,7 @@
+ // The .NET Foundation licenses this file to you under the MIT license.
+ 
+ using System.Linq.Expressions;
++using Microsoft.AspNetCore.Components.Forms.ClientValidation;
+ using Microsoft.AspNetCore.Components.Rendering;
+ 
+ namespace Microsoft.AspNetCore.Components.Forms;
+@@ -23,6 +24,8 @@ public class ValidationMessage<TValue> : ComponentBase, IDisposable
+ 
+     [CascadingParameter] EditContext CurrentEditContext { get; set; } = default!;
+ 
++    [CascadingParameter] private HtmlFieldPrefix? FieldPrefix { get; set; }
++
+     /// <summary>
+     /// Specifies the field for which validation messages should be displayed.
+     /// </summary>
+@@ -52,7 +55,7 @@ public class ValidationMessage<TValue> : ComponentBase, IDisposable
+                 $"{nameof(For)} parameter.");
+         }
+         else if (For != _previousFieldAccessor)
+-        {            
++        {
+             _fieldIdentifier = FieldIdentifier.Create(For);
+             _previousFieldAccessor = For;
+         }
+@@ -68,6 +71,13 @@ public class ValidationMessage<TValue> : ComponentBase, IDisposable
+     /// <inheritdoc />
+     protected override void BuildRenderTree(RenderTreeBuilder builder)
+     {
++        if (CurrentEditContext.Properties.TryGetValue(typeof(IClientValidationService), out var serviceObj)
++            && serviceObj is IClientValidationService)
++        {
++            RenderForClientValidation(builder);
++            return;
++        }
++
+         foreach (var message in CurrentEditContext.GetValidationMessages(_fieldIdentifier))
+         {
+             builder.OpenElement(0, "div");
+@@ -78,6 +88,49 @@ public class ValidationMessage<TValue> : ComponentBase, IDisposable
+         }
+     }
+ 
++    /// <summary>
++    /// Renders validation messages with data-valmsg-for and data-valmsg-replace attributes
++    /// for the JS validation library. The first message element carries the attributes so the
++    /// JS library can find it and replace its content. If no server-side messages exist yet,
++    /// an empty placeholder div is rendered for JS to populate when client validation runs.
++    /// Server-rendered sibling messages (without data-valmsg-for) are cleaned up by the JS library
++    /// when it inserts the client-side validation messages.
++    /// </summary>
++    private void RenderForClientValidation(RenderTreeBuilder builder)
++    {
++        // Use HtmlFieldPrefix to compute the field name consistently with InputBase.
++        // In nested Editor scenarios, FieldPrefix adjusts the name to match the rendered input's name attribute.
++        var fieldName = FieldPrefix?.GetFieldName(For!) ?? ExpressionFormatter.FormatLambda(For!);
++        var first = true;
++
++        foreach (var message in CurrentEditContext.GetValidationMessages(_fieldIdentifier))
++        {
++            builder.OpenElement(0, "div");
++            builder.AddAttribute(1, "class", "validation-message");
++            if (first)
++            {
++                // First message element will be used as container for client-side validation message
++                builder.AddAttribute(2, "data-valmsg-for", fieldName);
++                builder.AddAttribute(3, "data-valmsg-replace", "true");
++                first = false;
++            }
++            builder.AddMultipleAttributes(4, AdditionalAttributes);
++            builder.AddContent(5, message);
++            builder.CloseElement();
++        }
++
++        if (first)
++        {
++            // No messages - render empty placeholder for JS to find
++            builder.OpenElement(0, "div");
++            builder.AddAttribute(1, "class", "validation-message");
++            builder.AddAttribute(2, "data-valmsg-for", fieldName);
++            builder.AddAttribute(3, "data-valmsg-replace", "true");
++            builder.AddMultipleAttributes(4, AdditionalAttributes);
++            builder.CloseElement();
++        }
++    }
++
+     /// <summary>
+     /// Called to dispose this instance.
+     /// </summary>
+diff --git a/src/Components/Web/src/Forms/ValidationSummary.cs b/src/Components/Web/src/Forms/ValidationSummary.cs
+index e2580fd0cf..6000bf0ff7 100644
+--- a/src/Components/Web/src/Forms/ValidationSummary.cs
++++ b/src/Components/Web/src/Forms/ValidationSummary.cs
+@@ -1,6 +1,7 @@
+ // Licensed to the .NET Foundation under one or more agreements.
+ // The .NET Foundation licenses this file to you under the MIT license.
+ 
++using Microsoft.AspNetCore.Components.Forms.ClientValidation;
+ using Microsoft.AspNetCore.Components.Rendering;
+ 
+ namespace Microsoft.AspNetCore.Components.Forms;
+@@ -60,11 +61,19 @@ public class ValidationSummary : ComponentBase, IDisposable
+     protected override void BuildRenderTree(RenderTreeBuilder builder)
+     {
+         // As an optimization, only evaluate the messages enumerable once, and
+-        // only produce the enclosing <ul> if there's at least one message
++        // only produce the enclosing <ul> if there's at least one message,
++        // or client-side validation is enabled.
+         var validationMessages = Model is null ?
+             CurrentEditContext.GetValidationMessages() :
+             CurrentEditContext.GetValidationMessages(new FieldIdentifier(Model, string.Empty));
+ 
++        if (CurrentEditContext.Properties.TryGetValue(typeof(IClientValidationService), out var serviceObj)
++            && serviceObj is IClientValidationService)
++        {
++            RenderForClientValidation(builder, validationMessages);
++            return;
++        }
++
+         var first = true;
+         foreach (var error in validationMessages)
+         {
+@@ -90,6 +99,36 @@ public class ValidationSummary : ComponentBase, IDisposable
+         }
+     }
+ 
++    /// <summary>
++    /// Renders a validation summary container with data-valmsg-summary="true" for the JS
++    /// validation library. Sets the initial CSS class based on whether server-rendered messages
++    /// exist: validation-summary-errors when non-empty (so CSS that hides validation-summary-valid
++    /// won't suppress initial server errors), validation-summary-valid when empty.
++    /// </summary>
++    private void RenderForClientValidation(RenderTreeBuilder builder, IEnumerable<string> validationMessages)
++    {
++        var messages = new List<string>(validationMessages);
++
++        builder.OpenElement(0, "div");
++        builder.AddAttribute(1, "data-valmsg-summary", "true");
++        builder.AddAttribute(2, "class", messages.Count > 0 ? "validation-summary-errors" : "validation-summary-valid");
++
++        builder.OpenElement(3, "ul");
++        builder.AddAttribute(4, "class", "validation-errors");
++        builder.AddMultipleAttributes(5, AdditionalAttributes);
++
++        foreach (var error in messages)
++        {
++            builder.OpenElement(6, "li");
++            builder.AddAttribute(7, "class", "validation-message");
++            builder.AddContent(8, error);
++            builder.CloseElement();
++        }
++
++        builder.CloseElement(); // ul
++        builder.CloseElement(); // div
++    }
++
+     /// <inheritdoc/>
+     protected virtual void Dispose(bool disposing)
+     {
+diff --git a/src/Components/Web/test/Forms/InputBaseClientValidationTest.cs b/src/Components/Web/test/Forms/InputBaseClientValidationTest.cs
+new file mode 100644
+index 0000000000..5e238a7811
+--- /dev/null
++++ b/src/Components/Web/test/Forms/InputBaseClientValidationTest.cs
+@@ -0,0 +1,156 @@
++// Licensed to the .NET Foundation under one or more agreements.
++// The .NET Foundation licenses this file to you under the MIT license.
++
++using Microsoft.AspNetCore.Components.Forms.ClientValidation;
++using Microsoft.AspNetCore.Components.RenderTree;
++using Microsoft.AspNetCore.Components.Test.Helpers;
++
++namespace Microsoft.AspNetCore.Components.Forms;
++
++public class InputBaseClientValidationTest
++{
++    private readonly TestRenderer _testRenderer = new TestRenderer();
++
++    [Fact]
++    public async Task InputBase_RendersDataValAttributes_WhenClientValidationServiceRegistered()
++    {
++        var model = new TestModel();
++        var editContext = new EditContext(model);
++        editContext.Properties[typeof(IClientValidationService)] = new TestClientValidationService(
++            new Dictionary<string, object>
++            {
++                ["data-val"] = "true",
++                ["data-val-required"] = "Generated required message.",
++            });
++
++        var rootComponent = new TestInputHostComponent<string, InputText>
++        {
++            EditContext = editContext,
++            ValueExpression = () => model.Value,
++        };
++
++        var componentId = await RenderAndGetInputComponentIdAsync(rootComponent);
++        var frames = _testRenderer.GetCurrentRenderTreeFrames(componentId);
++
++        AssertHasAttribute(frames, "data-val", "true");
++        AssertHasAttribute(frames, "data-val-required", "Generated required message.");
++    }
++
++    [Fact]
++    public async Task InputBase_DoesNotRenderDataValAttributes_WhenServiceNotRegistered()
++    {
++        var model = new TestModel();
++        var editContext = new EditContext(model); // No IClientValidationService registered
++
++        var rootComponent = new TestInputHostComponent<string, InputText>
++        {
++            EditContext = editContext,
++            ValueExpression = () => model.Value,
++        };
++
++        var componentId = await RenderAndGetInputComponentIdAsync(rootComponent);
++        var frames = _testRenderer.GetCurrentRenderTreeFrames(componentId);
++
++        AssertNoAttribute(frames, "data-val");
++    }
++
++    [Fact]
++    public async Task InputBase_DeveloperAdditionalAttributes_TakePrecedenceOverGenerated()
++    {
++        var model = new TestModel();
++        var editContext = new EditContext(model);
++        editContext.Properties[typeof(IClientValidationService)] = new TestClientValidationService(
++            new Dictionary<string, object>
++            {
++                ["data-val"] = "true",
++                ["data-val-required"] = "Generated message",
++            });
++
++        var rootComponent = new TestInputHostComponent<string, InputText>
++        {
++            EditContext = editContext,
++            ValueExpression = () => model.Value,
++            AdditionalAttributes = new Dictionary<string, object>
++            {
++                ["data-val-required"] = "Custom developer message",
++            },
++        };
++
++        var componentId = await RenderAndGetInputComponentIdAsync(rootComponent);
++        var frames = _testRenderer.GetCurrentRenderTreeFrames(componentId);
++
++        // Developer-specified attribute must win (first-wins merging in InputBase)
++        AssertHasAttribute(frames, "data-val-required", "Custom developer message");
++        // Generated data-val=true should still be present (no developer override)
++        AssertHasAttribute(frames, "data-val", "true");
++    }
++
++    [Fact]
++    public async Task InputBase_NoDataValAttributes_WhenServiceReturnsEmpty()
++    {
++        var model = new TestModel();
++        var editContext = new EditContext(model);
++        editContext.Properties[typeof(IClientValidationService)] = new TestClientValidationService(
++            new Dictionary<string, object>());
++
++        var rootComponent = new TestInputHostComponent<string, InputText>
++        {
++            EditContext = editContext,
++            ValueExpression = () => model.Value,
++        };
++
++        var componentId = await RenderAndGetInputComponentIdAsync(rootComponent);
++        var frames = _testRenderer.GetCurrentRenderTreeFrames(componentId);
++
++        AssertNoAttribute(frames, "data-val");
++    }
++
++    // Helpers
++
++    private async Task<int> RenderAndGetInputComponentIdAsync(TestInputHostComponent<string, InputText> hostComponent)
++    {
++        var hostComponentId = _testRenderer.AssignRootComponentId(hostComponent);
++        await _testRenderer.RenderRootComponentAsync(hostComponentId);
++        var batch = _testRenderer.Batches.Single();
++        return batch.GetComponentFrames<InputText>().Single().ComponentId;
++    }
++
++    private static void AssertHasAttribute(ArrayRange<RenderTreeFrame> frames, string attributeName, object expectedValue)
++    {
++        var match = frames.Array.Take(frames.Count).FirstOrDefault(f =>
++            f.FrameType == RenderTreeFrameType.Attribute && f.AttributeName == attributeName);
++
++        Assert.True(match.FrameType == RenderTreeFrameType.Attribute,
++            $"Expected attribute '{attributeName}' was not found in rendered output.");
++        Assert.Equal(expectedValue, match.AttributeValue);
++    }
++
++    private static void AssertNoAttribute(ArrayRange<RenderTreeFrame> frames, string attributeName)
++    {
++        Assert.DoesNotContain(frames.Array.Take(frames.Count), f =>
++            f.FrameType == RenderTreeFrameType.Attribute && f.AttributeName == attributeName);
++    }
++
++    /// <summary>
++    /// Test implementation of IClientValidationService that returns a fixed set of attributes
++    /// (or null) regardless of which field is requested. Lets us test InputBase's merge behavior
++    /// without depending on the internal DefaultClientValidationService.
++    /// </summary>
++    private sealed class TestClientValidationService : IClientValidationService
++    {
++        private readonly IReadOnlyDictionary<string, object> _attributes;
++
++        public TestClientValidationService(IReadOnlyDictionary<string, object> attributes)
++        {
++            _attributes = attributes;
++        }
++
++        public IReadOnlyDictionary<string, object> GetClientValidationAttributes(FieldIdentifier fieldIdentifier)
++            => _attributes;
++    }
++
++    private class TestModel
++    {
++        public string Value { get; set; } = "";
++    }
++}

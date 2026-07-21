@@ -1,0 +1,420 @@
+From 3b445e818b38b30c70c5d452fcffccbaa2e02837 Mon Sep 17 00:00:00 2001
+From: Issam Mani <issamouu69@gmail.com>
+Date: Tue, 18 Nov 2025 18:50:48 +0100
+Subject: [PATCH] Add FXIOS-13784 [Translations] Add bridge between webviews
+ (#30711)
+
+* feat: add generic bridge endpoint
+
+* feat: add endpoint for concrete webviews
+
+* feat: add container bridge
+
+* feat: add tests
+
+* fix: lint
+
+* fix: redundant assignment in guard
+---
+ firefox-ios/Client.xcodeproj/project.pbxproj  | 28 ++++++
+ .../Frontend/Translations/Engine/Bridge.swift | 52 +++++++++++
+ .../Translations/Engine/BridgeEndpoint.swift  | 22 +++++
+ .../Engine/WebViewBridgeEndpoint.swift        | 63 +++++++++++++
+ .../TranslationsTests/BridgeTests.swift       | 89 +++++++++++++++++++
+ .../FakeBridgeEndpoint.swift                  | 31 +++++++
+ 6 files changed, 285 insertions(+)
+ create mode 100644 firefox-ios/Client/Frontend/Translations/Engine/Bridge.swift
+ create mode 100644 firefox-ios/Client/Frontend/Translations/Engine/BridgeEndpoint.swift
+ create mode 100644 firefox-ios/Client/Frontend/Translations/Engine/WebViewBridgeEndpoint.swift
+ create mode 100644 firefox-ios/firefox-ios-tests/Tests/ClientTests/TranslationsTests/BridgeTests.swift
+ create mode 100644 firefox-ios/firefox-ios-tests/Tests/ClientTests/TranslationsTests/FakeBridgeEndpoint.swift
+
+diff --git a/firefox-ios/Client.xcodeproj/project.pbxproj b/firefox-ios/Client.xcodeproj/project.pbxproj
+index d1c2a7ce3..9ca2b462a 100644
+--- a/firefox-ios/Client.xcodeproj/project.pbxproj
++++ b/firefox-ios/Client.xcodeproj/project.pbxproj
+@@ -1482,6 +1482,11 @@
+ 		C2500D7C2ECB4A600071506F /* MockTranslationModelsFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2500D7B2ECB4A5D0071506F /* MockTranslationModelsFetcher.swift */; };
+ 		C25017362ECBAD0A0071506F /* MockRemoteSettingsClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25017352ECBAD000071506F /* MockRemoteSettingsClient.swift */; };
+ 		C25017382ECBAE030071506F /* ASTranslationModelsFetcherTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25017372ECBAE020071506F /* ASTranslationModelsFetcherTests.swift */; };
++		C25018DF2ECC75A40071506F /* Bridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25018DE2ECC759F0071506F /* Bridge.swift */; };
++		C25018E12ECC7A290071506F /* BridgeEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25018E02ECC7A200071506F /* BridgeEndpoint.swift */; };
++		C25018E32ECC7C110071506F /* WebViewBridgeEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25018E22ECC7C0F0071506F /* WebViewBridgeEndpoint.swift */; };
++		C25018E52ECC875F0071506F /* FakeBridgeEndpoint.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25018E42ECC87570071506F /* FakeBridgeEndpoint.swift */; };
++		C25018E72ECC88440071506F /* BridgeTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C25018E62ECC88400071506F /* BridgeTests.swift */; };
+ 		C2506C932A6A863600F2B76E /* HistoryCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2506C922A6A863600F2B76E /* HistoryCoordinator.swift */; };
+ 		C2506C952A6A8D2600F2B76E /* HistoryCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2506C942A6A8D2600F2B76E /* HistoryCoordinatorTests.swift */; };
+ 		C27EF6132EBA28E100BED719 /* LanguageDetector.swift in Sources */ = {isa = PBXBuildFile; fileRef = C27EF6122EBA28DB00BED719 /* LanguageDetector.swift */; };
+@@ -9840,6 +9845,11 @@
+ 		C2500D7B2ECB4A5D0071506F /* MockTranslationModelsFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockTranslationModelsFetcher.swift; sourceTree = "<group>"; };
+ 		C25017352ECBAD000071506F /* MockRemoteSettingsClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MockRemoteSettingsClient.swift; sourceTree = "<group>"; };
+ 		C25017372ECBAE020071506F /* ASTranslationModelsFetcherTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ASTranslationModelsFetcherTests.swift; sourceTree = "<group>"; };
++		C25018DE2ECC759F0071506F /* Bridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Bridge.swift; sourceTree = "<group>"; };
++		C25018E02ECC7A200071506F /* BridgeEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeEndpoint.swift; sourceTree = "<group>"; };
++		C25018E22ECC7C0F0071506F /* WebViewBridgeEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebViewBridgeEndpoint.swift; sourceTree = "<group>"; };
++		C25018E42ECC87570071506F /* FakeBridgeEndpoint.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FakeBridgeEndpoint.swift; sourceTree = "<group>"; };
++		C25018E62ECC88400071506F /* BridgeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BridgeTests.swift; sourceTree = "<group>"; };
+ 		C2506C922A6A863600F2B76E /* HistoryCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryCoordinator.swift; sourceTree = "<group>"; };
+ 		C2506C942A6A8D2600F2B76E /* HistoryCoordinatorTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryCoordinatorTests.swift; sourceTree = "<group>"; };
+ 		C26C4D1F8CFB13730BA74DF5 /* an */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = an; path = an.lproj/FindInPage.strings; sourceTree = "<group>"; };
+@@ -14123,6 +14133,7 @@
+ 		AA5E81452EB12BAB00919E60 /* Translations */ = {
+ 			isa = PBXGroup;
+ 			children = (
++				C25018DD2ECC75970071506F /* Engine */,
+ 				C2886E022EC5DFDD007AE6C3 /* SchemeHandler */,
+ 				C2886BA82EC4A41E007AE6C3 /* TinyRouter */,
+ 				C27EF6182EBA363800BED719 /* LanguageDetector */,
+@@ -14145,6 +14156,8 @@
+ 			children = (
+ 				C25017372ECBAE020071506F /* ASTranslationModelsFetcherTests.swift */,
+ 				C25017352ECBAD000071506F /* MockRemoteSettingsClient.swift */,
++				C25018E62ECC88400071506F /* BridgeTests.swift */,
++				C25018E42ECC87570071506F /* FakeBridgeEndpoint.swift */,
+ 				C2500D7B2ECB4A5D0071506F /* MockTranslationModelsFetcher.swift */,
+ 				C2886E0B2EC60E59007AE6C3 /* TranslationsSchemeHandlerTests.swift */,
+ 				C2886BB32EC4AC5E007AE6C3 /* MockRoute.swift */,
+@@ -14332,6 +14345,16 @@
+ 			path = WebsiteDataManagement;
+ 			sourceTree = "<group>";
+ 		};
++		C25018DD2ECC75970071506F /* Engine */ = {
++			isa = PBXGroup;
++			children = (
++				C25018E22ECC7C0F0071506F /* WebViewBridgeEndpoint.swift */,
++				C25018E02ECC7A200071506F /* BridgeEndpoint.swift */,
++				C25018DE2ECC759F0071506F /* Bridge.swift */,
++			);
++			path = Engine;
++			sourceTree = "<group>";
++		};
+ 		C27EF6182EBA363800BED719 /* LanguageDetector */ = {
+ 			isa = PBXGroup;
+ 			children = (
+@@ -18653,6 +18676,7 @@
+ 				8A285B08294A5D4C00149B0F /* HomepageHeroImageViewModel.swift in Sources */,
+ 				8AC1065F28D0CD700013263A /* OpenQLPreviewHelper.swift in Sources */,
+ 				8AE9FD262CF66301001053EE /* UnifiedAdsProvider.swift in Sources */,
++				C25018E12ECC7A290071506F /* BridgeEndpoint.swift in Sources */,
+ 				EBA3B2C32268F16300728BDB /* PhotonActionSheetView.swift in Sources */,
+ 				8A8D12142DD671DC00E0B8BB /* TabTrayPanelSwipePalette.swift in Sources */,
+ 				8C2447EC2DFADF6800BD2C91 /* OnboardingNavigationDelegate.swift in Sources */,
+@@ -18886,6 +18910,7 @@
+ 				8A13FA8B2AD82E6D007527AB /* ApplicationStateProvider.swift in Sources */,
+ 				E13C072B2C2184C80087E404 /* AddressBarState.swift in Sources */,
+ 				C7F051522D95EACF00EC52C0 /* HistoryDeletionUtilityTelemetry.swift in Sources */,
++				C25018DF2ECC75A40071506F /* Bridge.swift in Sources */,
+ 				4347B39A298DA5BB0045F677 /* CreditCardInputViewModel.swift in Sources */,
+ 				6025B10D267B6C5400F59F6B /* LoginRecordExtension.swift in Sources */,
+ 				8AB893A62C73AFBA00DAEED7 /* MockLoginProvider.swift in Sources */,
+@@ -19119,6 +19144,7 @@
+ 				D5D052D92645ABF400759F85 /* ExperimentsSettingsView.swift in Sources */,
+ 				8A15AB712D5FDA33008BB03C /* AutoplayAccessors.swift in Sources */,
+ 				0E4AF8612D763EB0002E4238 /* DownloadLiveActivityUtil.swift in Sources */,
++				C25018E32ECC7C110071506F /* WebViewBridgeEndpoint.swift in Sources */,
+ 				8AE0BF4F2819B10E00F33EC4 /* TopSitesSettingsViewController.swift in Sources */,
+ 				ED7A08DD2CF6749B0035EC8F /* ShareType.swift in Sources */,
+ 				8A6E63C72D4946B90040D355 /* JumpBackInSectionState.swift in Sources */,
+@@ -19355,6 +19381,7 @@
+ 				03CCC9181AF05E7300DBF30D /* RelativeDatesTests.swift in Sources */,
+ 				F84B21DA1A090F8100AAB793 /* ClientTests.swift in Sources */,
+ 				81DAB2F12C88F02500F4BE98 /* MainMenuViewControllerTests.swift in Sources */,
++				C25018E72ECC88440071506F /* BridgeTests.swift in Sources */,
+ 				C7F051582D9F098200EC52C0 /* ContextMenuTelemetryTests.swift in Sources */,
+ 				219935F12B07DFA200E5966F /* TabDisplayPanelTests.swift in Sources */,
+ 				0B7B053D2D647D00007FD7AC /* TemporaryDocumentTests.swift in Sources */,
+@@ -19576,6 +19603,7 @@
+ 				0B7FC3D32CAE811F005C5CCE /* DefaultBookmarksSaverTests.swift in Sources */,
+ 				61A1644A2CE7BE8A001D6058 /* WallpaperMiddlewareTests.swift in Sources */,
+ 				C8B394362A0ED55D00700E49 /* MockOnboardingCardDelegate.swift in Sources */,
++				C25018E52ECC875F0071506F /* FakeBridgeEndpoint.swift in Sources */,
+ 				0B81AFEE2DB1036B000AF70F /* HomePageActivityTests.swift in Sources */,
+ 				8A5604F829DF0D2600035CA3 /* BrowserCoordinatorTests.swift in Sources */,
+ 				8ABB15C92D5A4E3900A4635C /* RemoteTabsMiddlewareTests.swift in Sources */,
+diff --git a/firefox-ios/Client/Frontend/Translations/Engine/Bridge.swift b/firefox-ios/Client/Frontend/Translations/Engine/Bridge.swift
+new file mode 100644
+index 000000000..a26f7b108
+--- /dev/null
++++ b/firefox-ios/Client/Frontend/Translations/Engine/Bridge.swift
+@@ -0,0 +1,52 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++import Foundation
++import WebKit
++
++/// A small bridge that forwards JSON messages between two `BridgeEndpoint` instances.
++/// The two `BridgeEndpoint`instances  could be real webviews or fake for tests.
++@MainActor
++public final class Bridge: NSObject, WKScriptMessageHandler {
++    private let portA: BridgeEndpoint
++    private let portB: BridgeEndpoint
++
++    init(portA: BridgeEndpoint, portB: BridgeEndpoint) {
++        self.portA = portA
++        self.portB = portB
++        super.init()
++        portA.registerScriptHandler(self)
++        portB.registerScriptHandler(self)
++    }
++
++    func send(_ json: String, to endpoint: BridgeEndpoint) {
++        endpoint.send(json: json)
++    }
++
++    func receive(handlerName: String, body: Any) {
++        guard
++            JSONSerialization.isValidJSONObject(body),
++            let data = try? JSONSerialization.data(withJSONObject: body),
++            let json = String(data: data, encoding: .utf8)
++        else { return }
++
++        if handlerName == portA.handlerName {
++            portB.send(json: json)
++        } else if handlerName == portB.handlerName {
++            portA.send(json: json)
++        }
++    }
++
++    func teardown() {
++        portA.unregisterScriptHandler()
++        portB.unregisterScriptHandler()
++    }
++
++    public func userContentController(
++        _ userContentController: WKUserContentController,
++        didReceive message: WKScriptMessage
++    ) {
++        receive(handlerName: message.name, body: message.body)
++    }
++}
+diff --git a/firefox-ios/Client/Frontend/Translations/Engine/BridgeEndpoint.swift b/firefox-ios/Client/Frontend/Translations/Engine/BridgeEndpoint.swift
+new file mode 100644
+index 000000000..48e9fb3f7
+--- /dev/null
++++ b/firefox-ios/Client/Frontend/Translations/Engine/BridgeEndpoint.swift
+@@ -0,0 +1,22 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++import Foundation
++import WebKit
++
++/// Represents one endpoint of a `WebViewBridge`.
++/// This is an abstraction so it’s easy to test and not have to use a real `WKWebView` in tests.
++/// NOTE: This is main actor because on production code this will be dealing with real webviews.
++@MainActor
++protocol BridgeEndpoint: AnyObject {
++    var handlerName: String { get }
++    /// Sends a JSON string to this endpoint's JavaScript context.
++    func send(json: String)
++    /// Called by a `Bridge` to attach `WKScriptMessageHandler`.
++    /// For tests, this will be a no-op..
++    func registerScriptHandler(_ handler: WKScriptMessageHandler)
++    /// Called by a `Bridge`  to remove a `WKScriptMessageHandler`.
++    /// For tests, this will be a no-op..
++    func unregisterScriptHandler()
++}
+diff --git a/firefox-ios/Client/Frontend/Translations/Engine/WebViewBridgeEndpoint.swift b/firefox-ios/Client/Frontend/Translations/Engine/WebViewBridgeEndpoint.swift
+new file mode 100644
+index 000000000..4916e0e86
+--- /dev/null
++++ b/firefox-ios/Client/Frontend/Translations/Engine/WebViewBridgeEndpoint.swift
+@@ -0,0 +1,63 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++import WebKit
++
++/// A concrete endpoint used by `WebViewBridge`.
++/// This endpoint delivers messages into a `WKWebView` by calling a JavaScript function on the page.
++final class WebViewBridgeEndpoint: BridgeEndpoint {
++    /// The message handler name associated with this endpoint.
++    ///
++    /// JavaScript will post messages to:
++    /// `window.webkit.messageHandlers[handlerName].postMessage(...)`
++    public let handlerName: String
++
++    /// The content world in which the JavaScript `receiveFunction` will run.
++    ///
++    /// This allows bridging between isolated JS contexts such as:
++    /// - `.defaultClient` (isolated world)
++    /// - `.page` (main world)
++    private let contentWorld: WKContentWorld
++
++    /// The global JavaScript function to invoke when sending messages
++    /// into the page.
++    ///
++    /// Example: `"window.receive"`
++    private let receiveFunction: String
++
++    /// The underlying WebView. Weak to avoid retain cycles.
++    private weak var webView: WKWebView?
++
++    init(
++        webView: WKWebView,
++        handlerName: String,
++        contentWorld: WKContentWorld,
++        receiveFunction: String
++    ) {
++        self.webView = webView
++        self.handlerName = handlerName
++        self.contentWorld = contentWorld
++        self.receiveFunction = receiveFunction
++    }
++
++    /// Sends the provided JSON string into the configured JavaScript function.
++    func send(json: String) {
++        guard let webView else { return }
++        let js = "\(receiveFunction)(\(json))"
++        webView.evaluateJavaScript(js, in: nil, in: contentWorld)
++    }
++
++    func registerScriptHandler(_ handler: WKScriptMessageHandler) {
++        guard let webView else { return }
++        let userContentController = webView.configuration.userContentController
++        userContentController.removeScriptMessageHandler(forName: handlerName)
++        userContentController.add(handler, contentWorld: contentWorld, name: handlerName)
++    }
++
++    func unregisterScriptHandler() {
++        guard let webView else { return }
++        let userContentController = webView.configuration.userContentController
++        userContentController.removeScriptMessageHandler(forName: handlerName)
++    }
++}
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/TranslationsTests/BridgeTests.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/TranslationsTests/BridgeTests.swift
+new file mode 100644
+index 000000000..da46a0a6b
+--- /dev/null
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/TranslationsTests/BridgeTests.swift
+@@ -0,0 +1,89 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++import XCTest
++import WebKit
++@testable import Client
++
++@MainActor
++final class BridgeTests: XCTestCase {
++    func test_bridge_receiveFromA_forwardsToB() {
++        let subject = createSubject(aName: "a", bName: "b")
++        let message = makeMessage(name: "a", body: ["foo": "bar"])
++
++        subject.bridge.userContentController(.init(), didReceive: message)
++
++        XCTAssertEqual(subject.portB.receivedJSON, [#"{"foo":"bar"}"#])
++        XCTAssertTrue(subject.portA.receivedJSON.isEmpty)
++    }
++
++    func test_bridge_receiveFromB_forwardsToA() {
++        let subject = createSubject(aName: "a", bName: "b")
++        let message = makeMessage(name: "b", body: ["x": 1])
++        subject.bridge.userContentController(.init(), didReceive: message)
++
++        XCTAssertEqual(subject.portA.receivedJSON, [#"{"x":1}"#])
++        XCTAssertTrue(subject.portB.receivedJSON.isEmpty)
++    }
++
++    func test_bridge_receive_invalidJSON_doesNotForward() {
++        let subject = createSubject(aName: "a", bName: "b")
++        // Message with invalid JSON object
++        let message = makeMessage(name: "a", body: "not a dict")
++        subject.bridge.userContentController(.init(), didReceive: message)
++
++        XCTAssertTrue(subject.portA.receivedJSON.isEmpty)
++        XCTAssertTrue(subject.portB.receivedJSON.isEmpty)
++    }
++
++    func test_bridge_send_sendsToGivenEndpoint() {
++        let subject = createSubject(aName: "a", bName: "b")
++        subject.bridge.send(#"{"hello":true}"#, to: subject.portB)
++
++        XCTAssertEqual(subject.portB.receivedJSON, [#"{"hello":true}"#])
++        XCTAssertTrue(subject.portA.receivedJSON.isEmpty)
++    }
++
++    func test_bridge_init_registersScriptHandlers() {
++        let subject = createSubject(aName: "a", bName: "b")
++        XCTAssertEqual(subject.portA.registerCount, 1)
++        XCTAssertEqual(subject.portB.registerCount, 1)
++    }
++
++    func test_bridge_teardown_unregistersScriptHandlers() {
++        let subject = createSubject(aName: "a", bName: "b")
++        XCTAssertEqual(subject.portA.unregisterCount, 0)
++        XCTAssertEqual(subject.portB.unregisterCount, 0)
++
++        subject.bridge.teardown()
++
++        XCTAssertEqual(subject.portA.unregisterCount, 1)
++        XCTAssertEqual(subject.portB.unregisterCount, 1)
++    }
++
++    private struct Subject {
++        let portA: FakeEndpoint
++        let portB: FakeEndpoint
++        let bridge: Bridge
++    }
++
++    private func createSubject(aName: String, bName: String) -> Subject {
++        let portA = FakeEndpoint(name: aName)
++        let portB = FakeEndpoint(name: bName)
++        let subject = Bridge(portA: portA, portB: portB)
++        return Subject(
++            portA: portA,
++            portB: portB,
++            bridge: subject,
++        )
++    }
++
++    private func makeMessage(name: String, body: Any) -> WKScriptMessageMock {
++        return WKScriptMessageMock(
++            name: name,
++            body: body,
++            frameInfo: WKFrameInfoMock()
++        )
++    }
++}
+diff --git a/firefox-ios/firefox-ios-tests/Tests/ClientTests/TranslationsTests/FakeBridgeEndpoint.swift b/firefox-ios/firefox-ios-tests/Tests/ClientTests/TranslationsTests/FakeBridgeEndpoint.swift
+new file mode 100644
+index 000000000..860a29332
+--- /dev/null
++++ b/firefox-ios/firefox-ios-tests/Tests/ClientTests/TranslationsTests/FakeBridgeEndpoint.swift
+@@ -0,0 +1,31 @@
++// This Source Code Form is subject to the terms of the Mozilla Public
++// License, v. 2.0. If a copy of the MPL was not distributed with this
++// file, You can obtain one at http://mozilla.org/MPL/2.0/
++
++import Foundation
++import WebKit
++@testable import Client
++
++final class FakeEndpoint: BridgeEndpoint {
++    let handlerName: String
++
++    private(set) var receivedJSON: [String] = []
++    private(set) var registerCount = 0
++    private(set) var unregisterCount = 0
++
++    init(name: String) {
++        self.handlerName = name
++    }
++
++    func send(json: String) {
++        receivedJSON.append(json)
++    }
++
++    func registerScriptHandler(_ handler: WKScriptMessageHandler) {
++        registerCount += 1
++    }
++
++    func unregisterScriptHandler() {
++        unregisterCount += 1
++    }
++}

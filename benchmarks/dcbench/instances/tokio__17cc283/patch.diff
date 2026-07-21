@@ -1,0 +1,204 @@
+From 17cc283f58906bb34d6446331f6f3dbd14fd319e Mon Sep 17 00:00:00 2001
+From: daxpedda <daxpedda@gmail.com>
+Date: Sun, 19 Mar 2023 12:28:43 +0100
+Subject: [PATCH] macros: accept path as crate rename (#5557)
+
+---
+ .../tests/fail/macros_invalid_input.rs        |  7 ++--
+ .../tests/fail/macros_invalid_input.stderr    | 18 ++++------
+ tokio-macros/src/entry.rs                     | 34 +++++++++----------
+ tokio/tests/macros_rename_test.rs             |  9 +++++
+ 4 files changed, 34 insertions(+), 34 deletions(-)
+
+diff --git a/tests-build/tests/fail/macros_invalid_input.rs b/tests-build/tests/fail/macros_invalid_input.rs
+index 3272757..99daf00 100644
+--- a/tests-build/tests/fail/macros_invalid_input.rs
++++ b/tests-build/tests/fail/macros_invalid_input.rs
+@@ -36,13 +36,10 @@ async fn test_worker_threads_not_int() {}
+ async fn test_worker_threads_and_current_thread() {}
+ 
+ #[tokio::test(crate = 456)]
+-async fn test_crate_not_ident_int() {}
++async fn test_crate_not_path_int() {}
+ 
+ #[tokio::test(crate = "456")]
+-async fn test_crate_not_ident_invalid() {}
+-
+-#[tokio::test(crate = "abc::edf")]
+-async fn test_crate_not_ident_path() {}
++async fn test_crate_not_path_invalid() {}
+ 
+ #[tokio::test]
+ #[test]
+diff --git a/tests-build/tests/fail/macros_invalid_input.stderr b/tests-build/tests/fail/macros_invalid_input.stderr
+index 564f5af..0c8d65f 100644
+--- a/tests-build/tests/fail/macros_invalid_input.stderr
++++ b/tests-build/tests/fail/macros_invalid_input.stderr
+@@ -64,34 +64,28 @@ error: The `worker_threads` option requires the `multi_thread` runtime flavor. U
+ 35 | #[tokio::test(flavor = "current_thread", worker_threads = 4)]
+    |                                                           ^
+ 
+-error: Failed to parse value of `crate` as ident.
++error: Failed to parse value of `crate` as path.
+   --> $DIR/macros_invalid_input.rs:38:23
+    |
+ 38 | #[tokio::test(crate = 456)]
+    |                       ^^^
+ 
+-error: Failed to parse value of `crate` as ident: "456"
++error: Failed to parse value of `crate` as path: "456"
+   --> $DIR/macros_invalid_input.rs:41:23
+    |
+ 41 | #[tokio::test(crate = "456")]
+    |                       ^^^^^
+ 
+-error: Failed to parse value of `crate` as ident: "abc::edf"
+-  --> $DIR/macros_invalid_input.rs:44:23
+-   |
+-44 | #[tokio::test(crate = "abc::edf")]
+-   |                       ^^^^^^^^^^
+-
+ error: second test attribute is supplied
+-  --> $DIR/macros_invalid_input.rs:48:1
++  --> $DIR/macros_invalid_input.rs:45:1
+    |
+-48 | #[test]
++45 | #[test]
+    | ^^^^^^^
+ 
+ error: duplicated attribute
+-  --> $DIR/macros_invalid_input.rs:48:1
++  --> $DIR/macros_invalid_input.rs:45:1
+    |
+-48 | #[test]
++45 | #[test]
+    | ^^^^^^^
+    |
+ note: the lint level is defined here
+diff --git a/tokio-macros/src/entry.rs b/tokio-macros/src/entry.rs
+index 6460e70..0c14bfb 100644
+--- a/tokio-macros/src/entry.rs
++++ b/tokio-macros/src/entry.rs
+@@ -1,7 +1,7 @@
+ use proc_macro::TokenStream;
+-use proc_macro2::{Ident, Span};
++use proc_macro2::Span;
+ use quote::{quote, quote_spanned, ToTokens};
+-use syn::parse::Parser;
++use syn::{parse::Parser, Ident, Path};
+ 
+ // syn::AttributeArgs does not implement syn::Parse
+ type AttributeArgs = syn::punctuated::Punctuated<syn::NestedMeta, syn::Token![,]>;
+@@ -29,7 +29,7 @@ struct FinalConfig {
+     flavor: RuntimeFlavor,
+     worker_threads: Option<usize>,
+     start_paused: Option<bool>,
+-    crate_name: Option<String>,
++    crate_name: Option<Path>,
+ }
+ 
+ /// Config used in case of the attribute not being able to build a valid config
+@@ -47,7 +47,7 @@ struct Configuration {
+     worker_threads: Option<(usize, Span)>,
+     start_paused: Option<(bool, Span)>,
+     is_test: bool,
+-    crate_name: Option<String>,
++    crate_name: Option<Path>,
+ }
+ 
+ impl Configuration {
+@@ -112,8 +112,8 @@ impl Configuration {
+         if self.crate_name.is_some() {
+             return Err(syn::Error::new(span, "`crate` set multiple times."));
+         }
+-        let name_ident = parse_ident(name, span, "crate")?;
+-        self.crate_name = Some(name_ident.to_string());
++        let name_path = parse_path(name, span, "crate")?;
++        self.crate_name = Some(name_path);
+         Ok(())
+     }
+ 
+@@ -199,23 +199,22 @@ fn parse_string(int: syn::Lit, span: Span, field: &str) -> Result<String, syn::E
+     }
+ }
+ 
+-fn parse_ident(lit: syn::Lit, span: Span, field: &str) -> Result<Ident, syn::Error> {
++fn parse_path(lit: syn::Lit, span: Span, field: &str) -> Result<Path, syn::Error> {
+     match lit {
+         syn::Lit::Str(s) => {
+             let err = syn::Error::new(
+                 span,
+                 format!(
+-                    "Failed to parse value of `{}` as ident: \"{}\"",
++                    "Failed to parse value of `{}` as path: \"{}\"",
+                     field,
+                     s.value()
+                 ),
+             );
+-            let path = s.parse::<syn::Path>().map_err(|_| err.clone())?;
+-            path.get_ident().cloned().ok_or(err)
++            s.parse::<syn::Path>().map_err(|_| err.clone())
+         }
+         _ => Err(syn::Error::new(
+             span,
+-            format!("Failed to parse value of `{}` as ident.", field),
++            format!("Failed to parse value of `{}` as path.", field),
+         )),
+     }
+ }
+@@ -354,16 +353,17 @@ fn parse_knobs(mut input: syn::ItemFn, is_test: bool, config: FinalConfig) -> To
+         (start, end)
+     };
+ 
+-    let crate_name = config.crate_name.as_deref().unwrap_or("tokio");
+-
+-    let crate_ident = Ident::new(crate_name, last_stmt_start_span);
++    let crate_path = config
++        .crate_name
++        .map(ToTokens::into_token_stream)
++        .unwrap_or_else(|| Ident::new("tokio", last_stmt_start_span).into_token_stream());
+ 
+     let mut rt = match config.flavor {
+         RuntimeFlavor::CurrentThread => quote_spanned! {last_stmt_start_span=>
+-            #crate_ident::runtime::Builder::new_current_thread()
++            #crate_path::runtime::Builder::new_current_thread()
+         },
+         RuntimeFlavor::Threaded => quote_spanned! {last_stmt_start_span=>
+-            #crate_ident::runtime::Builder::new_multi_thread()
++            #crate_path::runtime::Builder::new_multi_thread()
+         },
+     };
+     if let Some(v) = config.worker_threads {
+@@ -414,7 +414,7 @@ fn parse_knobs(mut input: syn::ItemFn, is_test: bool, config: FinalConfig) -> To
+         };
+         quote! {
+             let body = async #body;
+-            #crate_ident::pin!(body);
++            #crate_path::pin!(body);
+             let body: ::std::pin::Pin<&mut dyn ::std::future::Future<Output = #output_type>> = body;
+         }
+     } else {
+diff --git a/tokio/tests/macros_rename_test.rs b/tokio/tests/macros_rename_test.rs
+index 90a86f9..6c2ce2f 100644
+--- a/tokio/tests/macros_rename_test.rs
++++ b/tokio/tests/macros_rename_test.rs
+@@ -5,6 +5,10 @@ use std as tokio;
+ 
+ use ::tokio as tokio1;
+ 
++mod test {
++    pub use ::tokio;
++}
++
+ async fn compute() -> usize {
+     let join = tokio1::spawn(async { 1 });
+     join.await.unwrap()
+@@ -24,3 +28,8 @@ fn crate_rename_main() {
+ async fn crate_rename_test() {
+     assert_eq!(1, compute().await);
+ }
++
++#[test::tokio::test(crate = "test::tokio")]
++async fn crate_path_test() {
++    assert_eq!(1, compute().await);
++}

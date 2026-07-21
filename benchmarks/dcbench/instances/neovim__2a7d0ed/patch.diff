@@ -1,0 +1,2612 @@
+From 2a7d0ed6145bf3f8b139c2694563f460f829813a Mon Sep 17 00:00:00 2001
+From: "Justin M. Keyes" <justinkz@gmail.com>
+Date: Mon, 23 Dec 2024 05:43:52 -0800
+Subject: [PATCH] refactor: iwyu #31637
+
+Result of `make iwyu` (after some "fixups").
+---
+ src/nvim/api/autocmd.c            |  2 +-
+ src/nvim/api/buffer.c             |  1 -
+ src/nvim/api/command.c            |  1 +
+ src/nvim/api/deprecated.c         |  4 +---
+ src/nvim/api/extmark.c            |  1 +
+ src/nvim/api/extmark.h            |  1 +
+ src/nvim/api/options.c            |  1 +
+ src/nvim/api/private/converter.c  |  3 ++-
+ src/nvim/api/private/helpers.c    |  5 +----
+ src/nvim/api/private/helpers.h    |  2 +-
+ src/nvim/api/tabpage.c            |  5 +++--
+ src/nvim/api/ui.c                 |  2 +-
+ src/nvim/api/ui.h                 |  1 +
+ src/nvim/api/vim.c                |  3 +--
+ src/nvim/api/vimscript.c          |  2 ++
+ src/nvim/api/win_config.c         |  7 ++-----
+ src/nvim/api/window.c             |  3 +--
+ src/nvim/autocmd.c                |  3 +--
+ src/nvim/buffer_updates.c         |  3 ++-
+ src/nvim/bufwrite.c               |  1 -
+ src/nvim/change.c                 |  1 -
+ src/nvim/channel.c                |  3 ++-
+ src/nvim/cmdexpand.c              |  1 -
+ src/nvim/cmdhist.c                |  1 +
+ src/nvim/cmdhist.h                |  4 +++-
+ src/nvim/context.c                |  1 +
+ src/nvim/context.h                |  2 +-
+ src/nvim/cursor.c                 |  1 +
+ src/nvim/decoration.c             |  3 +--
+ src/nvim/diff.c                   |  1 +
+ src/nvim/digraph.c                |  1 -
+ src/nvim/drawscreen.c             |  1 -
+ src/nvim/drawscreen.h             |  1 +
+ src/nvim/edit.c                   |  4 ++++
+ src/nvim/eval/buffer.c            |  1 +
+ src/nvim/eval/decode.c            |  3 ++-
+ src/nvim/eval/decode.h            |  2 +-
+ src/nvim/eval/deprecated.c        |  2 +-
+ src/nvim/eval/deprecated.h        |  2 --
+ src/nvim/eval/executor.c          |  1 -
+ src/nvim/eval/funcs.c             |  4 +++-
+ src/nvim/eval/typval.c            |  2 ++
+ src/nvim/eval/vars.c              |  1 -
+ src/nvim/eval/window.c            |  1 -
+ src/nvim/event/proc.c             |  3 +++
+ src/nvim/event/rstream.c          |  6 +++---
+ src/nvim/event/stream.c           |  1 +
+ src/nvim/ex_cmds.c                |  3 +--
+ src/nvim/ex_cmds2.c               |  2 +-
+ src/nvim/ex_docmd.c               |  1 -
+ src/nvim/ex_getln.c               |  3 ---
+ src/nvim/ex_session.c             |  2 ++
+ src/nvim/file_search.c            |  4 +++-
+ src/nvim/fileio.c                 |  2 --
+ src/nvim/garray.c                 |  3 ++-
+ src/nvim/getchar.c                |  6 +++++-
+ src/nvim/getchar.h                |  1 -
+ src/nvim/hashtab.c                |  1 +
+ src/nvim/highlight_group.c        |  2 ++
+ src/nvim/indent.c                 |  1 -
+ src/nvim/input.c                  |  2 --
+ src/nvim/insexpand.c              |  1 -
+ src/nvim/linematch.c              |  2 --
+ src/nvim/linematch.h              |  2 +-
+ src/nvim/lua/api_wrappers.c       | 30 +++++++++++++++---------------
+ src/nvim/lua/converter.c          |  1 +
+ src/nvim/lua/executor.c           |  3 ++-
+ src/nvim/lua/executor.h           |  2 +-
+ src/nvim/lua/secure.c             |  2 +-
+ src/nvim/lua/spell.c              |  2 +-
+ src/nvim/lua/stdlib.c             |  2 ++
+ src/nvim/lua/treesitter.c         |  3 +--
+ src/nvim/lua/xdiff.c              |  1 +
+ src/nvim/main.c                   |  5 ++---
+ src/nvim/main.h                   |  1 -
+ src/nvim/mapping.c                |  3 ++-
+ src/nvim/mark.c                   |  1 -
+ src/nvim/marktree.h               |  1 -
+ src/nvim/mbyte.c                  |  2 +-
+ src/nvim/memline.c                |  1 -
+ src/nvim/memory.c                 |  1 -
+ src/nvim/memory.h                 |  1 +
+ src/nvim/menu.c                   |  1 -
+ src/nvim/message.c                |  2 ++
+ src/nvim/move.c                   |  7 +++----
+ src/nvim/msgpack_rpc/channel.c    |  1 +
+ src/nvim/msgpack_rpc/packer.c     |  9 +++++++++
+ src/nvim/msgpack_rpc/packer.h     |  6 +++---
+ src/nvim/msgpack_rpc/server.c     |  1 +
+ src/nvim/msgpack_rpc/unpacker.c   |  1 +
+ src/nvim/msgpack_rpc/unpacker.h   |  2 ++
+ src/nvim/normal.c                 |  1 +
+ src/nvim/ops.c                    |  3 +--
+ src/nvim/ops.h                    |  2 +-
+ src/nvim/option.c                 |  6 ++++--
+ src/nvim/option.h                 |  4 +---
+ src/nvim/optionstr.c              |  1 -
+ src/nvim/os/env.c                 |  1 -
+ src/nvim/os/fileio.c              |  7 ++-----
+ src/nvim/os/input.c               |  3 ++-
+ src/nvim/os/pty_proc_unix.c       |  1 +
+ src/nvim/path.c                   |  1 +
+ src/nvim/popupmenu.c              |  8 ++------
+ src/nvim/profile.c                |  1 +
+ src/nvim/quickfix.c               |  1 -
+ src/nvim/regexp.c                 |  1 +
+ src/nvim/runtime.c                |  1 +
+ src/nvim/search.c                 |  3 +--
+ src/nvim/search.h                 |  3 ++-
+ src/nvim/shada.c                  |  9 +++++----
+ src/nvim/shada.h                  |  2 +-
+ src/nvim/sign.c                   |  3 ---
+ src/nvim/state.h                  |  2 +-
+ src/nvim/statusline.c             |  1 -
+ src/nvim/strings.c                |  4 +++-
+ src/nvim/strings.h                |  2 +-
+ src/nvim/syntax.c                 |  1 -
+ src/nvim/tag.c                    |  1 -
+ src/nvim/textformat.c             |  1 +
+ src/nvim/textobject.c             |  1 -
+ src/nvim/tui/input.c              |  1 -
+ src/nvim/tui/input.h              |  1 +
+ src/nvim/tui/termkey/driver-csi.c |  3 +--
+ src/nvim/tui/termkey/driver-csi.h |  2 +-
+ src/nvim/tui/termkey/driver-ti.c  |  6 +++---
+ src/nvim/tui/termkey/driver-ti.h  |  2 +-
+ src/nvim/tui/termkey/termkey.c    |  6 ++----
+ src/nvim/tui/termkey/termkey.h    |  6 +++---
+ src/nvim/tui/tui.c                |  4 +---
+ src/nvim/ui.c                     |  1 -
+ src/nvim/ui_client.c              |  1 +
+ src/nvim/undo.c                   |  3 ---
+ src/nvim/usercmd.c                |  2 +-
+ src/nvim/version.c                |  3 ++-
+ src/nvim/window.c                 |  3 ---
+ src/nvim/winfloat.c               |  1 -
+ 136 files changed, 179 insertions(+), 176 deletions(-)
+
+diff --git a/src/nvim/api/autocmd.c b/src/nvim/api/autocmd.c
+index 45e2de69e..ae349fdb9 100644
+--- a/src/nvim/api/autocmd.c
++++ b/src/nvim/api/autocmd.c
+@@ -2,7 +2,6 @@
+ #include <lauxlib.h>
+ #include <stdbool.h>
+ #include <stdint.h>
+-#include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+ 
+@@ -23,6 +22,7 @@
+ #include "nvim/globals.h"
+ #include "nvim/lua/executor.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/strings.h"
+ #include "nvim/types_defs.h"
+ #include "nvim/vim_defs.h"
+diff --git a/src/nvim/api/buffer.c b/src/nvim/api/buffer.c
+index 6c40eb9b2..aa349790b 100644
+--- a/src/nvim/api/buffer.c
++++ b/src/nvim/api/buffer.c
+@@ -23,7 +23,6 @@
+ #include "nvim/buffer_updates.h"
+ #include "nvim/change.h"
+ #include "nvim/cursor.h"
+-#include "nvim/drawscreen.h"
+ #include "nvim/ex_cmds.h"
+ #include "nvim/extmark.h"
+ #include "nvim/extmark_defs.h"
+diff --git a/src/nvim/api/command.c b/src/nvim/api/command.c
+index 709e18af7..7e79133ed 100644
+--- a/src/nvim/api/command.c
++++ b/src/nvim/api/command.c
+@@ -26,6 +26,7 @@
+ #include "nvim/macros_defs.h"
+ #include "nvim/mbyte.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/ops.h"
+ #include "nvim/pos_defs.h"
+ #include "nvim/regexp.h"
+diff --git a/src/nvim/api/deprecated.c b/src/nvim/api/deprecated.c
+index 51ed6eaa4..d5eddb74d 100644
+--- a/src/nvim/api/deprecated.c
++++ b/src/nvim/api/deprecated.c
+@@ -7,6 +7,7 @@
+ #include "nvim/api/extmark.h"
+ #include "nvim/api/keysets_defs.h"
+ #include "nvim/api/private/defs.h"
++#include "nvim/api/private/dispatch.h"
+ #include "nvim/api/private/helpers.h"
+ #include "nvim/api/private/validate.h"
+ #include "nvim/api/vimscript.h"
+@@ -20,9 +21,6 @@
+ #include "nvim/lua/executor.h"
+ #include "nvim/memory.h"
+ #include "nvim/memory_defs.h"
+-#include "nvim/msgpack_rpc/channel.h"
+-#include "nvim/msgpack_rpc/channel_defs.h"
+-#include "nvim/msgpack_rpc/unpacker.h"
+ #include "nvim/option.h"
+ #include "nvim/option_defs.h"
+ #include "nvim/pos_defs.h"
+diff --git a/src/nvim/api/extmark.c b/src/nvim/api/extmark.c
+index 55f537e9c..a237e7531 100644
+--- a/src/nvim/api/extmark.c
++++ b/src/nvim/api/extmark.c
+@@ -27,6 +27,7 @@
+ #include "nvim/mbyte.h"
+ #include "nvim/memline.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/move.h"
+ #include "nvim/pos_defs.h"
+ #include "nvim/sign.h"
+diff --git a/src/nvim/api/extmark.h b/src/nvim/api/extmark.h
+index af2d51c95..0b4d84110 100644
+--- a/src/nvim/api/extmark.h
++++ b/src/nvim/api/extmark.h
+@@ -1,5 +1,6 @@
+ #pragma once
+ 
++#include <stdbool.h>
+ #include <stdint.h>  // IWYU pragma: keep
+ 
+ #include "nvim/api/keysets_defs.h"  // IWYU pragma: keep
+diff --git a/src/nvim/api/options.c b/src/nvim/api/options.c
+index bfd63ca48..64f8a35d5 100644
+--- a/src/nvim/api/options.c
++++ b/src/nvim/api/options.c
+@@ -14,6 +14,7 @@
+ #include "nvim/buffer_defs.h"
+ #include "nvim/globals.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/option.h"
+ #include "nvim/types_defs.h"
+ #include "nvim/vim_defs.h"
+diff --git a/src/nvim/api/private/converter.c b/src/nvim/api/private/converter.c
+index 59e7373f6..5f9d20ee7 100644
+--- a/src/nvim/api/private/converter.c
++++ b/src/nvim/api/private/converter.c
+@@ -1,4 +1,5 @@
+ #include <assert.h>
++#include <lauxlib.h>
+ #include <stdbool.h>
+ #include <stddef.h>
+ #include <stdint.h>
+@@ -7,7 +8,6 @@
+ #include "nvim/api/private/converter.h"
+ #include "nvim/api/private/defs.h"
+ #include "nvim/api/private/helpers.h"
+-#include "nvim/ascii_defs.h"
+ #include "nvim/assert_defs.h"
+ #include "nvim/eval/decode.h"
+ #include "nvim/eval/typval.h"
+@@ -15,6 +15,7 @@
+ #include "nvim/eval/userfunc.h"
+ #include "nvim/lua/executor.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/types_defs.h"
+ #include "nvim/vim_defs.h"
+ 
+diff --git a/src/nvim/api/private/helpers.c b/src/nvim/api/private/helpers.c
+index 4389ae3b3..78aa7c00f 100644
+--- a/src/nvim/api/private/helpers.c
++++ b/src/nvim/api/private/helpers.c
+@@ -31,13 +31,10 @@
+ #include "nvim/msgpack_rpc/unpacker.h"
+ #include "nvim/pos_defs.h"
+ #include "nvim/types_defs.h"
+-#include "nvim/ui.h"
+-#include "nvim/ui_defs.h"
+-#include "nvim/version.h"
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+ # include "api/private/api_metadata.generated.h"
+-# include "api/private/helpers.c.generated.h"
++# include "api/private/helpers.c.generated.h"  // IWYU pragma: keep
+ #endif
+ 
+ /// Start block that may cause Vimscript exceptions while evaluating another code
+diff --git a/src/nvim/api/private/helpers.h b/src/nvim/api/private/helpers.h
+index 03ff81144..d581c6bc1 100644
+--- a/src/nvim/api/private/helpers.h
++++ b/src/nvim/api/private/helpers.h
+@@ -1,7 +1,7 @@
+ #pragma once
+ 
+ #include <stdbool.h>
+-#include <stddef.h>
++#include <stddef.h>  // IWYU pragma: keep
+ 
+ #include "klib/kvec.h"
+ #include "nvim/api/private/defs.h"  // IWYU pragma: keep
+diff --git a/src/nvim/api/tabpage.c b/src/nvim/api/tabpage.c
+index b4d519dc9..dce47cd99 100644
+--- a/src/nvim/api/tabpage.c
++++ b/src/nvim/api/tabpage.c
+@@ -7,11 +7,12 @@
+ #include "nvim/api/vim.h"
+ #include "nvim/buffer_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/memory.h"
++#include "nvim/memory_defs.h"
++#include "nvim/types_defs.h"
+ #include "nvim/window.h"
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+-# include "api/tabpage.c.generated.h"
++# include "api/tabpage.c.generated.h"  // IWYU pragma: keep
+ #endif
+ 
+ /// Gets the windows in a tabpage
+diff --git a/src/nvim/api/ui.c b/src/nvim/api/ui.c
+index b09a9ed25..db8a5d93d 100644
+--- a/src/nvim/api/ui.c
++++ b/src/nvim/api/ui.c
+@@ -23,7 +23,6 @@
+ #include "nvim/event/wstream.h"
+ #include "nvim/globals.h"
+ #include "nvim/grid.h"
+-#include "nvim/grid_defs.h"
+ #include "nvim/highlight.h"
+ #include "nvim/macros_defs.h"
+ #include "nvim/main.h"
+@@ -34,6 +33,7 @@
+ #include "nvim/msgpack_rpc/channel.h"
+ #include "nvim/msgpack_rpc/channel_defs.h"
+ #include "nvim/msgpack_rpc/packer.h"
++#include "nvim/msgpack_rpc/packer_defs.h"
+ #include "nvim/option.h"
+ #include "nvim/types_defs.h"
+ #include "nvim/ui.h"
+diff --git a/src/nvim/api/ui.h b/src/nvim/api/ui.h
+index cdccc27ba..3f996ec21 100644
+--- a/src/nvim/api/ui.h
++++ b/src/nvim/api/ui.h
+@@ -4,6 +4,7 @@
+ 
+ #include "nvim/api/private/defs.h"  // IWYU pragma: keep
+ #include "nvim/highlight_defs.h"  // IWYU pragma: keep
++#include "nvim/macros_defs.h"
+ #include "nvim/types_defs.h"  // IWYU pragma: keep
+ #include "nvim/ui_defs.h"  // IWYU pragma: keep
+ 
+diff --git a/src/nvim/api/vim.c b/src/nvim/api/vim.c
+index fce7a8624..332c5bc15 100644
+--- a/src/nvim/api/vim.c
++++ b/src/nvim/api/vim.c
+@@ -20,6 +20,7 @@
+ #include "nvim/api/vim.h"
+ #include "nvim/ascii_defs.h"
+ #include "nvim/autocmd.h"
++#include "nvim/autocmd_defs.h"
+ #include "nvim/buffer.h"
+ #include "nvim/buffer_defs.h"
+ #include "nvim/channel.h"
+@@ -28,7 +29,6 @@
+ #include "nvim/cursor.h"
+ #include "nvim/decoration.h"
+ #include "nvim/drawscreen.h"
+-#include "nvim/edit.h"
+ #include "nvim/errors.h"
+ #include "nvim/eval.h"
+ #include "nvim/eval/typval.h"
+@@ -76,7 +76,6 @@
+ #include "nvim/runtime.h"
+ #include "nvim/sign_defs.h"
+ #include "nvim/state.h"
+-#include "nvim/state_defs.h"
+ #include "nvim/statusline.h"
+ #include "nvim/statusline_defs.h"
+ #include "nvim/strings.h"
+diff --git a/src/nvim/api/vimscript.c b/src/nvim/api/vimscript.c
+index e2aac0725..fc7e7e1a0 100644
+--- a/src/nvim/api/vimscript.c
++++ b/src/nvim/api/vimscript.c
+@@ -2,6 +2,7 @@
+ #include <stdbool.h>
+ #include <stddef.h>
+ #include <stdint.h>
++#include <stdlib.h>
+ #include <string.h>
+ 
+ #include "klib/kvec.h"
+@@ -21,6 +22,7 @@
+ #include "nvim/garray_defs.h"
+ #include "nvim/globals.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/runtime.h"
+ #include "nvim/vim_defs.h"
+ #include "nvim/viml/parser/expressions.h"
+diff --git a/src/nvim/api/win_config.c b/src/nvim/api/win_config.c
+index 6f5a9a90c..45c9e3f56 100644
+--- a/src/nvim/api/win_config.c
++++ b/src/nvim/api/win_config.c
+@@ -1,3 +1,4 @@
++#include <assert.h>
+ #include <stdbool.h>
+ #include <string.h>
+ 
+@@ -7,25 +8,22 @@
+ #include "nvim/api/private/defs.h"
+ #include "nvim/api/private/dispatch.h"
+ #include "nvim/api/private/helpers.h"
+-#include "nvim/api/tabpage.h"
+ #include "nvim/api/win_config.h"
+ #include "nvim/ascii_defs.h"
+ #include "nvim/autocmd.h"
+ #include "nvim/autocmd_defs.h"
+ #include "nvim/buffer.h"
+ #include "nvim/buffer_defs.h"
+-#include "nvim/decoration.h"
+ #include "nvim/decoration_defs.h"
+ #include "nvim/drawscreen.h"
+ #include "nvim/errors.h"
+ #include "nvim/eval/window.h"
+-#include "nvim/extmark_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/grid_defs.h"
+ #include "nvim/highlight_group.h"
+ #include "nvim/macros_defs.h"
+ #include "nvim/mbyte.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/option.h"
+ #include "nvim/option_vars.h"
+ #include "nvim/pos_defs.h"
+@@ -33,7 +31,6 @@
+ #include "nvim/syntax.h"
+ #include "nvim/types_defs.h"
+ #include "nvim/ui.h"
+-#include "nvim/ui_compositor.h"
+ #include "nvim/ui_defs.h"
+ #include "nvim/vim_defs.h"
+ #include "nvim/window.h"
+diff --git a/src/nvim/api/window.c b/src/nvim/api/window.c
+index 387dad899..d968af421 100644
+--- a/src/nvim/api/window.c
++++ b/src/nvim/api/window.c
+@@ -1,4 +1,3 @@
+-#include <limits.h>
+ #include <stdbool.h>
+ #include <stdint.h>
+ #include <stdlib.h>
+@@ -28,7 +27,7 @@
+ #include "nvim/window.h"
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+-# include "api/window.c.generated.h"
++# include "api/window.c.generated.h"  // IWYU pragma: keep
+ #endif
+ 
+ /// Gets the current buffer in a window
+diff --git a/src/nvim/autocmd.c b/src/nvim/autocmd.c
+index 118a50e15..eb7c8c288 100644
+--- a/src/nvim/autocmd.c
++++ b/src/nvim/autocmd.c
+@@ -30,8 +30,8 @@
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+ #include "nvim/grid.h"
++#include "nvim/grid_defs.h"
+ #include "nvim/hashtab.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/insexpand.h"
+ #include "nvim/lua/executor.h"
+@@ -42,7 +42,6 @@
+ #include "nvim/option.h"
+ #include "nvim/option_defs.h"
+ #include "nvim/option_vars.h"
+-#include "nvim/optionstr.h"
+ #include "nvim/os/input.h"
+ #include "nvim/os/os.h"
+ #include "nvim/os/os_defs.h"
+diff --git a/src/nvim/buffer_updates.c b/src/nvim/buffer_updates.c
+index e72567893..ab07d67ef 100644
+--- a/src/nvim/buffer_updates.c
++++ b/src/nvim/buffer_updates.c
+@@ -16,12 +16,13 @@
+ #include "nvim/lua/executor.h"
+ #include "nvim/memline.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/msgpack_rpc/channel.h"
+ #include "nvim/pos_defs.h"
+ #include "nvim/types_defs.h"
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+-# include "buffer_updates.c.generated.h"
++# include "buffer_updates.c.generated.h"  // IWYU pragma: keep
+ #endif
+ 
+ // Register a channel. Return True if the channel was added, or already added.
+diff --git a/src/nvim/bufwrite.c b/src/nvim/bufwrite.c
+index 2cf02403d..ced806e52 100644
+--- a/src/nvim/bufwrite.c
++++ b/src/nvim/bufwrite.c
+@@ -27,7 +27,6 @@
+ #include "nvim/fileio.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/iconv_defs.h"
+ #include "nvim/input.h"
+diff --git a/src/nvim/change.c b/src/nvim/change.c
+index faaae96af..ecd601267 100644
+--- a/src/nvim/change.c
++++ b/src/nvim/change.c
+@@ -25,7 +25,6 @@
+ #include "nvim/fold.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/indent.h"
+ #include "nvim/indent_c.h"
+diff --git a/src/nvim/channel.c b/src/nvim/channel.c
+index 021fdd4b7..912d515f8 100644
+--- a/src/nvim/channel.c
++++ b/src/nvim/channel.c
+@@ -1,4 +1,5 @@
+ #include <assert.h>
++#include <fcntl.h>
+ #include <inttypes.h>
+ #include <lauxlib.h>
+ #include <stddef.h>
+@@ -22,7 +23,6 @@
+ #include "nvim/event/proc.h"
+ #include "nvim/event/rstream.h"
+ #include "nvim/event/socket.h"
+-#include "nvim/event/stream.h"
+ #include "nvim/event/wstream.h"
+ #include "nvim/garray.h"
+ #include "nvim/gettext_defs.h"
+@@ -32,6 +32,7 @@
+ #include "nvim/main.h"
+ #include "nvim/mbyte.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/message.h"
+ #include "nvim/msgpack_rpc/channel.h"
+ #include "nvim/msgpack_rpc/server.h"
+diff --git a/src/nvim/cmdexpand.c b/src/nvim/cmdexpand.c
+index 80ff5e057..3a9eeb73c 100644
+--- a/src/nvim/cmdexpand.c
++++ b/src/nvim/cmdexpand.c
+@@ -42,7 +42,6 @@
+ #include "nvim/highlight_defs.h"
+ #include "nvim/highlight_group.h"
+ #include "nvim/keycodes.h"
+-#include "nvim/log.h"
+ #include "nvim/lua/executor.h"
+ #include "nvim/macros_defs.h"
+ #include "nvim/mapping.h"
+diff --git a/src/nvim/cmdhist.c b/src/nvim/cmdhist.c
+index 5993eefd6..d2285cab2 100644
+--- a/src/nvim/cmdhist.c
++++ b/src/nvim/cmdhist.c
+@@ -13,6 +13,7 @@
+ #include "nvim/cmdhist.h"
+ #include "nvim/errors.h"
+ #include "nvim/eval/typval.h"
++#include "nvim/eval/typval_defs.h"
+ #include "nvim/ex_cmds.h"
+ #include "nvim/ex_cmds_defs.h"
+ #include "nvim/ex_getln.h"
+diff --git a/src/nvim/cmdhist.h b/src/nvim/cmdhist.h
+index c93398259..f45345372 100644
+--- a/src/nvim/cmdhist.h
++++ b/src/nvim/cmdhist.h
+@@ -1,7 +1,9 @@
+ #pragma once
+ 
++#include <stddef.h>  // IWYU pragma: keep
++
+ #include "nvim/cmdexpand_defs.h"  // IWYU pragma: keep
+-#include "nvim/eval/typval_defs.h"
++#include "nvim/eval/typval_defs.h"  // IWYU pragma: keep
+ #include "nvim/ex_cmds_defs.h"  // IWYU pragma: keep
+ #include "nvim/os/time_defs.h"
+ #include "nvim/types_defs.h"  // IWYU pragma: keep
+diff --git a/src/nvim/context.c b/src/nvim/context.c
+index 461b10a9d..9d8fdb7e7 100644
+--- a/src/nvim/context.c
++++ b/src/nvim/context.c
+@@ -20,6 +20,7 @@
+ #include "nvim/hashtab.h"
+ #include "nvim/keycodes.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/option.h"
+ #include "nvim/option_defs.h"
+ #include "nvim/shada.h"
+diff --git a/src/nvim/context.h b/src/nvim/context.h
+index 4375030fb..5ae2a078b 100644
+--- a/src/nvim/context.h
++++ b/src/nvim/context.h
+@@ -1,6 +1,6 @@
+ #pragma once
+ 
+-#include <stddef.h>
++#include <stddef.h>  // IWYU pragma: keep
+ 
+ #include "klib/kvec.h"
+ #include "nvim/api/private/defs.h"
+diff --git a/src/nvim/cursor.c b/src/nvim/cursor.c
+index a248a4133..580ed856e 100644
+--- a/src/nvim/cursor.c
++++ b/src/nvim/cursor.c
+@@ -11,6 +11,7 @@
+ #include "nvim/drawscreen.h"
+ #include "nvim/fold.h"
+ #include "nvim/globals.h"
++#include "nvim/macros_defs.h"
+ #include "nvim/mark.h"
+ #include "nvim/mbyte.h"
+ #include "nvim/mbyte_defs.h"
+diff --git a/src/nvim/decoration.c b/src/nvim/decoration.c
+index 0808f1349..728a917c2 100644
+--- a/src/nvim/decoration.c
++++ b/src/nvim/decoration.c
+@@ -17,12 +17,11 @@
+ #include "nvim/fold.h"
+ #include "nvim/globals.h"
+ #include "nvim/grid.h"
+-#include "nvim/grid_defs.h"
+ #include "nvim/highlight.h"
+ #include "nvim/highlight_group.h"
+ #include "nvim/marktree.h"
+ #include "nvim/memory.h"
+-#include "nvim/move.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/option_vars.h"
+ #include "nvim/pos_defs.h"
+ #include "nvim/sign.h"
+diff --git a/src/nvim/diff.c b/src/nvim/diff.c
+index 20f93049c..bd98a31a7 100644
+--- a/src/nvim/diff.c
++++ b/src/nvim/diff.c
+@@ -44,6 +44,7 @@
+ #include "nvim/mbyte.h"
+ #include "nvim/mbyte_defs.h"
+ #include "nvim/memline.h"
++#include "nvim/memline_defs.h"
+ #include "nvim/memory.h"
+ #include "nvim/message.h"
+ #include "nvim/move.h"
+diff --git a/src/nvim/digraph.c b/src/nvim/digraph.c
+index 4d4045550..876d38ea8 100644
+--- a/src/nvim/digraph.c
++++ b/src/nvim/digraph.c
+@@ -22,7 +22,6 @@
+ #include "nvim/getchar.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/keycodes.h"
+ #include "nvim/mapping.h"
+diff --git a/src/nvim/drawscreen.c b/src/nvim/drawscreen.c
+index 0961aabf2..f8aeb0222 100644
+--- a/src/nvim/drawscreen.c
++++ b/src/nvim/drawscreen.c
+@@ -68,7 +68,6 @@
+ #include "nvim/buffer_defs.h"
+ #include "nvim/charset.h"
+ #include "nvim/cmdexpand.h"
+-#include "nvim/cursor.h"
+ #include "nvim/decoration.h"
+ #include "nvim/decoration_defs.h"
+ #include "nvim/decoration_provider.h"
+diff --git a/src/nvim/drawscreen.h b/src/nvim/drawscreen.h
+index 36ba8099f..58eca9ac0 100644
+--- a/src/nvim/drawscreen.h
++++ b/src/nvim/drawscreen.h
+@@ -4,6 +4,7 @@
+ 
+ #include "nvim/buffer_defs.h"
+ #include "nvim/macros_defs.h"
++#include "nvim/pos_defs.h"
+ 
+ /// flags for update_screen()
+ /// The higher the value, the higher the priority
+diff --git a/src/nvim/edit.c b/src/nvim/edit.c
+index f5e11a188..e55cda1c2 100644
+--- a/src/nvim/edit.c
++++ b/src/nvim/edit.c
+@@ -4,9 +4,11 @@
+ #include <ctype.h>
+ #include <inttypes.h>
+ #include <stdbool.h>
++#include <stddef.h>
+ #include <string.h>
+ #include <uv.h>
+ 
++#include "klib/kvec.h"
+ #include "nvim/ascii_defs.h"
+ #include "nvim/autocmd.h"
+ #include "nvim/autocmd_defs.h"
+@@ -31,6 +33,7 @@
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+ #include "nvim/grid.h"
++#include "nvim/grid_defs.h"
+ #include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/highlight_group.h"
+@@ -46,6 +49,7 @@
+ #include "nvim/mbyte.h"
+ #include "nvim/mbyte_defs.h"
+ #include "nvim/memline.h"
++#include "nvim/memline_defs.h"
+ #include "nvim/memory.h"
+ #include "nvim/message.h"
+ #include "nvim/mouse.h"
+diff --git a/src/nvim/eval/buffer.c b/src/nvim/eval/buffer.c
+index b4181eb18..41ed17598 100644
+--- a/src/nvim/eval/buffer.c
++++ b/src/nvim/eval/buffer.c
+@@ -3,6 +3,7 @@
+ #include <stdbool.h>
+ #include <string.h>
+ 
++#include "klib/kvec.h"
+ #include "nvim/ascii_defs.h"
+ #include "nvim/autocmd.h"
+ #include "nvim/autocmd_defs.h"
+diff --git a/src/nvim/eval/decode.c b/src/nvim/eval/decode.c
+index afc2efddf..cfcd41521 100644
+--- a/src/nvim/eval/decode.c
++++ b/src/nvim/eval/decode.c
+@@ -6,6 +6,8 @@
+ #include <string.h>
+ 
+ #include "klib/kvec.h"
++#include "mpack/conv.h"
++#include "mpack/mpack_core.h"
+ #include "mpack/object.h"
+ #include "nvim/ascii_defs.h"
+ #include "nvim/charset.h"
+@@ -21,7 +23,6 @@
+ #include "nvim/mbyte.h"
+ #include "nvim/memory.h"
+ #include "nvim/message.h"
+-#include "nvim/types_defs.h"
+ #include "nvim/vim_defs.h"
+ 
+ /// Helper structure for container_struct
+diff --git a/src/nvim/eval/decode.h b/src/nvim/eval/decode.h
+index 485cc6556..af5fd3979 100644
+--- a/src/nvim/eval/decode.h
++++ b/src/nvim/eval/decode.h
+@@ -2,7 +2,7 @@
+ 
+ #include <stddef.h>  // IWYU pragma: keep
+ 
+-#include "mpack/object.h"
++#include "mpack/object.h"  // IWYU pragma: keep
+ #include "nvim/eval/typval_defs.h"  // IWYU pragma: keep
+ #include "nvim/types_defs.h"  // IWYU pragma: keep
+ 
+diff --git a/src/nvim/eval/deprecated.c b/src/nvim/eval/deprecated.c
+index 67c254dac..79874f664 100644
+--- a/src/nvim/eval/deprecated.c
++++ b/src/nvim/eval/deprecated.c
+@@ -12,7 +12,7 @@
+ #include "nvim/types_defs.h"
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+-# include "eval/deprecated.c.generated.h"
++# include "eval/deprecated.c.generated.h"  // IWYU pragma: keep
+ #endif
+ 
+ /// "termopen(cmd[, cwd])" function
+diff --git a/src/nvim/eval/deprecated.h b/src/nvim/eval/deprecated.h
+index b870403aa..e2e3ee436 100644
+--- a/src/nvim/eval/deprecated.h
++++ b/src/nvim/eval/deprecated.h
+@@ -1,7 +1,5 @@
+ #pragma once
+ 
+-#include <stdbool.h>                // for true
+-
+ #include "nvim/eval/typval_defs.h"  // IWYU pragma: keep
+ #include "nvim/types_defs.h"  // IWYU pragma: keep
+ 
+diff --git a/src/nvim/eval/executor.c b/src/nvim/eval/executor.c
+index 5b92f217d..691fd405e 100644
+--- a/src/nvim/eval/executor.c
++++ b/src/nvim/eval/executor.c
+@@ -8,7 +8,6 @@
+ #include "nvim/eval/typval_defs.h"
+ #include "nvim/garray.h"
+ #include "nvim/gettext_defs.h"
+-#include "nvim/globals.h"
+ #include "nvim/message.h"
+ #include "nvim/strings.h"
+ #include "nvim/types_defs.h"
+diff --git a/src/nvim/eval/funcs.c b/src/nvim/eval/funcs.c
+index 23bfcff40..c52c915f7 100644
+--- a/src/nvim/eval/funcs.c
++++ b/src/nvim/eval/funcs.c
+@@ -13,6 +13,8 @@
+ #include <uv.h>
+ 
+ #include "auto/config.h"
++#include "klib/kvec.h"
++#include "mpack/mpack_core.h"
+ #include "mpack/object.h"
+ #include "nvim/api/private/converter.h"
+ #include "nvim/api/private/defs.h"
+@@ -38,7 +40,6 @@
+ #include "nvim/eval.h"
+ #include "nvim/eval/buffer.h"
+ #include "nvim/eval/decode.h"
+-#include "nvim/eval/deprecated.h"
+ #include "nvim/eval/encode.h"
+ #include "nvim/eval/executor.h"
+ #include "nvim/eval/funcs.h"
+@@ -90,6 +91,7 @@
+ #include "nvim/msgpack_rpc/channel.h"
+ #include "nvim/msgpack_rpc/channel_defs.h"
+ #include "nvim/msgpack_rpc/packer.h"
++#include "nvim/msgpack_rpc/packer_defs.h"
+ #include "nvim/msgpack_rpc/server.h"
+ #include "nvim/normal.h"
+ #include "nvim/normal_defs.h"
+diff --git a/src/nvim/eval/typval.c b/src/nvim/eval/typval.c
+index e7b6a0fee..cbb6b5644 100644
+--- a/src/nvim/eval/typval.c
++++ b/src/nvim/eval/typval.c
+@@ -9,6 +9,7 @@
+ 
+ #include "nvim/ascii_defs.h"
+ #include "nvim/assert_defs.h"
++#include "nvim/buffer_defs.h"
+ #include "nvim/charset.h"
+ #include "nvim/errors.h"
+ #include "nvim/eval.h"
+@@ -32,6 +33,7 @@
+ #include "nvim/mbyte.h"
+ #include "nvim/mbyte_defs.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/message.h"
+ #include "nvim/os/input.h"
+ #include "nvim/pos_defs.h"
+diff --git a/src/nvim/eval/vars.c b/src/nvim/eval/vars.c
+index 8c8a8ac5e..6504d44eb 100644
+--- a/src/nvim/eval/vars.c
++++ b/src/nvim/eval/vars.c
+@@ -39,7 +39,6 @@
+ #include "nvim/ops.h"
+ #include "nvim/option.h"
+ #include "nvim/option_defs.h"
+-#include "nvim/option_vars.h"
+ #include "nvim/os/os.h"
+ #include "nvim/search.h"
+ #include "nvim/strings.h"
+diff --git a/src/nvim/eval/window.c b/src/nvim/eval/window.c
+index a9d3e8917..2e2758d3b 100644
+--- a/src/nvim/eval/window.c
++++ b/src/nvim/eval/window.c
+@@ -31,7 +31,6 @@
+ #include "nvim/types_defs.h"
+ #include "nvim/vim_defs.h"
+ #include "nvim/window.h"
+-#include "nvim/winfloat.h"
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+ # include "eval/window.c.generated.h"
+diff --git a/src/nvim/event/proc.c b/src/nvim/event/proc.c
+index 5ae3bd8c2..37cb102d1 100644
+--- a/src/nvim/event/proc.c
++++ b/src/nvim/event/proc.c
+@@ -1,8 +1,10 @@
+ #include <assert.h>
+ #include <inttypes.h>
+ #include <signal.h>
++#include <string.h>
+ #include <uv.h>
+ 
++#include "klib/kvec.h"
+ #include "nvim/event/libuv_proc.h"
+ #include "nvim/event/loop.h"
+ #include "nvim/event/multiqueue.h"
+@@ -13,6 +15,7 @@
+ #include "nvim/globals.h"
+ #include "nvim/log.h"
+ #include "nvim/main.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/os/proc.h"
+ #include "nvim/os/pty_proc.h"
+ #include "nvim/os/shell.h"
+diff --git a/src/nvim/event/rstream.c b/src/nvim/event/rstream.c
+index 15bdc547d..630495302 100644
+--- a/src/nvim/event/rstream.c
++++ b/src/nvim/event/rstream.c
+@@ -1,7 +1,6 @@
+ #include <assert.h>
+ #include <stdbool.h>
+-#include <stddef.h>
+-#include <stdint.h>
++#include <string.h>
+ #include <uv.h>
+ 
+ #include "nvim/event/multiqueue.h"
+@@ -9,7 +8,8 @@
+ #include "nvim/event/stream.h"
+ #include "nvim/log.h"
+ #include "nvim/macros_defs.h"
+-#include "nvim/main.h"
++#include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/os/os_defs.h"
+ #include "nvim/types_defs.h"
+ 
+diff --git a/src/nvim/event/stream.c b/src/nvim/event/stream.c
+index 71de6ee1b..9c155b55e 100644
+--- a/src/nvim/event/stream.c
++++ b/src/nvim/event/stream.c
+@@ -8,6 +8,7 @@
+ #include "nvim/event/loop.h"
+ #include "nvim/event/stream.h"
+ #include "nvim/log.h"
++#include "nvim/memory.h"
+ #include "nvim/types_defs.h"
+ #ifdef MSWIN
+ # include "nvim/os/os_win_console.h"
+diff --git a/src/nvim/ex_cmds.c b/src/nvim/ex_cmds.c
+index 8cccf08e1..a1a6f1302 100644
+--- a/src/nvim/ex_cmds.c
++++ b/src/nvim/ex_cmds.c
+@@ -15,6 +15,7 @@
+ 
+ #include "auto/config.h"
+ #include "klib/kvec.h"
++#include "nvim/api/private/helpers.h"
+ #include "nvim/arglist.h"
+ #include "nvim/ascii_defs.h"
+ #include "nvim/autocmd.h"
+@@ -52,7 +53,6 @@
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+ #include "nvim/help.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/highlight_group.h"
+ #include "nvim/indent.h"
+@@ -73,7 +73,6 @@
+ #include "nvim/option.h"
+ #include "nvim/option_defs.h"
+ #include "nvim/option_vars.h"
+-#include "nvim/optionstr.h"
+ #include "nvim/os/fs.h"
+ #include "nvim/os/fs_defs.h"
+ #include "nvim/os/input.h"
+diff --git a/src/nvim/ex_cmds2.c b/src/nvim/ex_cmds2.c
+index e37c37e8e..61a6dab89 100644
+--- a/src/nvim/ex_cmds2.c
++++ b/src/nvim/ex_cmds2.c
+@@ -30,10 +30,10 @@
+ #include "nvim/fileio.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/macros_defs.h"
+ #include "nvim/mark.h"
++#include "nvim/memline_defs.h"
+ #include "nvim/memory.h"
+ #include "nvim/message.h"
+ #include "nvim/move.h"
+diff --git a/src/nvim/ex_docmd.c b/src/nvim/ex_docmd.c
+index bd8623397..551e8fcb1 100644
+--- a/src/nvim/ex_docmd.c
++++ b/src/nvim/ex_docmd.c
+@@ -51,7 +51,6 @@
+ #include "nvim/getchar.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/highlight_group.h"
+ #include "nvim/input.h"
+diff --git a/src/nvim/ex_getln.c b/src/nvim/ex_getln.c
+index ff752fb48..7f2f739e0 100644
+--- a/src/nvim/ex_getln.c
++++ b/src/nvim/ex_getln.c
+@@ -14,7 +14,6 @@
+ #include "nvim/api/private/defs.h"
+ #include "nvim/api/private/helpers.h"
+ #include "nvim/api/vim.h"
+-#include "nvim/arabic.h"
+ #include "nvim/ascii_defs.h"
+ #include "nvim/autocmd.h"
+ #include "nvim/autocmd_defs.h"
+@@ -43,7 +42,6 @@
+ #include "nvim/getchar.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/highlight_group.h"
+ #include "nvim/keycodes.h"
+@@ -64,7 +62,6 @@
+ #include "nvim/option.h"
+ #include "nvim/option_defs.h"
+ #include "nvim/option_vars.h"
+-#include "nvim/optionstr.h"
+ #include "nvim/os/input.h"
+ #include "nvim/os/os.h"
+ #include "nvim/path.h"
+diff --git a/src/nvim/ex_session.c b/src/nvim/ex_session.c
+index ddc2705a0..ab7585e90 100644
+--- a/src/nvim/ex_session.c
++++ b/src/nvim/ex_session.c
+@@ -9,10 +9,12 @@
+ #include <stdio.h>
+ #include <string.h>
+ 
++#include "klib/kvec.h"
+ #include "nvim/arglist.h"
+ #include "nvim/arglist_defs.h"
+ #include "nvim/ascii_defs.h"
+ #include "nvim/autocmd.h"
++#include "nvim/autocmd_defs.h"
+ #include "nvim/buffer.h"
+ #include "nvim/buffer_defs.h"
+ #include "nvim/errors.h"
+diff --git a/src/nvim/file_search.c b/src/nvim/file_search.c
+index d183978d2..1e6153bf8 100644
+--- a/src/nvim/file_search.c
++++ b/src/nvim/file_search.c
+@@ -41,6 +41,7 @@
+ // functions.
+ 
+ #include <assert.h>
++#include <ctype.h>
+ #include <inttypes.h>
+ #include <limits.h>
+ #include <stdbool.h>
+@@ -52,6 +53,7 @@
+ #include "nvim/ascii_defs.h"
+ #include "nvim/autocmd.h"
+ #include "nvim/autocmd_defs.h"
++#include "nvim/buffer_defs.h"
+ #include "nvim/charset.h"
+ #include "nvim/cursor.h"
+ #include "nvim/errors.h"
+@@ -67,6 +69,7 @@
+ #include "nvim/message.h"
+ #include "nvim/normal.h"
+ #include "nvim/option.h"
++#include "nvim/option_defs.h"
+ #include "nvim/option_vars.h"
+ #include "nvim/os/fs.h"
+ #include "nvim/os/fs_defs.h"
+@@ -76,7 +79,6 @@
+ #include "nvim/path.h"
+ #include "nvim/strings.h"
+ #include "nvim/vim_defs.h"
+-#include "nvim/window.h"
+ 
+ static char *ff_expand_buffer = NULL;  // used for expanding filenames
+ 
+diff --git a/src/nvim/fileio.c b/src/nvim/fileio.c
+index fc7fabc00..031ae30d4 100644
+--- a/src/nvim/fileio.c
++++ b/src/nvim/fileio.c
+@@ -38,7 +38,6 @@
+ #include "nvim/getchar.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/iconv_defs.h"
+ #include "nvim/log.h"
+@@ -55,7 +54,6 @@
+ #include "nvim/option.h"
+ #include "nvim/option_defs.h"
+ #include "nvim/option_vars.h"
+-#include "nvim/optionstr.h"
+ #include "nvim/os/fs.h"
+ #include "nvim/os/fs_defs.h"
+ #include "nvim/os/input.h"
+diff --git a/src/nvim/garray.c b/src/nvim/garray.c
+index 4f8ba3052..a8d15a1fa 100644
+--- a/src/nvim/garray.c
++++ b/src/nvim/garray.c
+@@ -7,12 +7,13 @@
+ 
+ #include "nvim/garray.h"
+ #include "nvim/log.h"
++#include "nvim/macros_defs.h"
+ #include "nvim/memory.h"
+ #include "nvim/path.h"
+ #include "nvim/strings.h"
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+-# include "garray.c.generated.h"
++# include "garray.c.generated.h"  // IWYU pragma: keep
+ #endif
+ 
+ /// Clear an allocated growing array.
+diff --git a/src/nvim/getchar.c b/src/nvim/getchar.c
+index bca224c7d..60aa1055c 100644
+--- a/src/nvim/getchar.c
++++ b/src/nvim/getchar.c
+@@ -2,7 +2,6 @@
+ // file, manipulations with redo buffer and stuff buffer.
+ 
+ #include <assert.h>
+-#include <lauxlib.h>
+ #include <limits.h>
+ #include <stdbool.h>
+ #include <stddef.h>
+@@ -11,6 +10,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+ 
++#include "klib/kvec.h"
+ #include "nvim/api/private/defs.h"
+ #include "nvim/api/private/helpers.h"
+ #include "nvim/api/vim.h"
+@@ -29,6 +29,7 @@
+ #include "nvim/ex_cmds.h"
+ #include "nvim/ex_docmd.h"
+ #include "nvim/ex_getln.h"
++#include "nvim/ex_getln_defs.h"
+ #include "nvim/garray.h"
+ #include "nvim/garray_defs.h"
+ #include "nvim/getchar.h"
+@@ -38,6 +39,7 @@
+ #include "nvim/insexpand.h"
+ #include "nvim/keycodes.h"
+ #include "nvim/lua/executor.h"
++#include "nvim/macros_defs.h"
+ #include "nvim/main.h"
+ #include "nvim/mapping.h"
+ #include "nvim/mapping_defs.h"
+@@ -45,6 +47,7 @@
+ #include "nvim/mbyte_defs.h"
+ #include "nvim/memline.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/message.h"
+ #include "nvim/mouse.h"
+ #include "nvim/move.h"
+@@ -53,6 +56,7 @@
+ #include "nvim/ops.h"
+ #include "nvim/option_vars.h"
+ #include "nvim/os/fileio.h"
++#include "nvim/os/fileio_defs.h"
+ #include "nvim/os/input.h"
+ #include "nvim/os/os.h"
+ #include "nvim/os/os_defs.h"
+diff --git a/src/nvim/getchar.h b/src/nvim/getchar.h
+index 4e962c9b0..766c5eb2a 100644
+--- a/src/nvim/getchar.h
++++ b/src/nvim/getchar.h
+@@ -5,7 +5,6 @@
+ 
+ #include "nvim/eval/typval_defs.h"  // IWYU pragma: keep
+ #include "nvim/getchar_defs.h"  // IWYU pragma: keep
+-#include "nvim/os/fileio_defs.h"
+ #include "nvim/types_defs.h"  // IWYU pragma: keep
+ 
+ /// Argument for flush_buffers().
+diff --git a/src/nvim/hashtab.c b/src/nvim/hashtab.c
+index 95df5e538..4d09fc10d 100644
+--- a/src/nvim/hashtab.c
++++ b/src/nvim/hashtab.c
+@@ -26,6 +26,7 @@
+ #include "nvim/ascii_defs.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/hashtab.h"
++#include "nvim/macros_defs.h"
+ #include "nvim/memory.h"
+ #include "nvim/message.h"
+ #include "nvim/vim_defs.h"
+diff --git a/src/nvim/highlight_group.c b/src/nvim/highlight_group.c
+index afdbd4a32..6fd0b858a 100644
+--- a/src/nvim/highlight_group.c
++++ b/src/nvim/highlight_group.c
+@@ -1,5 +1,6 @@
+ // highlight_group.c: code for managing highlight groups
+ 
++#include <assert.h>
+ #include <ctype.h>
+ #include <stdbool.h>
+ #include <stdint.h>
+@@ -31,6 +32,7 @@
+ #include "nvim/garray_defs.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
++#include "nvim/grid_defs.h"
+ #include "nvim/highlight.h"
+ #include "nvim/highlight_group.h"
+ #include "nvim/lua/executor.h"
+diff --git a/src/nvim/indent.c b/src/nvim/indent.c
+index 7da61091d..170346ec0 100644
+--- a/src/nvim/indent.c
++++ b/src/nvim/indent.c
+@@ -34,7 +34,6 @@
+ #include "nvim/option.h"
+ #include "nvim/option_defs.h"
+ #include "nvim/option_vars.h"
+-#include "nvim/optionstr.h"
+ #include "nvim/os/input.h"
+ #include "nvim/plines.h"
+ #include "nvim/pos_defs.h"
+diff --git a/src/nvim/input.c b/src/nvim/input.c
+index 0c1a8af45..5a3a791de 100644
+--- a/src/nvim/input.c
++++ b/src/nvim/input.c
+@@ -1,7 +1,6 @@
+ // input.c: high level functions for prompting the user or input
+ // like yes/no or number prompts.
+ 
+-#include <limits.h>
+ #include <stdbool.h>
+ #include <stdint.h>
+ #include <string.h>
+@@ -10,7 +9,6 @@
+ #include "nvim/getchar.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/input.h"
+ #include "nvim/keycodes.h"
+diff --git a/src/nvim/insexpand.c b/src/nvim/insexpand.c
+index a8ee269ec..aee3603d7 100644
+--- a/src/nvim/insexpand.c
++++ b/src/nvim/insexpand.c
+@@ -37,7 +37,6 @@
+ #include "nvim/getchar.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/highlight_group.h"
+ #include "nvim/indent.h"
+diff --git a/src/nvim/linematch.c b/src/nvim/linematch.c
+index 39dfb8eeb..262748910 100644
+--- a/src/nvim/linematch.c
++++ b/src/nvim/linematch.c
+@@ -3,9 +3,7 @@
+ #include <stdbool.h>
+ #include <stddef.h>
+ #include <stdint.h>
+-#include <string.h>
+ 
+-#include "nvim/ascii_defs.h"
+ #include "nvim/linematch.h"
+ #include "nvim/macros_defs.h"
+ #include "nvim/memory.h"
+diff --git a/src/nvim/linematch.h b/src/nvim/linematch.h
+index 5f6667a7d..08daf0e16 100644
+--- a/src/nvim/linematch.h
++++ b/src/nvim/linematch.h
+@@ -3,7 +3,7 @@
+ #include <stddef.h>  // IWYU pragma: keep
+ 
+ #include "nvim/pos_defs.h"  // IWYU pragma: keep
+-#include "xdiff/xdiff.h"
++#include "xdiff/xdiff.h"  // IWYU pragma: keep
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+ # include "linematch.h.generated.h"
+diff --git a/src/nvim/lua/api_wrappers.c b/src/nvim/lua/api_wrappers.c
+index 36847d1fc..447ba846b 100644
+--- a/src/nvim/lua/api_wrappers.c
++++ b/src/nvim/lua/api_wrappers.c
+@@ -1,19 +1,19 @@
+-#include <lauxlib.h>
+-#include <lua.h>
+-#include <lualib.h>
++#include <lauxlib.h>  // IWYU pragma: keep
++#include <lua.h>  // IWYU pragma: keep
++#include <lualib.h>  // IWYU pragma: keep
+ 
+-#include "nvim/api/private/defs.h"
+-#include "nvim/api/private/dispatch.h"
+-#include "nvim/api/private/helpers.h"
+-#include "nvim/errors.h"
+-#include "nvim/ex_docmd.h"
+-#include "nvim/ex_getln.h"
+-#include "nvim/func_attr.h"
+-#include "nvim/globals.h"
+-#include "nvim/lua/converter.h"
+-#include "nvim/lua/executor.h"
+-#include "nvim/memory.h"
++#include "nvim/api/private/defs.h"  // IWYU pragma: keep
++#include "nvim/api/private/dispatch.h"  // IWYU pragma: keep
++#include "nvim/api/private/helpers.h"  // IWYU pragma: keep
++#include "nvim/errors.h"  // IWYU pragma: keep
++#include "nvim/ex_docmd.h"  // IWYU pragma: keep
++#include "nvim/ex_getln.h"  // IWYU pragma: keep
++#include "nvim/func_attr.h"  // IWYU pragma: keep
++#include "nvim/globals.h"  // IWYU pragma: keep
++#include "nvim/lua/converter.h"  // IWYU pragma: keep
++#include "nvim/lua/executor.h"  // IWYU pragma: keep
++#include "nvim/memory.h"  // IWYU pragma: keep
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+-# include "lua_api_c_bindings.generated.h"
++# include "lua_api_c_bindings.generated.h"  // IWYU pragma: keep
+ #endif
+diff --git a/src/nvim/lua/converter.c b/src/nvim/lua/converter.c
+index 45ead154b..292588ee6 100644
+--- a/src/nvim/lua/converter.c
++++ b/src/nvim/lua/converter.c
+@@ -22,6 +22,7 @@
+ #include "nvim/lua/executor.h"
+ #include "nvim/macros_defs.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/message.h"
+ #include "nvim/types_defs.h"
+ #include "nvim/vim_defs.h"
+diff --git a/src/nvim/lua/executor.c b/src/nvim/lua/executor.c
+index c4fa8b0ff..0a412b4ca 100644
+--- a/src/nvim/lua/executor.c
++++ b/src/nvim/lua/executor.c
+@@ -23,7 +23,6 @@
+ #include "nvim/cursor.h"
+ #include "nvim/drawscreen.h"
+ #include "nvim/errors.h"
+-#include "nvim/eval.h"
+ #include "nvim/eval/funcs.h"
+ #include "nvim/eval/typval.h"
+ #include "nvim/eval/typval_defs.h"
+@@ -47,10 +46,12 @@
+ #include "nvim/lua/treesitter.h"
+ #include "nvim/macros_defs.h"
+ #include "nvim/main.h"
++#include "nvim/mbyte_defs.h"
+ #include "nvim/memline.h"
+ #include "nvim/memory.h"
+ #include "nvim/memory_defs.h"
+ #include "nvim/message.h"
++#include "nvim/message_defs.h"
+ #include "nvim/msgpack_rpc/channel.h"
+ #include "nvim/option_vars.h"
+ #include "nvim/os/fileio.h"
+diff --git a/src/nvim/lua/executor.h b/src/nvim/lua/executor.h
+index 32fde3853..3a0c03412 100644
+--- a/src/nvim/lua/executor.h
++++ b/src/nvim/lua/executor.h
+@@ -4,10 +4,10 @@
+ #include <lua.h>
+ #include <stdbool.h>
+ 
++#include "nvim/api/private/defs.h"
+ #include "nvim/api/private/helpers.h"
+ #include "nvim/cmdexpand_defs.h"  // IWYU pragma: keep
+ #include "nvim/ex_cmds_defs.h"  // IWYU pragma: keep
+-#include "nvim/func_attr.h"
+ #include "nvim/macros_defs.h"
+ #include "nvim/types_defs.h"
+ #include "nvim/usercmd.h"  // IWYU pragma: keep
+diff --git a/src/nvim/lua/secure.c b/src/nvim/lua/secure.c
+index 61277949c..1560881b5 100644
+--- a/src/nvim/lua/secure.c
++++ b/src/nvim/lua/secure.c
+@@ -2,11 +2,11 @@
+ #include <stdbool.h>
+ #include <string.h>
+ 
++#include "nvim/ascii_defs.h"
+ #include "nvim/charset.h"
+ #include "nvim/errors.h"
+ #include "nvim/ex_cmds_defs.h"
+ #include "nvim/gettext_defs.h"
+-#include "nvim/globals.h"
+ #include "nvim/lua/executor.h"
+ #include "nvim/lua/secure.h"
+ #include "nvim/memory.h"
+diff --git a/src/nvim/lua/spell.c b/src/nvim/lua/spell.c
+index f4dacd7a5..eec589230 100644
+--- a/src/nvim/lua/spell.c
++++ b/src/nvim/lua/spell.c
+@@ -16,7 +16,7 @@
+ #include "nvim/spell.h"
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+-# include "lua/spell.c.generated.h"
++# include "lua/spell.c.generated.h"  // IWYU pragma: keep
+ #endif
+ 
+ int nlua_spell_check(lua_State *lstate)
+diff --git a/src/nvim/lua/stdlib.c b/src/nvim/lua/stdlib.c
+index 4de25f426..2fc9367ea 100644
+--- a/src/nvim/lua/stdlib.c
++++ b/src/nvim/lua/stdlib.c
+@@ -18,11 +18,13 @@
+ #include "nvim/api/private/helpers.h"
+ #include "nvim/ascii_defs.h"
+ #include "nvim/autocmd.h"
++#include "nvim/autocmd_defs.h"
+ #include "nvim/buffer_defs.h"
+ #include "nvim/eval/typval.h"
+ #include "nvim/eval/typval_defs.h"
+ #include "nvim/eval/vars.h"
+ #include "nvim/eval/window.h"
++#include "nvim/ex_cmds_defs.h"
+ #include "nvim/ex_docmd.h"
+ #include "nvim/ex_eval.h"
+ #include "nvim/fold.h"
+diff --git a/src/nvim/lua/treesitter.c b/src/nvim/lua/treesitter.c
+index c80e7b767..3e5d3e24f 100644
+--- a/src/nvim/lua/treesitter.c
++++ b/src/nvim/lua/treesitter.c
+@@ -19,8 +19,8 @@
+ # include <wasm.h>
+ #endif
+ 
+-#include "klib/kvec.h"
+ #include "nvim/api/private/helpers.h"
++#include "nvim/ascii_defs.h"
+ #include "nvim/buffer_defs.h"
+ #include "nvim/globals.h"
+ #include "nvim/lua/treesitter.h"
+@@ -28,7 +28,6 @@
+ #include "nvim/map_defs.h"
+ #include "nvim/memline.h"
+ #include "nvim/memory.h"
+-#include "nvim/os/fs.h"
+ #include "nvim/pos_defs.h"
+ #include "nvim/strings.h"
+ #include "nvim/types_defs.h"
+diff --git a/src/nvim/lua/xdiff.c b/src/nvim/lua/xdiff.c
+index b9f96abf7..f51c1a05c 100644
+--- a/src/nvim/lua/xdiff.c
++++ b/src/nvim/lua/xdiff.c
+@@ -1,4 +1,5 @@
+ #include <lauxlib.h>
++#include <limits.h>
+ #include <lua.h>
+ #include <stdbool.h>
+ #include <stdint.h>
+diff --git a/src/nvim/main.c b/src/nvim/main.c
+index 17990a673..348f246d2 100644
+--- a/src/nvim/main.c
++++ b/src/nvim/main.c
+@@ -7,6 +7,7 @@
+ #include <assert.h>
+ #include <limits.h>
+ #include <stdbool.h>
++#include <stddef.h>
+ #include <stdint.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+@@ -19,6 +20,7 @@
+ #endif
+ 
+ #include "auto/config.h"  // IWYU pragma: keep
++#include "klib/kvec.h"
+ #include "nvim/api/extmark.h"
+ #include "nvim/api/private/defs.h"
+ #include "nvim/api/private/helpers.h"
+@@ -79,9 +81,6 @@
+ #include "nvim/option.h"
+ #include "nvim/option_defs.h"
+ #include "nvim/option_vars.h"
+-#include "nvim/optionstr.h"
+-#include "nvim/os/fileio.h"
+-#include "nvim/os/fileio_defs.h"
+ #include "nvim/os/fs.h"
+ #include "nvim/os/input.h"
+ #include "nvim/os/lang.h"
+diff --git a/src/nvim/main.h b/src/nvim/main.h
+index dedfadf27..5ae5d98de 100644
+--- a/src/nvim/main.h
++++ b/src/nvim/main.h
+@@ -2,7 +2,6 @@
+ 
+ #include <stdbool.h>
+ 
+-#include "nvim/event/loop.h"
+ #include "nvim/types_defs.h"
+ 
+ // Maximum number of commands from + or -c arguments.
+diff --git a/src/nvim/mapping.c b/src/nvim/mapping.c
+index 1896f042f..d29a2c8e4 100644
+--- a/src/nvim/mapping.c
++++ b/src/nvim/mapping.c
+@@ -9,6 +9,7 @@
+ #include <stdlib.h>
+ #include <string.h>
+ 
++#include "klib/kvec.h"
+ #include "nvim/api/keysets_defs.h"
+ #include "nvim/api/private/converter.h"
+ #include "nvim/api/private/defs.h"
+@@ -32,7 +33,6 @@
+ #include "nvim/getchar_defs.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/keycodes.h"
+ #include "nvim/lua/executor.h"
+@@ -42,6 +42,7 @@
+ #include "nvim/mbyte.h"
+ #include "nvim/mbyte_defs.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/message.h"
+ #include "nvim/option_defs.h"
+ #include "nvim/option_vars.h"
+diff --git a/src/nvim/mark.c b/src/nvim/mark.c
+index f1de557f5..d1ad92053 100644
+--- a/src/nvim/mark.c
++++ b/src/nvim/mark.c
+@@ -23,7 +23,6 @@
+ #include "nvim/fold.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/mark.h"
+ #include "nvim/mbyte.h"
+diff --git a/src/nvim/marktree.h b/src/nvim/marktree.h
+index 15df57ef6..1fb1a7448 100644
+--- a/src/nvim/marktree.h
++++ b/src/nvim/marktree.h
+@@ -4,7 +4,6 @@
+ #include <stddef.h>  // IWYU pragma: keep
+ #include <stdint.h>
+ 
+-#include "nvim/buffer_defs.h"
+ #include "nvim/decoration_defs.h"
+ #include "nvim/marktree_defs.h"  // IWYU pragma: keep
+ #include "nvim/pos_defs.h"  // IWYU pragma: keep
+diff --git a/src/nvim/mbyte.c b/src/nvim/mbyte.c
+index 3e35cdaa1..ffd4472b8 100644
+--- a/src/nvim/mbyte.c
++++ b/src/nvim/mbyte.c
+@@ -26,6 +26,7 @@
+ #include <ctype.h>
+ #include <errno.h>
+ #include <iconv.h>
++#include <limits.h>
+ #include <locale.h>
+ #include <stdbool.h>
+ #include <stddef.h>
+@@ -51,7 +52,6 @@
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+ #include "nvim/grid.h"
+-#include "nvim/grid_defs.h"
+ #include "nvim/iconv_defs.h"
+ #include "nvim/keycodes.h"
+ #include "nvim/macros_defs.h"
+diff --git a/src/nvim/memline.c b/src/nvim/memline.c
+index bfe90bb68..a2b8aa34e 100644
+--- a/src/nvim/memline.c
++++ b/src/nvim/memline.c
+@@ -63,7 +63,6 @@
+ #include "nvim/getchar.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/input.h"
+ #include "nvim/macros_defs.h"
+diff --git a/src/nvim/memory.c b/src/nvim/memory.c
+index 3aa37c047..fa102f4e1 100644
+--- a/src/nvim/memory.c
++++ b/src/nvim/memory.c
+@@ -34,7 +34,6 @@
+ #include "nvim/memory.h"
+ #include "nvim/message.h"
+ #include "nvim/option_vars.h"
+-#include "nvim/os/input.h"
+ #include "nvim/sign.h"
+ #include "nvim/state_defs.h"
+ #include "nvim/statusline.h"
+diff --git a/src/nvim/memory.h b/src/nvim/memory.h
+index a6ff82e39..0955c5306 100644
+--- a/src/nvim/memory.h
++++ b/src/nvim/memory.h
+@@ -2,6 +2,7 @@
+ 
+ #include <stdbool.h>
+ #include <stdint.h>  // IWYU pragma: keep
++#include <string.h>
+ #include <time.h>  // IWYU pragma: keep
+ 
+ #include "auto/config.h"
+diff --git a/src/nvim/menu.c b/src/nvim/menu.c
+index 4d3058ee4..5f14ea1ee 100644
+--- a/src/nvim/menu.c
++++ b/src/nvim/menu.c
+@@ -25,7 +25,6 @@
+ #include "nvim/getchar_defs.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/keycodes.h"
+ #include "nvim/macros_defs.h"
+diff --git a/src/nvim/message.c b/src/nvim/message.c
+index 125f602c6..f86f0feca 100644
+--- a/src/nvim/message.c
++++ b/src/nvim/message.c
+@@ -2,6 +2,7 @@
+ 
+ #include <assert.h>
+ #include <inttypes.h>
++#include <limits.h>
+ #include <stdarg.h>
+ #include <stdbool.h>
+ #include <stddef.h>
+@@ -46,6 +47,7 @@
+ #include "nvim/mbyte.h"
+ #include "nvim/mbyte_defs.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/message.h"
+ #include "nvim/mouse.h"
+ #include "nvim/ops.h"
+diff --git a/src/nvim/move.c b/src/nvim/move.c
+index dbd86bb0c..d91285842 100644
+--- a/src/nvim/move.c
++++ b/src/nvim/move.c
+@@ -10,8 +10,8 @@
+ #include <assert.h>
+ #include <limits.h>
+ #include <stdbool.h>
+-#include <stddef.h>
+ #include <stdint.h>
++#include <stdlib.h>
+ 
+ #include "nvim/ascii_defs.h"
+ #include "nvim/buffer.h"
+@@ -28,8 +28,7 @@
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+ #include "nvim/grid.h"
+-#include "nvim/highlight.h"
+-#include "nvim/highlight_defs.h"
++#include "nvim/grid_defs.h"
+ #include "nvim/macros_defs.h"
+ #include "nvim/mark_defs.h"
+ #include "nvim/mbyte.h"
+@@ -38,12 +37,12 @@
+ #include "nvim/mouse.h"
+ #include "nvim/move.h"
+ #include "nvim/normal.h"
++#include "nvim/normal_defs.h"
+ #include "nvim/option.h"
+ #include "nvim/option_vars.h"
+ #include "nvim/plines.h"
+ #include "nvim/popupmenu.h"
+ #include "nvim/pos_defs.h"
+-#include "nvim/search.h"
+ #include "nvim/strings.h"
+ #include "nvim/types_defs.h"
+ #include "nvim/vim_defs.h"
+diff --git a/src/nvim/msgpack_rpc/channel.c b/src/nvim/msgpack_rpc/channel.c
+index 626312b66..e92039b99 100644
+--- a/src/nvim/msgpack_rpc/channel.c
++++ b/src/nvim/msgpack_rpc/channel.c
+@@ -26,6 +26,7 @@
+ #include "nvim/msgpack_rpc/channel.h"
+ #include "nvim/msgpack_rpc/channel_defs.h"
+ #include "nvim/msgpack_rpc/packer.h"
++#include "nvim/msgpack_rpc/packer_defs.h"
+ #include "nvim/msgpack_rpc/unpacker.h"
+ #include "nvim/os/input.h"
+ #include "nvim/types_defs.h"
+diff --git a/src/nvim/msgpack_rpc/packer.c b/src/nvim/msgpack_rpc/packer.c
+index b739f7ba2..e5eab91b3 100644
+--- a/src/nvim/msgpack_rpc/packer.c
++++ b/src/nvim/msgpack_rpc/packer.c
+@@ -1,8 +1,17 @@
+ #include <assert.h>
++#include <lauxlib.h>
++#include <stddef.h>
++#include <stdlib.h>
++#include <string.h>
+ 
++#include "klib/kvec.h"
+ #include "nvim/api/private/defs.h"
++#include "nvim/api/private/helpers.h"
+ #include "nvim/lua/executor.h"
++#include "nvim/macros_defs.h"
++#include "nvim/memory.h"
+ #include "nvim/msgpack_rpc/packer.h"
++#include "nvim/types_defs.h"
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+ # include "msgpack_rpc/packer.c.generated.h"
+diff --git a/src/nvim/msgpack_rpc/packer.h b/src/nvim/msgpack_rpc/packer.h
+index 299962bab..da86f8e96 100644
+--- a/src/nvim/msgpack_rpc/packer.h
++++ b/src/nvim/msgpack_rpc/packer.h
+@@ -1,11 +1,11 @@
+ #pragma once
+ 
+ #include <stdbool.h>
+-#include <stddef.h>
++#include <stddef.h>  // IWYU pragma: keep
+ #include <stdint.h>
+-#include <string.h>
++#include <string.h>  // IWYU pragma: keep
+ 
+-#include "nvim/api/private/defs.h"
++#include "nvim/api/private/defs.h"  // IWYU pragma: keep
+ #include "nvim/msgpack_rpc/packer_defs.h"
+ 
+ #define mpack_w(b, byte) *(*(b))++ = (char)(byte);
+diff --git a/src/nvim/msgpack_rpc/server.c b/src/nvim/msgpack_rpc/server.c
+index 462f8397f..b2c6d0d00 100644
+--- a/src/nvim/msgpack_rpc/server.c
++++ b/src/nvim/msgpack_rpc/server.c
+@@ -17,6 +17,7 @@
+ #include "nvim/memory.h"
+ #include "nvim/msgpack_rpc/server.h"
+ #include "nvim/os/os.h"
++#include "nvim/os/os_defs.h"
+ #include "nvim/os/stdpaths_defs.h"
+ #include "nvim/types_defs.h"
+ 
+diff --git a/src/nvim/msgpack_rpc/unpacker.c b/src/nvim/msgpack_rpc/unpacker.c
+index 4ddc41e59..185a1abcc 100644
+--- a/src/nvim/msgpack_rpc/unpacker.c
++++ b/src/nvim/msgpack_rpc/unpacker.c
+@@ -1,6 +1,7 @@
+ #include <assert.h>
+ #include <stdbool.h>
+ #include <stdlib.h>
++#include <uv.h>
+ 
+ #include "klib/kvec.h"
+ #include "mpack/conv.h"
+diff --git a/src/nvim/msgpack_rpc/unpacker.h b/src/nvim/msgpack_rpc/unpacker.h
+index c29462292..a9cd7e465 100644
+--- a/src/nvim/msgpack_rpc/unpacker.h
++++ b/src/nvim/msgpack_rpc/unpacker.h
+@@ -1,8 +1,10 @@
+ #pragma once
+ 
+ #include <inttypes.h>
++#include <stdbool.h>
+ #include <string.h>
+ 
++#include "klib/kvec.h"
+ #include "mpack/mpack_core.h"
+ #include "mpack/object.h"
+ #include "nvim/api/private/defs.h"
+diff --git a/src/nvim/normal.c b/src/nvim/normal.c
+index a664535c0..74f851a09 100644
+--- a/src/nvim/normal.c
++++ b/src/nvim/normal.c
+@@ -52,6 +52,7 @@
+ #include "nvim/mark_defs.h"
+ #include "nvim/math.h"
+ #include "nvim/mbyte.h"
++#include "nvim/mbyte_defs.h"
+ #include "nvim/memline.h"
+ #include "nvim/memline_defs.h"
+ #include "nvim/memory.h"
+diff --git a/src/nvim/ops.c b/src/nvim/ops.c
+index b508c6566..476c7ee8a 100644
+--- a/src/nvim/ops.c
++++ b/src/nvim/ops.c
+@@ -28,6 +28,7 @@
+ #include "nvim/errors.h"
+ #include "nvim/eval.h"
+ #include "nvim/eval/typval.h"
++#include "nvim/eval/typval_defs.h"
+ #include "nvim/ex_cmds2.h"
+ #include "nvim/ex_cmds_defs.h"
+ #include "nvim/ex_getln.h"
+@@ -40,7 +41,6 @@
+ #include "nvim/getchar_defs.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/indent.h"
+ #include "nvim/indent_c.h"
+@@ -76,7 +76,6 @@
+ #include "nvim/ui_defs.h"
+ #include "nvim/undo.h"
+ #include "nvim/vim_defs.h"
+-#include "nvim/window.h"
+ 
+ static yankreg_T y_regs[NUM_REGISTERS] = { 0 };
+ 
+diff --git a/src/nvim/ops.h b/src/nvim/ops.h
+index ed7e5f746..99b9b6182 100644
+--- a/src/nvim/ops.h
++++ b/src/nvim/ops.h
+@@ -3,8 +3,8 @@
+ #include <stdbool.h>
+ #include <stddef.h>
+ 
++#include "nvim/api/private/defs.h"
+ #include "nvim/ascii_defs.h"
+-#include "nvim/eval/typval_defs.h"
+ #include "nvim/ex_cmds_defs.h"  // IWYU pragma: keep
+ #include "nvim/extmark_defs.h"  // IWYU pragma: keep
+ #include "nvim/macros_defs.h"
+diff --git a/src/nvim/option.c b/src/nvim/option.c
+index 9ad8256f1..a59e55121 100644
+--- a/src/nvim/option.c
++++ b/src/nvim/option.c
+@@ -22,6 +22,7 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <uv.h>
+ 
+ #include "auto/config.h"
+ #include "klib/kvec.h"
+@@ -47,6 +48,7 @@
+ #include "nvim/errors.h"
+ #include "nvim/eval.h"
+ #include "nvim/eval/typval.h"
++#include "nvim/eval/typval_defs.h"
+ #include "nvim/eval/vars.h"
+ #include "nvim/eval/window.h"
+ #include "nvim/ex_cmds_defs.h"
+@@ -58,6 +60,7 @@
+ #include "nvim/garray_defs.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
++#include "nvim/grid_defs.h"
+ #include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/highlight_group.h"
+@@ -74,6 +77,7 @@
+ #include "nvim/memfile.h"
+ #include "nvim/memline.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/message.h"
+ #include "nvim/mouse.h"
+ #include "nvim/move.h"
+@@ -88,7 +92,6 @@
+ #include "nvim/os/os.h"
+ #include "nvim/os/os_defs.h"
+ #include "nvim/path.h"
+-#include "nvim/plines.h"
+ #include "nvim/popupmenu.h"
+ #include "nvim/pos_defs.h"
+ #include "nvim/regexp.h"
+@@ -104,7 +107,6 @@
+ #include "nvim/terminal.h"
+ #include "nvim/types_defs.h"
+ #include "nvim/ui.h"
+-#include "nvim/ui_defs.h"
+ #include "nvim/undo.h"
+ #include "nvim/undo_defs.h"
+ #include "nvim/vim_defs.h"
+diff --git a/src/nvim/option.h b/src/nvim/option.h
+index cba5b00d9..2f7199015 100644
+--- a/src/nvim/option.h
++++ b/src/nvim/option.h
+@@ -1,13 +1,11 @@
+ #pragma once
+ 
+-#include <stdbool.h>
+-#include <stdint.h>
+ #include <stdio.h>  // IWYU pragma: keep
+ 
+ #include "nvim/api/private/defs.h"  // IWYU pragma: keep
+ #include "nvim/api/private/helpers.h"
+ #include "nvim/cmdexpand_defs.h"  // IWYU pragma: keep
+-#include "nvim/eval/typval_defs.h"
++#include "nvim/eval/typval_defs.h"  // IWYU pragma: keep
+ #include "nvim/ex_cmds_defs.h"  // IWYU pragma: keep
+ #include "nvim/macros_defs.h"
+ #include "nvim/option_defs.h"  // IWYU pragma: keep
+diff --git a/src/nvim/optionstr.c b/src/nvim/optionstr.c
+index 75b658555..9b7b50ae0 100644
+--- a/src/nvim/optionstr.c
++++ b/src/nvim/optionstr.c
+@@ -15,7 +15,6 @@
+ #include "nvim/digraph.h"
+ #include "nvim/drawscreen.h"
+ #include "nvim/errors.h"
+-#include "nvim/eval/typval_defs.h"
+ #include "nvim/eval/userfunc.h"
+ #include "nvim/eval/vars.h"
+ #include "nvim/ex_getln.h"
+diff --git a/src/nvim/os/env.c b/src/nvim/os/env.c
+index ccf6c9554..733e52e69 100644
+--- a/src/nvim/os/env.c
++++ b/src/nvim/os/env.c
+@@ -15,7 +15,6 @@
+ #include "nvim/cmdexpand.h"
+ #include "nvim/cmdexpand_defs.h"
+ #include "nvim/eval.h"
+-#include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+ #include "nvim/log.h"
+ #include "nvim/macros_defs.h"
+diff --git a/src/nvim/os/fileio.c b/src/nvim/os/fileio.c
+index 1981d0dfd..1b202fdc5 100644
+--- a/src/nvim/os/fileio.c
++++ b/src/nvim/os/fileio.c
+@@ -8,16 +8,13 @@
+ #include <fcntl.h>
+ #include <stdbool.h>
+ #include <stddef.h>
+-#include <stdint.h>
++#include <string.h>
+ #include <uv.h>
+ 
+ #include "auto/config.h"
+-#include "nvim/gettext_defs.h"
+-#include "nvim/globals.h"
+ #include "nvim/log.h"
+ #include "nvim/macros_defs.h"
+ #include "nvim/memory.h"
+-#include "nvim/message.h"
+ #include "nvim/os/fileio.h"
+ #include "nvim/os/fs.h"
+ #include "nvim/os/os_defs.h"
+@@ -28,7 +25,7 @@
+ #endif
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+-# include "os/fileio.c.generated.h"
++# include "os/fileio.c.generated.h"  // IWYU pragma: keep
+ #endif
+ 
+ /// Open file
+diff --git a/src/nvim/os/input.c b/src/nvim/os/input.c
+index 2d17581ba..579b08c55 100644
+--- a/src/nvim/os/input.c
++++ b/src/nvim/os/input.c
+@@ -1,4 +1,5 @@
+ #include <assert.h>
++#include <limits.h>
+ #include <stdbool.h>
+ #include <stdint.h>
+ #include <stdio.h>
+@@ -13,7 +14,6 @@
+ #include "nvim/event/loop.h"
+ #include "nvim/event/multiqueue.h"
+ #include "nvim/event/rstream.h"
+-#include "nvim/event/stream.h"
+ #include "nvim/getchar.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+@@ -29,6 +29,7 @@
+ #include "nvim/profile.h"
+ #include "nvim/state.h"
+ #include "nvim/state_defs.h"
++#include "nvim/types_defs.h"
+ 
+ #define READ_BUFFER_SIZE 0xfff
+ #define INPUT_BUFFER_SIZE ((READ_BUFFER_SIZE * 4) + MAX_KEY_CODE_LEN)
+diff --git a/src/nvim/os/pty_proc_unix.c b/src/nvim/os/pty_proc_unix.c
+index 3bca065d2..10a464bbc 100644
+--- a/src/nvim/os/pty_proc_unix.c
++++ b/src/nvim/os/pty_proc_unix.c
+@@ -30,6 +30,7 @@
+ #endif
+ 
+ #include "auto/config.h"
++#include "klib/kvec.h"
+ #include "nvim/eval/typval.h"
+ #include "nvim/event/defs.h"
+ #include "nvim/event/loop.h"
+diff --git a/src/nvim/path.c b/src/nvim/path.c
+index 80890acb7..1ebc31880 100644
+--- a/src/nvim/path.c
++++ b/src/nvim/path.c
+@@ -8,6 +8,7 @@
+ 
+ #include "auto/config.h"
+ #include "nvim/ascii_defs.h"
++#include "nvim/buffer_defs.h"
+ #include "nvim/charset.h"
+ #include "nvim/cmdexpand.h"
+ #include "nvim/eval.h"
+diff --git a/src/nvim/popupmenu.c b/src/nvim/popupmenu.c
+index 5dc9ddfd6..510736b2a 100644
+--- a/src/nvim/popupmenu.c
++++ b/src/nvim/popupmenu.c
+@@ -4,22 +4,18 @@
+ 
+ #include <assert.h>
+ #include <stdbool.h>
++#include <stdint.h>
+ #include <string.h>
+ 
+-#include "nvim/api/buffer.h"
+ #include "nvim/api/private/defs.h"
+ #include "nvim/api/private/helpers.h"
+-#include "nvim/api/vim.h"
+ #include "nvim/ascii_defs.h"
+ #include "nvim/autocmd.h"
+ #include "nvim/buffer.h"
+ #include "nvim/buffer_defs.h"
+-#include "nvim/buffer_updates.h"
+-#include "nvim/change.h"
+ #include "nvim/charset.h"
+ #include "nvim/cmdexpand.h"
+ #include "nvim/drawscreen.h"
+-#include "nvim/edit.h"
+ #include "nvim/errors.h"
+ #include "nvim/eval/typval.h"
+ #include "nvim/ex_cmds.h"
+@@ -27,6 +23,7 @@
+ #include "nvim/extmark.h"
+ #include "nvim/extmark_defs.h"
+ #include "nvim/garray.h"
++#include "nvim/garray_defs.h"
+ #include "nvim/getchar.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+@@ -46,7 +43,6 @@
+ #include "nvim/option.h"
+ #include "nvim/option_defs.h"
+ #include "nvim/option_vars.h"
+-#include "nvim/optionstr.h"
+ #include "nvim/plines.h"
+ #include "nvim/popupmenu.h"
+ #include "nvim/pos_defs.h"
+diff --git a/src/nvim/profile.c b/src/nvim/profile.c
+index 1b4f4a202..65d341cac 100644
+--- a/src/nvim/profile.c
++++ b/src/nvim/profile.c
+@@ -5,6 +5,7 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
++#include <uv.h>
+ 
+ #include "nvim/ascii_defs.h"
+ #include "nvim/charset.h"
+diff --git a/src/nvim/quickfix.c b/src/nvim/quickfix.c
+index e9e0228ec..44b66c4f7 100644
+--- a/src/nvim/quickfix.c
++++ b/src/nvim/quickfix.c
+@@ -38,7 +38,6 @@
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+ #include "nvim/help.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/highlight_group.h"
+ #include "nvim/macros_defs.h"
+diff --git a/src/nvim/regexp.c b/src/nvim/regexp.c
+index c91c112c3..de9a7e580 100644
+--- a/src/nvim/regexp.c
++++ b/src/nvim/regexp.c
+@@ -12,6 +12,7 @@
+ #include <limits.h>
+ #include <stdbool.h>
+ #include <stddef.h>
++#include <stdlib.h>
+ #include <string.h>
+ #include <uv.h>
+ 
+diff --git a/src/nvim/runtime.c b/src/nvim/runtime.c
+index ff7471025..d849a1887 100644
+--- a/src/nvim/runtime.c
++++ b/src/nvim/runtime.c
+@@ -43,6 +43,7 @@
+ #include "nvim/mbyte_defs.h"
+ #include "nvim/memline.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/message.h"
+ #include "nvim/option.h"
+ #include "nvim/option_defs.h"
+diff --git a/src/nvim/search.c b/src/nvim/search.c
+index f06b679b0..faa14dfaf 100644
+--- a/src/nvim/search.c
++++ b/src/nvim/search.c
+@@ -30,10 +30,10 @@
+ #include "nvim/fileio.h"
+ #include "nvim/fold.h"
+ #include "nvim/garray.h"
++#include "nvim/garray_defs.h"
+ #include "nvim/getchar.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/indent_c.h"
+ #include "nvim/insexpand.h"
+@@ -41,7 +41,6 @@
+ #include "nvim/mark.h"
+ #include "nvim/mark_defs.h"
+ #include "nvim/mbyte.h"
+-#include "nvim/mbyte_defs.h"
+ #include "nvim/memline.h"
+ #include "nvim/memory.h"
+ #include "nvim/message.h"
+diff --git a/src/nvim/search.h b/src/nvim/search.h
+index 1b6c1a637..d92f3c900 100644
+--- a/src/nvim/search.h
++++ b/src/nvim/search.h
+@@ -1,9 +1,10 @@
+ #pragma once
+ 
+ #include <stdbool.h>
++#include <stddef.h>
+ #include <stdint.h>
+ 
+-#include "nvim/eval/typval_defs.h"
++#include "nvim/eval/typval_defs.h"  // IWYU pragma: keep
+ #include "nvim/normal_defs.h"  // IWYU pragma: keep
+ #include "nvim/os/time_defs.h"
+ #include "nvim/pos_defs.h"
+diff --git a/src/nvim/shada.c b/src/nvim/shada.c
+index 9e9f762cd..d60f2368c 100644
+--- a/src/nvim/shada.c
++++ b/src/nvim/shada.c
+@@ -2,21 +2,22 @@
+ #include <inttypes.h>
+ #include <stdbool.h>
+ #include <stddef.h>
+-#include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <sys/stat.h>
+ #include <uv.h>
+ 
+ #include "auto/config.h"
++#include "klib/kvec.h"
++#include "mpack/mpack_core.h"
+ #include "nvim/api/keysets_defs.h"
+ #include "nvim/api/private/defs.h"
++#include "nvim/api/private/dispatch.h"
+ #include "nvim/api/private/helpers.h"
+ #include "nvim/ascii_defs.h"
+ #include "nvim/buffer.h"
+ #include "nvim/buffer_defs.h"
+ #include "nvim/cmdhist.h"
+-#include "nvim/errors.h"
+ #include "nvim/eval.h"
+ #include "nvim/eval/decode.h"
+ #include "nvim/eval/encode.h"
+@@ -26,8 +27,6 @@
+ #include "nvim/ex_cmds_defs.h"
+ #include "nvim/ex_docmd.h"
+ #include "nvim/fileio.h"
+-#include "nvim/garray.h"
+-#include "nvim/garray_defs.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+ #include "nvim/hashtab.h"
+@@ -38,8 +37,10 @@
+ #include "nvim/mark_defs.h"
+ #include "nvim/mbyte.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/message.h"
+ #include "nvim/msgpack_rpc/packer.h"
++#include "nvim/msgpack_rpc/packer_defs.h"
+ #include "nvim/msgpack_rpc/unpacker.h"
+ #include "nvim/normal_defs.h"
+ #include "nvim/ops.h"
+diff --git a/src/nvim/shada.h b/src/nvim/shada.h
+index 7d736dadc..558e02018 100644
+--- a/src/nvim/shada.h
++++ b/src/nvim/shada.h
+@@ -1,6 +1,6 @@
+ #pragma once
+ 
+-#include "nvim/api/private/defs.h"
++#include "nvim/api/private/defs.h"  // IWYU pragma: keep
+ 
+ /// Flags for shada_read_file and children
+ typedef enum {
+diff --git a/src/nvim/sign.c b/src/nvim/sign.c
+index f8e7eeaca..a6e72b885 100644
+--- a/src/nvim/sign.c
++++ b/src/nvim/sign.c
+@@ -32,8 +32,6 @@
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+ #include "nvim/grid.h"
+-#include "nvim/grid_defs.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/highlight_group.h"
+ #include "nvim/macros_defs.h"
+@@ -43,7 +41,6 @@
+ #include "nvim/mbyte.h"
+ #include "nvim/memory.h"
+ #include "nvim/message.h"
+-#include "nvim/move.h"
+ #include "nvim/pos_defs.h"
+ #include "nvim/sign.h"
+ #include "nvim/sign_defs.h"
+diff --git a/src/nvim/state.h b/src/nvim/state.h
+index 8220d90a6..2cc493de4 100644
+--- a/src/nvim/state.h
++++ b/src/nvim/state.h
+@@ -1,7 +1,7 @@
+ #pragma once
+ 
+ #include "nvim/state_defs.h"  // IWYU pragma: keep
+-#include "nvim/types_defs.h"
++#include "nvim/types_defs.h"  // IWYU pragma: keep
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+ # include "state.h.generated.h"
+diff --git a/src/nvim/statusline.c b/src/nvim/statusline.c
+index 4e78067d4..d47340505 100644
+--- a/src/nvim/statusline.c
++++ b/src/nvim/statusline.c
+@@ -35,7 +35,6 @@
+ #include "nvim/normal.h"
+ #include "nvim/option.h"
+ #include "nvim/option_vars.h"
+-#include "nvim/optionstr.h"
+ #include "nvim/os/os.h"
+ #include "nvim/os/os_defs.h"
+ #include "nvim/path.h"
+diff --git a/src/nvim/strings.c b/src/nvim/strings.c
+index 2de65391c..7505eaba6 100644
+--- a/src/nvim/strings.c
++++ b/src/nvim/strings.c
+@@ -9,6 +9,8 @@
+ #include <string.h>
+ 
+ #include "auto/config.h"
++#include "nvim/api/private/defs.h"
++#include "nvim/api/private/helpers.h"
+ #include "nvim/ascii_defs.h"
+ #include "nvim/assert_defs.h"
+ #include "nvim/charset.h"
+@@ -20,12 +22,12 @@
+ #include "nvim/garray.h"
+ #include "nvim/garray_defs.h"
+ #include "nvim/gettext_defs.h"
+-#include "nvim/globals.h"
+ #include "nvim/macros_defs.h"
+ #include "nvim/math.h"
+ #include "nvim/mbyte.h"
+ #include "nvim/mbyte_defs.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/message.h"
+ #include "nvim/option.h"
+ #include "nvim/plines.h"
+diff --git a/src/nvim/strings.h b/src/nvim/strings.h
+index c2d078615..e33be2e07 100644
+--- a/src/nvim/strings.h
++++ b/src/nvim/strings.h
+@@ -5,7 +5,7 @@
+ 
+ #include "auto/config.h"
+ #include "klib/kvec.h"
+-#include "nvim/api/private/defs.h"
++#include "nvim/api/private/defs.h"  // IWYU pragma: keep
+ #include "nvim/eval/typval_defs.h"  // IWYU pragma: keep
+ #include "nvim/os/os_defs.h"
+ #include "nvim/types_defs.h"  // IWYU pragma: keep
+diff --git a/src/nvim/syntax.c b/src/nvim/syntax.c
+index 03f20047a..7160c757b 100644
+--- a/src/nvim/syntax.c
++++ b/src/nvim/syntax.c
+@@ -28,7 +28,6 @@
+ #include "nvim/globals.h"
+ #include "nvim/hashtab.h"
+ #include "nvim/hashtab_defs.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/highlight_group.h"
+ #include "nvim/indent_c.h"
+diff --git a/src/nvim/tag.c b/src/nvim/tag.c
+index 5844d8d3f..cdce97fc0 100644
+--- a/src/nvim/tag.c
++++ b/src/nvim/tag.c
+@@ -34,7 +34,6 @@
+ #include "nvim/hashtab.h"
+ #include "nvim/hashtab_defs.h"
+ #include "nvim/help.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/input.h"
+ #include "nvim/insexpand.h"
+diff --git a/src/nvim/textformat.c b/src/nvim/textformat.c
+index b3b9cc6b4..ca2829fec 100644
+--- a/src/nvim/textformat.c
++++ b/src/nvim/textformat.c
+@@ -18,6 +18,7 @@
+ #include "nvim/globals.h"
+ #include "nvim/indent.h"
+ #include "nvim/indent_c.h"
++#include "nvim/macros_defs.h"
+ #include "nvim/mark.h"
+ #include "nvim/mbyte.h"
+ #include "nvim/memline.h"
+diff --git a/src/nvim/textobject.c b/src/nvim/textobject.c
+index 45978765b..e3b3bba7c 100644
+--- a/src/nvim/textobject.c
++++ b/src/nvim/textobject.c
+@@ -3,7 +3,6 @@
+ #include <stdbool.h>
+ #include <stdint.h>
+ #include <stdio.h>
+-#include <string.h>
+ 
+ #include "nvim/ascii_defs.h"
+ #include "nvim/buffer_defs.h"
+diff --git a/src/nvim/tui/input.c b/src/nvim/tui/input.c
+index 744d306c0..bf00a6a82 100644
+--- a/src/nvim/tui/input.c
++++ b/src/nvim/tui/input.c
+@@ -8,7 +8,6 @@
+ #include "nvim/api/private/helpers.h"
+ #include "nvim/event/loop.h"
+ #include "nvim/event/rstream.h"
+-#include "nvim/event/stream.h"
+ #include "nvim/macros_defs.h"
+ #include "nvim/main.h"
+ #include "nvim/map_defs.h"
+diff --git a/src/nvim/tui/input.h b/src/nvim/tui/input.h
+index f6aaff30d..e48982f9a 100644
+--- a/src/nvim/tui/input.h
++++ b/src/nvim/tui/input.h
+@@ -1,6 +1,7 @@
+ #pragma once
+ 
+ #include <stdbool.h>
++#include <stddef.h>
+ #include <stdint.h>
+ #include <uv.h>
+ 
+diff --git a/src/nvim/tui/termkey/driver-csi.c b/src/nvim/tui/termkey/driver-csi.c
+index 28c7eaccf..52349b0ab 100644
+--- a/src/nvim/tui/termkey/driver-csi.c
++++ b/src/nvim/tui/termkey/driver-csi.c
+@@ -1,11 +1,10 @@
+ #include <assert.h>
+-#include <stdio.h>
++#include <stdint.h>
+ #include <string.h>
+ 
+ #include "nvim/memory.h"
+ #include "nvim/tui/termkey/driver-csi.h"
+ #include "nvim/tui/termkey/termkey-internal.h"
+-#include "nvim/tui/termkey/termkey.h"
+ #include "nvim/tui/termkey/termkey_defs.h"
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+diff --git a/src/nvim/tui/termkey/driver-csi.h b/src/nvim/tui/termkey/driver-csi.h
+index 0abd8b5c2..644cc9d58 100644
+--- a/src/nvim/tui/termkey/driver-csi.h
++++ b/src/nvim/tui/termkey/driver-csi.h
+@@ -1,6 +1,6 @@
+ #pragma once
+ 
+-#include "nvim/tui/termkey/termkey_defs.h"
++#include "nvim/tui/termkey/termkey_defs.h"  // IWYU pragma: keep
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+ # include "tui/termkey/driver-csi.h.generated.h"
+diff --git a/src/nvim/tui/termkey/driver-ti.c b/src/nvim/tui/termkey/driver-ti.c
+index 745ee9902..e402f93e9 100644
+--- a/src/nvim/tui/termkey/driver-ti.c
++++ b/src/nvim/tui/termkey/driver-ti.c
+@@ -1,16 +1,16 @@
+-#include <ctype.h>
+ #include <errno.h>
+ #include <stdbool.h>
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <string.h>
+ #include <sys/stat.h>
+-#include <sys/types.h>
+ #include <unibilium.h>
++#include <uv.h>
+ 
+ #include "nvim/memory.h"
+ #include "nvim/tui/termkey/driver-ti.h"
+ #include "nvim/tui/termkey/termkey-internal.h"
+-#include "nvim/tui/termkey/termkey.h"
++#include "nvim/tui/termkey/termkey_defs.h"
+ 
+ #ifndef _WIN32
+ # include <unistd.h>
+diff --git a/src/nvim/tui/termkey/driver-ti.h b/src/nvim/tui/termkey/driver-ti.h
+index df9bd72d5..6dbcb1134 100644
+--- a/src/nvim/tui/termkey/driver-ti.h
++++ b/src/nvim/tui/termkey/driver-ti.h
+@@ -1,6 +1,6 @@
+ #pragma once
+ 
+-#include "nvim/tui/termkey/termkey_defs.h"
++#include "nvim/tui/termkey/termkey_defs.h"  // IWYU pragma: keep
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+ # include "tui/termkey/driver-ti.h.generated.h"
+diff --git a/src/nvim/tui/termkey/termkey.c b/src/nvim/tui/termkey/termkey.c
+index e6440118f..8fdaa1d4f 100644
+--- a/src/nvim/tui/termkey/termkey.c
++++ b/src/nvim/tui/termkey/termkey.c
+@@ -1,9 +1,9 @@
+ #include <ctype.h>
+ #include <errno.h>
+-#include <stdbool.h>
+ #include <stdio.h>
+ #include <string.h>
+ 
++#include "nvim/macros_defs.h"
+ #include "nvim/mbyte.h"
+ #include "nvim/memory.h"
+ #include "nvim/tui/termkey/driver-csi.h"
+@@ -13,9 +13,7 @@
+ #include "nvim/tui/termkey/termkey_defs.h"
+ 
+ #ifndef _WIN32
+-# include <poll.h>
+-# include <strings.h>
+-# include <unistd.h>
++# include <termios.h>
+ #else
+ # include <io.h>
+ #endif
+diff --git a/src/nvim/tui/termkey/termkey.h b/src/nvim/tui/termkey/termkey.h
+index 21ed14134..5cf9894ca 100644
+--- a/src/nvim/tui/termkey/termkey.h
++++ b/src/nvim/tui/termkey/termkey.h
+@@ -1,9 +1,9 @@
+ #pragma once
+ 
+-#include <stdint.h>
+-#include <stdlib.h>
++#include <stdint.h>  // IWYU pragma: keep
++#include <stdlib.h>  // IWYU pragma: keep
+ 
+-#include "nvim/tui/termkey/termkey_defs.h"
++#include "nvim/tui/termkey/termkey_defs.h"  // IWYU pragma: keep
+ 
+ #ifdef INCLUDE_GENERATED_DECLARATIONS
+ # include "tui/termkey/termkey.h.generated.h"
+diff --git a/src/nvim/tui/tui.c b/src/nvim/tui/tui.c
+index d514a597b..693b45e80 100644
+--- a/src/nvim/tui/tui.c
++++ b/src/nvim/tui/tui.c
+@@ -1,9 +1,9 @@
+ // Terminal UI functions. Invoked (by ui_client.c) on the UI process.
+ 
+ #include <assert.h>
++#include <inttypes.h>
+ #include <signal.h>
+ #include <stdbool.h>
+-#include <stdint.h>
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -22,8 +22,6 @@
+ #include "nvim/event/stream.h"
+ #include "nvim/globals.h"
+ #include "nvim/grid.h"
+-#include "nvim/grid_defs.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/log.h"
+ #include "nvim/macros_defs.h"
+diff --git a/src/nvim/ui.c b/src/nvim/ui.c
+index f7b5f28ca..4f443028b 100644
+--- a/src/nvim/ui.c
++++ b/src/nvim/ui.c
+@@ -6,7 +6,6 @@
+ #include <string.h>
+ #include <uv.h>
+ 
+-#include "klib/kvec.h"
+ #include "nvim/api/private/helpers.h"
+ #include "nvim/api/private/validate.h"
+ #include "nvim/api/ui.h"
+diff --git a/src/nvim/ui_client.c b/src/nvim/ui_client.c
+index adaf3eadb..af946d799 100644
+--- a/src/nvim/ui_client.c
++++ b/src/nvim/ui_client.c
+@@ -1,5 +1,6 @@
+ /// Nvim's own UI client, which attaches to a child or remote Nvim server.
+ 
++#include <assert.h>
+ #include <stdbool.h>
+ #include <stdint.h>
+ #include <stdlib.h>
+diff --git a/src/nvim/undo.c b/src/nvim/undo.c
+index 45401ca5e..8d791a4c3 100644
+--- a/src/nvim/undo.c
++++ b/src/nvim/undo.c
+@@ -89,7 +89,6 @@
+ #include "nvim/buffer_updates.h"
+ #include "nvim/change.h"
+ #include "nvim/cursor.h"
+-#include "nvim/decoration.h"
+ #include "nvim/drawscreen.h"
+ #include "nvim/edit.h"
+ #include "nvim/errors.h"
+@@ -107,12 +106,10 @@
+ #include "nvim/getchar.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/macros_defs.h"
+ #include "nvim/mark.h"
+ #include "nvim/mark_defs.h"
+-#include "nvim/marktree_defs.h"
+ #include "nvim/mbyte.h"
+ #include "nvim/memline.h"
+ #include "nvim/memline_defs.h"
+diff --git a/src/nvim/usercmd.c b/src/nvim/usercmd.c
+index d27899b10..2aa789a2e 100644
+--- a/src/nvim/usercmd.c
++++ b/src/nvim/usercmd.c
+@@ -18,7 +18,6 @@
+ #include "nvim/garray.h"
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+-#include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/keycodes.h"
+ #include "nvim/lua/executor.h"
+@@ -26,6 +25,7 @@
+ #include "nvim/mapping.h"
+ #include "nvim/mbyte.h"
+ #include "nvim/memory.h"
++#include "nvim/memory_defs.h"
+ #include "nvim/menu.h"
+ #include "nvim/message.h"
+ #include "nvim/option_vars.h"
+diff --git a/src/nvim/version.c b/src/nvim/version.c
+index 368bf79cf..fc8819bfc 100644
+--- a/src/nvim/version.c
++++ b/src/nvim/version.c
+@@ -9,7 +9,6 @@
+ #include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+-#include <time.h>
+ 
+ #include "auto/versiondef.h"  // version info generated by the build system
+ #include "auto/versiondef_git.h"
+@@ -23,6 +22,7 @@
+ #include "nvim/gettext_defs.h"
+ #include "nvim/globals.h"
+ #include "nvim/grid.h"
++#include "nvim/grid_defs.h"
+ #include "nvim/highlight.h"
+ #include "nvim/highlight_defs.h"
+ #include "nvim/lua/executor.h"
+@@ -33,6 +33,7 @@
+ #include "nvim/os/os.h"
+ #include "nvim/strings.h"
+ #include "nvim/ui.h"
++#include "nvim/ui_defs.h"
+ #include "nvim/version.h"
+ #include "nvim/window.h"
+ 
+diff --git a/src/nvim/window.c b/src/nvim/window.c
+index 3eb505d0c..8232d0aa6 100644
+--- a/src/nvim/window.c
++++ b/src/nvim/window.c
+@@ -1,9 +1,7 @@
+ #include <assert.h>
+-#include <ctype.h>
+ #include <inttypes.h>
+ #include <limits.h>
+ #include <stdbool.h>
+-#include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+ 
+@@ -52,7 +50,6 @@
+ #include "nvim/mark.h"
+ #include "nvim/mark_defs.h"
+ #include "nvim/match.h"
+-#include "nvim/mbyte.h"
+ #include "nvim/memory.h"
+ #include "nvim/message.h"
+ #include "nvim/mouse.h"
+diff --git a/src/nvim/winfloat.c b/src/nvim/winfloat.c
+index b8a51d686..3e791e2be 100644
+--- a/src/nvim/winfloat.c
++++ b/src/nvim/winfloat.c
+@@ -10,7 +10,6 @@
+ #include "nvim/ascii_defs.h"
+ #include "nvim/autocmd.h"
+ #include "nvim/buffer_defs.h"
+-#include "nvim/decoration.h"
+ #include "nvim/drawscreen.h"
+ #include "nvim/errors.h"
+ #include "nvim/globals.h"

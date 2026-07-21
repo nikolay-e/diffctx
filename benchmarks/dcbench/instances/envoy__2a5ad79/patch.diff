@@ -1,0 +1,645 @@
+From 2a5ad79ca5b45f4633dcfb8f0978559afdaf9796 Mon Sep 17 00:00:00 2001
+From: Kuat <kyessenov@users.noreply.github.com>
+Date: Fri, 5 Jun 2026 10:49:58 -0700
+Subject: [PATCH] runtime: remove no_extension_lookup_by_name (#45325)
+
+Change-Id: If883f410d14cef3fb17d019db991920300e73f1e
+
+Commit Message: Fixes https://github.com/envoyproxy/envoy/issues/23598.
+Used AI but it is straightforward and test-only.
+Risk Level: low
+Testing: updated
+Docs Changes: none
+Release Notes: none
+
+---------
+
+Signed-off-by: Kuat Yessenov <kuat@google.com>
+---
+ source/common/config/utility.h                | 24 ++----
+ source/common/runtime/runtime_features.cc     |  1 -
+ .../network/generic_proxy/route_impl.cc       |  6 --
+ test/common/router/BUILD                      |  1 +
+ .../router/router_upstream_filter_test.cc     | 11 ++-
+ .../network/generic_proxy/route_test.cc       | 35 --------
+ .../network/http_connection_manager/BUILD     |  3 +
+ .../http_connection_manager/config.proto      |  6 ++
+ .../config_filter_chain_test.cc               | 70 +++++++++++-----
+ .../config_filter_dependencies_test.cc        | 83 ++++++++++++-------
+ .../http_connection_manager/config_test.cc    | 13 +--
+ .../config_test_base.h                        | 19 +++--
+ 12 files changed, 145 insertions(+), 127 deletions(-)
+
+diff --git a/source/common/config/utility.h b/source/common/config/utility.h
+index 469ffd47e..9471205f5 100644
+--- a/source/common/config/utility.h
++++ b/source/common/config/utility.h
+@@ -251,13 +251,7 @@ public:
+    */
+   template <class Factory, class ProtoMessage>
+   static Factory* getFactory(const ProtoMessage& message) {
+-    Factory* factory = Utility::getFactoryByType<Factory>(message.typed_config());
+-    if (factory != nullptr ||
+-        Runtime::runtimeFeatureEnabled("envoy.reloadable_features.no_extension_lookup_by_name")) {
+-      return factory;
+-    }
+-
+-    return Utility::getFactoryByName<Factory>(message.name());
++    return Utility::getFactoryByType<Factory>(message.typed_config());
+   }
+ 
+   /**
+@@ -270,18 +264,12 @@ public:
+   template <class Factory, class ProtoMessage>
+   static Factory* getAndCheckFactory(const ProtoMessage& message, bool is_optional) {
+     Factory* factory = Utility::getFactoryByType<Factory>(message.typed_config());
+-    if (Runtime::runtimeFeatureEnabled("envoy.reloadable_features.no_extension_lookup_by_name")) {
+-      if (factory == nullptr && !is_optional) {
+-        ExceptionUtil::throwEnvoyException(
+-            fmt::format("Didn't find a registered implementation for '{}' with type URL: '{}'",
+-                        message.name(), getFactoryType(message.typed_config())));
+-      }
+-      return factory;
+-    } else if (factory != nullptr) {
+-      return factory;
++    if (factory == nullptr && !is_optional) {
++      ExceptionUtil::throwEnvoyException(
++          fmt::format("Didn't find a registered implementation for '{}' with type URL: '{}'",
++                      message.name(), getFactoryType(message.typed_config())));
+     }
+-
+-    return Utility::getAndCheckFactoryByName<Factory>(message.name(), is_optional);
++    return factory;
+   }
+ 
+   /**
+diff --git a/source/common/runtime/runtime_features.cc b/source/common/runtime/runtime_features.cc
+index da8ac7d9b..4eb67444c 100644
+--- a/source/common/runtime/runtime_features.cc
++++ b/source/common/runtime/runtime_features.cc
+@@ -79,7 +79,6 @@ RUNTIME_GUARD(envoy_reloadable_features_jwt_authn_add_verification_status_header
+ RUNTIME_GUARD(envoy_reloadable_features_map_http_stream_reset_to_tcp_rst);
+ RUNTIME_GUARD(envoy_reloadable_features_mcp_filter_use_new_metadata_namespace);
+ RUNTIME_GUARD(envoy_reloadable_features_mobile_use_network_observer_registry);
+-RUNTIME_GUARD(envoy_reloadable_features_no_extension_lookup_by_name);
+ RUNTIME_GUARD(envoy_reloadable_features_oauth2_cleanup_cookies);
+ RUNTIME_GUARD(envoy_reloadable_features_odcds_over_ads_fix);
+ RUNTIME_GUARD(envoy_reloadable_features_on_demand_cluster_no_recreate_stream);
+diff --git a/source/extensions/filters/network/generic_proxy/route_impl.cc b/source/extensions/filters/network/generic_proxy/route_impl.cc
+index c72e70556..bc79d8c89 100644
+--- a/source/extensions/filters/network/generic_proxy/route_impl.cc
++++ b/source/extensions/filters/network/generic_proxy/route_impl.cc
+@@ -23,12 +23,6 @@ RouteSpecificFilterConfigConstSharedPtr RouteEntryImpl::createRouteSpecificFilte
+     ProtobufMessage::ValidationVisitor& validator) {
+ 
+   auto* factory = Config::Utility::getFactoryByType<NamedFilterConfigFactory>(typed_config);
+-  if (factory == nullptr) {
+-    if (!Runtime::runtimeFeatureEnabled("envoy.reloadable_features.no_extension_lookup_by_name")) {
+-      factory = Config::Utility::getFactoryByName<NamedFilterConfigFactory>(name);
+-    }
+-  }
+-
+   if (factory == nullptr) {
+     ExceptionUtil::throwEnvoyException(
+         fmt::format("Didn't find a registered implementation for '{}' with type URL: '{}'", name,
+diff --git a/test/common/router/BUILD b/test/common/router/BUILD
+index d21899ee9..957cab1c0 100644
+--- a/test/common/router/BUILD
++++ b/test/common/router/BUILD
+@@ -489,6 +489,7 @@ envoy_cc_test(
+         "//test/test_common:test_runtime_lib",
+         "//test/test_common:utility_lib",
+         "@envoy_api//envoy/extensions/filters/http/router/v3:pkg_cc_proto",
++        "@envoy_api//envoy/extensions/filters/http/upstream_codec/v3:pkg_cc_proto",
+         "@envoy_api//envoy/extensions/filters/network/http_connection_manager/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/test/common/router/router_upstream_filter_test.cc b/test/common/router/router_upstream_filter_test.cc
+index 7b035706c..0b5ee6197 100644
+--- a/test/common/router/router_upstream_filter_test.cc
++++ b/test/common/router/router_upstream_filter_test.cc
+@@ -1,10 +1,12 @@
+ #include "envoy/extensions/filters/http/router/v3/router.pb.h"
++#include "envoy/extensions/filters/http/upstream_codec/v3/upstream_codec.pb.h"
+ #include "envoy/extensions/filters/network/http_connection_manager/v3/http_connection_manager.pb.h"
+ 
+ #include "source/common/router/router.h"
+ #include "source/common/router/upstream_codec_filter.h"
+ 
+ #include "test/common/http/common.h"
++#include "test/integration/filters/test_filters.pb.h"
+ #include "test/mocks/http/mocks.h"
+ #include "test/mocks/network/mocks.h"
+ #include "test/mocks/router/mocks.h"
+@@ -149,13 +151,16 @@ public:
+ };
+ 
+ TEST_F(RouterUpstreamFilterTest, UpstreamFilter) {
+-  TestScopedRuntime scoped_runtime;
+-  scoped_runtime.mergeValues({{"envoy.reloadable_features.no_extension_lookup_by_name", "false"}});
+-
+   HttpFilter add_header_filter;
+   add_header_filter.set_name("add-header-filter");
++  test::integration::filters::AddHeaderEmptyFilterConfig add_header_config;
++  add_header_filter.mutable_typed_config()->PackFrom(add_header_config);
++
+   HttpFilter codec_filter;
+   codec_filter.set_name("envoy.filters.http.upstream_codec");
++  envoy::extensions::filters::http::upstream_codec::v3::UpstreamCodec upstream_codec_config;
++  codec_filter.mutable_typed_config()->PackFrom(upstream_codec_config);
++
+   init({add_header_filter, codec_filter});
+   auto headers = run();
+   EXPECT_FALSE(headers.get(Http::LowerCaseString("x-header-to-add")).empty());
+diff --git a/test/extensions/filters/network/generic_proxy/route_test.cc b/test/extensions/filters/network/generic_proxy/route_test.cc
+index 379b23948..7d5117308 100644
+--- a/test/extensions/filters/network/generic_proxy/route_test.cc
++++ b/test/extensions/filters/network/generic_proxy/route_test.cc
+@@ -201,41 +201,6 @@ TEST_F(RouteEntryImplTest, RoutePerFilterConfigWithUnknownType) {
+  * unexpected type is used to find the filter factory. But the extension lookup by name is enabled
+  * and the mock filter is found.
+  */
+-TEST_F(RouteEntryImplTest, RoutePerFilterConfigWithUnknownTypeButEnableExtensionLookupByName) {
+-  TestScopedRuntime scoped_runtime;
+-  scoped_runtime.mergeValues({{"envoy.reloadable_features.no_extension_lookup_by_name", "false"}});
+-
+-  ON_CALL(filter_config_, createEmptyRouteConfigProto()).WillByDefault(Invoke([]() {
+-    return std::make_unique<Protobuf::Struct>();
+-  }));
+-  Registry::InjectFactory<NamedFilterConfigFactory> registration(filter_config_);
+-
+-  ON_CALL(filter_config_, createRouteSpecificFilterConfig(_, _, _))
+-      .WillByDefault(
+-          Invoke([this](const Protobuf::Message&, Server::Configuration::ServerFactoryContext&,
+-                        ProtobufMessage::ValidationVisitor&) {
+-            auto route_config = std::make_shared<RouteConfig>();
+-            route_config_map_.emplace(filter_config_.name(), route_config);
+-            return route_config;
+-          }));
+-
+-  const std::string yaml_config = R"EOF(
+-    cluster: cluster_0
+-    per_filter_config:
+-      envoy.filters.generic.mock_filter:
+-        # The mock filter is registered with the type of google.protobuf.Struct.
+-        # So the google.protobuf.Value cannot be used to find the mock filter.
+-        "@type": type.googleapis.com/xds.type.v3.TypedStruct
+-        type_url: type.googleapis.com/google.protobuf.Value
+-        value:
+-          value: { "key_0": "value_0" }
+-  )EOF";
+-
+-  initialize(yaml_config);
+-
+-  EXPECT_EQ(route_->perFilterConfig("envoy.filters.generic.mock_filter"),
+-            route_config_map_.at("envoy.filters.generic.mock_filter").get());
+-}
+ 
+ /**
+  * Test the case where there is no route level proto available for the filter.
+diff --git a/test/extensions/filters/network/http_connection_manager/BUILD b/test/extensions/filters/network/http_connection_manager/BUILD
+index abfc3e375..b7acdc783 100644
+--- a/test/extensions/filters/network/http_connection_manager/BUILD
++++ b/test/extensions/filters/network/http_connection_manager/BUILD
+@@ -80,6 +80,8 @@ envoy_extension_cc_test(
+         ":config_test_base",
+         "//source/common/formatter:formatter_extension_lib",
+         "//source/extensions/filters/network/http_connection_manager:config",
++        "//test/integration/filters:test_filters_proto_cc_proto",
++        "@envoy_api//envoy/extensions/filters/http/router/v3:pkg_cc_proto",
+     ],
+ )
+ 
+@@ -95,5 +97,6 @@ envoy_extension_cc_test(
+         "//source/extensions/filters/network/http_connection_manager:config",
+         "//test/test_common:registry_lib",
+         "@envoy_api//envoy/extensions/filters/common/dependency/v3:pkg_cc_proto",
++        "@envoy_api//envoy/extensions/filters/http/router/v3:pkg_cc_proto",
+     ],
+ )
+diff --git a/test/extensions/filters/network/http_connection_manager/config.proto b/test/extensions/filters/network/http_connection_manager/config.proto
+index fa2573340..887aa60bb 100644
+--- a/test/extensions/filters/network/http_connection_manager/config.proto
++++ b/test/extensions/filters/network/http_connection_manager/config.proto
+@@ -12,5 +12,11 @@ message UnknownRequestIDExtension {
+ message FilterDependencyTestFilter {
+ }
+ 
++message PantryFilterConfig {
++}
++
++message ChefFilterConfig {
++}
++
+ message CustomHeaderValidator {
+ }
+diff --git a/test/extensions/filters/network/http_connection_manager/config_filter_chain_test.cc b/test/extensions/filters/network/http_connection_manager/config_filter_chain_test.cc
+index 7a23f381c..d86b0c2d2 100644
+--- a/test/extensions/filters/network/http_connection_manager/config_filter_chain_test.cc
++++ b/test/extensions/filters/network/http_connection_manager/config_filter_chain_test.cc
+@@ -1,6 +1,9 @@
++#include "envoy/extensions/filters/http/router/v3/router.pb.h"
++
+ #include "source/extensions/filters/network/http_connection_manager/config.h"
+ 
+ #include "test/extensions/filters/network/http_connection_manager/config_test_base.h"
++#include "test/integration/filters/test_filters.pb.h"
+ #include "test/mocks/config/mocks.h"
+ #include "test/mocks/http/mocks.h"
+ #include "test/mocks/network/mocks.h"
+@@ -35,6 +38,8 @@ route_config:
+         cluster: cluster
+ http_filters:
+ - name: encoder-decoder-buffer-filter
++  typed_config:
++    "@type": type.googleapis.com/test.integration.filters.EncoderDecoderBufferFilterConfig
+ - name: envoy.filters.http.router
+   typed_config:
+     "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+@@ -106,6 +111,8 @@ route_config:
+         cluster: cluster
+ http_filters:
+ - name: encoder-decoder-buffer-filter
++  typed_config:
++    "@type": type.googleapis.com/test.integration.filters.EncoderDecoderBufferFilterConfig
+ - name: envoy.filters.http.router
+   typed_config:
+     "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+@@ -268,21 +275,33 @@ TEST_F(FilterChainTest, CreateCustomUpgradeFilterChain) {
+   auto websocket_config = hcm_config.add_upgrade_configs();
+   websocket_config->set_upgrade_type("websocket");
+ 
+-  ASSERT_TRUE(websocket_config->add_filters()->ParseFromString("\n"
+-                                                               "\x19"
+-                                                               "envoy.filters.http.router"));
++  {
++    auto* filter = websocket_config->add_filters();
++    filter->set_name("envoy.filters.http.router");
++    envoy::extensions::filters::http::router::v3::Router config;
++    filter->mutable_typed_config()->PackFrom(config);
++  }
+ 
+   auto foo_config = hcm_config.add_upgrade_configs();
+   foo_config->set_upgrade_type("foo");
+-  foo_config->add_filters()->ParseFromString("\n"
+-                                             "\x1D"
+-                                             "encoder-decoder-buffer-filter");
+-  foo_config->add_filters()->ParseFromString("\n"
+-                                             "\x1D"
+-                                             "encoder-decoder-buffer-filter");
+-  foo_config->add_filters()->ParseFromString("\n"
+-                                             "\x19"
+-                                             "envoy.filters.http.router");
++  {
++    auto* filter = foo_config->add_filters();
++    filter->set_name("encoder-decoder-buffer-filter");
++    test::integration::filters::EncoderDecoderBufferFilterConfig config;
++    filter->mutable_typed_config()->PackFrom(config);
++  }
++  {
++    auto* filter = foo_config->add_filters();
++    filter->set_name("encoder-decoder-buffer-filter");
++    test::integration::filters::EncoderDecoderBufferFilterConfig config;
++    filter->mutable_typed_config()->PackFrom(config);
++  }
++  {
++    auto* filter = foo_config->add_filters();
++    filter->set_name("envoy.filters.http.router");
++    envoy::extensions::filters::http::router::v3::Router config;
++    filter->mutable_typed_config()->PackFrom(config);
++  }
+ 
+   HttpConnectionManagerConfig config(hcm_config, context_, date_provider_,
+                                      route_config_provider_manager_,
+@@ -316,18 +335,27 @@ TEST_F(FilterChainTest, CreateCustomUpgradeFilterChainWithRouterNotLast) {
+   auto websocket_config = hcm_config.add_upgrade_configs();
+   websocket_config->set_upgrade_type("websocket");
+ 
+-  ASSERT_TRUE(websocket_config->add_filters()->ParseFromString("\n"
+-                                                               "\x19"
+-                                                               "envoy.filters.http.router"));
++  {
++    auto* filter = websocket_config->add_filters();
++    filter->set_name("envoy.filters.http.router");
++    envoy::extensions::filters::http::router::v3::Router config;
++    filter->mutable_typed_config()->PackFrom(config);
++  }
+ 
+   auto foo_config = hcm_config.add_upgrade_configs();
+   foo_config->set_upgrade_type("foo");
+-  foo_config->add_filters()->ParseFromString("\n"
+-                                             "\x19"
+-                                             "envoy.filters.http.router");
+-  foo_config->add_filters()->ParseFromString("\n"
+-                                             "\x1D"
+-                                             "encoder-decoder-buffer-filter");
++  {
++    auto* filter = foo_config->add_filters();
++    filter->set_name("envoy.filters.http.router");
++    envoy::extensions::filters::http::router::v3::Router config;
++    filter->mutable_typed_config()->PackFrom(config);
++  }
++  {
++    auto* filter = foo_config->add_filters();
++    filter->set_name("encoder-decoder-buffer-filter");
++    test::integration::filters::EncoderDecoderBufferFilterConfig config;
++    filter->mutable_typed_config()->PackFrom(config);
++  }
+ 
+   HttpConnectionManagerConfig config(hcm_config, context_, date_provider_,
+                                      route_config_provider_manager_,
+diff --git a/test/extensions/filters/network/http_connection_manager/config_filter_dependencies_test.cc b/test/extensions/filters/network/http_connection_manager/config_filter_dependencies_test.cc
+index de66eb8e1..0feeb6220 100644
+--- a/test/extensions/filters/network/http_connection_manager/config_filter_dependencies_test.cc
++++ b/test/extensions/filters/network/http_connection_manager/config_filter_dependencies_test.cc
+@@ -1,4 +1,5 @@
+ #include "envoy/extensions/filters/common/dependency/v3/dependency.pb.h"
++#include "envoy/extensions/filters/http/router/v3/router.pb.h"
+ 
+ #include "source/extensions/filters/network/http_connection_manager/config.h"
+ 
+@@ -22,6 +23,27 @@ namespace NetworkFilters {
+ namespace HttpConnectionManager {
+ namespace {
+ 
++using envoy::extensions::filters::network::http_connection_manager::v3::HttpConnectionManager;
++using envoy::extensions::filters::network::http_connection_manager::v3::HttpFilter;
++
++void setRouterFilter(HttpFilter* filter) {
++  filter->set_name("envoy.filters.http.router");
++  envoy::extensions::filters::http::router::v3::Router config;
++  filter->mutable_typed_config()->PackFrom(config);
++}
++
++void setPantryFilter(HttpFilter* filter) {
++  filter->set_name("test.pantry");
++  test::http_connection_manager::PantryFilterConfig config;
++  filter->mutable_typed_config()->PackFrom(config);
++}
++
++void setChefFilter(HttpFilter* filter) {
++  filter->set_name("test.chef");
++  test::http_connection_manager::ChefFilterConfig config;
++  filter->mutable_typed_config()->PackFrom(config);
++}
++
+ const std::string ConfigTemplate = R"EOF(
+ codec_type: http1
+ server_name: foo
+@@ -51,29 +73,29 @@ Dependency potato() {
+ }
+ 
+ // Test filter that provides a potato.
+-class PantryFilterFactory : public PassThroughFilterFactory {
++class PantryFilterFactory
++    : public TemplatedPassThroughFilterFactory<test::http_connection_manager::PantryFilterConfig> {
+ public:
+-  PantryFilterFactory() : PassThroughFilterFactory("test.pantry") {}
++  PantryFilterFactory() : TemplatedPassThroughFilterFactory("test.pantry") {}
+ 
+   FilterDependenciesPtr dependencies() override {
+     FilterDependencies d;
+     *d.add_decode_provided() = potato();
+     return std::make_unique<FilterDependencies>(d);
+   }
+-  std::set<std::string> configTypes() override { return {}; };
+ };
+ 
+ // Test filter that requires a potato.
+-class ChefFilterFactory : public PassThroughFilterFactory {
++class ChefFilterFactory
++    : public TemplatedPassThroughFilterFactory<test::http_connection_manager::ChefFilterConfig> {
+ public:
+-  ChefFilterFactory() : PassThroughFilterFactory("test.chef") {}
++  ChefFilterFactory() : TemplatedPassThroughFilterFactory("test.chef") {}
+ 
+   FilterDependenciesPtr dependencies() override {
+     FilterDependencies d;
+     *d.add_decode_required() = potato();
+     return std::make_unique<FilterDependencies>(d);
+   }
+-  std::set<std::string> configTypes() override { return {}; };
+ };
+ 
+ TEST_F(HttpConnectionManagerConfigTest, UnregisteredFilterException) {
+@@ -86,15 +108,16 @@ TEST_F(HttpConnectionManagerConfigTest, UnregisteredFilterException) {
+                                   route_config_provider_manager_,
+                                   &scoped_routes_config_provider_manager_, tracer_manager_,
+                                   filter_config_provider_manager_, creation_status_),
+-      EnvoyException, "Didn't find a registered implementation for name: 'test.pantry'");
++      EnvoyException,
++      "Didn't find a registered implementation for 'test.pantry' with type URL: ''");
+ }
+ 
+ // ChefFilter requires a potato, and PantryFilter provides it.
+ TEST_F(HttpConnectionManagerConfigTest, AllDependenciesSatisfiedOk) {
+   auto hcm_config = parseHttpConnectionManagerFromYaml(ConfigTemplate);
+-  hcm_config.add_http_filters()->set_name("test.pantry");
+-  hcm_config.add_http_filters()->set_name("test.chef");
+-  hcm_config.add_http_filters()->set_name("envoy.filters.http.router");
++  setPantryFilter(hcm_config.add_http_filters());
++  setChefFilter(hcm_config.add_http_filters());
++  setRouterFilter(hcm_config.add_http_filters());
+ 
+   PantryFilterFactory pf;
+   Registry::InjectFactory<NamedHttpFilterConfigFactory> rf(pf);
+@@ -111,8 +134,8 @@ TEST_F(HttpConnectionManagerConfigTest, AllDependenciesSatisfiedOk) {
+ // PantryFilter provides a potato, which is not required by any other filter.
+ TEST_F(HttpConnectionManagerConfigTest, UnusedProvidencyOk) {
+   auto hcm_config = parseHttpConnectionManagerFromYaml(ConfigTemplate);
+-  hcm_config.add_http_filters()->set_name("test.pantry");
+-  hcm_config.add_http_filters()->set_name("envoy.filters.http.router");
++  setPantryFilter(hcm_config.add_http_filters());
++  setRouterFilter(hcm_config.add_http_filters());
+ 
+   PantryFilterFactory pf;
+   Registry::InjectFactory<NamedHttpFilterConfigFactory> rf(pf);
+@@ -127,8 +150,8 @@ TEST_F(HttpConnectionManagerConfigTest, UnusedProvidencyOk) {
+ // ChefFilter requires a potato, but no filter provides it.
+ TEST_F(HttpConnectionManagerConfigTest, UnmetDependencyError) {
+   auto hcm_config = parseHttpConnectionManagerFromYaml(ConfigTemplate);
+-  hcm_config.add_http_filters()->set_name("test.chef");
+-  hcm_config.add_http_filters()->set_name("envoy.filters.http.router");
++  setChefFilter(hcm_config.add_http_filters());
++  setRouterFilter(hcm_config.add_http_filters());
+ 
+   ChefFilterFactory cf;
+   Registry::InjectFactory<NamedHttpFilterConfigFactory> rc(cf);
+@@ -144,9 +167,9 @@ TEST_F(HttpConnectionManagerConfigTest, UnmetDependencyError) {
+ // ChefFilter requires a potato, but no preceding filter provides it.
+ TEST_F(HttpConnectionManagerConfigTest, MisorderedDependenciesError) {
+   auto hcm_config = parseHttpConnectionManagerFromYaml(ConfigTemplate);
+-  hcm_config.add_http_filters()->set_name("test.chef");
+-  hcm_config.add_http_filters()->set_name("test.pantry");
+-  hcm_config.add_http_filters()->set_name("envoy.filters.http.router");
++  setChefFilter(hcm_config.add_http_filters());
++  setPantryFilter(hcm_config.add_http_filters());
++  setRouterFilter(hcm_config.add_http_filters());
+ 
+   // Registration order does not matter.
+   PantryFilterFactory pf;
+@@ -167,8 +190,8 @@ TEST_F(HttpConnectionManagerConfigTest, UpgradeUnmetDependencyError) {
+   auto upgrade_config = hcm_config.add_upgrade_configs();
+   upgrade_config->set_upgrade_type("websocket");
+ 
+-  upgrade_config->add_filters()->set_name("test.chef");
+-  upgrade_config->add_filters()->set_name("envoy.filters.http.router");
++  setChefFilter(upgrade_config->add_filters());
++  setRouterFilter(upgrade_config->add_filters());
+ 
+   ChefFilterFactory cf;
+   Registry::InjectFactory<NamedHttpFilterConfigFactory> rc(cf);
+@@ -185,9 +208,9 @@ TEST_F(HttpConnectionManagerConfigTest, UpgradeDependencyOK) {
+   auto hcm_config = parseHttpConnectionManagerFromYaml(ConfigTemplate);
+   auto upgrade_config = hcm_config.add_upgrade_configs();
+   upgrade_config->set_upgrade_type("websocket");
+-  upgrade_config->add_filters()->set_name("test.pantry");
+-  upgrade_config->add_filters()->set_name("test.chef");
+-  upgrade_config->add_filters()->set_name("envoy.filters.http.router");
++  setPantryFilter(upgrade_config->add_filters());
++  setChefFilter(upgrade_config->add_filters());
++  setRouterFilter(upgrade_config->add_filters());
+ 
+   PantryFilterFactory pf;
+   Registry::InjectFactory<NamedHttpFilterConfigFactory> rf(pf);
+@@ -205,13 +228,13 @@ TEST_F(HttpConnectionManagerConfigTest, UpgradeDependencyOK) {
+ // requirements in the upgrade filter chain.
+ TEST_F(HttpConnectionManagerConfigTest, UpgradeFilterChainDependenciesIsolatedFromHcmConfig) {
+   auto hcm_config = parseHttpConnectionManagerFromYaml(ConfigTemplate);
+-  hcm_config.add_http_filters()->set_name("test.pantry");
+-  hcm_config.add_http_filters()->set_name("envoy.filters.http.router");
++  setPantryFilter(hcm_config.add_http_filters());
++  setRouterFilter(hcm_config.add_http_filters());
+ 
+   auto upgrade_config = hcm_config.add_upgrade_configs();
+   upgrade_config->set_upgrade_type("websocket");
+-  upgrade_config->add_filters()->set_name("test.chef");
+-  upgrade_config->add_filters()->set_name("envoy.filters.http.router");
++  setChefFilter(upgrade_config->add_filters());
++  setRouterFilter(upgrade_config->add_filters());
+ 
+   PantryFilterFactory pf;
+   Registry::InjectFactory<NamedHttpFilterConfigFactory> rf(pf);
+@@ -232,13 +255,13 @@ TEST_F(HttpConnectionManagerConfigTest, UpgradeFilterChainDependenciesIsolatedFr
+   auto hcm_config = parseHttpConnectionManagerFromYaml(ConfigTemplate);
+   auto upgrade_config1 = hcm_config.add_upgrade_configs();
+   upgrade_config1->set_upgrade_type("websocket");
+-  upgrade_config1->add_filters()->set_name("test.pantry");
+-  upgrade_config1->add_filters()->set_name("envoy.filters.http.router");
++  setPantryFilter(upgrade_config1->add_filters());
++  setRouterFilter(upgrade_config1->add_filters());
+ 
+   auto upgrade_config2 = hcm_config.add_upgrade_configs();
+   upgrade_config2->set_upgrade_type("CONNECT");
+-  upgrade_config2->add_filters()->set_name("test.chef");
+-  upgrade_config2->add_filters()->set_name("envoy.filters.http.router");
++  setChefFilter(upgrade_config2->add_filters());
++  setRouterFilter(upgrade_config2->add_filters());
+ 
+   PantryFilterFactory pf;
+   Registry::InjectFactory<NamedHttpFilterConfigFactory> rf(pf);
+diff --git a/test/extensions/filters/network/http_connection_manager/config_test.cc b/test/extensions/filters/network/http_connection_manager/config_test.cc
+index 5958bc55b..92c2d931c 100644
+--- a/test/extensions/filters/network/http_connection_manager/config_test.cc
++++ b/test/extensions/filters/network/http_connection_manager/config_test.cc
+@@ -82,7 +82,7 @@ http_filters:
+   )EOF";
+ 
+   EXPECT_THROW_WITH_MESSAGE(createHttpConnectionManagerConfig(yaml_string), EnvoyException,
+-                            "Didn't find a registered implementation for name: 'foo'");
++                            "Didn't find a registered implementation for 'foo' with type URL: ''");
+ }
+ 
+ TEST_F(HttpConnectionManagerConfigTest, InvalidServerName) {
+@@ -800,6 +800,8 @@ TEST_F(HttpConnectionManagerConfigTest, DefaultInternalAddress) {
+     name: local_route
+   http_filters:
+   - name: envoy.filters.http.router
++    typed_config:
++      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+   )EOF";
+ 
+   HttpConnectionManagerConfig config(parseHttpConnectionManagerFromYaml(yaml_string), context_,
+@@ -826,6 +828,8 @@ TEST_F(HttpConnectionManagerConfigTest, CidrRangeBasedInternalAddress) {
+     name: local_route
+   http_filters:
+   - name: envoy.filters.http.router
++    typed_config:
++      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+   )EOF";
+ 
+   HttpConnectionManagerConfig config(parseHttpConnectionManagerFromYaml(yaml_string), context_,
+@@ -1969,9 +1973,6 @@ TEST_F(HttpConnectionManagerConfigTest, UnconfiguredRequestTimeout) {
+ }
+ 
+ TEST_F(HttpConnectionManagerConfigTest, SingleDateProvider) {
+-  TestScopedRuntime scoped_runtime;
+-  scoped_runtime.mergeValues({{"envoy.reloadable_features.no_extension_lookup_by_name", "false"}});
+-
+   const std::string yaml_string = R"EOF(
+ codec_type: http1
+ stat_prefix: router
+@@ -1987,6 +1988,8 @@ route_config:
+         cluster: cluster
+ http_filters:
+ - name: encoder-decoder-buffer-filter
++  typed_config:
++    "@type": type.googleapis.com/test.integration.filters.EncoderDecoderBufferFilterConfig
+ - name: envoy.filters.http.router
+   typed_config:
+     "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+@@ -2692,7 +2695,7 @@ TEST_F(HttpConnectionManagerConfigTest, UnknownHttpFilterWithException) {
+ 
+   EXPECT_THROW_WITH_REGEX(
+       createHttpConnectionManagerConfig(yaml_string), EnvoyException,
+-      "Didn't find a registered implementation for name: 'envoy.filters.http.unknown'");
++      "Didn't find a registered implementation for 'envoy.filters.http.unknown' with type URL: ''");
+ }
+ 
+ TEST_F(HttpConnectionManagerConfigTest, UnknownOptionalHttpFilterWithIgnore) {
+diff --git a/test/extensions/filters/network/http_connection_manager/config_test_base.h b/test/extensions/filters/network/http_connection_manager/config_test_base.h
+index 87d3dd813..4ba545d07 100644
+--- a/test/extensions/filters/network/http_connection_manager/config_test_base.h
++++ b/test/extensions/filters/network/http_connection_manager/config_test_base.h
+@@ -34,8 +34,6 @@ parseHttpConnectionManagerFromYaml(const std::string& yaml) {
+ class HttpConnectionManagerConfigTest : public testing::Test {
+ public:
+   HttpConnectionManagerConfigTest() {
+-    scoped_runtime_.mergeValues(
+-        {{"envoy.reloadable_features.no_extension_lookup_by_name", "false"}});
+     ON_CALL(context_, listenerInfo()).WillByDefault(testing::ReturnRef(listener_info_));
+   }
+   NiceMock<Network::MockListenerInfo> listener_info_;
+@@ -60,21 +58,26 @@ public:
+   absl::Status creation_status_{absl::OkStatus()};
+ };
+ 
+-class PassThroughFilterFactory : public Extensions::HttpFilters::Common::FactoryBase<
+-                                     test::http_connection_manager::FilterDependencyTestFilter> {
++template <typename Proto>
++class TemplatedPassThroughFilterFactory
++    : public Extensions::HttpFilters::Common::FactoryBase<Proto> {
+ public:
+-  PassThroughFilterFactory(std::string name) : FactoryBase(name) {}
++  TemplatedPassThroughFilterFactory(std::string name)
++      : Extensions::HttpFilters::Common::FactoryBase<Proto>(name) {}
+ 
+ private:
+-  Http::FilterFactoryCb createFilterFactoryFromProtoTyped(
+-      const test::http_connection_manager::FilterDependencyTestFilter&, const std::string&,
+-      Server::Configuration::FactoryContext&) override {
++  Http::FilterFactoryCb
++  createFilterFactoryFromProtoTyped(const Proto&, const std::string&,
++                                    Server::Configuration::FactoryContext&) override {
+     return [](Http::FilterChainFactoryCallbacks& callbacks) -> void {
+       callbacks.addStreamDecoderFilter(std::make_shared<Http::PassThroughDecoderFilter>());
+     };
+   }
+ };
+ 
++using PassThroughFilterFactory =
++    TemplatedPassThroughFilterFactory<test::http_connection_manager::FilterDependencyTestFilter>;
++
+ } // namespace HttpConnectionManager
+ } // namespace NetworkFilters
+ } // namespace Extensions

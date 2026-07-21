@@ -1,0 +1,615 @@
+From d8bb8d458c09146d70261026a5c90e97903b99c4 Mon Sep 17 00:00:00 2001
+From: Phil Hughes <me@iamphill.com>
+Date: Fri, 24 May 2019 10:39:18 +0100
+Subject: [PATCH] Pull files for repository tree from GraphQL API
+
+---
+ .../repository/components/table/index.vue     | 103 ++++++++++++++----
+ .../repository/components/table/row.vue       |  20 +++-
+ .../javascripts/repository/fragmentTypes.json |   1 +
+ app/assets/javascripts/repository/graphql.js  |  65 ++++++-----
+ .../repository/queries/getFiles.graphql       |  58 +++++++++-
+ .../repository/queries/getProjectPath.graphql |   3 +
+ app/assets/javascripts/repository/router.js   |  12 +-
+ .../javascripts/repository/utils/icon.js      |   2 +-
+ locale/gitlab.pot                             |   3 +
+ .../table/__snapshots__/row_spec.js.snap      |   2 +
+ .../repository/components/table/index_spec.js |  51 +++++++--
+ .../repository/components/table/row_spec.js   |  18 +--
+ spec/frontend/repository/utils/icon_spec.js   |   2 +-
+ 13 files changed, 253 insertions(+), 87 deletions(-)
+ create mode 100644 app/assets/javascripts/repository/fragmentTypes.json
+ create mode 100644 app/assets/javascripts/repository/queries/getProjectPath.graphql
+
+diff --git a/app/assets/javascripts/repository/components/table/index.vue b/app/assets/javascripts/repository/components/table/index.vue
+index ad3d8f9329..758f4b88be 100644
+--- a/app/assets/javascripts/repository/components/table/index.vue
++++ b/app/assets/javascripts/repository/components/table/index.vue
+@@ -1,11 +1,15 @@
+ <script>
+ import { GlLoadingIcon } from '@gitlab/ui';
++import createFlash from '~/flash';
+ import { sprintf, __ } from '../../../locale';
+ import getRefMixin from '../../mixins/get_ref';
+ import getFiles from '../../queries/getFiles.graphql';
++import getProjectPath from '../../queries/getProjectPath.graphql';
+ import TableHeader from './header.vue';
+ import TableRow from './row.vue';
+ 
++const PAGE_SIZE = 100;
++
+ export default {
+   components: {
+     GlLoadingIcon,
+@@ -14,14 +18,8 @@ export default {
+   },
+   mixins: [getRefMixin],
+   apollo: {
+-    files: {
+-      query: getFiles,
+-      variables() {
+-        return {
+-          ref: this.ref,
+-          path: this.path,
+-        };
+-      },
++    projectPath: {
++      query: getProjectPath,
+     },
+   },
+   props: {
+@@ -32,7 +30,14 @@ export default {
+   },
+   data() {
+     return {
+-      files: [],
++      projectPath: '',
++      nextPageCursor: '',
++      entries: {
++        trees: [],
++        submodules: [],
++        blobs: [],
++      },
++      isLoadingFiles: false,
+     };
+   },
+   computed: {
+@@ -42,8 +47,63 @@ export default {
+         { path: this.path, ref: this.ref },
+       );
+     },
+-    isLoadingFiles() {
+-      return this.$apollo.queries.files.loading;
++  },
++  watch: {
++    $route: function routeChange() {
++      this.entries.trees = [];
++      this.entries.submodules = [];
++      this.entries.blobs = [];
++      this.nextPageCursor = '';
++      this.fetchFiles();
++    },
++  },
++  mounted() {
++    // We need to wait for `ref` and `projectPath` to be set
++    this.$nextTick(() => this.fetchFiles());
++  },
++  methods: {
++    fetchFiles() {
++      this.isLoadingFiles = true;
++
++      return this.$apollo
++        .query({
++          query: getFiles,
++          variables: {
++            projectPath: this.projectPath,
++            ref: this.ref,
++            path: this.path,
++            nextPageCursor: this.nextPageCursor,
++            pageSize: PAGE_SIZE,
++          },
++        })
++        .then(({ data }) => {
++          if (!data) return;
++
++          const pageInfo = this.hasNextPage(data.project.repository.tree);
++
++          this.isLoadingFiles = false;
++          this.entries = Object.keys(this.entries).reduce(
++            (acc, key) => ({
++              ...acc,
++              [key]: this.normalizeData(key, data.project.repository.tree[key].edges),
++            }),
++            {},
++          );
++
++          if (pageInfo && pageInfo.hasNextPage) {
++            this.nextPageCursor = pageInfo.endCursor;
++            this.fetchFiles();
++          }
++        })
++        .catch(() => createFlash(__('An error occurding while fetching folder content.')));
++    },
++    normalizeData(key, data) {
++      return this.entries[key].concat(data.map(({ node }) => node));
++    },
++    hasNextPage(data) {
++      return []
++        .concat(data.trees.pageInfo, data.submodules.pageInfo, data.blobs.pageInfo)
++        .find(({ hasNextPage }) => hasNextPage);
+     },
+   },
+ };
+@@ -58,18 +118,21 @@ export default {
+             tableCaption
+           }}
+         </caption>
+-        <table-header />
++        <table-header v-once />
+         <tbody>
+-          <table-row
+-            v-for="entry in files"
+-            :id="entry.id"
+-            :key="entry.id"
+-            :path="entry.flatPath"
+-            :type="entry.type"
+-          />
++          <template v-for="val in entries">
++            <table-row
++              v-for="entry in val"
++              :id="entry.id"
++              :key="`${entry.flatPath}-${entry.id}`"
++              :current-path="path"
++              :path="entry.flatPath"
++              :type="entry.type"
++            />
++          </template>
+         </tbody>
+       </table>
+-      <gl-loading-icon v-if="isLoadingFiles" class="my-3" size="md" />
++      <gl-loading-icon v-show="isLoadingFiles" class="my-3" size="md" />
+     </div>
+   </div>
+ </template>
+diff --git a/app/assets/javascripts/repository/components/table/row.vue b/app/assets/javascripts/repository/components/table/row.vue
+index 0ad0fdbd60..9a264bef87 100644
+--- a/app/assets/javascripts/repository/components/table/row.vue
++++ b/app/assets/javascripts/repository/components/table/row.vue
+@@ -6,7 +6,11 @@ export default {
+   mixins: [getRefMixin],
+   props: {
+     id: {
+-      type: Number,
++      type: String,
++      required: true,
++    },
++    currentPath: {
++      type: String,
+       required: true,
+     },
+     path: {
+@@ -26,7 +30,7 @@ export default {
+       return `fa-${getIconName(this.type, this.path)}`;
+     },
+     isFolder() {
+-      return this.type === 'folder';
++      return this.type === 'tree';
+     },
+     isSubmodule() {
+       return this.type === 'commit';
+@@ -34,6 +38,12 @@ export default {
+     linkComponent() {
+       return this.isFolder ? 'router-link' : 'a';
+     },
++    fullPath() {
++      return this.path.replace(new RegExp(`^${this.currentPath}/`), '');
++    },
++    shortSha() {
++      return this.id.slice(0, 8);
++    },
+   },
+   methods: {
+     openRow() {
+@@ -49,9 +59,11 @@ export default {
+   <tr v-once :class="`file_${id}`" class="tree-item" @click="openRow">
+     <td class="tree-item-file-name">
+       <i :aria-label="type" role="img" :class="iconName" class="fa fa-fw"></i>
+-      <component :is="linkComponent" :to="routerLinkTo" class="str-truncated">{{ path }}</component>
++      <component :is="linkComponent" :to="routerLinkTo" class="str-truncated">
++        {{ fullPath }}
++      </component>
+       <template v-if="isSubmodule">
+-        @ <a href="#" class="commit-sha">{{ id }}</a>
++        @ <a href="#" class="commit-sha">{{ shortSha }}</a>
+       </template>
+     </td>
+     <td class="d-none d-sm-table-cell tree-commit"></td>
+diff --git a/app/assets/javascripts/repository/fragmentTypes.json b/app/assets/javascripts/repository/fragmentTypes.json
+new file mode 100644
+index 0000000000..949ebca432
+--- /dev/null
++++ b/app/assets/javascripts/repository/fragmentTypes.json
+@@ -0,0 +1 @@
++{"__schema":{"types":[{"kind":"INTERFACE","name":"Entry","possibleTypes":[{"name":"Blob"},{"name":"Submodule"},{"name":"TreeEntry"}]}]}}
+diff --git a/app/assets/javascripts/repository/graphql.js b/app/assets/javascripts/repository/graphql.js
+index c85db5c01e..c64d16ef02 100644
+--- a/app/assets/javascripts/repository/graphql.js
++++ b/app/assets/javascripts/repository/graphql.js
+@@ -1,45 +1,42 @@
+ import Vue from 'vue';
+ import VueApollo from 'vue-apollo';
++import { IntrospectionFragmentMatcher } from 'apollo-cache-inmemory';
+ import createDefaultClient from '~/lib/graphql';
++import introspectionQueryResultData from './fragmentTypes.json';
+ 
+ Vue.use(VueApollo);
+ 
+-const defaultClient = createDefaultClient({
+-  Query: {
+-    files() {
+-      return [
+-        {
+-          __typename: 'file',
+-          id: 1,
+-          name: 'app',
+-          flatPath: 'app',
+-          type: 'folder',
+-        },
+-        {
+-          __typename: 'file',
+-          id: 2,
+-          name: 'gitlab-svg',
+-          flatPath: 'gitlab-svg',
+-          type: 'commit',
+-        },
+-        {
+-          __typename: 'file',
+-          id: 3,
+-          name: 'index.js',
+-          flatPath: 'index.js',
+-          type: 'blob',
+-        },
+-        {
+-          __typename: 'file',
+-          id: 4,
+-          name: 'test.pdf',
+-          flatPath: 'fixtures/test.pdf',
+-          type: 'blob',
+-        },
+-      ];
++// We create a fragment matcher so that we can create a fragment from an interface
++// Without this, Apollo throws a heuristic fragment matcher warning
++const fragmentMatcher = new IntrospectionFragmentMatcher({
++  introspectionQueryResultData,
++});
++
++const defaultClient = createDefaultClient(
++  {},
++  {
++    cacheConfig: {
++      fragmentMatcher,
++      dataIdFromObject: obj => {
++        // eslint-disable-next-line no-underscore-dangle
++        switch (obj.__typename) {
++          // We need to create a dynamic ID for each entry
++          // Each entry can have the same ID as the ID is a commit ID
++          // So we create a unique cache ID with the path and the ID
++          case 'TreeEntry':
++          case 'Submodule':
++          case 'Blob':
++            return `${obj.flatPath}-${obj.id}`;
++          default:
++            // If the type doesn't match any of the above we fallback
++            // to using the default Apollo ID
++            // eslint-disable-next-line no-underscore-dangle
++            return obj.id || obj._id;
++        }
++      },
+     },
+   },
+-});
++);
+ 
+ export default new VueApollo({
+   defaultClient,
+diff --git a/app/assets/javascripts/repository/queries/getFiles.graphql b/app/assets/javascripts/repository/queries/getFiles.graphql
+index fb446780ed..a9b61d2856 100644
+--- a/app/assets/javascripts/repository/queries/getFiles.graphql
++++ b/app/assets/javascripts/repository/queries/getFiles.graphql
+@@ -1,7 +1,55 @@
+-query getFiles($path: String!, $ref: String!) {
+-  files(path: $path, ref: $ref) @client {
+-    id
+-    flatPath
+-    type
++fragment TreeEntry on Entry {
++  id
++  flatPath
++  type
++}
++
++fragment PageInfo on PageInfo {
++  hasNextPage
++  endCursor
++}
++
++query getFiles(
++  $projectPath: ID!
++  $path: String
++  $ref: String!
++  $pageSize: Int!
++  $nextPageCursor: String
++) {
++  project(fullPath: $projectPath) {
++    repository {
++      tree(path: $path, ref: $ref) {
++        trees(first: $pageSize, after: $nextPageCursor) {
++          edges {
++            node {
++              ...TreeEntry
++            }
++          }
++          pageInfo {
++            ...PageInfo
++          }
++        }
++        submodules(first: $pageSize, after: $nextPageCursor) {
++          edges {
++            node {
++              ...TreeEntry
++            }
++          }
++          pageInfo {
++            ...PageInfo
++          }
++        }
++        blobs(first: $pageSize, after: $nextPageCursor) {
++          edges {
++            node {
++              ...TreeEntry
++            }
++          }
++          pageInfo {
++            ...PageInfo
++          }
++        }
++      }
++    }
+   }
+ }
+diff --git a/app/assets/javascripts/repository/queries/getProjectPath.graphql b/app/assets/javascripts/repository/queries/getProjectPath.graphql
+new file mode 100644
+index 0000000000..74e73e0757
+--- /dev/null
++++ b/app/assets/javascripts/repository/queries/getProjectPath.graphql
+@@ -0,0 +1,3 @@
++query getProjectPath {
++  projectPath
++}
+diff --git a/app/assets/javascripts/repository/router.js b/app/assets/javascripts/repository/router.js
+index b42a96a4ee..f7132b99d9 100644
+--- a/app/assets/javascripts/repository/router.js
++++ b/app/assets/javascripts/repository/router.js
+@@ -11,17 +11,12 @@ export default function createRouter(base, baseRef) {
+     mode: 'history',
+     base: joinPaths(gon.relative_url_root || '', base),
+     routes: [
+-      {
+-        path: '/',
+-        name: 'projectRoot',
+-        component: IndexPage,
+-      },
+       {
+         path: `/tree/${baseRef}(/.*)?`,
+         name: 'treePath',
+         component: TreePage,
+         props: route => ({
+-          path: route.params.pathMatch,
++          path: route.params.pathMatch.replace(/^\//, ''),
+         }),
+         beforeEnter(to, from, next) {
+           document
+@@ -31,6 +26,11 @@ export default function createRouter(base, baseRef) {
+           next();
+         },
+       },
++      {
++        path: '/',
++        name: 'projectRoot',
++        component: IndexPage,
++      },
+     ],
+   });
+ }
+diff --git a/app/assets/javascripts/repository/utils/icon.js b/app/assets/javascripts/repository/utils/icon.js
+index 3e93ff0ec3..661ebb6edf 100644
+--- a/app/assets/javascripts/repository/utils/icon.js
++++ b/app/assets/javascripts/repository/utils/icon.js
+@@ -1,5 +1,5 @@
+ const entryTypeIcons = {
+-  folder: 'folder',
++  tree: 'folder',
+   commit: 'archive',
+ };
+ 
+diff --git a/locale/gitlab.pot b/locale/gitlab.pot
+index 604b87b843..0400186f15 100644
+--- a/locale/gitlab.pot
++++ b/locale/gitlab.pot
+@@ -835,6 +835,9 @@ msgstr ""
+ msgid "An error has occurred"
+ msgstr ""
+ 
++msgid "An error occurding while fetching folder content."
++msgstr ""
++
+ msgid "An error occurred creating the new branch."
+ msgstr ""
+ 
+diff --git a/spec/frontend/repository/components/table/__snapshots__/row_spec.js.snap b/spec/frontend/repository/components/table/__snapshots__/row_spec.js.snap
+index f0b72343b6..1b4564303e 100644
+--- a/spec/frontend/repository/components/table/__snapshots__/row_spec.js.snap
++++ b/spec/frontend/repository/components/table/__snapshots__/row_spec.js.snap
+@@ -16,7 +16,9 @@ exports[`Repository table row component renders table row 1`] = `
+     <a
+       class="str-truncated"
+     >
++      
+       test
++    
+     </a>
+      
+     <!---->
+diff --git a/spec/frontend/repository/components/table/index_spec.js b/spec/frontend/repository/components/table/index_spec.js
+index 6f52cffe07..827927e6d9 100644
+--- a/spec/frontend/repository/components/table/index_spec.js
++++ b/spec/frontend/repository/components/table/index_spec.js
+@@ -3,18 +3,19 @@ import { GlLoadingIcon } from '@gitlab/ui';
+ import Table from '~/repository/components/table/index.vue';
+ 
+ let vm;
++let $apollo;
++
++function factory(path, data = () => ({})) {
++  $apollo = {
++    query: jest.fn().mockReturnValue(Promise.resolve({ data: data() })),
++  };
+ 
+-function factory(path, loading = false) {
+   vm = shallowMount(Table, {
+     propsData: {
+       path,
+     },
+     mocks: {
+-      $apollo: {
+-        queries: {
+-          files: { loading },
+-        },
+-      },
++      $apollo,
+     },
+   });
+ }
+@@ -39,9 +40,41 @@ describe('Repository table component', () => {
+     );
+   });
+ 
+-  it('renders loading icon', () => {
+-    factory('/', true);
++  it('shows loading icon', () => {
++    factory('/');
++
++    vm.setData({ isLoadingFiles: true });
++
++    expect(vm.find(GlLoadingIcon).isVisible()).toBe(true);
++  });
++
++  describe('normalizeData', () => {
++    it('normalizes edge nodes', () => {
++      const output = vm.vm.normalizeData('blobs', [{ node: '1' }, { node: '2' }]);
++
++      expect(output).toEqual(['1', '2']);
++    });
++  });
++
++  describe('hasNextPage', () => {
++    it('returns undefined when hasNextPage is false', () => {
++      const output = vm.vm.hasNextPage({
++        trees: { pageInfo: { hasNextPage: false } },
++        submodules: { pageInfo: { hasNextPage: false } },
++        blobs: { pageInfo: { hasNextPage: false } },
++      });
++
++      expect(output).toBe(undefined);
++    });
++
++    it('returns pageInfo object when hasNextPage is true', () => {
++      const output = vm.vm.hasNextPage({
++        trees: { pageInfo: { hasNextPage: false } },
++        submodules: { pageInfo: { hasNextPage: false } },
++        blobs: { pageInfo: { hasNextPage: true, nextCursor: 'test' } },
++      });
+ 
+-    expect(vm.find(GlLoadingIcon).exists()).toBe(true);
++      expect(output).toEqual({ hasNextPage: true, nextCursor: 'test' });
++    });
+   });
+ });
+diff --git a/spec/frontend/repository/components/table/row_spec.js b/spec/frontend/repository/components/table/row_spec.js
+index 216128dce2..6b4508c418 100644
+--- a/spec/frontend/repository/components/table/row_spec.js
++++ b/spec/frontend/repository/components/table/row_spec.js
+@@ -29,9 +29,10 @@ describe('Repository table row component', () => {
+ 
+   it('renders table row', () => {
+     factory({
+-      id: 1,
++      id: '1',
+       path: 'test',
+       type: 'file',
++      currentPath: '/',
+     });
+ 
+     expect(vm.element).toMatchSnapshot();
+@@ -39,14 +40,15 @@ describe('Repository table row component', () => {
+ 
+   it.each`
+     type        | component         | componentName
+-    ${'folder'} | ${RouterLinkStub} | ${'RouterLink'}
++    ${'tree'}   | ${RouterLinkStub} | ${'RouterLink'}
+     ${'file'}   | ${'a'}            | ${'hyperlink'}
+     ${'commit'} | ${'a'}            | ${'hyperlink'}
+   `('renders a $componentName for type $type', ({ type, component }) => {
+     factory({
+-      id: 1,
++      id: '1',
+       path: 'test',
+       type,
++      currentPath: '/',
+     });
+ 
+     expect(vm.find(component).exists()).toBe(true);
+@@ -54,14 +56,15 @@ describe('Repository table row component', () => {
+ 
+   it.each`
+     type        | pushes
+-    ${'folder'} | ${true}
++    ${'tree'}   | ${true}
+     ${'file'}   | ${false}
+     ${'commit'} | ${false}
+-  `('pushes new router if type $type is folder', ({ type, pushes }) => {
++  `('pushes new router if type $type is tree', ({ type, pushes }) => {
+     factory({
+-      id: 1,
++      id: '1',
+       path: 'test',
+       type,
++      currentPath: '/',
+     });
+ 
+     vm.trigger('click');
+@@ -75,9 +78,10 @@ describe('Repository table row component', () => {
+ 
+   it('renders commit ID for submodule', () => {
+     factory({
+-      id: 1,
++      id: '1',
+       path: 'test',
+       type: 'commit',
++      currentPath: '/',
+     });
+ 
+     expect(vm.find('.commit-sha').text()).toContain('1');
+diff --git a/spec/frontend/repository/utils/icon_spec.js b/spec/frontend/repository/utils/icon_spec.js
+index 52787327be..3d84705f7e 100644
+--- a/spec/frontend/repository/utils/icon_spec.js
++++ b/spec/frontend/repository/utils/icon_spec.js
+@@ -6,7 +6,7 @@ describe('getIconName', () => {
+   // file types
+   it.each`
+     type        | path           | icon
+-    ${'folder'} | ${''}          | ${'folder'}
++    ${'tree'}   | ${''}          | ${'folder'}
+     ${'commit'} | ${''}          | ${'archive'}
+     ${'file'}   | ${'test.pdf'}  | ${'file-pdf-o'}
+     ${'file'}   | ${'test.jpg'}  | ${'file-image-o'}

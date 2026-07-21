@@ -1,0 +1,314 @@
+From 073c8b25ea36b6b96eab05eb675e8726b1d5318e Mon Sep 17 00:00:00 2001
+From: Luke Duncalfe <lduncalfe@eml.cc>
+Date: Thu, 4 Jul 2019 15:33:14 +1200
+Subject: [PATCH] GraphQL support for Notes created in discussions
+
+A new `discussion_id` argument on the `createNote` mutation allows
+people to create a note within that discussion.
+
+The ability to lazy-load Discussions has been added, so
+GraphQL.object_from_id can treat Discussions the same as AR objects and
+batch load them.
+
+https://gitlab.com/gitlab-org/gitlab-ce/issues/62826
+https://gitlab.com/gitlab-org/gitlab-ee/issues/9489
+---
+ app/graphql/gitlab_schema.rb                  |  2 +
+ app/graphql/mutations/notes/create/note.rb    | 29 +++++++++++++++
+ app/graphql/types/notes/discussion_type.rb    |  8 ++++
+ app/models/discussion.rb                      | 11 ++++++
+ app/models/note.rb                            |  2 +
+ lib/gitlab/global_id.rb                       | 14 +++++++
+ spec/graphql/gitlab_schema_spec.rb            | 20 ++++++++++
+ .../types/notes/discussion_type_spec.rb       |  2 +-
+ spec/lib/gitlab/global_id_spec.rb             | 37 +++++++++++++++++++
+ spec/models/discussion_spec.rb                | 14 +++++++
+ .../mutations/notes/create/note_spec.rb       | 23 +++++++++++-
+ 11 files changed, 160 insertions(+), 2 deletions(-)
+ create mode 100644 lib/gitlab/global_id.rb
+ create mode 100644 spec/lib/gitlab/global_id_spec.rb
+
+diff --git a/app/graphql/gitlab_schema.rb b/app/graphql/gitlab_schema.rb
+index 152ebb930e..7edd14e48f 100644
+--- a/app/graphql/gitlab_schema.rb
++++ b/app/graphql/gitlab_schema.rb
+@@ -66,6 +66,8 @@ def object_from_id(global_id)
+ 
+       if gid.model_class < ApplicationRecord
+         Gitlab::Graphql::Loaders::BatchModelLoader.new(gid.model_class, gid.model_id).find
++      elsif gid.model_class.respond_to?(:lazy_find)
++        gid.model_class.lazy_find(gid.model_id)
+       else
+         gid.find
+       end
+diff --git a/app/graphql/mutations/notes/create/note.rb b/app/graphql/mutations/notes/create/note.rb
+index 3c571a4538..5236e48026 100644
+--- a/app/graphql/mutations/notes/create/note.rb
++++ b/app/graphql/mutations/notes/create/note.rb
+@@ -5,6 +5,35 @@ module Notes
+     module Create
+       class Note < Base
+         graphql_name 'CreateNote'
++
++        argument :discussion_id,
++                  GraphQL::ID_TYPE,
++                  required: false,
++                  description: 'The global id of the discussion this note is in reply to'
++
++        private
++
++        def create_note_params(noteable, args)
++          discussion_id = nil
++
++          if args[:discussion_id]
++            discussion = GitlabSchema.object_from_id(args[:discussion_id])
++            authorize_discussion!(discussion)
++
++            discussion_id = discussion.id
++          end
++
++          super(noteable, args).merge({
++            in_reply_to_discussion_id: discussion_id
++          })
++        end
++
++        def authorize_discussion!(discussion)
++          unless Ability.allowed?(current_user, :read_note, discussion, scope: :user)
++            raise Gitlab::Graphql::Errors::ResourceNotAvailable,
++              "The discussion does not exist or you don't have permission to perform this action"
++          end
++        end
+       end
+     end
+   end
+diff --git a/app/graphql/types/notes/discussion_type.rb b/app/graphql/types/notes/discussion_type.rb
+index c4691942f2..a3fb28298f 100644
+--- a/app/graphql/types/notes/discussion_type.rb
++++ b/app/graphql/types/notes/discussion_type.rb
+@@ -8,8 +8,16 @@ class DiscussionType < BaseObject
+       authorize :read_note
+ 
+       field :id, GraphQL::ID_TYPE, null: false
++      field :reply_id, GraphQL::ID_TYPE, null: false, description: 'The ID used to reply to this discussion'
+       field :created_at, Types::TimeType, null: false
+       field :notes, Types::Notes::NoteType.connection_type, null: false, description: "All notes in the discussion"
++
++      # The gem we use to generate Global IDs is hard-coded to work with
++      # `id` properties. To generate a GID for the `reply_id` property,
++      # we must use the ::Gitlab::GlobalId module.
++      def reply_id
++        ::Gitlab::GlobalId.build(object, id: object.reply_id)
++      end
+     end
+   end
+ end
+diff --git a/app/models/discussion.rb b/app/models/discussion.rb
+index ae13cdfd85..dd896f7708 100644
+--- a/app/models/discussion.rb
++++ b/app/models/discussion.rb
+@@ -38,6 +38,17 @@ def self.build_collection(notes, context_noteable = nil)
+     grouped_notes.values.map { |notes| build(notes, context_noteable) }
+   end
+ 
++  def self.lazy_find(discussion_id)
++    BatchLoader.for(discussion_id).batch do |discussion_ids, loader|
++      results = Note.where(discussion_id: discussion_ids).fresh.to_a.group_by(&:discussion_id)
++      results.each do |discussion_id, notes|
++        next if notes.empty?
++
++        loader.call(discussion_id, Discussion.build(notes))
++      end
++    end
++  end
++
+   # Returns an alphanumeric discussion ID based on `build_discussion_id`
+   def self.discussion_id(note)
+     Digest::SHA1.hexdigest(build_discussion_id(note).join("-"))
+diff --git a/app/models/note.rb b/app/models/note.rb
+index 4e9ea14648..5c31cff981 100644
+--- a/app/models/note.rb
++++ b/app/models/note.rb
+@@ -158,6 +158,8 @@ def discussions(context_noteable = nil)
+       Discussion.build_collection(all.includes(:noteable).fresh, context_noteable)
+     end
+ 
++    # Note: Where possible consider using Discussion#lazy_find to return
++    # Discussions in order to benefit from having records batch loaded.
+     def find_discussion(discussion_id)
+       notes = where(discussion_id: discussion_id).fresh.to_a
+ 
+diff --git a/lib/gitlab/global_id.rb b/lib/gitlab/global_id.rb
+new file mode 100644
+index 0000000000..cc82b6c589
+--- /dev/null
++++ b/lib/gitlab/global_id.rb
+@@ -0,0 +1,14 @@
++# frozen_string_literal: true
++
++module Gitlab
++  module GlobalId
++    def self.build(object = nil, model_name: nil, id: nil, params: nil)
++      if object
++        model_name ||= object.class.name
++        id ||= object.id
++      end
++
++      ::URI::GID.build(app: GlobalID.app, model_name: model_name, model_id: id, params: params)
++    end
++  end
++end
+diff --git a/spec/graphql/gitlab_schema_spec.rb b/spec/graphql/gitlab_schema_spec.rb
+index 93b86b9b81..dec6b23d72 100644
+--- a/spec/graphql/gitlab_schema_spec.rb
++++ b/spec/graphql/gitlab_schema_spec.rb
+@@ -143,6 +143,26 @@
+       end
+     end
+ 
++    context 'for classes that are not ActiveRecord subclasses and have implemented .lazy_find' do
++      it 'returns the correct record' do
++        note = create(:discussion_note_on_merge_request)
++
++        result = described_class.object_from_id(note.to_global_id)
++
++        expect(result.__sync).to eq(note)
++      end
++
++      it 'batchloads the queries' do
++        note1 = create(:discussion_note_on_merge_request)
++        note2 = create(:discussion_note_on_merge_request)
++
++        expect do
++          [described_class.object_from_id(note1.to_global_id),
++           described_class.object_from_id(note2.to_global_id)].map(&:__sync)
++        end.not_to exceed_query_limit(1)
++      end
++    end
++
+     context 'for other classes' do
+       # We cannot use an anonymous class here as `GlobalID` expects `.name` not
+       # to return `nil`
+diff --git a/spec/graphql/types/notes/discussion_type_spec.rb b/spec/graphql/types/notes/discussion_type_spec.rb
+index 2a1eb0efd3..ba7fc96121 100644
+--- a/spec/graphql/types/notes/discussion_type_spec.rb
++++ b/spec/graphql/types/notes/discussion_type_spec.rb
+@@ -2,7 +2,7 @@
+ require 'spec_helper'
+ 
+ describe GitlabSchema.types['Discussion'] do
+-  it { is_expected.to have_graphql_fields(:id, :created_at, :notes) }
++  it { is_expected.to have_graphql_fields(:id, :created_at, :notes, :reply_id) }
+ 
+   it { is_expected.to require_graphql_authorizations(:read_note) }
+ end
+diff --git a/spec/lib/gitlab/global_id_spec.rb b/spec/lib/gitlab/global_id_spec.rb
+new file mode 100644
+index 0000000000..d35b5da0b7
+--- /dev/null
++++ b/spec/lib/gitlab/global_id_spec.rb
+@@ -0,0 +1,37 @@
++# frozen_string_literal: true
++
++require 'spec_helper'
++
++describe Gitlab::GlobalId do
++  describe '.build' do
++    set(:object) { create(:issue) }
++
++    it 'returns a standard GlobalId if only object is passed' do
++      expect(described_class.build(object).to_s).to eq(object.to_global_id.to_s)
++    end
++
++    it 'returns a GlobalId from params' do
++      expect(described_class.build(model_name: 'MyModel', id: 'myid').to_s).to eq(
++        'gid://gitlab/MyModel/myid'
++      )
++    end
++
++    it 'returns a GlobalId from object and `id` param' do
++      expect(described_class.build(object, id: 'myid').to_s).to eq(
++        'gid://gitlab/Issue/myid'
++      )
++    end
++
++    it 'returns a GlobalId from object and `model_name` param' do
++      expect(described_class.build(object, model_name: 'MyModel').to_s).to eq(
++        "gid://gitlab/MyModel/#{object.id}"
++      )
++    end
++
++    it 'returns an error if model_name and id are not able to be determined' do
++      expect { described_class.build(id: 'myid') }.to raise_error(URI::InvalidComponentError)
++      expect { described_class.build(model_name: 'MyModel') }.to raise_error(URI::InvalidComponentError)
++      expect { described_class.build }.to raise_error(URI::InvalidComponentError)
++    end
++  end
++end
+diff --git a/spec/models/discussion_spec.rb b/spec/models/discussion_spec.rb
+index 22d4dab061..950bdec4d0 100644
+--- a/spec/models/discussion_spec.rb
++++ b/spec/models/discussion_spec.rb
+@@ -10,6 +10,20 @@
+   let(:second_note) { create(:diff_note_on_merge_request, in_reply_to: first_note) }
+   let(:third_note) { create(:diff_note_on_merge_request) }
+ 
++  describe '.lazy_find' do
++    let!(:note1) { create(:discussion_note_on_merge_request).to_discussion }
++    let!(:note2) { create(:discussion_note_on_merge_request, in_reply_to: note1).to_discussion }
++
++    subject { [note1, note2].map { |note| described_class.lazy_find(note.discussion_id) } }
++
++    it 'batches requests' do
++      expect do
++        [described_class.lazy_find(note1.id),
++         described_class.lazy_find(note2.id)].map(&:__sync)
++      end.not_to exceed_query_limit(1)
++    end
++  end
++
+   describe '.build' do
+     it 'returns a discussion of the right type' do
+       discussion = described_class.build([first_note, second_note], merge_request)
+diff --git a/spec/requests/api/graphql/mutations/notes/create/note_spec.rb b/spec/requests/api/graphql/mutations/notes/create/note_spec.rb
+index 17aed69b65..14aaa430ac 100644
+--- a/spec/requests/api/graphql/mutations/notes/create/note_spec.rb
++++ b/spec/requests/api/graphql/mutations/notes/create/note_spec.rb
+@@ -7,10 +7,12 @@
+ 
+   set(:current_user) { create(:user) }
+   let(:noteable) { create(:merge_request, source_project: project, target_project: project) }
+-  let(:project) { create(:project, :repository) }
++  let(:project) { create(:project) }
++  let(:discussion) { nil }
+   let(:mutation) do
+     variables = {
+       noteable_id: GitlabSchema.id_from_object(noteable).to_s,
++      discussion_id: (GitlabSchema.id_from_object(discussion).to_s if discussion),
+       body: 'Body text'
+     }
+ 
+@@ -39,5 +41,24 @@ def mutation_response
+ 
+       expect(mutation_response['note']['body']).to eq('Body text')
+     end
++
++    describe 'creating Notes in reply to a discussion' do
++      context 'when the user does not have permission to create notes on the discussion' do
++        let(:discussion) { create(:discussion_note).to_discussion }
++
++        it_behaves_like 'a mutation that returns top-level errors',
++                  errors: ["The discussion does not exist or you don't have permission to perform this action"]
++      end
++
++      context 'when the user has permission to create notes on the discussion' do
++        let(:discussion) { create(:discussion_note, project: project).to_discussion }
++
++        it 'creates a Note in a discussion' do
++          post_graphql_mutation(mutation, current_user: current_user)
++
++          expect(mutation_response['note']['discussion']['id']).to eq(discussion.to_global_id.to_s)
++        end
++      end
++    end
+   end
+ end

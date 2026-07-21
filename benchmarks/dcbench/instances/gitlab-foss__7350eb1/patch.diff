@@ -1,0 +1,462 @@
+From 7350eb1fa83662d4aaa7541acb387b3742ba9788 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Francisco=20Javier=20L=C3=B3pez?= <fjlopez@gitlab.com>
+Date: Mon, 4 Jun 2018 11:41:37 +0000
+Subject: [PATCH] Add ability to search wiki titles
+
+---
+ app/helpers/search_helper.rb                  | 12 ++-
+ app/models/project_wiki.rb                    |  4 -
+ app/views/search/results/_blob.html.haml      | 18 ++--
+ app/views/search/results/_blob_data.html.haml |  9 ++
+ app/views/search/results/_wiki_blob.html.haml | 15 ++--
+ ...fj-34526-enabling-wiki-search-by-title.yml |  5 ++
+ lib/api/search.rb                             |  4 +-
+ lib/gitlab/file_finder.rb                     | 26 ++++--
+ lib/gitlab/project_search_results.rb          |  3 +-
+ lib/gitlab/wiki_file_finder.rb                | 23 ++++++
+ spec/lib/gitlab/file_finder_spec.rb           | 24 +-----
+ .../lib/gitlab/project_search_results_spec.rb | 82 ++++++++-----------
+ spec/lib/gitlab/wiki_file_finder_spec.rb      | 20 +++++
+ spec/support/shared_examples/file_finder.rb   | 21 +++++
+ 14 files changed, 159 insertions(+), 107 deletions(-)
+ create mode 100644 app/views/search/results/_blob_data.html.haml
+ create mode 100644 changelogs/unreleased/fj-34526-enabling-wiki-search-by-title.yml
+ create mode 100644 lib/gitlab/wiki_file_finder.rb
+ create mode 100644 spec/lib/gitlab/wiki_file_finder_spec.rb
+ create mode 100644 spec/support/shared_examples/file_finder.rb
+
+diff --git a/app/helpers/search_helper.rb b/app/helpers/search_helper.rb
+index 761c1252fc..f7dafca783 100644
+--- a/app/helpers/search_helper.rb
++++ b/app/helpers/search_helper.rb
+@@ -25,14 +25,22 @@ def search_entries_info(collection, scope, term)
+     return unless collection.count > 0
+ 
+     from = collection.offset_value + 1
+-    to = collection.offset_value + collection.length
++    to = collection.offset_value + collection.count
+     count = collection.total_count
+ 
+     "Showing #{from} - #{to} of #{count} #{scope.humanize(capitalize: false)} for \"#{term}\""
+   end
+ 
++  def find_project_for_result_blob(result)
++    @project
++  end
++
+   def parse_search_result(result)
+-    Gitlab::ProjectSearchResults.parse_search_result(result)
++    result
++  end
++
++  def search_blob_title(project, filename)
++    filename
+   end
+ 
+   private
+diff --git a/app/models/project_wiki.rb b/app/models/project_wiki.rb
+index f799a0b422..a6f94b3e3b 100644
+--- a/app/models/project_wiki.rb
++++ b/app/models/project_wiki.rb
+@@ -140,10 +140,6 @@ def page_title_and_dir(title)
+     [title, title_array.join("/")]
+   end
+ 
+-  def search_files(query)
+-    repository.search_files_by_content(query, default_branch)
+-  end
+-
+   def repository
+     @repository ||= Repository.new(full_path, @project, disk_path: disk_path, is_wiki: true)
+   end
+diff --git a/app/views/search/results/_blob.html.haml b/app/views/search/results/_blob.html.haml
+index de473c23d6..fdcd126e7a 100644
+--- a/app/views/search/results/_blob.html.haml
++++ b/app/views/search/results/_blob.html.haml
+@@ -1,13 +1,5 @@
+-- file_name, blob = blob
+-.blob-result
+-  .file-holder
+-    .js-file-title.file-title
+-      - ref = @search_results.repository_ref
+-      - blob_link = project_blob_path(@project, tree_join(ref, file_name))
+-      = link_to blob_link do
+-        %i.fa.fa-file
+-        %strong
+-          = file_name
+-    - if blob
+-      .file-content.code.term
+-        = render 'shared/file_highlight', blob: blob, first_line_number: blob.startline, blob_link: blob_link
++- project = find_project_for_result_blob(blob)
++- file_name, blob = parse_search_result(blob)
++- blob_link = project_blob_path(project, tree_join(blob.ref, file_name))
++
++= render partial: 'search/results/blob_data', locals: { blob: blob, project: project, file_name: file_name, blob_link: blob_link }
+diff --git a/app/views/search/results/_blob_data.html.haml b/app/views/search/results/_blob_data.html.haml
+new file mode 100644
+index 0000000000..0115be41ff
+--- /dev/null
++++ b/app/views/search/results/_blob_data.html.haml
+@@ -0,0 +1,9 @@
++.blob-result
++  .file-holder
++    .js-file-title.file-title
++      = link_to blob_link do
++        %i.fa.fa-file
++        = search_blob_title(project, file_name)
++    - if blob.data
++      .file-content.code.term
++        = render 'shared/file_highlight', blob: blob, first_line_number: blob.startline
+diff --git a/app/views/search/results/_wiki_blob.html.haml b/app/views/search/results/_wiki_blob.html.haml
+index 16a0e432d6..4346217c23 100644
+--- a/app/views/search/results/_wiki_blob.html.haml
++++ b/app/views/search/results/_wiki_blob.html.haml
+@@ -1,10 +1,5 @@
+-- wiki_blob = parse_search_result(wiki_blob)
+-.blob-result
+-  .file-holder
+-    .js-file-title.file-title
+-      = link_to project_wiki_path(@project, wiki_blob.basename) do
+-        %i.fa.fa-file
+-        %strong
+-          = wiki_blob.basename
+-    .file-content.code.term
+-      = render 'shared/file_highlight', blob: wiki_blob, first_line_number: wiki_blob.startline
++- project = find_project_for_result_blob(wiki_blob)
++- file_name, wiki_blob = parse_search_result(wiki_blob)
++- wiki_blob_link = project_wiki_path(project, wiki_blob.basename)
++
++= render partial: 'search/results/blob_data', locals: { blob: wiki_blob, project: project, file_name: file_name, blob_link: wiki_blob_link }
+diff --git a/changelogs/unreleased/fj-34526-enabling-wiki-search-by-title.yml b/changelogs/unreleased/fj-34526-enabling-wiki-search-by-title.yml
+new file mode 100644
+index 0000000000..2ae2cf8a23
+--- /dev/null
++++ b/changelogs/unreleased/fj-34526-enabling-wiki-search-by-title.yml
+@@ -0,0 +1,5 @@
++---
++title: Added ability to search by wiki titles
++merge_request: 19112
++author:
++type: added
+diff --git a/lib/api/search.rb b/lib/api/search.rb
+index 5d9ec617cb..37fbabe419 100644
+--- a/lib/api/search.rb
++++ b/lib/api/search.rb
+@@ -34,9 +34,7 @@ def search(additional_params = {})
+ 
+       def process_results(results)
+         case params[:scope]
+-        when 'wiki_blobs'
+-          paginate(results).map { |blob| Gitlab::ProjectSearchResults.parse_search_result(blob, user_project) }
+-        when 'blobs'
++        when 'blobs', 'wiki_blobs'
+           paginate(results).map { |blob| blob[1] }
+         else
+           paginate(results)
+diff --git a/lib/gitlab/file_finder.rb b/lib/gitlab/file_finder.rb
+index 8c082c0c33..f42088f980 100644
+--- a/lib/gitlab/file_finder.rb
++++ b/lib/gitlab/file_finder.rb
+@@ -32,17 +32,13 @@ def find_by_content(query)
+     end
+ 
+     def find_by_filename(query, except: [])
+-      filenames = repository.search_files_by_name(query, ref).first(BATCH_SIZE)
+-      filenames.delete_if { |filename| except.include?(filename) } unless except.empty?
++      filenames = search_filenames(query, except)
+ 
+-      blob_refs = filenames.map { |filename| [ref, filename] }
+-      blobs = Gitlab::Git::Blob.batch(repository, blob_refs, blob_size_limit: 1024)
+-
+-      blobs.map do |blob|
++      blobs(filenames).map do |blob|
+         Gitlab::SearchResults::FoundBlob.new(
+           id: blob.id,
+           filename: blob.path,
+-          basename: File.basename(blob.path),
++          basename: File.basename(blob.path, File.extname(blob.path)),
+           ref: ref,
+           startline: 1,
+           data: blob.data,
+@@ -50,5 +46,21 @@ def find_by_filename(query, except: [])
+         )
+       end
+     end
++
++    def search_filenames(query, except)
++      filenames = repository.search_files_by_name(query, ref).first(BATCH_SIZE)
++
++      filenames.delete_if { |filename| except.include?(filename) } unless except.empty?
++
++      filenames
++    end
++
++    def blob_refs(filenames)
++      filenames.map { |filename| [ref, filename] }
++    end
++
++    def blobs(filenames)
++      Gitlab::Git::Blob.batch(repository, blob_refs(filenames), blob_size_limit: 1024)
++    end
+   end
+ end
+diff --git a/lib/gitlab/project_search_results.rb b/lib/gitlab/project_search_results.rb
+index 2e9b6e302f..38bdc61d8a 100644
+--- a/lib/gitlab/project_search_results.rb
++++ b/lib/gitlab/project_search_results.rb
+@@ -106,7 +106,8 @@ def wiki_blobs
+           project_wiki = ProjectWiki.new(project)
+ 
+           unless project_wiki.empty?
+-            project_wiki.search_files(query)
++            ref = repository_ref || project.wiki.default_branch
++            Gitlab::WikiFileFinder.new(project, ref).find(query)
+           else
+             []
+           end
+diff --git a/lib/gitlab/wiki_file_finder.rb b/lib/gitlab/wiki_file_finder.rb
+new file mode 100644
+index 0000000000..f97278f05c
+--- /dev/null
++++ b/lib/gitlab/wiki_file_finder.rb
+@@ -0,0 +1,23 @@
++module Gitlab
++  class WikiFileFinder < FileFinder
++    attr_reader :repository
++
++    def initialize(project, ref)
++      @project = project
++      @ref = ref
++      @repository = project.wiki.repository
++    end
++
++    private
++
++    def search_filenames(query, except)
++      safe_query = Regexp.escape(query.tr(' ', '-'))
++      safe_query = Regexp.new(safe_query, Regexp::IGNORECASE)
++      filenames = repository.ls_files(ref)
++
++      filenames.delete_if { |filename| except.include?(filename) } unless except.empty?
++
++      filenames.grep(safe_query).first(BATCH_SIZE)
++    end
++  end
++end
+diff --git a/spec/lib/gitlab/file_finder_spec.rb b/spec/lib/gitlab/file_finder_spec.rb
+index 07cb10e563..d6d9e4001a 100644
+--- a/spec/lib/gitlab/file_finder_spec.rb
++++ b/spec/lib/gitlab/file_finder_spec.rb
+@@ -3,27 +3,11 @@
+ describe Gitlab::FileFinder do
+   describe '#find' do
+     let(:project) { create(:project, :public, :repository) }
+-    let(:finder) { described_class.new(project, project.default_branch) }
+ 
+-    it 'finds by name' do
+-      results = finder.find('files')
+-
+-      filename,  blob = results.find { |_, blob| blob.filename == 'files/images/wm.svg' }
+-      expect(filename).to eq('files/images/wm.svg')
+-      expect(blob).to be_a(Gitlab::SearchResults::FoundBlob)
+-      expect(blob.ref).to eq(finder.ref)
+-      expect(blob.data).not_to be_empty
+-    end
+-
+-    it 'finds by content' do
+-      results = finder.find('files')
+-
+-      filename, blob = results.find { |_, blob| blob.filename == 'CHANGELOG' }
+-
+-      expect(filename).to eq('CHANGELOG')
+-      expect(blob).to be_a(Gitlab::SearchResults::FoundBlob)
+-      expect(blob.ref).to eq(finder.ref)
+-      expect(blob.data).not_to be_empty
++    it_behaves_like 'file finder' do
++      subject { described_class.new(project, project.default_branch) }
++      let(:expected_file_by_name) { 'files/images/wm.svg' }
++      let(:expected_file_by_content) { 'CHANGELOG' }
+     end
+   end
+ end
+diff --git a/spec/lib/gitlab/project_search_results_spec.rb b/spec/lib/gitlab/project_search_results_spec.rb
+index e3f705d229..50224bde72 100644
+--- a/spec/lib/gitlab/project_search_results_spec.rb
++++ b/spec/lib/gitlab/project_search_results_spec.rb
+@@ -22,47 +22,57 @@
+     it { expect(results.query).to eq('hello world') }
+   end
+ 
+-  describe 'blob search' do
+-    let(:project) { create(:project, :public, :repository) }
+-
+-    subject(:results) { described_class.new(user, project, 'files').objects('blobs') }
+-
+-    context 'when repository is disabled' do
+-      let(:project) { create(:project, :public, :repository, :repository_disabled) }
++  shared_examples 'general blob search' do |entity_type, blob_kind|
++    let(:query) { 'files' }
++    subject(:results) { described_class.new(user, project, query).objects(blob_type) }
+ 
+-      it 'hides blobs from members' do
++    context "when #{entity_type} is disabled" do
++      let(:project) { disabled_project }
++      it "hides #{blob_kind} from members" do
+         project.add_reporter(user)
+ 
+         is_expected.to be_empty
+       end
+ 
+-      it 'hides blobs from non-members' do
++      it "hides #{blob_kind} from non-members" do
+         is_expected.to be_empty
+       end
+     end
+ 
+-    context 'when repository is internal' do
+-      let(:project) { create(:project, :public, :repository, :repository_private) }
++    context "when #{entity_type} is internal" do
++      let(:project) { private_project }
+ 
+-      it 'finds blobs for members' do
++      it "finds #{blob_kind} for members" do
+         project.add_reporter(user)
+ 
+         is_expected.not_to be_empty
+       end
+ 
+-      it 'hides blobs from non-members' do
++      it "hides #{blob_kind} from non-members" do
+         is_expected.to be_empty
+       end
+     end
+ 
+     it 'finds by name' do
+-      expect(results.map(&:first)).to include('files/images/wm.svg')
++      expect(results.map(&:first)).to include(expected_file_by_name)
+     end
+ 
+     it 'finds by content' do
+-      blob = results.select { |result| result.first == "CHANGELOG" }.flatten.last
++      blob = results.select { |result| result.first == expected_file_by_content }.flatten.last
+ 
+-      expect(blob.filename).to eq("CHANGELOG")
++      expect(blob.filename).to eq(expected_file_by_content)
++    end
++  end
++
++  describe 'blob search' do
++    let(:project) { create(:project, :public, :repository) }
++
++    it_behaves_like 'general blob search', 'repository', 'blobs' do
++      let(:blob_type) { 'blobs' }
++      let(:disabled_project) { create(:project, :public, :repository, :repository_disabled) }
++      let(:private_project) { create(:project, :public, :repository, :repository_private) }
++      let(:expected_file_by_name) { 'files/images/wm.svg' }
++      let(:expected_file_by_content) { 'CHANGELOG' }
+     end
+ 
+     describe 'parsing results' do
+@@ -189,40 +199,18 @@
+   describe 'wiki search' do
+     let(:project) { create(:project, :public, :wiki_repo) }
+     let(:wiki) { build(:project_wiki, project: project) }
+-    let!(:wiki_page) { wiki.create_page('Title', 'Content') }
+-
+-    subject(:results) { described_class.new(user, project, 'Content').objects('wiki_blobs') }
+-
+-    context 'when wiki is disabled' do
+-      let(:project) { create(:project, :public, :wiki_repo, :wiki_disabled) }
+ 
+-      it 'hides wiki blobs from members' do
+-        project.add_reporter(user)
+-
+-        is_expected.to be_empty
+-      end
+-
+-      it 'hides wiki blobs from non-members' do
+-        is_expected.to be_empty
+-      end
+-    end
+-
+-    context 'when wiki is internal' do
+-      let(:project) { create(:project, :public, :wiki_repo, :wiki_private) }
+-
+-      it 'finds wiki blobs for guest' do
+-        project.add_guest(user)
+-
+-        is_expected.not_to be_empty
+-      end
+-
+-      it 'hides wiki blobs from non-members' do
+-        is_expected.to be_empty
+-      end
++    before do
++      wiki.create_page('Files/Title', 'Content')
++      wiki.create_page('CHANGELOG', 'Files example')
+     end
+ 
+-    it 'finds by content' do
+-      expect(results).to include("master:Title.md\x001\x00Content\n")
++    it_behaves_like 'general blob search', 'wiki', 'wiki blobs' do
++      let(:blob_type) { 'wiki_blobs' }
++      let(:disabled_project) { create(:project, :public, :wiki_repo, :wiki_disabled) }
++      let(:private_project) { create(:project, :public, :wiki_repo, :wiki_private) }
++      let(:expected_file_by_name) { 'Files/Title.md' }
++      let(:expected_file_by_content) { 'CHANGELOG.md' }
+     end
+   end
+ 
+diff --git a/spec/lib/gitlab/wiki_file_finder_spec.rb b/spec/lib/gitlab/wiki_file_finder_spec.rb
+new file mode 100644
+index 0000000000..025d1203dc
+--- /dev/null
++++ b/spec/lib/gitlab/wiki_file_finder_spec.rb
+@@ -0,0 +1,20 @@
++require 'spec_helper'
++
++describe Gitlab::WikiFileFinder do
++  describe '#find' do
++    let(:project) { create(:project, :public, :wiki_repo) }
++    let(:wiki) { build(:project_wiki, project: project) }
++
++    before do
++      wiki.create_page('Files/Title', 'Content')
++      wiki.create_page('CHANGELOG', 'Files example')
++    end
++
++    it_behaves_like 'file finder' do
++      subject { described_class.new(project, project.wiki.default_branch) }
++
++      let(:expected_file_by_name) { 'Files/Title.md' }
++      let(:expected_file_by_content) { 'CHANGELOG.md' }
++    end
++  end
++end
+diff --git a/spec/support/shared_examples/file_finder.rb b/spec/support/shared_examples/file_finder.rb
+new file mode 100644
+index 0000000000..ef144bdf61
+--- /dev/null
++++ b/spec/support/shared_examples/file_finder.rb
+@@ -0,0 +1,21 @@
++shared_examples 'file finder' do
++  let(:query) { 'files' }
++  let(:search_results) { subject.find(query) }
++
++  it 'finds by name' do
++    filename,  blob = search_results.find { |_, blob| blob.filename == expected_file_by_name }
++    expect(filename).to eq(expected_file_by_name)
++    expect(blob).to be_a(Gitlab::SearchResults::FoundBlob)
++    expect(blob.ref).to eq(subject.ref)
++    expect(blob.data).not_to be_empty
++  end
++
++  it 'finds by content' do
++    filename, blob = search_results.find { |_, blob| blob.filename == expected_file_by_content }
++
++    expect(filename).to eq(expected_file_by_content)
++    expect(blob).to be_a(Gitlab::SearchResults::FoundBlob)
++    expect(blob.ref).to eq(subject.ref)
++    expect(blob.data).not_to be_empty
++  end
++end

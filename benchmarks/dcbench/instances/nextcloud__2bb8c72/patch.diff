@@ -1,0 +1,644 @@
+From 2bb8c72c471b58125deb1d30aa6cdc1cd91c56cc Mon Sep 17 00:00:00 2001
+From: nfebe <fenn25.fn@gmail.com>
+Date: Tue, 24 Jun 2025 13:16:22 +0100
+Subject: [PATCH] feat(files_sharing): Toggle display for trusted server shares
+
+Signed-off-by: nfebe <fenn25.fn@gmail.com>
+---
+ .../lib/Config/ConfigLexicon.php              |   2 +
+ .../lib/Controller/ShareAPIController.php     |  29 ++++
+ .../lib/Listener/LoadSidebarListener.php      |   1 +
+ .../files_sharing/lib/ResponseDefinitions.php |   1 +
+ apps/files_sharing/openapi.json               |   3 +
+ .../src/components/SharingEntry.vue           |   4 +-
+ .../src/components/SharingInput.vue           |  40 +++--
+ apps/files_sharing/src/models/Share.ts        |   7 +
+ .../src/services/ConfigService.ts             |   8 +
+ .../src/views/SharingLinkList.vue             |  12 +-
+ apps/files_sharing/src/views/SharingTab.vue   |  12 +-
+ apps/files_sharing/tests/ApiTest.php          |   3 +
+ .../Controller/ShareAPIControllerTest.php     | 151 +++++++++++++++++-
+ .../files_sharing/public-share/download.cy.ts |   4 +-
+ openapi.json                                  |   3 +
+ 15 files changed, 254 insertions(+), 26 deletions(-)
+
+diff --git a/apps/files_sharing/lib/Config/ConfigLexicon.php b/apps/files_sharing/lib/Config/ConfigLexicon.php
+index 3211c755fc..c2743a2c4c 100644
+--- a/apps/files_sharing/lib/Config/ConfigLexicon.php
++++ b/apps/files_sharing/lib/Config/ConfigLexicon.php
+@@ -22,6 +22,7 @@ use OCP\Config\ValueType;
+  */
+ class ConfigLexicon implements ILexicon {
+ 	public const SHOW_FEDERATED_AS_INTERNAL = 'show_federated_shares_as_internal';
++	public const SHOW_FEDERATED_TO_TRUSTED_AS_INTERNAL = 'show_federated_shares_to_trusted_servers_as_internal';
+ 
+ 	public function getStrictness(): Strictness {
+ 		return Strictness::IGNORE;
+@@ -30,6 +31,7 @@ class ConfigLexicon implements ILexicon {
+ 	public function getAppConfigs(): array {
+ 		return [
+ 			new Entry(self::SHOW_FEDERATED_AS_INTERNAL, ValueType::BOOL, false, 'shows federated shares as internal shares', true),
++			new Entry(self::SHOW_FEDERATED_TO_TRUSTED_AS_INTERNAL, ValueType::BOOL, false, 'shows federated shares to trusted servers as internal shares', true),
+ 		];
+ 	}
+ 
+diff --git a/apps/files_sharing/lib/Controller/ShareAPIController.php b/apps/files_sharing/lib/Controller/ShareAPIController.php
+index 7591493167..095a8a7596 100644
+--- a/apps/files_sharing/lib/Controller/ShareAPIController.php
++++ b/apps/files_sharing/lib/Controller/ShareAPIController.php
+@@ -15,6 +15,7 @@ use OC\Files\FileInfo;
+ use OC\Files\Storage\Wrapper\Wrapper;
+ use OCA\Circles\Api\v1\Circles;
+ use OCA\Deck\Sharing\ShareAPIHelper;
++use OCA\Federation\TrustedServers;
+ use OCA\Files\Helper;
+ use OCA\Files_Sharing\Exceptions\SharingRightsException;
+ use OCA\Files_Sharing\External\Storage;
+@@ -76,6 +77,7 @@ use Psr\Log\LoggerInterface;
+ class ShareAPIController extends OCSController {
+ 
+ 	private ?Node $lockedNode = null;
++	private array $trustedServerCache = [];
+ 
+ 	/**
+ 	 * Share20OCS constructor.
+@@ -100,6 +102,7 @@ class ShareAPIController extends OCSController {
+ 		private IProviderFactory $factory,
+ 		private IMailer $mailer,
+ 		private ITagManager $tagManager,
++		private ?TrustedServers $trustedServers,
+ 		private ?string $userId = null,
+ 	) {
+ 		parent::__construct($appName, $request);
+@@ -202,6 +205,32 @@ class ShareAPIController extends OCSController {
+ 		$result['item_size'] = $node->getSize();
+ 		$result['item_mtime'] = $node->getMTime();
+ 
++		if ($this->trustedServers !== null && in_array($share->getShareType(), [IShare::TYPE_REMOTE, IShare::TYPE_REMOTE_GROUP], true)) {
++			$result['is_trusted_server'] = false;
++			$sharedWith = $share->getSharedWith();
++			$remoteIdentifier = is_string($sharedWith) ? strrchr($sharedWith, '@') : false;
++			if ($remoteIdentifier !== false) {
++				$remote = substr($remoteIdentifier, 1);
++
++				if (isset($this->trustedServerCache[$remote])) {
++					$result['is_trusted_server'] = $this->trustedServerCache[$remote];
++				} else {
++					try {
++						$isTrusted = $this->trustedServers->isTrustedServer($remote);
++						$this->trustedServerCache[$remote] = $isTrusted;
++						$result['is_trusted_server'] = $isTrusted;
++					} catch (\Exception $e) {
++						// Server not found or other issue, we consider it not trusted
++						$this->trustedServerCache[$remote] = false;
++						$this->logger->error(
++							'Error checking if remote server is trusted (treating as untrusted): ' . $e->getMessage(),
++							['exception' => $e]
++						);
++					}
++				}
++			}
++		}
++
+ 		$expiration = $share->getExpirationDate();
+ 		if ($expiration !== null) {
+ 			$expiration->setTimezone($this->dateTimeZone->getTimeZone());
+diff --git a/apps/files_sharing/lib/Listener/LoadSidebarListener.php b/apps/files_sharing/lib/Listener/LoadSidebarListener.php
+index 9f0eee9159..88c39f3854 100644
+--- a/apps/files_sharing/lib/Listener/LoadSidebarListener.php
++++ b/apps/files_sharing/lib/Listener/LoadSidebarListener.php
+@@ -38,6 +38,7 @@ class LoadSidebarListener implements IEventListener {
+ 
+ 		$appConfig = Server::get(IAppConfig::class);
+ 		$this->initialState->provideInitialState('showFederatedSharesAsInternal', $appConfig->getValueBool('files_sharing', ConfigLexicon::SHOW_FEDERATED_AS_INTERNAL));
++		$this->initialState->provideInitialState('showFederatedSharesToTrustedServersAsInternal', $appConfig->getValueBool('files_sharing', ConfigLexicon::SHOW_FEDERATED_TO_TRUSTED_AS_INTERNAL));
+ 		Util::addScript(Application::APP_ID, 'files_sharing_tab', 'files');
+ 	}
+ }
+diff --git a/apps/files_sharing/lib/ResponseDefinitions.php b/apps/files_sharing/lib/ResponseDefinitions.php
+index 6b6b0fcc4b..71a2b25a70 100644
+--- a/apps/files_sharing/lib/ResponseDefinitions.php
++++ b/apps/files_sharing/lib/ResponseDefinitions.php
+@@ -22,6 +22,7 @@ namespace OCA\Files_Sharing;
+  *     file_target: string,
+  *     has_preview: bool,
+  *     hide_download: 0|1,
++ *     is_trusted_server?: bool,
+  *     is-mount-root: bool,
+  *     id: string,
+  *     item_mtime: int,
+diff --git a/apps/files_sharing/openapi.json b/apps/files_sharing/openapi.json
+index 627c25ce8e..aed112b17f 100644
+--- a/apps/files_sharing/openapi.json
++++ b/apps/files_sharing/openapi.json
+@@ -548,6 +548,9 @@
+                             1
+                         ]
+                     },
++                    "is_trusted_server": {
++                        "type": "boolean"
++                    },
+                     "is-mount-root": {
+                         "type": "boolean"
+                     },
+diff --git a/apps/files_sharing/src/components/SharingEntry.vue b/apps/files_sharing/src/components/SharingEntry.vue
+index 4ff5fae364..1fbe740cb1 100644
+--- a/apps/files_sharing/src/components/SharingEntry.vue
++++ b/apps/files_sharing/src/components/SharingEntry.vue
+@@ -77,9 +77,9 @@ export default {
+ 				title += ` (${t('files_sharing', 'group')})`
+ 			} else if (this.share.type === ShareType.Room) {
+ 				title += ` (${t('files_sharing', 'conversation')})`
+-			} else if (this.share.type === ShareType.Remote) {
++			} else if (this.share.type === ShareType.Remote && !this.share.isTrustedServer) {
+ 				title += ` (${t('files_sharing', 'remote')})`
+-			} else if (this.share.type === ShareType.RemoteGroup) {
++			} else if (this.share.type === ShareType.RemoteGroup && !this.share.isTrustedServer) {
+ 				title += ` (${t('files_sharing', 'remote group')})`
+ 			} else if (this.share.type === ShareType.Guest) {
+ 				title += ` (${t('files_sharing', 'guest')})`
+diff --git a/apps/files_sharing/src/components/SharingInput.vue b/apps/files_sharing/src/components/SharingInput.vue
+index b886ba95a1..f50dc96fc0 100644
+--- a/apps/files_sharing/src/components/SharingInput.vue
++++ b/apps/files_sharing/src/components/SharingInput.vue
+@@ -192,14 +192,27 @@ export default {
+ 				lookup = true
+ 			}
+ 
+-			let shareType = []
+-
+ 			const remoteTypes = [ShareType.Remote, ShareType.RemoteGroup]
+-
+-			if (this.isExternal && !this.config.showFederatedSharesAsInternal) {
+-				shareType.push(...remoteTypes)
++			const shareType = []
++
++			const showFederatedAsInternal
++	= this.config.showFederatedSharesAsInternal
++	|| this.config.showFederatedSharesToTrustedServersAsInternal
++
++			const shouldAddRemoteTypes
++	// For internal users, add remote types if config says to show them as internal
++	= (!this.isExternal && showFederatedAsInternal)
++	// For external users, add them if config *doesn't* say to show them as internal
++	|| (this.isExternal && !showFederatedAsInternal)
++	// Edge case: federated-to-trusted is a separate "add" trigger for external users
++	|| (this.isExternal && this.config.showFederatedSharesToTrustedServersAsInternal)
++
++			if (this.isExternal) {
++				if (getCapabilities().files_sharing.public.enabled === true) {
++					shareType.push(ShareType.Email)
++				}
+ 			} else {
+-				shareType = shareType.concat([
++				shareType.push(
+ 					ShareType.User,
+ 					ShareType.Group,
+ 					ShareType.Team,
+@@ -207,15 +220,11 @@ export default {
+ 					ShareType.Guest,
+ 					ShareType.Deck,
+ 					ShareType.ScienceMesh,
+-				])
+-
+-				if (this.config.showFederatedSharesAsInternal) {
+-					shareType.push(...remoteTypes)
+-				}
++				)
+ 			}
+ 
+-			if (getCapabilities().files_sharing.public.enabled === true && this.isExternal) {
+-				shareType.push(ShareType.Email)
++			if (shouldAddRemoteTypes) {
++				shareType.push(...remoteTypes)
+ 			}
+ 
+ 			let request = null
+@@ -366,6 +375,11 @@ export default {
+ 
+ 					// filter out existing mail shares
+ 					if (share.value.shareType === ShareType.Email) {
++						// When sharing internally, we don't want to suggest email addresses
++						// that the user previously created shares to
++						if (!this.isExternal) {
++							return arr
++						}
+ 						const emails = this.linkShares.map(elem => elem.shareWith)
+ 						if (emails.indexOf(share.value.shareWith.trim()) !== -1) {
+ 							return arr
+diff --git a/apps/files_sharing/src/models/Share.ts b/apps/files_sharing/src/models/Share.ts
+index fb76a655d5..b0638b2944 100644
+--- a/apps/files_sharing/src/models/Share.ts
++++ b/apps/files_sharing/src/models/Share.ts
+@@ -486,4 +486,11 @@ export default class Share {
+ 		return this._share.status
+ 	}
+ 
++	/**
++	 * Is the share from a trusted server
++	 */
++	get isTrustedServer(): boolean {
++		return !!this._share.is_trusted_server
++	}
++
+ }
+diff --git a/apps/files_sharing/src/services/ConfigService.ts b/apps/files_sharing/src/services/ConfigService.ts
+index 2114e2d1ba..f75f34c793 100644
+--- a/apps/files_sharing/src/services/ConfigService.ts
++++ b/apps/files_sharing/src/services/ConfigService.ts
+@@ -315,4 +315,12 @@ export default class Config {
+ 		return loadState('files_sharing', 'showFederatedSharesAsInternal', false)
+ 	}
+ 
++	/**
++	 * Show federated shares to trusted servers as internal shares
++	 * @return {boolean}
++	 */
++	get showFederatedSharesToTrustedServersAsInternal(): boolean {
++		return loadState('files_sharing', 'showFederatedSharesToTrustedServersAsInternal', false)
++	}
++
+ }
+diff --git a/apps/files_sharing/src/views/SharingLinkList.vue b/apps/files_sharing/src/views/SharingLinkList.vue
+index 3dd6fdf317..c3d9a7f83d 100644
+--- a/apps/files_sharing/src/views/SharingLinkList.vue
++++ b/apps/files_sharing/src/views/SharingLinkList.vue
+@@ -7,12 +7,6 @@
+ 	<ul v-if="canLinkShare"
+ 		:aria-label="t('files_sharing', 'Link shares')"
+ 		class="sharing-link-list">
+-		<!-- If no link shares, show the add link default entry -->
+-		<SharingEntryLink v-if="!hasLinkShares && canReshare"
+-			:can-reshare="canReshare"
+-			:file-info="fileInfo"
+-			@add:share="addShare" />
+-
+ 		<!-- Else we display the list -->
+ 		<template v-if="hasShares">
+ 			<!-- using shares[index] to work with .sync -->
+@@ -27,6 +21,12 @@
+ 				@remove:share="removeShare"
+ 				@open-sharing-details="openSharingDetails(share)" />
+ 		</template>
++
++		<!-- If no link shares, show the add link default entry -->
++		<SharingEntryLink v-if="!hasLinkShares && canReshare"
++			:can-reshare="canReshare"
++			:file-info="fileInfo"
++			@add:share="addShare" />
+ 	</ul>
+ </template>
+ 
+diff --git a/apps/files_sharing/src/views/SharingTab.vue b/apps/files_sharing/src/views/SharingTab.vue
+index e56201f6e0..e6acf33e04 100644
+--- a/apps/files_sharing/src/views/SharingTab.vue
++++ b/apps/files_sharing/src/views/SharingTab.vue
+@@ -402,7 +402,13 @@ export default {
+ 					if ([ShareType.Link, ShareType.Email].includes(share.type)) {
+ 						this.linkShares.push(share)
+ 					} else if ([ShareType.Remote, ShareType.RemoteGroup].includes(share.type)) {
+-						if (this.config.showFederatedSharesAsInternal) {
++						if (this.config.showFederatedSharesToTrustedServersAsInternal) {
++							if (share.isTrustedServer) {
++								this.shares.push(share)
++							} else {
++								this.externalShares.push(share)
++							}
++						} else if (this.config.showFederatedSharesAsInternal) {
+ 							this.shares.push(share)
+ 						} else {
+ 							this.externalShares.push(share)
+@@ -478,6 +484,10 @@ export default {
+ 			} else if ([ShareType.Remote, ShareType.RemoteGroup].includes(share.type)) {
+ 				if (this.config.showFederatedSharesAsInternal) {
+ 					this.shares.unshift(share)
++				} if (this.config.showFederatedSharesToTrustedServersAsInternal) {
++					if (share.isTrustedServer) {
++						this.shares.unshift(share)
++					}
+ 				} else {
+ 					this.externalShares.unshift(share)
+ 				}
+diff --git a/apps/files_sharing/tests/ApiTest.php b/apps/files_sharing/tests/ApiTest.php
+index 676809eebf..960f29224b 100644
+--- a/apps/files_sharing/tests/ApiTest.php
++++ b/apps/files_sharing/tests/ApiTest.php
+@@ -13,6 +13,7 @@ use OC\Files\FileInfo;
+ use OC\Files\Filesystem;
+ use OC\Files\Storage\Temporary;
+ use OC\Files\View;
++use OCA\Federation\TrustedServers;
+ use OCA\Files_Sharing\Controller\ShareAPIController;
+ use OCP\App\IAppManager;
+ use OCP\AppFramework\OCS\OCSBadRequestException;
+@@ -117,6 +118,7 @@ class ApiTest extends TestCase {
+ 		$providerFactory = $this->createMock(IProviderFactory::class);
+ 		$mailer = $this->createMock(IMailer::class);
+ 		$tagManager = $this->createMock(ITagManager::class);
++		$trustedServers = $this->createMock(TrustedServers::class);
+ 		$dateTimeZone->method('getTimeZone')->willReturn(new \DateTimeZone(date_default_timezone_get()));
+ 
+ 		return new ShareAPIController(
+@@ -139,6 +141,7 @@ class ApiTest extends TestCase {
+ 			$providerFactory,
+ 			$mailer,
+ 			$tagManager,
++			$trustedServers,
+ 			$userId,
+ 		);
+ 	}
+diff --git a/apps/files_sharing/tests/Controller/ShareAPIControllerTest.php b/apps/files_sharing/tests/Controller/ShareAPIControllerTest.php
+index abc405fc21..e6be0342c2 100644
+--- a/apps/files_sharing/tests/Controller/ShareAPIControllerTest.php
++++ b/apps/files_sharing/tests/Controller/ShareAPIControllerTest.php
+@@ -7,6 +7,7 @@
+  */
+ namespace OCA\Files_Sharing\Tests\Controller;
+ 
++use OCA\Federation\TrustedServers;
+ use OCA\Files_Sharing\Controller\ShareAPIController;
+ use OCP\App\IAppManager;
+ use OCP\AppFramework\Http\DataResponse;
+@@ -82,6 +83,7 @@ class ShareAPIControllerTest extends TestCase {
+ 	private IProviderFactory&MockObject $factory;
+ 	private IMailer&MockObject $mailer;
+ 	private ITagManager&MockObject $tagManager;
++	private TrustedServers&MockObject $trustedServers;
+ 
+ 	protected function setUp(): void {
+ 		$this->shareManager = $this->createMock(IManager::class);
+@@ -119,6 +121,7 @@ class ShareAPIControllerTest extends TestCase {
+ 		$this->factory = $this->createMock(IProviderFactory::class);
+ 		$this->mailer = $this->createMock(IMailer::class);
+ 		$this->tagManager = $this->createMock(ITagManager::class);
++		$this->trustedServers = $this->createMock(TrustedServers::class);
+ 
+ 		$this->ocs = new ShareAPIController(
+ 			$this->appName,
+@@ -140,8 +143,10 @@ class ShareAPIControllerTest extends TestCase {
+ 			$this->factory,
+ 			$this->mailer,
+ 			$this->tagManager,
+-			$this->currentUser,
++			$this->trustedServers,
++			$this->currentUser
+ 		);
++
+ 	}
+ 
+ 	/**
+@@ -169,6 +174,7 @@ class ShareAPIControllerTest extends TestCase {
+ 				$this->factory,
+ 				$this->mailer,
+ 				$this->tagManager,
++				$this->trustedServers,
+ 				$this->currentUser,
+ 			])->onlyMethods(['formatShare'])
+ 			->getMock();
+@@ -853,6 +859,7 @@ class ShareAPIControllerTest extends TestCase {
+ 				$this->factory,
+ 				$this->mailer,
+ 				$this->tagManager,
++				$this->trustedServers,
+ 				$this->currentUser,
+ 			])
+ 			->onlyMethods(['canAccessShare'])
+@@ -1485,6 +1492,7 @@ class ShareAPIControllerTest extends TestCase {
+ 				$this->factory,
+ 				$this->mailer,
+ 				$this->tagManager,
++				$this->trustedServers,
+ 				$this->currentUser,
+ 			])
+ 			->onlyMethods(['formatShare'])
+@@ -1873,6 +1881,7 @@ class ShareAPIControllerTest extends TestCase {
+ 				$this->factory,
+ 				$this->mailer,
+ 				$this->tagManager,
++				$this->trustedServers,
+ 				$this->currentUser,
+ 			])->onlyMethods(['formatShare'])
+ 			->getMock();
+@@ -1972,6 +1981,7 @@ class ShareAPIControllerTest extends TestCase {
+ 				$this->factory,
+ 				$this->mailer,
+ 				$this->tagManager,
++				$this->trustedServers,
+ 				$this->currentUser,
+ 			])->onlyMethods(['formatShare'])
+ 			->getMock();
+@@ -2399,6 +2409,7 @@ class ShareAPIControllerTest extends TestCase {
+ 				$this->factory,
+ 				$this->mailer,
+ 				$this->tagManager,
++				$this->trustedServers,
+ 				$this->currentUser,
+ 			])->onlyMethods(['formatShare'])
+ 			->getMock();
+@@ -2471,6 +2482,7 @@ class ShareAPIControllerTest extends TestCase {
+ 				$this->factory,
+ 				$this->mailer,
+ 				$this->tagManager,
++				$this->trustedServers,
+ 				$this->currentUser,
+ 			])->onlyMethods(['formatShare'])
+ 			->getMock();
+@@ -2710,6 +2722,7 @@ class ShareAPIControllerTest extends TestCase {
+ 				$this->factory,
+ 				$this->mailer,
+ 				$this->tagManager,
++				$this->trustedServers,
+ 				$this->currentUser,
+ 			])->onlyMethods(['formatShare'])
+ 			->getMock();
+@@ -4492,6 +4505,7 @@ class ShareAPIControllerTest extends TestCase {
+ 				'mount-type' => '',
+ 				'attributes' => null,
+ 				'item_permissions' => 1,
++				'is_trusted_server' => false,
+ 			], $share, [], false
+ 		];
+ 
+@@ -4545,6 +4559,7 @@ class ShareAPIControllerTest extends TestCase {
+ 				'mount-type' => '',
+ 				'attributes' => null,
+ 				'item_permissions' => 1,
++				'is_trusted_server' => false,
+ 			], $share, [], false
+ 		];
+ 
+@@ -5228,4 +5243,138 @@ class ShareAPIControllerTest extends TestCase {
+ 			['file_source' => 42, 'x' => 'y', 'tags' => ['tag1', 'tag2']],
+ 		], $result);
+ 	}
++
++	public function trustedServerProvider(): array {
++		return [
++			'Trusted server' => [true, true],
++			'Untrusted server' => [false, false],
++		];
++	}
++
++	/**
++	 * @dataProvider trustedServerProvider
++	 */
++	public function testFormatShareWithFederatedShare(bool $isKnownServer, bool $isTrusted): void {
++		$nodeId = 12;
++		$nodePath = '/test.txt';
++		$share = $this->createShare(
++			1,
++			IShare::TYPE_REMOTE,
++			'recipient@remoteserver.com', // shared with
++			'sender@testserver.com',      // shared by
++			'shareOwner',                 // share owner
++			$nodePath,                  // path
++			Constants::PERMISSION_READ,
++			time(),
++			null,
++			null,
++			$nodePath,
++			$nodeId
++		);
++
++		$node = $this->createMock(\OCP\Files\File::class);
++		$node->method('getId')->willReturn($nodeId);
++		$node->method('getPath')->willReturn($nodePath);
++		$node->method('getInternalPath')->willReturn(ltrim($nodePath, '/'));
++		$mountPoint = $this->createMock(\OCP\Files\Mount\IMountPoint::class);
++		$mountPoint->method('getMountType')->willReturn('local');
++		$node->method('getMountPoint')->willReturn($mountPoint);
++		$node->method('getMimetype')->willReturn('text/plain');
++		$storage = $this->createMock(\OCP\Files\Storage\IStorage::class);
++		$storageCache = $this->createMock(\OCP\Files\Cache\ICache::class);
++		$storageCache->method('getNumericStorageId')->willReturn(1);
++		$storage->method('getCache')->willReturn($storageCache);
++		$storage->method('getId')->willReturn('home::shareOwner');
++		$node->method('getStorage')->willReturn($storage);
++		$parent = $this->createMock(\OCP\Files\Folder::class);
++		$parent->method('getId')->willReturn(2);
++		$node->method('getParent')->willReturn($parent);
++		$node->method('getSize')->willReturn(1234);
++		$node->method('getMTime')->willReturn(1234567890);
++
++		$this->previewManager->method('isAvailable')->with($node)->willReturn(false);
++
++		$this->rootFolder->method('getUserFolder')
++			->with($this->currentUser)
++			->willReturnSelf();
++
++		$this->rootFolder->method('getFirstNodeById')
++			->with($share->getNodeId())
++			->willReturn($node);
++
++		$this->rootFolder->method('getRelativePath')
++			->with($node->getPath())
++			->willReturnArgument(0);
++
++		$serverName = 'remoteserver.com';
++		$this->trustedServers->method('isTrustedServer')
++			->with($serverName)
++			->willReturn($isKnownServer);
++
++		$result = $this->invokePrivate($this->ocs, 'formatShare', [$share]);
++
++		$this->assertSame($isTrusted, $result['is_trusted_server']);
++	}
++
++	public function testFormatShareWithFederatedShareWithAtInUsername(): void {
++		$nodeId = 12;
++		$nodePath = '/test.txt';
++		$share = $this->createShare(
++			1,
++			IShare::TYPE_REMOTE,
++			'recipient@domain.com@remoteserver.com',
++			'sender@testserver.com',
++			'shareOwner',
++			$nodePath,
++			Constants::PERMISSION_READ,
++			time(),
++			null,
++			null,
++			$nodePath,
++			$nodeId
++		);
++
++		$node = $this->createMock(\OCP\Files\File::class);
++		$node->method('getId')->willReturn($nodeId);
++		$node->method('getPath')->willReturn($nodePath);
++		$node->method('getInternalPath')->willReturn(ltrim($nodePath, '/'));
++		$mountPoint = $this->createMock(\OCP\Files\Mount\IMountPoint::class);
++		$mountPoint->method('getMountType')->willReturn('local');
++		$node->method('getMountPoint')->willReturn($mountPoint);
++		$node->method('getMimetype')->willReturn('text/plain');
++		$storage = $this->createMock(\OCP\Files\Storage\IStorage::class);
++		$storageCache = $this->createMock(\OCP\Files\Cache\ICache::class);
++		$storageCache->method('getNumericStorageId')->willReturn(1);
++		$storage->method('getCache')->willReturn($storageCache);
++		$storage->method('getId')->willReturn('home::shareOwner');
++		$node->method('getStorage')->willReturn($storage);
++		$parent = $this->createMock(\OCP\Files\Folder::class);
++		$parent->method('getId')->willReturn(2);
++		$node->method('getParent')->willReturn($parent);
++		$node->method('getSize')->willReturn(1234);
++		$node->method('getMTime')->willReturn(1234567890);
++
++		$this->previewManager->method('isAvailable')->with($node)->willReturn(false);
++
++		$this->rootFolder->method('getUserFolder')
++			->with($this->currentUser)
++			->willReturnSelf();
++
++		$this->rootFolder->method('getFirstNodeById')
++			->with($share->getNodeId())
++			->willReturn($node);
++
++		$this->rootFolder->method('getRelativePath')
++			->with($node->getPath())
++			->willReturnArgument(0);
++
++		$serverName = 'remoteserver.com';
++		$this->trustedServers->method('isTrustedServer')
++			->with($serverName)
++			->willReturn(true);
++
++		$result = $this->invokePrivate($this->ocs, 'formatShare', [$share]);
++
++		$this->assertTrue($result['is_trusted_server']);
++	}
+ }
+diff --git a/cypress/e2e/files_sharing/public-share/download.cy.ts b/cypress/e2e/files_sharing/public-share/download.cy.ts
+index 786a81deb4..372f553a8a 100644
+--- a/cypress/e2e/files_sharing/public-share/download.cy.ts
++++ b/cypress/e2e/files_sharing/public-share/download.cy.ts
+@@ -212,8 +212,6 @@ describe('files_sharing: Public share - downloading files', { testIsolation: tru
+ 
+ 			cy.reload()
+ 
+-			getRowForFile('test').should('be.visible')
+-			triggerActionForFile('test', 'details')
+ 			openLinkShareDetails(0)
+ 			cy.findByRole('checkbox', { name: /hide download/i })
+ 				.should('be.checked')
+@@ -257,7 +255,7 @@ describe('files_sharing: Public share - downloading files', { testIsolation: tru
+ 
+ 			cy.wait('@update')
+ 
+-			openLinkShareDetails(1)
++			openLinkShareDetails(0)
+ 			cy.findByRole('button', { name: /advanced settings/i })
+ 				.click()
+ 			cy.findByRole('checkbox', { name: /hide download/i })
+diff --git a/openapi.json b/openapi.json
+index c888a82bb8..22d7b5b666 100644
+--- a/openapi.json
++++ b/openapi.json
+@@ -2562,6 +2562,9 @@
+                             1
+                         ]
+                     },
++                    "is_trusted_server": {
++                        "type": "boolean"
++                    },
+                     "is-mount-root": {
+                         "type": "boolean"
+                     },

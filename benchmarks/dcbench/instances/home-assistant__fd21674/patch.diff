@@ -1,0 +1,2197 @@
+From fd21674ca13d78523627d86b3e65970c586eb1c0 Mon Sep 17 00:00:00 2001
+From: Erwin Douna <e.douna@gmail.com>
+Date: Thu, 11 Jun 2026 07:45:31 +0200
+Subject: [PATCH] Add MELCloud Home integration (#173185)
+
+---
+ CODEOWNERS                                    |   2 +
+ .../components/melcloud_home/__init__.py      |  38 ++
+ .../components/melcloud_home/climate.py       | 372 ++++++++++++++++++
+ .../components/melcloud_home/config_flow.py   |  94 +++++
+ .../components/melcloud_home/const.py         |   3 +
+ .../components/melcloud_home/coordinator.py   | 114 ++++++
+ .../components/melcloud_home/entity.py        |  84 ++++
+ .../components/melcloud_home/manifest.json    |  12 +
+ .../melcloud_home/quality_scale.yaml          |  68 ++++
+ .../components/melcloud_home/strings.json     |  77 ++++
+ homeassistant/generated/config_flows.py       |   1 +
+ homeassistant/generated/integrations.json     |   6 +
+ requirements_all.txt                          |   3 +
+ tests/components/melcloud_home/__init__.py    |  15 +
+ tests/components/melcloud_home/conftest.py    |  48 +++
+ .../melcloud_home/fixtures/context.json       | 202 ++++++++++
+ .../melcloud_home/snapshots/test_climate.ambr | 266 +++++++++++++
+ .../components/melcloud_home/test_climate.py  | 362 +++++++++++++++++
+ .../melcloud_home/test_config_flow.py         | 108 +++++
+ tests/components/melcloud_home/test_init.py   | 138 +++++++
+ 20 files changed, 2013 insertions(+)
+ create mode 100644 homeassistant/components/melcloud_home/__init__.py
+ create mode 100644 homeassistant/components/melcloud_home/climate.py
+ create mode 100644 homeassistant/components/melcloud_home/config_flow.py
+ create mode 100644 homeassistant/components/melcloud_home/const.py
+ create mode 100644 homeassistant/components/melcloud_home/coordinator.py
+ create mode 100644 homeassistant/components/melcloud_home/entity.py
+ create mode 100644 homeassistant/components/melcloud_home/manifest.json
+ create mode 100644 homeassistant/components/melcloud_home/quality_scale.yaml
+ create mode 100644 homeassistant/components/melcloud_home/strings.json
+ create mode 100644 tests/components/melcloud_home/__init__.py
+ create mode 100644 tests/components/melcloud_home/conftest.py
+ create mode 100644 tests/components/melcloud_home/fixtures/context.json
+ create mode 100644 tests/components/melcloud_home/snapshots/test_climate.ambr
+ create mode 100644 tests/components/melcloud_home/test_climate.py
+ create mode 100644 tests/components/melcloud_home/test_config_flow.py
+ create mode 100644 tests/components/melcloud_home/test_init.py
+
+diff --git a/CODEOWNERS b/CODEOWNERS
+index 6a0b12c049..bf805f67ab 100644
+--- a/CODEOWNERS
++++ b/CODEOWNERS
+@@ -1086,6 +1086,8 @@ CLAUDE.md @home-assistant/core
+ /homeassistant/components/mediaroom/ @dgomes
+ /homeassistant/components/melcloud/ @erwindouna
+ /tests/components/melcloud/ @erwindouna
++/homeassistant/components/melcloud_home/ @erwindouna
++/tests/components/melcloud_home/ @erwindouna
+ /homeassistant/components/melissa/ @kennedyshead
+ /tests/components/melissa/ @kennedyshead
+ /homeassistant/components/melnor/ @vanstinator
+diff --git a/homeassistant/components/melcloud_home/__init__.py b/homeassistant/components/melcloud_home/__init__.py
+new file mode 100644
+index 0000000000..5ea364182d
+--- /dev/null
++++ b/homeassistant/components/melcloud_home/__init__.py
+@@ -0,0 +1,38 @@
++"""The MELCloud Home integration."""
++
++from aiomelcloudhome import MELCloudHome, MelCloudHomeAuth
++
++from homeassistant.const import CONF_EMAIL, CONF_PASSWORD, Platform
++from homeassistant.core import HomeAssistant
++from homeassistant.helpers.aiohttp_client import async_get_clientsession
++
++from .coordinator import MelCloudHomeConfigEntry, MelCloudHomeCoordinator
++
++PLATFORMS: list[Platform] = [Platform.CLIMATE]
++
++
++async def async_setup_entry(
++    hass: HomeAssistant, entry: MelCloudHomeConfigEntry
++) -> bool:
++    """Set up MELCloud Home from a config entry."""
++    session = async_get_clientsession(hass)
++    auth = MelCloudHomeAuth(
++        username=entry.data[CONF_EMAIL],
++        password=entry.data[CONF_PASSWORD],
++        session=session,
++    )
++    client = MELCloudHome(auth=auth, session=session)
++
++    coordinator = MelCloudHomeCoordinator(hass, entry, client)
++    await coordinator.async_config_entry_first_refresh()
++    entry.runtime_data = coordinator
++    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
++
++    return True
++
++
++async def async_unload_entry(
++    hass: HomeAssistant, entry: MelCloudHomeConfigEntry
++) -> bool:
++    """Unload a config entry."""
++    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
+diff --git a/homeassistant/components/melcloud_home/climate.py b/homeassistant/components/melcloud_home/climate.py
+new file mode 100644
+index 0000000000..2b1b0871a1
+--- /dev/null
++++ b/homeassistant/components/melcloud_home/climate.py
+@@ -0,0 +1,372 @@
++"""Climate platform for MELCloud Home."""
++
++from typing import Any
++
++from aiomelcloudhome import (
++    ATAFanSpeed,
++    ATAOperationMode,
++    ATAUnit,
++    ATAVaneHorizontal,
++    ATAVaneVertical,
++    ATWUnit,
++    ATWZoneMode,
++)
++
++from homeassistant.components.climate import (
++    ClimateEntity,
++    ClimateEntityFeature,
++    HVACMode,
++)
++from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
++from homeassistant.core import HomeAssistant
++from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
++
++from .coordinator import MelCloudHomeConfigEntry, MelCloudHomeCoordinator
++from .entity import MelCloudHomeATAUnitEntity, MelCloudHomeATWZoneEntity
++
++ATA_HVAC_MODE_TO_OPERATION: dict[HVACMode, ATAOperationMode] = {
++    HVACMode.HEAT: ATAOperationMode.HEAT,
++    HVACMode.COOL: ATAOperationMode.COOL,
++    HVACMode.AUTO: ATAOperationMode.AUTOMATIC,
++    HVACMode.DRY: ATAOperationMode.DRY,
++    HVACMode.FAN_ONLY: ATAOperationMode.FAN,
++}
++
++ATA_OPERATION_TO_HVAC_MODE: dict[ATAOperationMode, HVACMode] = {
++    value: key for key, value in ATA_HVAC_MODE_TO_OPERATION.items()
++}
++
++ATA_FAN_SPEED_TO_HA: dict[ATAFanSpeed, str] = {
++    ATAFanSpeed.AUTO: "auto",
++    ATAFanSpeed.ONE: "speed_1",
++    ATAFanSpeed.TWO: "speed_2",
++    ATAFanSpeed.THREE: "speed_3",
++    ATAFanSpeed.FOUR: "speed_4",
++    ATAFanSpeed.FIVE: "speed_5",
++}
++
++HA_FAN_SPEED_TO_ATA: dict[str, ATAFanSpeed] = {
++    value: key for key, value in ATA_FAN_SPEED_TO_HA.items()
++}
++
++ATA_VANE_VERTICAL_TO_HA: dict[ATAVaneVertical, str] = {
++    ATAVaneVertical.AUTO: "auto",
++    ATAVaneVertical.SWING: "swing",
++    ATAVaneVertical.ONE: "position_1",
++    ATAVaneVertical.TWO: "position_2",
++    ATAVaneVertical.THREE: "position_3",
++    ATAVaneVertical.FOUR: "position_4",
++    ATAVaneVertical.FIVE: "position_5",
++}
++
++HA_VANE_VERTICAL_TO_ATA: dict[str, ATAVaneVertical] = {
++    value: key for key, value in ATA_VANE_VERTICAL_TO_HA.items()
++}
++
++ATA_VANE_HORIZONTAL_TO_HA: dict[ATAVaneHorizontal, str] = {
++    ATAVaneHorizontal.AUTO: "auto",
++    ATAVaneHorizontal.SWING: "swing",
++    ATAVaneHorizontal.LEFT: "left",
++    ATAVaneHorizontal.LEFT_CENTRE: "left_centre",
++    ATAVaneHorizontal.CENTRE: "centre",
++    ATAVaneHorizontal.RIGHT_CENTRE: "right_centre",
++    ATAVaneHorizontal.RIGHT: "right",
++}
++
++HA_VANE_HORIZONTAL_TO_ATA: dict[str, ATAVaneHorizontal] = {
++    value: key for key, value in ATA_VANE_HORIZONTAL_TO_HA.items()
++}
++
++ATW_ZONE_MODE_TO_HVAC_MODE: dict[ATWZoneMode, HVACMode] = {
++    ATWZoneMode.HEAT_ROOM_TEMPERATURE: HVACMode.HEAT,
++    ATWZoneMode.HEAT_FLOW_TEMPERATURE: HVACMode.HEAT,
++    ATWZoneMode.HEAT_CURVE: HVACMode.HEAT,
++    ATWZoneMode.COOL_ROOM_TEMPERATURE: HVACMode.COOL,
++    ATWZoneMode.COOL_FLOW_TEMPERATURE: HVACMode.COOL,
++}
++
++HVAC_MODE_TO_ATW_ZONE_MODE: dict[HVACMode, ATWZoneMode] = {
++    HVACMode.HEAT: ATWZoneMode.HEAT_ROOM_TEMPERATURE,
++    HVACMode.COOL: ATWZoneMode.COOL_ROOM_TEMPERATURE,
++}
++
++
++async def async_setup_entry(
++    hass: HomeAssistant,
++    entry: MelCloudHomeConfigEntry,
++    async_add_entities: AddConfigEntryEntitiesCallback,
++) -> None:
++    """Set up MELCloud Home climate entities from a config entry."""
++    coordinator = entry.runtime_data
++
++    def _async_add_new_ata_units(units: list[ATAUnit]) -> None:
++        async_add_entities(ATAClimateEntity(coordinator, unit) for unit in units)
++
++    def _async_add_new_atw_units(units: list[ATWUnit]) -> None:
++        # Erwin: create zone 1 for all units, and zone 2 only when the unit supports it.
++        async_add_entities(
++            ATWZoneClimateEntity(coordinator, unit, zone_number)
++            for unit in units
++            for zone_number in (
++                [1, 2]
++                if (unit.capabilities and unit.capabilities.has_zone2)
++                or (unit.capabilities is None and unit.has_zone2)
++                else [1]
++            )
++        )
++
++    coordinator.new_ata_callbacks.append(_async_add_new_ata_units)
++    coordinator.new_atw_callbacks.append(_async_add_new_atw_units)
++
++    _async_add_new_ata_units(list(coordinator.ata_units.values()))
++    _async_add_new_atw_units(list(coordinator.atw_units.values()))
++
++
++class ATAClimateEntity(MelCloudHomeATAUnitEntity, ClimateEntity):
++    """Climate entity for a MELCloud Home Air-to-Air unit."""
++
++    _attr_translation_key = "ata_unit"
++    _attr_temperature_unit = UnitOfTemperature.CELSIUS
++    _attr_swing_modes = list(ATA_VANE_VERTICAL_TO_HA.values())
++    _attr_swing_horizontal_modes = list(ATA_VANE_HORIZONTAL_TO_HA.values())
++
++    def __init__(self, coordinator: MelCloudHomeCoordinator, unit: ATAUnit) -> None:
++        """Initialize the entity."""
++        super().__init__(coordinator, unit)
++        features = (
++            ClimateEntityFeature.TARGET_TEMPERATURE
++            | ClimateEntityFeature.FAN_MODE
++            | ClimateEntityFeature.TURN_ON
++            | ClimateEntityFeature.TURN_OFF
++        )
++        if unit.settings is not None:
++            if unit.settings.get("VaneVerticalDirection") is not None:
++                features |= ClimateEntityFeature.SWING_MODE
++            if unit.settings.get("VaneHorizontalDirection") is not None:
++                features |= ClimateEntityFeature.SWING_HORIZONTAL_MODE
++        self._attr_supported_features = features
++
++    @property
++    def hvac_modes(self) -> list[HVACMode]:
++        """Return HVAC modes supported by this unit based on its capabilities."""
++        if self.unit.capabilities is None:
++            return [
++                HVACMode.OFF,
++                HVACMode.HEAT,
++                HVACMode.COOL,
++                HVACMode.AUTO,
++                HVACMode.DRY,
++                HVACMode.FAN_ONLY,
++            ]
++
++        modes = [HVACMode.OFF, HVACMode.HEAT]
++        if self.unit.capabilities.has_cool_operation_mode is not False:
++            modes.append(HVACMode.COOL)
++        if self.unit.capabilities.has_auto_operation_mode is not False:
++            modes.append(HVACMode.AUTO)
++        if self.unit.capabilities.has_dry_operation_mode is not False:
++            modes.append(HVACMode.DRY)
++        if self.unit.capabilities.has_fan_operation_mode is not False:
++            modes.append(HVACMode.FAN_ONLY)
++        return modes
++
++    @property
++    def fan_modes(self) -> list[str]:
++        """Return fan modes supported by this unit based on its capabilities."""
++        capabilities = self.unit.capabilities
++        number = (
++            capabilities.number_of_fan_speeds
++            if capabilities is not None
++            and capabilities.number_of_fan_speeds is not None
++            else len(ATA_FAN_SPEED_TO_HA) - 1
++        )
++        all_speeds = list(ATA_FAN_SPEED_TO_HA.values())
++        return [all_speeds[0], *all_speeds[1 : number + 1]]
++
++    @property
++    def current_temperature(self) -> float | None:
++        """Return the current room temperature."""
++        return self.unit.room_temperature if self.unit else None
++
++    @property
++    def target_temperature(self) -> float | None:
++        """Return the target temperature."""
++        return self.unit.set_temperature if self.unit else None
++
++    @property
++    def hvac_mode(self) -> HVACMode:
++        """Return the current HVAC mode."""
++        return (
++            ATA_OPERATION_TO_HVAC_MODE.get(self.unit.operation_mode, HVACMode.OFF)
++            if self.unit.power and self.unit.operation_mode
++            else HVACMode.OFF
++        )
++
++    @property
++    def fan_mode(self) -> str | None:
++        """Return the current fan mode."""
++        return (
++            ATA_FAN_SPEED_TO_HA.get(self.unit.set_fan_speed)
++            if self.unit.set_fan_speed is not None
++            else None
++        )
++
++    async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
++        """Set the HVAC mode."""
++        if hvac_mode == HVACMode.OFF:
++            await self.coordinator.client.control_ata_unit(self._unit_id, power=False)
++        else:
++            await self.coordinator.client.control_ata_unit(
++                self._unit_id,
++                power=True,
++                operation_mode=ATA_HVAC_MODE_TO_OPERATION[hvac_mode],
++            )
++        await self.coordinator.async_request_refresh()
++
++    async def async_set_temperature(self, **kwargs: Any) -> None:
++        """Set the target temperature."""
++        await self.coordinator.client.control_ata_unit(
++            self._unit_id, set_temperature=kwargs[ATTR_TEMPERATURE]
++        )
++        await self.coordinator.async_request_refresh()
++
++    @property
++    def swing_mode(self) -> str:
++        """Return the current vertical vane direction."""
++        return ATA_VANE_VERTICAL_TO_HA[self.unit.settings["VaneVerticalDirection"]]
++
++    @property
++    def swing_horizontal_mode(self) -> str:
++        """Return the current horizontal vane direction."""
++        return ATA_VANE_HORIZONTAL_TO_HA[self.unit.settings["VaneHorizontalDirection"]]
++
++    async def async_set_swing_horizontal_mode(self, swing_horizontal_mode: str) -> None:
++        """Set the horizontal vane direction."""
++        await self.coordinator.client.control_ata_unit(
++            self._unit_id,
++            vane_horizontal_direction=HA_VANE_HORIZONTAL_TO_ATA[swing_horizontal_mode],
++        )
++        await self.coordinator.async_request_refresh()
++
++    async def async_set_swing_mode(self, swing_mode: str) -> None:
++        """Set the vertical vane direction."""
++        await self.coordinator.client.control_ata_unit(
++            self._unit_id, vane_vertical_direction=HA_VANE_VERTICAL_TO_ATA[swing_mode]
++        )
++        await self.coordinator.async_request_refresh()
++
++    async def async_set_fan_mode(self, fan_mode: str) -> None:
++        """Set the fan mode."""
++        await self.coordinator.client.control_ata_unit(
++            self._unit_id, set_fan_speed=HA_FAN_SPEED_TO_ATA[fan_mode]
++        )
++        await self.coordinator.async_request_refresh()
++
++    async def async_turn_on(self) -> None:
++        """Turn the unit on."""
++        await self.coordinator.client.control_ata_unit(self._unit_id, power=True)
++        await self.coordinator.async_request_refresh()
++
++    async def async_turn_off(self) -> None:
++        """Turn the unit off."""
++        await self.coordinator.client.control_ata_unit(self._unit_id, power=False)
++        await self.coordinator.async_request_refresh()
++
++
++class ATWZoneClimateEntity(MelCloudHomeATWZoneEntity, ClimateEntity):
++    """Climate entity for a MELCloud Home ATW zone."""
++
++    _attr_temperature_unit = UnitOfTemperature.CELSIUS
++    _attr_supported_features = (
++        ClimateEntityFeature.TARGET_TEMPERATURE
++        | ClimateEntityFeature.TURN_ON
++        | ClimateEntityFeature.TURN_OFF
++    )
++
++    @property
++    def hvac_modes(self) -> list[HVACMode]:
++        """Return HVAC modes supported by this zone based on unit capabilities."""
++        modes = [HVACMode.OFF, HVACMode.HEAT]
++        if (
++            self.unit.capabilities is None
++            or self.unit.capabilities.has_cooling_mode is not False
++        ):
++            modes.append(HVACMode.COOL)
++        return modes
++
++    @property
++    def _zone_mode(self) -> ATWZoneMode | None:
++        """Return the current ATW zone mode."""
++        if self.zone_number == 1:
++            return self.unit.operation_mode_zone1
++        return self.unit.operation_mode_zone2
++
++    @property
++    def current_temperature(self) -> float | None:
++        """Return the current zone temperature."""
++        return (
++            self.unit.room_temperature_zone1
++            if self.zone_number == 1
++            else self.unit.room_temperature_zone2
++        )
++
++    @property
++    def target_temperature(self) -> float | None:
++        """Return the target zone temperature."""
++        return (
++            self.unit.set_temperature_zone1
++            if self.zone_number == 1
++            else self.unit.set_temperature_zone2
++        )
++
++    @property
++    def hvac_mode(self) -> HVACMode:
++        """Return the current HVAC mode."""
++        return (
++            ATW_ZONE_MODE_TO_HVAC_MODE.get(self._zone_mode, HVACMode.OFF)
++            if self.unit.power and self._zone_mode
++            else HVACMode.OFF
++        )
++
++    async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
++        """Set the HVAC mode."""
++        if hvac_mode == HVACMode.OFF:
++            await self.coordinator.client.control_atw_unit(self._unit_id, power=False)
++        else:
++            zone_mode = HVAC_MODE_TO_ATW_ZONE_MODE[hvac_mode]
++            if self.zone_number == 1:
++                await self.coordinator.client.control_atw_unit(
++                    self._unit_id,
++                    power=True,
++                    operation_mode_zone1=zone_mode,
++                )
++            else:
++                await self.coordinator.client.control_atw_unit(
++                    self._unit_id,
++                    power=True,
++                    operation_mode_zone2=zone_mode,
++                )
++        await self.coordinator.async_request_refresh()
++
++    async def async_set_temperature(self, **kwargs: Any) -> None:
++        """Set the target temperature."""
++        temperature = kwargs[ATTR_TEMPERATURE]
++        if self.zone_number == 1:
++            await self.coordinator.client.control_atw_unit(
++                self._unit_id, set_temperature_zone1=temperature
++            )
++        else:
++            await self.coordinator.client.control_atw_unit(
++                self._unit_id, set_temperature_zone2=temperature
++            )
++        await self.coordinator.async_request_refresh()
++
++    async def async_turn_on(self) -> None:
++        """Turn the zone on."""
++        await self.coordinator.client.control_atw_unit(self._unit_id, power=True)
++        await self.coordinator.async_request_refresh()
++
++    async def async_turn_off(self) -> None:
++        """Turn the zone off."""
++        await self.coordinator.client.control_atw_unit(self._unit_id, power=False)
++        await self.coordinator.async_request_refresh()
+diff --git a/homeassistant/components/melcloud_home/config_flow.py b/homeassistant/components/melcloud_home/config_flow.py
+new file mode 100644
+index 0000000000..16f25405a5
+--- /dev/null
++++ b/homeassistant/components/melcloud_home/config_flow.py
+@@ -0,0 +1,94 @@
++"""Config flow for MELCloud Home."""
++
++import logging
++from typing import Any
++
++from aiomelcloudhome import MELCloudHome, MelCloudHomeAuth
++from aiomelcloudhome.exceptions import (
++    MelCloudHomeAuthenticationError,
++    MelCloudHomeConnectionError,
++    MelCloudHomeTimeoutError,
++)
++import voluptuous as vol
++
++from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
++from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
++from homeassistant.helpers.aiohttp_client import async_get_clientsession
++from homeassistant.helpers.selector import (
++    TextSelector,
++    TextSelectorConfig,
++    TextSelectorType,
++)
++
++from .const import DOMAIN
++
++_LOGGER = logging.getLogger(__name__)
++
++STEP_USER_DATA_SCHEMA = vol.Schema(
++    {
++        vol.Required(CONF_EMAIL): str,
++        vol.Required(CONF_PASSWORD): TextSelector(
++            TextSelectorConfig(type=TextSelectorType.PASSWORD)
++        ),
++    }
++)
++
++
++class MelCloudHomeConfigFlow(ConfigFlow, domain=DOMAIN):
++    """Handle a config flow for MELCloud Home."""
++
++    async def _async_validate_credentials(
++        self, email: str, password: str
++    ) -> tuple[dict[str, str], str | None]:
++        """Validate credentials against MELCloud Home API."""
++        session = async_get_clientsession(self.hass)
++        auth = MelCloudHomeAuth(username=email, password=password, session=session)
++        client = MELCloudHome(auth=auth, session=session)
++
++        errors: dict[str, str] = {}
++        user_id: str | None = None
++
++        try:
++            context = await client.get_context()
++        except MelCloudHomeAuthenticationError:
++            errors["base"] = "invalid_auth"
++        except MelCloudHomeConnectionError:
++            errors["base"] = "cannot_connect"
++        except MelCloudHomeTimeoutError:
++            errors["base"] = "timeout_connect"
++        except Exception:
++            _LOGGER.exception(
++                "Unexpected error while validating MELCloud Home credentials"
++            )
++            errors["base"] = "unknown"
++        else:
++            user_id = context.id
++
++        return errors, user_id
++
++    async def async_step_user(
++        self, user_input: dict[str, Any] | None = None
++    ) -> ConfigFlowResult:
++        """Handle the initial step."""
++        errors: dict[str, str] = {}
++
++        if user_input is not None:
++            errors, user_id = await self._async_validate_credentials(
++                user_input[CONF_EMAIL], user_input[CONF_PASSWORD]
++            )
++            if not errors:
++                await self.async_set_unique_id(user_id)
++                self._abort_if_unique_id_configured()
++                return self.async_create_entry(
++                    title=user_input[CONF_EMAIL],
++                    data={
++                        CONF_EMAIL: user_input[CONF_EMAIL],
++                        CONF_PASSWORD: user_input[CONF_PASSWORD],
++                    },
++                )
++
++        return self.async_show_form(
++            step_id="user",
++            data_schema=STEP_USER_DATA_SCHEMA,
++            errors=errors,
++        )
+diff --git a/homeassistant/components/melcloud_home/const.py b/homeassistant/components/melcloud_home/const.py
+new file mode 100644
+index 0000000000..6ce91d654e
+--- /dev/null
++++ b/homeassistant/components/melcloud_home/const.py
+@@ -0,0 +1,3 @@
++"""Constants for the MELCloud Home integration."""
++
++DOMAIN = "melcloud_home"
+diff --git a/homeassistant/components/melcloud_home/coordinator.py b/homeassistant/components/melcloud_home/coordinator.py
+new file mode 100644
+index 0000000000..a055c73182
+--- /dev/null
++++ b/homeassistant/components/melcloud_home/coordinator.py
+@@ -0,0 +1,114 @@
++"""Coordinator for MELCloud Home."""
++
++from collections.abc import Callable
++from datetime import timedelta
++import logging
++
++from aiomelcloudhome import ATAUnit, ATWUnit, MELCloudHome, UserContext
++from aiomelcloudhome.exceptions import (
++    MelCloudHomeAuthenticationError,
++    MelCloudHomeConnectionError,
++    MelCloudHomeTimeoutError,
++)
++
++from homeassistant.config_entries import ConfigEntry
++from homeassistant.core import HomeAssistant, callback
++from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
++
++from .const import DOMAIN
++
++_LOGGER = logging.getLogger(__name__)
++
++UPDATE_INTERVAL = timedelta(seconds=60)
++
++
++type MelCloudHomeConfigEntry = ConfigEntry[MelCloudHomeCoordinator]
++
++
++class MelCloudHomeCoordinator(DataUpdateCoordinator[UserContext]):
++    """Coordinator to manage fetching MELCloud Home data."""
++
++    config_entry: MelCloudHomeConfigEntry
++
++    def __init__(
++        self,
++        hass: HomeAssistant,
++        entry: MelCloudHomeConfigEntry,
++        client: MELCloudHome,
++    ) -> None:
++        """Initialize the coordinator."""
++        super().__init__(
++            hass,
++            _LOGGER,
++            config_entry=entry,
++            name=DOMAIN,
++            update_interval=UPDATE_INTERVAL,
++        )
++        self.client = client
++        self.ata_units: dict[str, ATAUnit] = {}
++        self.atw_units: dict[str, ATWUnit] = {}
++        self.known_ata: set[str] = set()
++        self.known_atw: set[str] = set()
++        self.new_ata_callbacks: list[Callable[[list[ATAUnit]], None]] = []
++        self.new_atw_callbacks: list[Callable[[list[ATWUnit]], None]] = []
++
++    def _notify_new_units(self, data: UserContext) -> None:
++        """Notify callbacks when new units are discovered."""
++        current_ata = [
++            unit for building in data.buildings for unit in building.air_to_air_units
++        ]
++        self.ata_units = {unit.id: unit for unit in current_ata}
++        current_ata_ids = {unit.id for unit in current_ata}
++        self.known_ata &= current_ata_ids
++        new_ata_ids = current_ata_ids - self.known_ata
++        new_ata_units = [unit for unit in current_ata if unit.id in new_ata_ids]
++        if new_ata_units:
++            _LOGGER.debug("Discovered new ATA units: %s", new_ata_units)
++            self.known_ata.update(unit.id for unit in new_ata_units)
++            for ata_callback in self.new_ata_callbacks:
++                ata_callback(new_ata_units)
++
++        current_atw_units = [
++            unit for building in data.buildings for unit in building.air_to_water_units
++        ]
++        self.atw_units = {unit.id: unit for unit in current_atw_units}
++        current_atw_ids = {unit.id for unit in current_atw_units}
++        self.known_atw &= current_atw_ids
++        new_atw_ids = current_atw_ids - self.known_atw
++        new_atw_units = [unit for unit in current_atw_units if unit.id in new_atw_ids]
++        if new_atw_units:
++            _LOGGER.debug("Discovered new ATW units: %s", new_atw_units)
++            self.known_atw.update(unit.id for unit in new_atw_units)
++            for atw_callback in self.new_atw_callbacks:
++                atw_callback(new_atw_units)
++
++    async def _async_update_data(self) -> UserContext:
++        """Fetch data from the MELCloud Home API."""
++        try:
++            data = await self.client.get_context()
++        except MelCloudHomeAuthenticationError as err:
++            raise UpdateFailed(
++                translation_domain=DOMAIN,
++                translation_key="invalid_auth",
++                translation_placeholders={"error": repr(err)},
++            ) from err
++        except MelCloudHomeConnectionError as err:
++            raise UpdateFailed(
++                translation_domain=DOMAIN,
++                translation_key="cannot_connect",
++                translation_placeholders={"error": repr(err)},
++            ) from err
++        except MelCloudHomeTimeoutError as err:
++            raise UpdateFailed(
++                translation_domain=DOMAIN,
++                translation_key="timeout_connect",
++                translation_placeholders={"error": repr(err)},
++            ) from err
++        else:
++            return data
++
++    @callback
++    def _async_refresh_finished(self) -> None:
++        """Notify entity callbacks after coordinator data has been updated."""
++        if self.data is not None:
++            self._notify_new_units(self.data)
+diff --git a/homeassistant/components/melcloud_home/entity.py b/homeassistant/components/melcloud_home/entity.py
+new file mode 100644
+index 0000000000..e1d52df89b
+--- /dev/null
++++ b/homeassistant/components/melcloud_home/entity.py
+@@ -0,0 +1,84 @@
++"""Base entities for MELCloud Home."""
++
++from abc import abstractmethod
++
++from aiomelcloudhome import ATAUnit, ATWUnit
++
++from homeassistant.helpers.device_registry import DeviceInfo
++from homeassistant.helpers.update_coordinator import CoordinatorEntity
++
++from .const import DOMAIN
++from .coordinator import MelCloudHomeCoordinator
++
++
++class MelCloudHomeEntity(CoordinatorEntity[MelCloudHomeCoordinator]):
++    """Base entity for MELCloud Home."""
++
++    _attr_has_entity_name = True
++    _attr_name: str | None = None
++
++
++class MelCloudHomeUnitEntity[_UnitT: (ATAUnit, ATWUnit)](MelCloudHomeEntity):
++    """Base entity for a MELCloud Home unit."""
++
++    def __init__(self, coordinator: MelCloudHomeCoordinator, unit: _UnitT) -> None:
++        """Initialize the entity."""
++        super().__init__(coordinator)
++        self._unit_id = unit.id
++        self._attr_unique_id = unit.id
++        self._attr_device_info = DeviceInfo(
++            identifiers={(DOMAIN, unit.id)},
++            name=unit.name,
++            manufacturer="Mitsubishi Electric",
++        )
++
++    @abstractmethod
++    def _units_dict(self) -> dict[str, _UnitT]:
++        """Return the coordinator's units dict keyed by id."""
++
++    @property
++    def available(self) -> bool:
++        """Return if the entity is available."""
++        return super().available and self._unit_id in self._units_dict()
++
++    @property
++    def unit(self) -> _UnitT:
++        """Return the current unit state from coordinator data."""
++        return self._units_dict()[self._unit_id]
++
++
++class MelCloudHomeATAUnitEntity(MelCloudHomeUnitEntity[ATAUnit]):
++    """Base entity for a MELCloud Home Air-to-Air unit."""
++
++    def _units_dict(self) -> dict[str, ATAUnit]:
++        """Return ATA units dict from coordinator."""
++        return self.coordinator.ata_units
++
++
++class MelCloudHomeATWUnitEntity(MelCloudHomeUnitEntity[ATWUnit]):
++    """Base entity for a MELCloud Home Air-to-Water unit."""
++
++    def _units_dict(self) -> dict[str, ATWUnit]:
++        """Return ATW units dict from coordinator."""
++        return self.coordinator.atw_units
++
++
++class MelCloudHomeATWZoneEntity(MelCloudHomeATWUnitEntity):
++    """Base entity for an ATW zone entity."""
++
++    def __init__(
++        self,
++        coordinator: MelCloudHomeCoordinator,
++        unit: ATWUnit,
++        zone_number: int,
++    ) -> None:
++        """Initialize the entity."""
++        super().__init__(coordinator, unit)
++        self._zone_number = zone_number
++        self._attr_unique_id = f"{unit.id}_zone_{zone_number}"
++        self._attr_name = f"Zone {zone_number}"
++
++    @property
++    def zone_number(self) -> int:
++        """Return the zone number."""
++        return self._zone_number
+diff --git a/homeassistant/components/melcloud_home/manifest.json b/homeassistant/components/melcloud_home/manifest.json
+new file mode 100644
+index 0000000000..ad9bbe6d07
+--- /dev/null
++++ b/homeassistant/components/melcloud_home/manifest.json
+@@ -0,0 +1,12 @@
++{
++  "domain": "melcloud_home",
++  "name": "MELCloud Home",
++  "codeowners": ["@erwindouna"],
++  "config_flow": true,
++  "documentation": "https://www.home-assistant.io/integrations/melcloud_home",
++  "integration_type": "hub",
++  "iot_class": "cloud_polling",
++  "loggers": ["aiomelcloudhome"],
++  "quality_scale": "bronze",
++  "requirements": ["aiomelcloudhome==0.1.5"]
++}
+diff --git a/homeassistant/components/melcloud_home/quality_scale.yaml b/homeassistant/components/melcloud_home/quality_scale.yaml
+new file mode 100644
+index 0000000000..d98b8a46cb
+--- /dev/null
++++ b/homeassistant/components/melcloud_home/quality_scale.yaml
+@@ -0,0 +1,68 @@
++rules:
++  # Bronze
++  action-setup:
++    status: exempt
++    comment: No custom actions defined.
++  appropriate-polling: done
++  brands: done
++  common-modules: done
++  config-flow-test-coverage: done
++  config-flow: done
++  dependency-transparency: done
++  docs-actions:
++    status: exempt
++    comment: No custom actions defined.
++  docs-high-level-description: done
++  docs-installation-instructions: done
++  docs-removal-instructions: done
++  entity-event-setup:
++    status: exempt
++    comment: Coordinator handles polling.
++  entity-unique-id: done
++  has-entity-name: done
++  runtime-data: done
++  test-before-configure: done
++  test-before-setup: done
++  unique-config-entry: done
++
++  # Silver
++  action-exceptions:
++    status: exempt
++    comment: No custom actions defined.
++  config-entry-unloading: done
++  docs-configuration-parameters: todo
++  docs-installation-parameters: todo
++  entity-unavailable: todo
++  integration-owner: done
++  log-when-unavailable: todo
++  parallel-updates: todo
++  reauthentication-flow: todo
++  test-coverage: todo
++
++  # Gold
++  devices: done
++  diagnostics: todo
++  discovery-update-info: todo
++  discovery: todo
++  docs-data-update: todo
++  docs-examples: todo
++  docs-known-limitations: todo
++  docs-supported-devices: todo
++  docs-supported-functions: todo
++  docs-troubleshooting: todo
++  docs-use-cases: todo
++  dynamic-devices: todo
++  entity-category: todo
++  entity-device-class: todo
++  entity-disabled-by-default: todo
++  entity-translations: todo
++  exception-translations: todo
++  icon-translations: todo
++  reconfiguration-flow: todo
++  repair-issues: todo
++  stale-devices: todo
++
++  # Platinum
++  async-dependency: done
++  inject-websession: done
++  strict-typing: todo
+diff --git a/homeassistant/components/melcloud_home/strings.json b/homeassistant/components/melcloud_home/strings.json
+new file mode 100644
+index 0000000000..033fd24bd4
+--- /dev/null
++++ b/homeassistant/components/melcloud_home/strings.json
+@@ -0,0 +1,77 @@
++{
++  "config": {
++    "abort": {
++      "already_configured": "[%key:common::config_flow::abort::already_configured_account%]"
++    },
++    "error": {
++      "cannot_connect": "[%key:common::config_flow::error::cannot_connect%]",
++      "invalid_auth": "[%key:common::config_flow::error::invalid_auth%]",
++      "timeout_connect": "Timeout while communicating with MELCloud Home API",
++      "unknown": "[%key:common::config_flow::error::unknown%]"
++    },
++    "step": {
++      "user": {
++        "data": {
++          "email": "[%key:common::config_flow::data::email%]",
++          "password": "[%key:common::config_flow::data::password%]"
++        },
++        "data_description": {
++          "email": "Email address for your MELCloud Home account.",
++          "password": "Password for your MELCloud Home account."
++        },
++        "description": "Login to MELCloud Home with the email address and password associated with your account."
++      }
++    }
++  },
++  "entity": {
++    "climate": {
++      "ata_unit": {
++        "state_attributes": {
++          "fan_mode": {
++            "state": {
++              "auto": "[%key:common::state::auto%]",
++              "speed_1": "Speed 1",
++              "speed_2": "Speed 2",
++              "speed_3": "Speed 3",
++              "speed_4": "Speed 4",
++              "speed_5": "Speed 5"
++            }
++          },
++          "swing_horizontal_mode": {
++            "state": {
++              "auto": "[%key:common::state::auto%]",
++              "centre": "Centre",
++              "left": "Left",
++              "left_centre": "Left centre",
++              "right": "Right",
++              "right_centre": "Right centre",
++              "swing": "Swing"
++            }
++          },
++          "swing_mode": {
++            "state": {
++              "auto": "[%key:common::state::auto%]",
++              "position_1": "Position 1",
++              "position_2": "Position 2",
++              "position_3": "Position 3",
++              "position_4": "Position 4",
++              "position_5": "Position 5",
++              "swing": "Swing"
++            }
++          }
++        }
++      }
++    }
++  },
++  "exceptions": {
++    "cannot_connect": {
++      "message": "Error communicating with MELCloud Home API: {error}"
++    },
++    "invalid_auth": {
++      "message": "An error occurred while trying to authenticate: {error}"
++    },
++    "timeout_connect": {
++      "message": "Timeout while communicating with MELCloud Home API: {error}"
++    }
++  }
++}
+diff --git a/homeassistant/generated/config_flows.py b/homeassistant/generated/config_flows.py
+index cc3f0f8d6e..dea53bb73b 100644
+--- a/homeassistant/generated/config_flows.py
++++ b/homeassistant/generated/config_flows.py
+@@ -448,6 +448,7 @@ FLOWS = {
+         "medcom_ble",
+         "media_extractor",
+         "melcloud",
++        "melcloud_home",
+         "melnor",
+         "met",
+         "met_eireann",
+diff --git a/homeassistant/generated/integrations.json b/homeassistant/generated/integrations.json
+index 3cb76d9be1..30bcacba51 100644
+--- a/homeassistant/generated/integrations.json
++++ b/homeassistant/generated/integrations.json
+@@ -4172,6 +4172,12 @@
+       "config_flow": false,
+       "iot_class": "local_polling"
+     },
++    "melcloud_home": {
++      "name": "MELCloud Home",
++      "integration_type": "hub",
++      "config_flow": true,
++      "iot_class": "cloud_polling"
++    },
+     "melissa": {
+       "name": "Melissa",
+       "integration_type": "hub",
+diff --git a/requirements_all.txt b/requirements_all.txt
+index 34fb62d680..1042d97ed9 100644
+--- a/requirements_all.txt
++++ b/requirements_all.txt
+@@ -332,6 +332,9 @@ aiolyric==2.1.1
+ # homeassistant.components.mealie
+ aiomealie==1.2.4
+ 
++# homeassistant.components.melcloud_home
++aiomelcloudhome==0.1.5
++
+ # homeassistant.components.modern_forms
+ aiomodernforms==0.1.8
+ 
+diff --git a/tests/components/melcloud_home/__init__.py b/tests/components/melcloud_home/__init__.py
+new file mode 100644
+index 0000000000..f5f9f77818
+--- /dev/null
++++ b/tests/components/melcloud_home/__init__.py
+@@ -0,0 +1,15 @@
++"""Tests for the MELCloud Home integration."""
++
++from homeassistant.core import HomeAssistant
++
++from tests.common import MockConfigEntry
++
++
++async def setup_integration(
++    hass: HomeAssistant,
++    config_entry: MockConfigEntry,
++) -> None:
++    """Set up the MELCloud Home integration for testing."""
++    config_entry.add_to_hass(hass)
++    await hass.config_entries.async_setup(config_entry.entry_id)
++    await hass.async_block_till_done()
+diff --git a/tests/components/melcloud_home/conftest.py b/tests/components/melcloud_home/conftest.py
+new file mode 100644
+index 0000000000..b74a365937
+--- /dev/null
++++ b/tests/components/melcloud_home/conftest.py
+@@ -0,0 +1,48 @@
++"""Common fixtures for the MELCloud Home tests."""
++
++from collections.abc import Generator
++from unittest.mock import AsyncMock, patch
++
++from aiomelcloudhome import MELCloudHome, UserContext
++import pytest
++
++from homeassistant.components.melcloud_home.const import DOMAIN
++from homeassistant.const import CONF_EMAIL, CONF_PASSWORD
++
++from tests.common import MockConfigEntry, load_json_value_fixture
++
++MOCK_USER_INPUT = {
++    CONF_EMAIL: "user@example.com",
++    CONF_PASSWORD: "thatyouevenlookedheretoseethepassword",
++}
++
++
++@pytest.fixture
++def mock_melcloud_client() -> Generator[AsyncMock]:
++    """Mock MELCloud Home client."""
++    client = AsyncMock(MELCloudHome)
++    client.get_context.return_value = UserContext.model_validate(
++        load_json_value_fixture("context.json", DOMAIN)
++    )
++    with (
++        patch(
++            "homeassistant.components.melcloud_home.MELCloudHome",
++            return_value=client,
++        ),
++        patch(
++            "homeassistant.components.melcloud_home.config_flow.MELCloudHome",
++            return_value=client,
++        ),
++    ):
++        yield client
++
++
++@pytest.fixture
++def mock_config_entry() -> MockConfigEntry:
++    """Mock a MELCloud Home config entry."""
++    return MockConfigEntry(
++        domain=DOMAIN,
++        unique_id="user-uuid-1",
++        title=MOCK_USER_INPUT[CONF_EMAIL],
++        data=MOCK_USER_INPUT,
++    )
+diff --git a/tests/components/melcloud_home/fixtures/context.json b/tests/components/melcloud_home/fixtures/context.json
+new file mode 100644
+index 0000000000..14ace8e4eb
+--- /dev/null
++++ b/tests/components/melcloud_home/fixtures/context.json
+@@ -0,0 +1,202 @@
++{
++  "id": "user-uuid-1",
++  "firstname": "First",
++  "lastname": "Last",
++  "email": "user@example.com",
++  "language": "nl",
++  "country": "NL",
++  "numberOfDevicesAllowed": 10,
++  "numberOfBuildingsAllowed": 2,
++  "numberOfGuestUsersAllowedPerUnit": 5,
++  "numberOfGuestDevicesAllowed": 10,
++  "buildings": [
++    {
++      "id": "building-uuid-1",
++      "name": "My Home",
++      "timezone": "Europe/Amsterdam",
++      "airToAirUnits": [
++        {
++          "unitSettings": null,
++          "schedule": [],
++          "scheduleEnabled": true,
++          "connectedInterfaceIdentifier": "iface-identifier-1",
++          "capabilities": {
++            "isMultiSplitSystem": false,
++            "isLegacyDevice": false,
++            "hasStandby": false,
++            "hasCoolOperationMode": true,
++            "hasHeatOperationMode": true,
++            "hasAutoOperationMode": true,
++            "hasDryOperationMode": true,
++            "hasAutomaticFanSpeed": true,
++            "hasAirDirection": true,
++            "hasSwing": true,
++            "hasExtendedTemperatureRange": true,
++            "hasEnergyConsumedMeter": false,
++            "numberOfFanSpeeds": 5,
++            "minTempCool": 16,
++            "maxTempCool": 31,
++            "minTempHeat": 10,
++            "maxTempHeat": 31,
++            "minTempAutomatic": 16,
++            "maxTempAutomatic": 31,
++            "hasDemandSideControl": false,
++            "hasHalfDegreeIncrements": true,
++            "supportsWideVane": false,
++            "hasOutdoorTemperatureSensor": false,
++            "hasVaneVertical": true,
++            "hasVaneHorizontal": true,
++            "hasStandbyMode": false
++          },
++          "frostProtection": {
++            "active": false,
++            "enabled": true,
++            "min": 10,
++            "max": 12
++          },
++          "overheatProtection": {
++            "active": false,
++            "enabled": true,
++            "min": 35,
++            "max": 37
++          },
++          "holidayMode": null,
++          "connectedInterfaceType": "melCloudWiFi",
++          "systemId": "system-uuid-1",
++          "id": "ata-unit-uuid-1",
++          "givenDisplayName": "Living Room AC",
++          "displayIcon": "Room",
++          "settings": [
++            {
++              "name": "RoomTemperature",
++              "value": "20"
++            },
++            {
++              "name": "Power",
++              "value": "True"
++            },
++            {
++              "name": "OperationMode",
++              "value": "Heat"
++            },
++            {
++              "name": "ActualFanSpeed",
++              "value": "Off"
++            },
++            {
++              "name": "SetFanSpeed",
++              "value": "Auto"
++            },
++            {
++              "name": "VaneHorizontalDirection",
++              "value": "Centre"
++            },
++            {
++              "name": "VaneVerticalDirection",
++              "value": "Auto"
++            },
++            {
++              "name": "InStandbyMode",
++              "value": "False"
++            },
++            {
++              "name": "SetTemperature",
++              "value": "21"
++            },
++            {
++              "name": "IsInError",
++              "value": "False"
++            },
++            {
++              "name": "ErrorCode",
++              "value": ""
++            }
++          ],
++          "timeZone": "Europe/Amsterdam",
++          "rssi": -45,
++          "isConnected": true,
++          "isInError": false,
++          "energyProducedOptIn": null,
++          "isEnergyUsageCompatible": false
++        }
++      ],
++      "airToWaterUnits": [
++        {
++          "id": "atw-unit-uuid-1",
++          "givenDisplayName": "Heat Pump",
++          "settings": [
++            {
++              "name": "Power",
++              "value": "True"
++            },
++            {
++              "name": "OperationMode",
++              "value": "HeatZones"
++            },
++            {
++              "name": "OperationModeZone1",
++              "value": "HeatRoomTemperature"
++            },
++            {
++              "name": "SetTemperatureZone1",
++              "value": "21"
++            },
++            {
++              "name": "RoomTemperatureZone1",
++              "value": "20"
++            },
++            {
++              "name": "SetTankWaterTemperature",
++              "value": "50"
++            },
++            {
++              "name": "TankWaterTemperature",
++              "value": "48"
++            },
++            {
++              "name": "ForcedHotWaterMode",
++              "value": "False"
++            },
++            {
++              "name": "HasZone2",
++              "value": "1"
++            },
++            {
++              "name": "OperationModeZone2",
++              "value": "HeatRoomTemperature"
++            },
++            {
++              "name": "SetTemperatureZone2",
++              "value": "22"
++            },
++            {
++              "name": "RoomTemperatureZone2",
++              "value": "21"
++            },
++            {
++              "name": "InStandbyMode",
++              "value": "False"
++            },
++            {
++              "name": "IsInError",
++              "value": "False"
++            }
++          ],
++          "capabilities": {
++            "hasHotWater": true,
++            "hasZone2": true,
++            "hasHalfDegrees": false,
++            "hasCoolingMode": true,
++            "minSetTankTemperature": 40,
++            "maxSetTankTemperature": 60,
++            "hasStandbyMode": false,
++            "hasEnergyConsumedMeter": true
++          },
++          "rssi": -52
++        }
++      ]
++    }
++  ],
++  "guestBuildings": [],
++  "scenes": []
++}
+diff --git a/tests/components/melcloud_home/snapshots/test_climate.ambr b/tests/components/melcloud_home/snapshots/test_climate.ambr
+new file mode 100644
+index 0000000000..de43feeb7a
+--- /dev/null
++++ b/tests/components/melcloud_home/snapshots/test_climate.ambr
+@@ -0,0 +1,266 @@
++# serializer version: 1
++# name: test_climate_platform[climate.heat_pump_zone_1-entry]
++  EntityRegistryEntrySnapshot({
++    'aliases': list([
++      None,
++    ]),
++    'area_id': None,
++    'capabilities': dict({
++      'hvac_modes': list([
++        <HVACMode.OFF: 'off'>,
++        <HVACMode.HEAT: 'heat'>,
++        <HVACMode.COOL: 'cool'>,
++      ]),
++      'max_temp': 35,
++      'min_temp': 7,
++    }),
++    'config_entry_id': <ANY>,
++    'config_subentry_id': <ANY>,
++    'device_class': None,
++    'device_id': <ANY>,
++    'disabled_by': None,
++    'domain': 'climate',
++    'entity_category': None,
++    'entity_id': 'climate.heat_pump_zone_1',
++    'has_entity_name': True,
++    'hidden_by': None,
++    'icon': None,
++    'id': <ANY>,
++    'labels': set({
++    }),
++    'name': None,
++    'object_id_base': 'Zone 1',
++    'options': dict({
++    }),
++    'original_device_class': None,
++    'original_icon': None,
++    'original_name': 'Zone 1',
++    'platform': 'melcloud_home',
++    'previous_unique_id': None,
++    'suggested_object_id': None,
++    'supported_features': <ClimateEntityFeature: 385>,
++    'translation_key': None,
++    'unique_id': 'atw-unit-uuid-1_zone_1',
++    'unit_of_measurement': None,
++  })
++# ---
++# name: test_climate_platform[climate.heat_pump_zone_1-state]
++  StateSnapshot({
++    'attributes': ReadOnlyDict({
++      'current_temperature': 20.0,
++      'friendly_name': 'Heat Pump Zone 1',
++      'hvac_modes': list([
++        <HVACMode.OFF: 'off'>,
++        <HVACMode.HEAT: 'heat'>,
++        <HVACMode.COOL: 'cool'>,
++      ]),
++      'max_temp': 35,
++      'min_temp': 7,
++      'supported_features': <ClimateEntityFeature: 385>,
++      'temperature': 21.0,
++    }),
++    'context': <ANY>,
++    'entity_id': 'climate.heat_pump_zone_1',
++    'last_changed': <ANY>,
++    'last_reported': <ANY>,
++    'last_updated': <ANY>,
++    'state': 'heat',
++  })
++# ---
++# name: test_climate_platform[climate.heat_pump_zone_2-entry]
++  EntityRegistryEntrySnapshot({
++    'aliases': list([
++      None,
++    ]),
++    'area_id': None,
++    'capabilities': dict({
++      'hvac_modes': list([
++        <HVACMode.OFF: 'off'>,
++        <HVACMode.HEAT: 'heat'>,
++        <HVACMode.COOL: 'cool'>,
++      ]),
++      'max_temp': 35,
++      'min_temp': 7,
++    }),
++    'config_entry_id': <ANY>,
++    'config_subentry_id': <ANY>,
++    'device_class': None,
++    'device_id': <ANY>,
++    'disabled_by': None,
++    'domain': 'climate',
++    'entity_category': None,
++    'entity_id': 'climate.heat_pump_zone_2',
++    'has_entity_name': True,
++    'hidden_by': None,
++    'icon': None,
++    'id': <ANY>,
++    'labels': set({
++    }),
++    'name': None,
++    'object_id_base': 'Zone 2',
++    'options': dict({
++    }),
++    'original_device_class': None,
++    'original_icon': None,
++    'original_name': 'Zone 2',
++    'platform': 'melcloud_home',
++    'previous_unique_id': None,
++    'suggested_object_id': None,
++    'supported_features': <ClimateEntityFeature: 385>,
++    'translation_key': None,
++    'unique_id': 'atw-unit-uuid-1_zone_2',
++    'unit_of_measurement': None,
++  })
++# ---
++# name: test_climate_platform[climate.heat_pump_zone_2-state]
++  StateSnapshot({
++    'attributes': ReadOnlyDict({
++      'current_temperature': 21.0,
++      'friendly_name': 'Heat Pump Zone 2',
++      'hvac_modes': list([
++        <HVACMode.OFF: 'off'>,
++        <HVACMode.HEAT: 'heat'>,
++        <HVACMode.COOL: 'cool'>,
++      ]),
++      'max_temp': 35,
++      'min_temp': 7,
++      'supported_features': <ClimateEntityFeature: 385>,
++      'temperature': 22.0,
++    }),
++    'context': <ANY>,
++    'entity_id': 'climate.heat_pump_zone_2',
++    'last_changed': <ANY>,
++    'last_reported': <ANY>,
++    'last_updated': <ANY>,
++    'state': 'heat',
++  })
++# ---
++# name: test_climate_platform[climate.living_room_ac-entry]
++  EntityRegistryEntrySnapshot({
++    'aliases': list([
++      None,
++    ]),
++    'area_id': None,
++    'capabilities': dict({
++      'fan_modes': list([
++        'auto',
++        'speed_1',
++        'speed_2',
++        'speed_3',
++        'speed_4',
++        'speed_5',
++      ]),
++      'hvac_modes': list([
++        <HVACMode.OFF: 'off'>,
++        <HVACMode.HEAT: 'heat'>,
++        <HVACMode.COOL: 'cool'>,
++        <HVACMode.AUTO: 'auto'>,
++        <HVACMode.DRY: 'dry'>,
++        <HVACMode.FAN_ONLY: 'fan_only'>,
++      ]),
++      'max_temp': 35,
++      'min_temp': 7,
++      'swing_horizontal_modes': list([
++        'auto',
++        'swing',
++        'left',
++        'left_centre',
++        'centre',
++        'right_centre',
++        'right',
++      ]),
++      'swing_modes': list([
++        'auto',
++        'swing',
++        'position_1',
++        'position_2',
++        'position_3',
++        'position_4',
++        'position_5',
++      ]),
++    }),
++    'config_entry_id': <ANY>,
++    'config_subentry_id': <ANY>,
++    'device_class': None,
++    'device_id': <ANY>,
++    'disabled_by': None,
++    'domain': 'climate',
++    'entity_category': None,
++    'entity_id': 'climate.living_room_ac',
++    'has_entity_name': True,
++    'hidden_by': None,
++    'icon': None,
++    'id': <ANY>,
++    'labels': set({
++    }),
++    'name': None,
++    'object_id_base': None,
++    'options': dict({
++    }),
++    'original_device_class': None,
++    'original_icon': None,
++    'original_name': None,
++    'platform': 'melcloud_home',
++    'previous_unique_id': None,
++    'suggested_object_id': None,
++    'supported_features': <ClimateEntityFeature: 937>,
++    'translation_key': 'ata_unit',
++    'unique_id': 'ata-unit-uuid-1',
++    'unit_of_measurement': None,
++  })
++# ---
++# name: test_climate_platform[climate.living_room_ac-state]
++  StateSnapshot({
++    'attributes': ReadOnlyDict({
++      'current_temperature': 20.0,
++      'fan_mode': 'auto',
++      'fan_modes': list([
++        'auto',
++        'speed_1',
++        'speed_2',
++        'speed_3',
++        'speed_4',
++        'speed_5',
++      ]),
++      'friendly_name': 'Living Room AC',
++      'hvac_modes': list([
++        <HVACMode.OFF: 'off'>,
++        <HVACMode.HEAT: 'heat'>,
++        <HVACMode.COOL: 'cool'>,
++        <HVACMode.AUTO: 'auto'>,
++        <HVACMode.DRY: 'dry'>,
++        <HVACMode.FAN_ONLY: 'fan_only'>,
++      ]),
++      'max_temp': 35,
++      'min_temp': 7,
++      'supported_features': <ClimateEntityFeature: 937>,
++      'swing_horizontal_mode': 'centre',
++      'swing_horizontal_modes': list([
++        'auto',
++        'swing',
++        'left',
++        'left_centre',
++        'centre',
++        'right_centre',
++        'right',
++      ]),
++      'swing_mode': 'auto',
++      'swing_modes': list([
++        'auto',
++        'swing',
++        'position_1',
++        'position_2',
++        'position_3',
++        'position_4',
++        'position_5',
++      ]),
++      'temperature': 21.0,
++    }),
++    'context': <ANY>,
++    'entity_id': 'climate.living_room_ac',
++    'last_changed': <ANY>,
++    'last_reported': <ANY>,
++    'last_updated': <ANY>,
++    'state': 'heat',
++  })
++# ---
+diff --git a/tests/components/melcloud_home/test_climate.py b/tests/components/melcloud_home/test_climate.py
+new file mode 100644
+index 0000000000..eff5e35aa9
+--- /dev/null
++++ b/tests/components/melcloud_home/test_climate.py
+@@ -0,0 +1,362 @@
++"""Test the MELCloud Home climate platform."""
++
++from unittest.mock import AsyncMock
++
++from aiomelcloudhome import (
++    ATAFanSpeed,
++    ATAOperationMode,
++    ATAVaneHorizontal,
++    ATAVaneVertical,
++    ATWZoneMode,
++)
++import pytest
++
++from homeassistant.components.climate import (
++    ATTR_FAN_MODE,
++    ATTR_HVAC_MODE,
++    ATTR_SWING_HORIZONTAL_MODE,
++    ATTR_SWING_MODE,
++    DOMAIN as CLIMATE_DOMAIN,
++    SERVICE_SET_FAN_MODE,
++    SERVICE_SET_HVAC_MODE,
++    SERVICE_SET_SWING_HORIZONTAL_MODE,
++    SERVICE_SET_SWING_MODE,
++    SERVICE_SET_TEMPERATURE,
++    HVACMode,
++)
++from homeassistant.const import (
++    ATTR_ENTITY_ID,
++    ATTR_TEMPERATURE,
++    SERVICE_TURN_OFF,
++    SERVICE_TURN_ON,
++)
++from homeassistant.core import HomeAssistant
++from homeassistant.helpers import entity_registry as er
++
++from . import setup_integration
++
++from tests.common import MockConfigEntry, SnapshotAssertion, snapshot_platform
++
++ATA_ENTITY_ID = "climate.living_room_ac"
++ATW_ZONE1_ENTITY_ID = "climate.heat_pump_zone_1"
++ATW_ZONE2_ENTITY_ID = "climate.heat_pump_zone_2"
++
++
++@pytest.mark.usefixtures("mock_melcloud_client")
++async def test_climate_platform(
++    hass: HomeAssistant,
++    mock_config_entry: MockConfigEntry,
++    snapshot: SnapshotAssertion,
++    entity_registry: er.EntityRegistry,
++) -> None:
++    """Test all climate entity states and attributes from fixture data."""
++    await setup_integration(hass, mock_config_entry)
++    await snapshot_platform(hass, entity_registry, snapshot, mock_config_entry.entry_id)
++
++
++@pytest.mark.parametrize(
++    ("hvac_mode", "arguments"),
++    [
++        pytest.param(HVACMode.OFF, {"power": False}, id="off"),
++        pytest.param(
++            HVACMode.HEAT,
++            {"power": True, "operation_mode": ATAOperationMode.HEAT},
++        ),
++        pytest.param(
++            HVACMode.COOL,
++            {"power": True, "operation_mode": ATAOperationMode.COOL},
++        ),
++        pytest.param(
++            HVACMode.AUTO,
++            {"power": True, "operation_mode": ATAOperationMode.AUTOMATIC},
++        ),
++        pytest.param(
++            HVACMode.DRY,
++            {"power": True, "operation_mode": ATAOperationMode.DRY},
++        ),
++        pytest.param(
++            HVACMode.FAN_ONLY,
++            {"power": True, "operation_mode": ATAOperationMode.FAN},
++        ),
++    ],
++)
++@pytest.mark.usefixtures("mock_melcloud_client")
++async def test_ata_set_hvac_mode(
++    hass: HomeAssistant,
++    mock_config_entry: MockConfigEntry,
++    mock_melcloud_client: AsyncMock,
++    hvac_mode: HVACMode,
++    arguments: dict,
++) -> None:
++    """Test setting HVAC mode on an ATA unit."""
++    await setup_integration(hass, mock_config_entry)
++
++    await hass.services.async_call(
++        CLIMATE_DOMAIN,
++        SERVICE_SET_HVAC_MODE,
++        {ATTR_ENTITY_ID: ATA_ENTITY_ID, ATTR_HVAC_MODE: hvac_mode},
++        blocking=True,
++    )
++
++    mock_melcloud_client.control_ata_unit.assert_called_once_with(
++        "ata-unit-uuid-1", **arguments
++    )
++
++
++@pytest.mark.parametrize(
++    ("fan_mode", "expected_speed"),
++    [
++        pytest.param("auto", ATAFanSpeed.AUTO),
++        pytest.param("speed_1", ATAFanSpeed.ONE),
++        pytest.param("speed_2", ATAFanSpeed.TWO),
++        pytest.param("speed_3", ATAFanSpeed.THREE),
++        pytest.param("speed_4", ATAFanSpeed.FOUR),
++        pytest.param("speed_5", ATAFanSpeed.FIVE),
++    ],
++)
++@pytest.mark.usefixtures("mock_melcloud_client")
++async def test_ata_set_fan_mode(
++    hass: HomeAssistant,
++    mock_config_entry: MockConfigEntry,
++    mock_melcloud_client: AsyncMock,
++    fan_mode: str,
++    expected_speed: ATAFanSpeed,
++) -> None:
++    """Test setting fan speed on an ATA unit."""
++    await setup_integration(hass, mock_config_entry)
++
++    await hass.services.async_call(
++        CLIMATE_DOMAIN,
++        SERVICE_SET_FAN_MODE,
++        {ATTR_ENTITY_ID: ATA_ENTITY_ID, ATTR_FAN_MODE: fan_mode},
++        blocking=True,
++    )
++
++    mock_melcloud_client.control_ata_unit.assert_called_once_with(
++        "ata-unit-uuid-1", set_fan_speed=expected_speed
++    )
++
++
++@pytest.mark.parametrize(
++    ("swing_mode", "expected_vane"),
++    [
++        pytest.param("auto", ATAVaneVertical.AUTO),
++        pytest.param("swing", ATAVaneVertical.SWING),
++        pytest.param("position_1", ATAVaneVertical.ONE),
++        pytest.param("position_2", ATAVaneVertical.TWO),
++        pytest.param("position_3", ATAVaneVertical.THREE),
++        pytest.param("position_4", ATAVaneVertical.FOUR),
++        pytest.param("position_5", ATAVaneVertical.FIVE),
++    ],
++)
++@pytest.mark.usefixtures("mock_melcloud_client")
++async def test_ata_set_swing_mode(
++    hass: HomeAssistant,
++    mock_config_entry: MockConfigEntry,
++    mock_melcloud_client: AsyncMock,
++    swing_mode: str,
++    expected_vane: ATAVaneVertical,
++) -> None:
++    """Test setting vertical vane direction on an ATA unit."""
++    await setup_integration(hass, mock_config_entry)
++
++    await hass.services.async_call(
++        CLIMATE_DOMAIN,
++        SERVICE_SET_SWING_MODE,
++        {ATTR_ENTITY_ID: ATA_ENTITY_ID, ATTR_SWING_MODE: swing_mode},
++        blocking=True,
++    )
++
++    mock_melcloud_client.control_ata_unit.assert_called_once_with(
++        "ata-unit-uuid-1", vane_vertical_direction=expected_vane
++    )
++
++
++@pytest.mark.parametrize(
++    ("swing_mode", "expected_vane"),
++    [
++        pytest.param("auto", ATAVaneHorizontal.AUTO),
++        pytest.param("swing", ATAVaneHorizontal.SWING),
++        pytest.param("left", ATAVaneHorizontal.LEFT),
++        pytest.param("left_centre", ATAVaneHorizontal.LEFT_CENTRE),
++        pytest.param("centre", ATAVaneHorizontal.CENTRE),
++        pytest.param("right_centre", ATAVaneHorizontal.RIGHT_CENTRE),
++        pytest.param("right", ATAVaneHorizontal.RIGHT),
++    ],
++)
++@pytest.mark.usefixtures("mock_melcloud_client")
++async def test_ata_set_swing_horizontal_mode(
++    hass: HomeAssistant,
++    mock_config_entry: MockConfigEntry,
++    mock_melcloud_client: AsyncMock,
++    swing_mode: str,
++    expected_vane: ATAVaneHorizontal,
++) -> None:
++    """Test setting horizontal vane direction on an ATA unit."""
++    await setup_integration(hass, mock_config_entry)
++
++    await hass.services.async_call(
++        CLIMATE_DOMAIN,
++        SERVICE_SET_SWING_HORIZONTAL_MODE,
++        {ATTR_ENTITY_ID: ATA_ENTITY_ID, ATTR_SWING_HORIZONTAL_MODE: swing_mode},
++        blocking=True,
++    )
++
++    mock_melcloud_client.control_ata_unit.assert_called_once_with(
++        "ata-unit-uuid-1", vane_horizontal_direction=expected_vane
++    )
++
++
++@pytest.mark.usefixtures("mock_melcloud_client")
++async def test_ata_set_temperature(
++    hass: HomeAssistant,
++    mock_config_entry: MockConfigEntry,
++    mock_melcloud_client: AsyncMock,
++) -> None:
++    """Test setting target temperature on an ATA unit."""
++    await setup_integration(hass, mock_config_entry)
++
++    await hass.services.async_call(
++        CLIMATE_DOMAIN,
++        SERVICE_SET_TEMPERATURE,
++        {ATTR_ENTITY_ID: ATA_ENTITY_ID, ATTR_TEMPERATURE: 22.5},
++        blocking=True,
++    )
++
++    mock_melcloud_client.control_ata_unit.assert_called_once_with(
++        "ata-unit-uuid-1", set_temperature=22.5
++    )
++
++
++@pytest.mark.parametrize(
++    ("service", "expected_kwargs"),
++    [
++        pytest.param(SERVICE_TURN_ON, {"power": True}),
++        pytest.param(SERVICE_TURN_OFF, {"power": False}),
++    ],
++)
++@pytest.mark.usefixtures("mock_melcloud_client")
++async def test_ata_turn_on_off(
++    hass: HomeAssistant,
++    mock_config_entry: MockConfigEntry,
++    mock_melcloud_client: AsyncMock,
++    service: str,
++    expected_kwargs: dict,
++) -> None:
++    """Test turning an ATA unit on and off."""
++    await setup_integration(hass, mock_config_entry)
++
++    await hass.services.async_call(
++        CLIMATE_DOMAIN,
++        service,
++        {ATTR_ENTITY_ID: ATA_ENTITY_ID},
++        blocking=True,
++    )
++
++    mock_melcloud_client.control_ata_unit.assert_called_once_with(
++        "ata-unit-uuid-1", **expected_kwargs
++    )
++
++
++@pytest.mark.parametrize(
++    ("entity_id", "hvac_mode", "expected_kwargs"),
++    [
++        pytest.param(
++            ATW_ZONE1_ENTITY_ID, HVACMode.OFF, {"power": False}, id="zone1_off"
++        ),
++        pytest.param(
++            ATW_ZONE1_ENTITY_ID,
++            HVACMode.HEAT,
++            {"power": True, "operation_mode_zone1": ATWZoneMode.HEAT_ROOM_TEMPERATURE},
++            id="zone1_heat",
++        ),
++        pytest.param(
++            ATW_ZONE2_ENTITY_ID,
++            HVACMode.HEAT,
++            {"power": True, "operation_mode_zone2": ATWZoneMode.HEAT_ROOM_TEMPERATURE},
++            id="zone2_heat",
++        ),
++    ],
++)
++@pytest.mark.usefixtures("mock_melcloud_client")
++async def test_atw_set_hvac_mode(
++    hass: HomeAssistant,
++    mock_config_entry: MockConfigEntry,
++    mock_melcloud_client: AsyncMock,
++    entity_id: str,
++    hvac_mode: HVACMode,
++    expected_kwargs: dict,
++) -> None:
++    """Test setting HVAC mode on an ATW zone."""
++    await setup_integration(hass, mock_config_entry)
++
++    await hass.services.async_call(
++        CLIMATE_DOMAIN,
++        SERVICE_SET_HVAC_MODE,
++        {ATTR_ENTITY_ID: entity_id, ATTR_HVAC_MODE: hvac_mode},
++        blocking=True,
++    )
++
++    mock_melcloud_client.control_atw_unit.assert_called_once_with(
++        "atw-unit-uuid-1", **expected_kwargs
++    )
++
++
++@pytest.mark.parametrize(
++    ("entity_id", "expected_kwargs"),
++    [
++        pytest.param(ATW_ZONE1_ENTITY_ID, {"set_temperature_zone1": 23.0}, id="zone1"),
++        pytest.param(ATW_ZONE2_ENTITY_ID, {"set_temperature_zone2": 23.0}, id="zone2"),
++    ],
++)
++@pytest.mark.usefixtures("mock_melcloud_client")
++async def test_atw_set_temperature(
++    hass: HomeAssistant,
++    mock_config_entry: MockConfigEntry,
++    mock_melcloud_client: AsyncMock,
++    entity_id: str,
++    expected_kwargs: dict,
++) -> None:
++    """Test setting target temperature on an ATW zone."""
++    await setup_integration(hass, mock_config_entry)
++
++    await hass.services.async_call(
++        CLIMATE_DOMAIN,
++        SERVICE_SET_TEMPERATURE,
++        {ATTR_ENTITY_ID: entity_id, ATTR_TEMPERATURE: 23.0},
++        blocking=True,
++    )
++
++    mock_melcloud_client.control_atw_unit.assert_called_once_with(
++        "atw-unit-uuid-1", **expected_kwargs
++    )
++
++
++@pytest.mark.parametrize(
++    ("service", "expected_kwargs"),
++    [
++        pytest.param(SERVICE_TURN_ON, {"power": True}),
++        pytest.param(SERVICE_TURN_OFF, {"power": False}),
++    ],
++)
++@pytest.mark.usefixtures("mock_melcloud_client")
++async def test_atw_turn_on_off(
++    hass: HomeAssistant,
++    mock_config_entry: MockConfigEntry,
++    mock_melcloud_client: AsyncMock,
++    service: str,
++    expected_kwargs: dict,
++) -> None:
++    """Test turning an ATW zone on and off."""
++    await setup_integration(hass, mock_config_entry)
++
++    await hass.services.async_call(
++        CLIMATE_DOMAIN,
++        service,
++        {ATTR_ENTITY_ID: ATW_ZONE1_ENTITY_ID},
++        blocking=True,
++    )
++
++    mock_melcloud_client.control_atw_unit.assert_called_once_with(
++        "atw-unit-uuid-1", **expected_kwargs
++    )
+diff --git a/tests/components/melcloud_home/test_config_flow.py b/tests/components/melcloud_home/test_config_flow.py
+new file mode 100644
+index 0000000000..397ca3e7bf
+--- /dev/null
++++ b/tests/components/melcloud_home/test_config_flow.py
+@@ -0,0 +1,108 @@
++"""Test the MELCloud Home config flow."""
++
++from unittest.mock import AsyncMock
++
++from aiomelcloudhome.exceptions import (
++    MelCloudHomeAuthenticationError,
++    MelCloudHomeConnectionError,
++    MelCloudHomeTimeoutError,
++)
++import pytest
++
++from homeassistant import config_entries
++from homeassistant.components.melcloud_home.const import DOMAIN
++from homeassistant.const import CONF_EMAIL
++from homeassistant.core import HomeAssistant
++from homeassistant.data_entry_flow import FlowResultType
++
++from .conftest import MOCK_USER_INPUT
++
++from tests.common import MockConfigEntry
++
++
++@pytest.mark.usefixtures("mock_melcloud_client")
++async def test_user_flow(hass: HomeAssistant) -> None:
++    """Test the full user config flow creates an entry."""
++    result = await hass.config_entries.flow.async_init(
++        DOMAIN, context={"source": config_entries.SOURCE_USER}
++    )
++
++    assert result["type"] is FlowResultType.FORM
++    assert result["step_id"] == "user"
++
++    result = await hass.config_entries.flow.async_configure(
++        result["flow_id"],
++        user_input=MOCK_USER_INPUT,
++    )
++
++    assert result["type"] is FlowResultType.CREATE_ENTRY
++    assert result["title"] == MOCK_USER_INPUT[CONF_EMAIL]
++    assert result["data"] == MOCK_USER_INPUT
++    assert result["result"].unique_id == "user-uuid-1"
++
++
++@pytest.mark.parametrize(
++    ("exception", "reason"),
++    [
++        (MelCloudHomeAuthenticationError("bad creds"), "invalid_auth"),
++        (MelCloudHomeConnectionError("offline"), "cannot_connect"),
++        (MelCloudHomeTimeoutError("timed out"), "timeout_connect"),
++        (Exception("unexpected"), "unknown"),
++    ],
++)
++async def test_form_exceptions(
++    hass: HomeAssistant,
++    mock_melcloud_client: AsyncMock,
++    exception: Exception,
++    reason: str,
++) -> None:
++    """Test we handle all user step exceptions."""
++    result = await hass.config_entries.flow.async_init(
++        DOMAIN, context={"source": config_entries.SOURCE_USER}
++    )
++
++    assert result["type"] is FlowResultType.FORM
++    assert result["step_id"] == "user"
++
++    mock_melcloud_client.get_context.side_effect = exception
++
++    result = await hass.config_entries.flow.async_configure(
++        result["flow_id"],
++        user_input=MOCK_USER_INPUT,
++    )
++
++    assert result["type"] is FlowResultType.FORM
++    assert result["errors"] == {"base": reason}
++
++    mock_melcloud_client.get_context.side_effect = None
++
++    result = await hass.config_entries.flow.async_configure(
++        result["flow_id"],
++        user_input=MOCK_USER_INPUT,
++    )
++
++    assert result["type"] is FlowResultType.CREATE_ENTRY
++    assert result["title"] == MOCK_USER_INPUT[CONF_EMAIL]
++    assert result["data"] == MOCK_USER_INPUT
++
++
++@pytest.mark.usefixtures("mock_melcloud_client")
++async def test_duplicate_entry(
++    hass: HomeAssistant, mock_config_entry: MockConfigEntry
++) -> None:
++    """Test we handle duplicate entries."""
++    mock_config_entry.add_to_hass(hass)
++
++    result = await hass.config_entries.flow.async_init(
++        DOMAIN, context={"source": config_entries.SOURCE_USER}
++    )
++    assert result["type"] is FlowResultType.FORM
++    assert result["step_id"] == "user"
++
++    result = await hass.config_entries.flow.async_configure(
++        result["flow_id"],
++        user_input=MOCK_USER_INPUT,
++    )
++
++    assert result["type"] is FlowResultType.ABORT
++    assert result["reason"] == "already_configured"
+diff --git a/tests/components/melcloud_home/test_init.py b/tests/components/melcloud_home/test_init.py
+new file mode 100644
+index 0000000000..6da2313263
+--- /dev/null
++++ b/tests/components/melcloud_home/test_init.py
+@@ -0,0 +1,138 @@
++"""Test the MELCloud Home integration init behavior."""
++
++from unittest.mock import AsyncMock
++
++from aiomelcloudhome import UserContext
++from aiomelcloudhome.exceptions import (
++    MelCloudHomeAuthenticationError,
++    MelCloudHomeConnectionError,
++    MelCloudHomeTimeoutError,
++)
++import pytest
++
++from homeassistant.components.melcloud_home.const import DOMAIN
++from homeassistant.config_entries import ConfigEntryState
++from homeassistant.core import HomeAssistant
++from homeassistant.helpers import entity_registry as er
++
++from . import setup_integration
++
++from tests.common import MockConfigEntry, async_load_json_object_fixture
++
++
++@pytest.mark.usefixtures("mock_melcloud_client")
++async def test_entry_setup_unload(
++    hass: HomeAssistant,
++    mock_config_entry: MockConfigEntry,
++) -> None:
++    """Test integration setup and unload."""
++    await setup_integration(hass, mock_config_entry)
++
++    assert mock_config_entry.state is ConfigEntryState.LOADED
++
++    assert await hass.config_entries.async_unload(mock_config_entry.entry_id)
++    assert mock_config_entry.state is ConfigEntryState.NOT_LOADED
++
++
++@pytest.mark.parametrize(
++    "exception",
++    [
++        MelCloudHomeAuthenticationError("bad creds"),
++        MelCloudHomeConnectionError("cannot connect"),
++        MelCloudHomeTimeoutError("timeout"),
++    ],
++)
++async def test_entry_setup_retry_on_update_failure(
++    hass: HomeAssistant,
++    mock_config_entry: MockConfigEntry,
++    mock_melcloud_client: AsyncMock,
++    exception: Exception,
++) -> None:
++    """Test setup retries when initial coordinator refresh fails."""
++    mock_melcloud_client.get_context.side_effect = exception
++
++    mock_config_entry.add_to_hass(hass)
++    await hass.config_entries.async_setup(mock_config_entry.entry_id)
++    await hass.async_block_till_done()
++
++    assert mock_config_entry.state is ConfigEntryState.SETUP_RETRY
++
++
++async def test_new_ata_unit_callback(
++    hass: HomeAssistant,
++    mock_melcloud_client: AsyncMock,
++    mock_config_entry: MockConfigEntry,
++    entity_registry: er.EntityRegistry,
++) -> None:
++    """Test that new ATA units discovered on coordinator refresh create climate entities."""
++    fixture = await async_load_json_object_fixture(hass, "context.json", DOMAIN)
++    mock_melcloud_client.get_context.return_value = UserContext.model_validate(
++        {
++            **fixture,
++            "buildings": [
++                {**building, "airToAirUnits": []} for building in fixture["buildings"]
++            ],
++        }
++    )
++    await setup_integration(hass, mock_config_entry)
++    ata_entities = [
++        entity
++        for entity in er.async_entries_for_config_entry(
++            entity_registry, mock_config_entry.entry_id
++        )
++        if "living_room" in entity.entity_id
++    ]
++    assert not ata_entities
++
++    mock_melcloud_client.get_context.return_value = UserContext.model_validate(fixture)
++    await mock_config_entry.runtime_data.async_refresh()
++    await hass.async_block_till_done()
++
++    ata_entities = [
++        entity
++        for entity in er.async_entries_for_config_entry(
++            entity_registry, mock_config_entry.entry_id
++        )
++        if "living_room" in entity.entity_id
++    ]
++    assert ata_entities
++
++
++async def test_new_atw_unit_callback(
++    hass: HomeAssistant,
++    mock_melcloud_client: AsyncMock,
++    mock_config_entry: MockConfigEntry,
++    entity_registry: er.EntityRegistry,
++) -> None:
++    """Test that new ATW units discovered on coordinator refresh create climate entities."""
++    fixture = await async_load_json_object_fixture(hass, "context.json", DOMAIN)
++    mock_melcloud_client.get_context.return_value = UserContext.model_validate(
++        {
++            **fixture,
++            "buildings": [
++                {**building, "airToWaterUnits": []} for building in fixture["buildings"]
++            ],
++        }
++    )
++    await setup_integration(hass, mock_config_entry)
++    atw_entities = [
++        entity
++        for entity in er.async_entries_for_config_entry(
++            entity_registry, mock_config_entry.entry_id
++        )
++        if "heat_pump" in entity.entity_id
++    ]
++    assert not atw_entities
++
++    mock_melcloud_client.get_context.return_value = UserContext.model_validate(fixture)
++    await mock_config_entry.runtime_data.async_refresh()
++    await hass.async_block_till_done()
++
++    atw_entities = [
++        entity
++        for entity in er.async_entries_for_config_entry(
++            entity_registry, mock_config_entry.entry_id
++        )
++        if "heat_pump" in entity.entity_id
++    ]
++    assert atw_entities
