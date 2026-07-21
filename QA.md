@@ -405,6 +405,47 @@ landed — verify with `git log` before retrying, don't double-commit. Root fix:
 parallel work belongs in `git worktree`s (workspace convention), one session
 per checkout.
 
+## Default Output Is Markdown (post-#104) — Grep Traps
+
+Without `-f yaml`, both CLIs emit Markdown: files are `## \`path:lines\``
+headers, roles are `— **changed**`, and`- path:`/`role: "changed"` greps
+silently return 0. Either pass `-f yaml` in sweep/self-eat recipes or count
+with `grep -cE '^## '` and `grep -c '\*\*changed\*\*'`. A "0 fragments" result
+from a YAML-shaped grep over MD output is a tooling artifact, not a finding.
+
+## Mass-Added-Data Diffs Hang Both Binaries (#121)
+
+A range dominated by newly ADDED plain-text data files (the dcbench instance
+import: ~372 `patch.diff` files, ~39 MB) exceeds even the dev binary's 600s
+watchdog — GenericStrategy fragments every added data file and the graph goes
+near-dense (#116 mechanism) before any budget applies. For self-eat reviews of
+such ranges, run code-only subranges; the data-file-policy gap is tracked
+on #121 (overlaps #112).
+
+## tiktoken Re-Encoding of diffctx Output Needs disallowed_special
+
+Fragment contents from real repos can contain literal special-token text
+(`<|endoftext|>`). Any script that re-tokenizes diffctx output with tiktoken
+must pass `encode(text, disallowed_special=())` or it dies mid-batch.
+
+## Pre-commit False-Fail from Concurrent Background Writers
+
+A hook reported as `Failed ... files were modified by this hook` can mean a
+concurrent process (own background measurement writing artifacts) touched the
+tree mid-run, not that the hook found anything. Re-run `--all-files` when the
+tree is quiet before treating it as a finding.
+
+## Sonar docker/githubactions Rule Family (2026-07 activation)
+
+`docker:S85xx`/`githubactions:S85xx` (pip `--only-binary`, hash-locking,
+curl|sh) activated as a family and instantly produced 40+ findings + gate
+ERROR. Resolution split: Dockerfile.bench = real supply-chain surface → fix
+properly (version+sha256-pinned rustup-init, `--require-hashes` on the lock,
+`--only-binary :all:`, exact-pinned uv/maturin); workflow findings on
+ephemeral CI runners building our own artifacts (incl. `pip install -e .`,
+which cannot be hash-locked) → bulk `accept` transition with a rationale
+comment. bench-image CI verifies `--only-binary` compatibility of the lock.
+
 ## Rust Binary vs Python CLI Render Differences (grep traps)
 
 The standalone Rust binary (`diffctx/target/release/diffctx`) renders YAML
