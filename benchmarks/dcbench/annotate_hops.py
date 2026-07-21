@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -86,6 +87,10 @@ def process(inst_dir: str, repos_root: str) -> str:
     for g in gold:
         g["hop"] = hops.get(g["path"], -1)
     ann["max_gold_hop"] = max((g["hop"] for g in gold), default=-1)
+    ann["hop_graph_params"] = {
+        "max_edges_per_node": int(os.environ.get("DIFFCTX_MAX_EDGES_PER_NODE", "64")),
+        "projection": "file-level undirected BFS from diff files",
+    }
     ann_path.write_text(yaml.safe_dump(ann, sort_keys=False, allow_unicode=True, width=100))
     return f"{inst.name}: ok max_hop={ann['max_gold_hop']}"
 
