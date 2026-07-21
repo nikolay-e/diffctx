@@ -118,7 +118,13 @@ per-instance timeouts on a dev binary.
    the existing TOANALYZE protocol.
 2. **Hop annotation is mandatory**: for every candidate commit, compute the
    dependency-graph distance of each gold file from the diff files (via the
-   graph export) and record it as `hop: N` on the gold entry. Select commits
+   graph export) and record it as `hop: N` on the gold entry.
+   *Status note:* hop annotation of the legacy-109 instances is currently
+   blocked by diffctx#116 — the full project graphs of gitpod/sentry/
+   react-native exceed practical build time even with
+   `DIFFCTX_MAX_EDGES_PER_NODE` lowered (the bottleneck is edge emission,
+   which the cap does not reduce). Annotate hops for those after the #116
+   fix; lighter coverage repos are unaffected. Select commits
    so that **at least 40\% have gold files at hop >= 2** --- otherwise the set
    is biased to hop-1 neighbors and any depth sweep plateaus because commits
    are shallow, not because depth is useless.
