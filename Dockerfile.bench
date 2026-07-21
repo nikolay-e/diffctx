@@ -28,14 +28,28 @@ ARG TARGETPLATFORM
 ARG RUST_VERSION
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    git build-essential pkg-config libssl-dev curl ca-certificates \
-    gcc-aarch64-linux-gnu libc6-dev-arm64-cross \
-    gcc-x86-64-linux-gnu libc6-dev-amd64-cross \
+    build-essential ca-certificates curl \
+    gcc-aarch64-linux-gnu gcc-x86-64-linux-gnu git \
+    libc6-dev-amd64-cross libc6-dev-arm64-cross \
+    libssl-dev pkg-config \
     && rm -rf /var/lib/apt/lists/*
 
 ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo PATH=/usr/local/cargo/bin:$PATH
-RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | \
-    sh -s -- -y --default-toolchain ${RUST_VERSION} --profile minimal
+# rustup-init pinned by version + per-arch sha256 (no curl|sh of a mutable script).
+ARG RUSTUP_VERSION=1.29.0
+RUN set -eux; \
+    arch="$(uname -m)"; \
+    case "$arch" in \
+      x86_64)  triple=x86_64-unknown-linux-gnu;  sha=4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10 ;; \
+      aarch64) triple=aarch64-unknown-linux-gnu; sha=9732d6c5e2a098d3521fca8145d826ae0aaa067ef2385ead08e6feac88fa5792 ;; \
+      *) echo "unsupported build arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl --proto '=https' --tlsv1.2 -sSfo /tmp/rustup-init \
+      "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${triple}/rustup-init"; \
+    echo "$sha  /tmp/rustup-init" | sha256sum -c -; \
+    chmod +x /tmp/rustup-init; \
+    /tmp/rustup-init -y --default-toolchain "${RUST_VERSION}" --profile minimal; \
+    rm /tmp/rustup-init
 
 # Pick Rust target triple + cross-linker from TARGETPLATFORM
 RUN set -eux; \
@@ -51,7 +65,7 @@ RUN set -eux; \
 ENV VIRTUAL_ENV=/opt/venv
 RUN python3 -m venv "$VIRTUAL_ENV"
 ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-RUN pip install --no-cache-dir "maturin>=1.10,<1.11"
+RUN pip install --no-cache-dir --only-binary :all: "maturin==1.10.2"
 
 # Maturin builds the top-level package from the repo root: python source in
 # src/, Rust crate in diffctx/ (see [tool.maturin] in pyproject.toml).
@@ -91,12 +105,13 @@ WORKDIR /app
 # uv is required by the Aider baseline (`uv tool run --from aider-chat ...`);
 # without it, every aider cell crashes on first request with
 # "RuntimeError: `uv` not found on PATH".
-COPY requirements-bench.txt ./
-RUN pip install --no-cache-dir -r requirements-bench.txt uv
+COPY requirements-bench.lock ./
+RUN pip install --no-cache-dir --require-hashes -r requirements-bench.lock && \
+    pip install --no-cache-dir --only-binary :all: "uv==0.11.30"
 
 # Layer 3: diffctx wheel with the compiled _diffctx extension
 COPY --from=rust-builder /wheels/*.whl /tmp/wheels/
-RUN pip install --no-cache-dir /tmp/wheels/*.whl && rm -rf /tmp/wheels
+RUN pip install --no-cache-dir --only-binary :all: /tmp/wheels/*.whl && rm -rf /tmp/wheels
 
 # Layer 4: Benchmarks code (changes most often)
 COPY benchmarks ./benchmarks

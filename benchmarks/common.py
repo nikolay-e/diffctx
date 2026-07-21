@@ -437,9 +437,13 @@ def apply_as_commit(repo_dir: Path, patch_text: str, message: str = "bench") -> 
        check the commit's exit code explicitly.
 
     2. **`git apply --3way` fuzzy-merges and silently produces
-       wrong-content commits.** Removed -- only strict
-       ``git apply --index`` is used. If the strict apply fails the
-       instance is reported as unrecoverable.
+       wrong-content commits.** Removed -- only ``git apply --index
+       --ignore-whitespace`` is used. ``--ignore-whitespace`` relaxes
+       whitespace-only context mismatches (never content): it absorbs the
+       dataset class of LF-normalized gold patches over CRLF repository
+       blobs (5 deterministic PolyBench-500 apply failures, issue #96)
+       without any of --3way's fuzzy-content risk. If the apply still
+       fails the instance is reported as unrecoverable.
 
     Returns False on apply error, commit error, or empty commit
     (HEAD didn't advance). Caller should flag these as
@@ -449,7 +453,7 @@ def apply_as_commit(repo_dir: Path, patch_text: str, message: str = "bench") -> 
         f.write(patch_text)
         patch_path = f.name
     try:
-        r = run_cmd(["git", "-C", str(repo_dir), "apply", "--index", patch_path], check=False)
+        r = run_cmd(["git", "-C", str(repo_dir), "apply", "--index", "--ignore-whitespace", patch_path], check=False)
         if r.returncode != 0:
             print(f"  APPLY FAIL: {r.stderr[:300]}")
             return False

@@ -20,6 +20,7 @@ STDLIB_OR_LOCAL = {
 IMPORT_TO_DIST = {
     "rank_bm25": "rank-bm25",
     "huggingface_hub": "huggingface-hub",
+    "yaml": "pyyaml",
 }
 
 
