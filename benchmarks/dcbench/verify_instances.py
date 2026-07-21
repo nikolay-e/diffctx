@@ -49,9 +49,9 @@ def verify(inst_dir: Path, repos_root: Path) -> tuple[str, str]:
         if r.returncode != 0:
             return name, f"FAIL: worktree at base_commit: {r.stderr.strip()[:120]}"
         try:
-            r = run(["git", "-C", str(wt), "apply", "--index", "--check", str(patch.resolve())])
+            r = run(["git", "-C", str(wt), "apply", "--cached", "--check", str(patch.resolve())])
             if r.returncode != 0:
-                return name, f"FAIL: apply --index --check: {r.stderr.strip()[:120]}"
+                return name, f"FAIL: apply --cached --check: {r.stderr.strip()[:120]}"
         finally:
             run(["git", "-C", str(repo), "worktree", "remove", "--force", str(wt)])
     return name, "OK"
