@@ -14,9 +14,10 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import sys
 import tempfile
 from collections import defaultdict, deque
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import yaml
@@ -95,7 +96,13 @@ def main() -> int:
     ap.add_argument("--only-annotated", action="store_true")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--jobs", type=int, default=4)
+    ap.add_argument("--single", type=Path, default=None)
+    ap.add_argument("--per-instance-timeout", type=int, default=600)
     args = ap.parse_args()
+
+    if args.single:
+        print(process(str(args.single), str(args.repos_root)), flush=True)
+        return 0
 
     dirs = []
     for inst in sorted((DCBENCH / "instances").iterdir()):
@@ -107,8 +114,30 @@ def main() -> int:
     if args.limit:
         dirs = dirs[: args.limit]
     print(f"annotating hops for {len(dirs)} instances")
-    with ProcessPoolExecutor(max_workers=args.jobs) as pool:
-        for res in pool.map(process, dirs, [str(args.repos_root)] * len(dirs)):
+
+    def run_isolated(inst_dir: str) -> str:
+        cmd = [
+            sys.executable,
+            "-m",
+            "benchmarks.dcbench.annotate_hops",
+            "--repos-root",
+            str(args.repos_root),
+            "--single",
+            inst_dir,
+        ]
+        try:
+            r = subprocess.run(
+                cmd, capture_output=True, text=True, timeout=args.per_instance_timeout, cwd=str(DCBENCH.parent.parent)
+            )
+        except subprocess.TimeoutExpired:
+            return f"{Path(inst_dir).name}: FAIL timeout>{args.per_instance_timeout}s (graph build, #116 class)"
+        out = (r.stdout or "").strip().splitlines()
+        if r.returncode != 0:
+            return f"{Path(inst_dir).name}: FAIL rc={r.returncode} (worker died: OOM/abort, #116 class)"
+        return out[-1] if out else f"{Path(inst_dir).name}: FAIL no output"
+
+    with ThreadPoolExecutor(max_workers=args.jobs) as pool:
+        for res in pool.map(run_isolated, dirs):
             print(res, flush=True)
     return 0
 
