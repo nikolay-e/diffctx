@@ -584,7 +584,7 @@ Two external file-level baselines run the same protocol (same manifests, same bu
 \begin{table}[h]
 \centering
 \small
-\caption{diffctx (EGO, deployed default) vs.\ external baselines at $B{=}8000$ tokens, all 1500 paired instances. $\Delta$ is the per-instance paired delta in file recall (positive favors diffctx). 95\% paired-bootstrap percentile CI on $\Delta$ ($B{=}10{,}000$ resamples, seed $=42$); $p$-value from the permutation sign-flip test (\texttt{permutation\_paired}, one-sided, $10^5$ permutations, add-one corrected). The diffctx column is final (consolidated rerun at commit \texttt{9eed77aa}); the external-baseline cells of the same rerun are still executing and their columns are marked TBD --- the previous snapshot's baseline numbers are not reproduced here because they pair against a superseded diffctx run.}
+\caption{diffctx (EGO, deployed default) vs.\ external baselines at $B{=}8000$ tokens. Method columns are intent-to-treat means over all $n{=}500$ per test set; $\Delta$ is the per-instance paired delta in file recall on the both-OK subset per the preregistered P1 protocol ($n_{\mathrm{both\text{-}OK}}{=}1460$ pooled for BM25), positive favors diffctx. 95\% paired-bootstrap percentile CI on $\Delta$ ($B{=}10{,}000$ resamples, seed $=42$); $p$-value from the permutation sign-flip test (\texttt{permutation\_paired}, one-sided, $10^5$ permutations, add-one corrected; $1.0\mathrm{e}{-5}$ is the add-one floor). Both columns from the consolidated rerun at commit \texttt{9eed77aa}; the Aider cells are still executing and marked TBD.}
 \label{tab:prelim-baselines}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lrlllc}
@@ -593,10 +593,10 @@ Two external file-level baselines run the same protocol (same manifests, same bu
 \midrule
 \multicolumn{6}{l}{\emph{vs.\ BM25 over patch identifiers}} \\
 \midrule
-ContextBench Verified  & 500 & 0.816 & TBD & TBD & TBD \\
-PolyBench-500          & 500 & 0.942 & TBD & TBD & TBD \\
-SWE-bench Verified     & 500 & 0.998 & TBD & TBD & TBD \\
-\textbf{Pooled}        & \textbf{1500} & \textbf{0.919} & TBD & TBD & TBD \\
+ContextBench Verified  & 500 & 0.816 & 0.485 & $+0.352$ [$+0.320, +0.386$] & $1.0\mathrm{e}{-5}$ \\
+PolyBench-500          & 500 & 0.942 & 0.667 & $+0.300$ [$+0.268, +0.332$] & $1.0\mathrm{e}{-5}$ \\
+SWE-bench Verified     & 500 & 0.998 & 0.540 & $+0.457$ [$+0.415, +0.499$] & $1.0\mathrm{e}{-5}$ \\
+\textbf{Pooled}        & \textbf{1500} & \textbf{0.919} & \textbf{0.564} & $\mathbf{+0.371\ [+0.350,\ +0.392]}$ & $\mathbf{1.0\mathrm{e}{-5}}$ \\
 \midrule
 \multicolumn{6}{l}{\emph{vs.\ Aider repo-map (fair-input mode)}} \\
 \midrule
@@ -707,9 +707,11 @@ Figure~\ref{fig:budget-curves} overlays the pooled budget curves of the three me
 ]
 \addplot coordinates {(8000,0.919) (16000,0.930) (32000,0.935) (64000,0.940) (128000,0.941)};
 \addlegendentry{diffctx-EGO}
+\addplot coordinates {(8000,0.564) (16000,0.719) (32000,0.846) (64000,0.897) (128000,0.921)};
+\addlegendentry{BM25 (external)}
 \end{axis}
 \end{tikzpicture}
-\caption{Pooled file recall vs.\ token budget (intent-to-treat, $n{=}1500$), consolidated rerun. diffctx-EGO is nearly flat---$0.919$ at $B{=}8000$ already. The external-baseline curves (whole-file BM25 packing, Aider fair-input) are TBD pending the rerun's baseline cells and will be overlaid here from Tables~\ref{tab:aider-budget-curve}--\ref{tab:bm25-budget-curve}.}
+\caption{Pooled file recall vs.\ token budget (intent-to-treat, $n{=}1500$), consolidated rerun. diffctx-EGO is nearly flat---$0.919$ at $B{=}8000$ already---while whole-file BM25 packing needs the full $128\mathrm{k}$ budget to approach it and never crosses it in the measured range. The Aider fair-input curve is TBD pending its rerun cells (Table~\ref{tab:aider-budget-curve}).}
 \label{fig:budget-curves}
 \end{figure}
 
@@ -735,12 +737,12 @@ $128{,}000$ & 1500 & TBD & TBD & TBD & TBD \\
 \end{tabular}}
 \end{table}
 
-The same sweep for the external BM25 baseline (Table~\ref{tab:bm25-budget-curve}) bounds the regime in which the whole-system advantage holds; its rerun cells are TBD. The previous snapshot showed whole-file lexical packing far behind at tight budgets but overtaking diffctx-EGO beyond ${\sim}32\mathrm{k}$ tokens, scoping the contribution to the tight-budget regime---exactly the regime motivating the problem (Section~\ref{sec:problem}, cost model and ``lost in the middle''~\cite{liu2023lost}); at large budgets, recall saturates for any reasonable method and precision, not recall, becomes the binding concern. Note that the within-framework internal-BM25 cell (Table~\ref{tab:prelim-ablation}) already separates the lexical-signal question from the whole-file-packing question: the framework's fragment-level machinery lifts BM25 from whole-file packing to the strongest headline-recall mode at $2.9\mathrm{k}$ mean used tokens.
+The same sweep for the external BM25 baseline (Table~\ref{tab:bm25-budget-curve}) sharpens a headline finding of the rerun: unlike the previous snapshot, in which whole-file lexical packing overtook diffctx-EGO beyond ${\sim}32\mathrm{k}$ tokens, the rerun's diffctx-EGO stays ahead at \emph{every} measured budget ($0.935$ vs.\ $0.846$ at $32\mathrm{k}$; $0.941$ vs.\ $0.921$ at $128\mathrm{k}$), with the gap widest in the tight-budget regime motivating the problem (Section~\ref{sec:problem}, cost model and ``lost in the middle''~\cite{liu2023lost}). The within-framework internal-BM25 cell (Table~\ref{tab:prelim-ablation}) separates the lexical-signal question from the whole-file-packing question: the framework's fragment-level machinery lifts BM25 from whole-file packing ($0.564$ pooled at $B{=}8000$) to the strongest headline-recall mode ($0.942$ at $2.9\mathrm{k}$ mean used tokens) --- most of the external gap at tight budgets is packing granularity, not the relevance signal.
 
 \begin{table}[h]
 \centering
 \small
-\caption{Budget curve for the external BM25-over-patch-identifiers baseline, same protocol (intent-to-treat, $n{=}500$ per test set). BM25 does not support $B{=}{-1}$ (it packs whole files in rank order to the budget).}
+\caption{Budget curve for the external BM25-over-patch-identifiers baseline, same protocol (intent-to-treat, $n{=}500$ per test set), consolidated rerun. BM25 does not support $B{=}{-1}$ (it packs whole files in rank order to the budget).}
 \label{tab:bm25-budget-curve}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lrllll}
@@ -748,11 +750,11 @@ The same sweep for the external BM25 baseline (Table~\ref{tab:bm25-budget-curve}
 \textbf{Budget $B$} & \textbf{n} & \textbf{ContextBench Verified} & \textbf{PolyBench-500} & \textbf{SWE-bench Verified} & \textbf{Pooled} \\
 \midrule
 $0$         & 1500 & 0.000 & 0.000 & 0.000 & 0.000 \\
-$8{,}000$   & 1500 & TBD & TBD & TBD & TBD \\
-$16{,}000$  & 1500 & TBD & TBD & TBD & TBD \\
-$32{,}000$  & 1500 & TBD & TBD & TBD & TBD \\
-$64{,}000$  & 1500 & TBD & TBD & TBD & TBD \\
-$128{,}000$ & 1500 & TBD & TBD & TBD & TBD \\
+$8{,}000$   & 1500 & 0.485 [0.451, 0.519] & 0.667 [0.634, 0.700] & 0.540 [0.497, 0.582] & 0.564 [0.543, 0.585] \\
+$16{,}000$  & 1500 & 0.626 [0.594, 0.657] & 0.775 [0.745, 0.803] & 0.756 [0.719, 0.791] & 0.719 [0.699, 0.737] \\
+$32{,}000$  & 1500 & 0.738 [0.711, 0.765] & 0.868 [0.845, 0.890] & 0.931 [0.909, 0.951] & 0.846 [0.831, 0.859] \\
+$64{,}000$  & 1500 & 0.807 [0.783, 0.830] & 0.916 [0.897, 0.933] & 0.970 [0.955, 0.982] & 0.897 [0.886, 0.909] \\
+$128{,}000$ & 1500 & 0.851 [0.829, 0.871] & 0.930 [0.913, 0.946] & 0.981 [0.970, 0.991] & 0.921 [0.911, 0.931] \\
 \bottomrule
 \end{tabular}}
 \end{table}
