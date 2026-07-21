@@ -25,6 +25,7 @@ from pathlib import Path
 from benchmarks.adapters import (
     BenchmarkAdapter,
     ContextBenchAdapter,
+    DcbenchAdapter,
     MultiSWEBenchAdapter,
     PolyBench500Adapter,
     PolyBenchAdapter,
@@ -54,6 +55,7 @@ def default_test_adapters() -> tuple[BenchmarkAdapter, ...]:
         SWEBenchVerifiedAdapter(),
         PolyBench500Adapter(),
         ContextBenchAdapter(config="contextbench_verified"),
+        DcbenchAdapter(),
     )
 
 

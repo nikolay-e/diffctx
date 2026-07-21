@@ -6,6 +6,7 @@ from benchmarks.adapters.base import (
 )
 from benchmarks.adapters.contamination import ContaminationDetector
 from benchmarks.adapters.contextbench import ContextBenchAdapter
+from benchmarks.adapters.dcbench import DcbenchAdapter
 from benchmarks.adapters.evaluator import SelectionOutput, UniversalEvaluator
 from benchmarks.adapters.multi_swebench import MultiSWEBenchAdapter
 from benchmarks.adapters.polybench import PolyBench500Adapter, PolyBenchAdapter
@@ -16,6 +17,7 @@ __all__ = [
     "BenchmarkInstance",
     "ContaminationDetector",
     "ContextBenchAdapter",
+    "DcbenchAdapter",
     "EvalResult",
     "GoldenFragment",
     "MultiSWEBenchAdapter",
