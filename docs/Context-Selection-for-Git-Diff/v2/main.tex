@@ -642,7 +642,7 @@ SWE-bench Verified               & 500   & 0.158 [0.144, 0.174] & \textbf{0.265 
 \end{tabular}}
 \end{table}
 
-The ablation reveals three structural facts. First, no single mode dominates: internal BM25 leads headline recall ($0.942$ pooled, at $40\%$ fewer used tokens), PPR leads precision ($0.328$ pooled, $+11$ points over EGO at essentially identical recall), and the deployed default EGO leads neither. Second, on SWE-bench Verified all modes saturate at recall $\approx 1.0$; as Section~\ref{sec:nontrivial} shows, gold coincides with the input diff's own files there, so the mode ordering on that set is uninformative about retrieval. Third, the headline ordering \emph{inverts} on the retrieval-only metric: on the ContextBench Verified subset with gold files outside the diff, EGO recovers $0.352$ of nontrivial gold versus $0.402$ for internal BM25 and $0.244$ for PPR, while the union of EGO and BM25 hits reaches $0.473$ --- the two signals are complementary rather than redundant (Section~\ref{sec:nontrivial}). Formal paired tests across modes (Friedman/Nemenyi per the preregistered P2 protocol) are computed in the final post-processing pass over the completed sweep.
+The ablation reveals three structural facts. First, no single mode dominates: internal BM25 leads headline recall ($0.942$ pooled, at $40\%$ fewer used tokens), PPR leads precision ($0.328$ pooled, $+11$ points over EGO at essentially identical recall), and the deployed default EGO leads neither. Second, on SWE-bench Verified all modes saturate at recall $\approx 1.0$; as Section~\ref{sec:nontrivial} shows, gold coincides with the input diff's own files there, so the mode ordering on that set is uninformative about retrieval. Third, the headline ordering \emph{inverts} on the retrieval-only metric: on the ContextBench Verified subset with gold files outside the diff, EGO recovers $0.352$ of nontrivial gold versus $0.402$ for internal BM25 and $0.244$ for PPR, while the union of EGO and BM25 hits reaches $0.473$ --- the two signals are complementary rather than redundant (Section~\ref{sec:nontrivial}). The preregistered P2 test on the both-OK subset ($n{=}1462$) quantifies how little the \emph{headline} metric separates the modes: the Friedman omnibus rejects exchangeability ($\chi^2 = 39.2$, $p = 3.1\times10^{-9} < 0.0167$ after Holm), yet no pairwise Nemenyi comparison clears the critical difference ($\mathrm{CD} = 0.087$; largest rank gap $0.063$), and the paired recall deltas are within $\pm 0.006$ pooled (internal BM25 $-$ EGO: $+0.006$ [$+0.002, +0.009$]; PPR $-$ EGO: $-0.006$ [$-0.010, -0.003$]). Headline recall is retention-saturated; the operative differences between modes live in precision (Table~\ref{tab:prelim-ablation}) and nontrivial retrieval (Table~\ref{tab:nontrivial}).
 
 The clean-run operational ablations promised by the methodology (Section~\ref{sec:greedy}) were also swept as separate cells at $B{=}8000$ (Table~\ref{tab:operational-ablation}). Removing the relatedness bonus or disabling adaptive stopping ($\tau{=}0$) moves pooled recall and precision by under one point --- both mechanisms are recall-neutral at this budget, and adaptive stopping earns its keep on latency rather than quality. Removing the lexical component ($\epsilon{=}0$) is likewise nearly headline-neutral ($0.923$ vs.\ $0.919$) but drops \emph{retrieval} substantially ($0.310$ vs.\ $0.352$ nontrivial recall, Section~\ref{sec:nontrivial}) --- headline recall hides exactly the component interaction that matters. The Boltzmann objective raises headline recall slightly ($0.928$) while collapsing precision to $0.084$: it fills the budget indiscriminately and is dominated by the default objective.
 
@@ -715,12 +715,12 @@ Figure~\ref{fig:budget-curves} overlays the pooled budget curves of the three me
 \label{fig:budget-curves}
 \end{figure}
 
-For comparison, Table~\ref{tab:aider-budget-curve} will report the same budget sweep for the Aider repo-map fair-input baseline once its cells of the consolidated rerun complete (TBD below). The previous snapshot showed a $16\times$ budget gap in diffctx's favor (Aider at $B{=}128{,}000$ below diffctx-EGO at $B{=}8000$); whether it persists against the rerun's higher diffctx numbers is pending.
+For comparison, Table~\ref{tab:aider-budget-curve} reports the Aider repo-map fair-input baseline. The consolidated rerun measures Aider at the headline budget $B{=}8000$ only (TBD, cell executing); the full Aider budget grid is inherited from the previous snapshot as indicative context rather than rerun data, since re-running the five non-headline Aider budgets ($\sim$19 hours of helper compute) is not justified for a baseline whose headline-budget comparison is decisive. The previous snapshot showed a $16\times$ budget gap in diffctx's favor (Aider at $B{=}128{,}000$ below diffctx-EGO at $B{=}8000$).
 
 \begin{table}[h]
 \centering
 \small
-\caption{Budget curve for the Aider repo-map fair-input baseline at the same instance-level inputs. Per-benchmark recall and pooled recall with 95\% percentile bootstrap CIs ($B{=}10{,}000$ resamples, seed=42), intent-to-treat over $n{=}500$ per test set ($n{=}1500$ pooled). $B{=}0$ is the recall-floor sanity bound; $B{=}-1$ is excluded as Aider does not accept an unlimited-budget directive.}
+\caption{Aider repo-map fair-input baseline at the same instance-level inputs, intent-to-treat over $n{=}500$ per test set ($n{=}1500$ pooled). The $B{=}8000$ row is the consolidated rerun (TBD, cell executing, with the helper-process stderr-deadlock fix that invalidated a fraction of the previous snapshot's timeout rows); the greyed non-headline budgets are inherited from the previous snapshot as indicative context only and pair against the superseded diffctx run. $B{=}0$ is the recall-floor sanity bound; $B{=}-1$ is excluded as Aider does not accept an unlimited-budget directive.}
 \label{tab:aider-budget-curve}
 \resizebox{\textwidth}{!}{%
 \begin{tabular}{lrllll}
@@ -728,11 +728,13 @@ For comparison, Table~\ref{tab:aider-budget-curve} will report the same budget s
 \textbf{Budget $B$} & \textbf{n} & \textbf{ContextBench Verified} & \textbf{PolyBench-500} & \textbf{SWE-bench Verified} & \textbf{Pooled} \\
 \midrule
 $0$         & 1500 & 0.000 & 0.000 & 0.000 & 0.000 \\
-$8{,}000$   & 1500 & TBD & TBD & TBD & TBD \\
-$16{,}000$  & 1500 & TBD & TBD & TBD & TBD \\
-$32{,}000$  & 1500 & TBD & TBD & TBD & TBD \\
-$64{,}000$  & 1500 & TBD & TBD & TBD & TBD \\
-$128{,}000$ & 1500 & TBD & TBD & TBD & TBD \\
+$8{,}000$ (rerun)   & 1500 & TBD & TBD & TBD & TBD \\
+\midrule
+\multicolumn{6}{l}{\emph{previous snapshot (indicative only):}} \\
+$16{,}000$  & 1500 & \textcolor{gray}{0.509} & \textcolor{gray}{0.356} & \textcolor{gray}{0.766} & \textcolor{gray}{0.544} \\
+$32{,}000$  & 1500 & \textcolor{gray}{0.601} & \textcolor{gray}{0.401} & \textcolor{gray}{0.839} & \textcolor{gray}{0.614} \\
+$64{,}000$  & 1500 & \textcolor{gray}{0.662} & \textcolor{gray}{0.455} & \textcolor{gray}{0.897} & \textcolor{gray}{0.671} \\
+$128{,}000$ & 1500 & \textcolor{gray}{0.714} & \textcolor{gray}{0.527} & \textcolor{gray}{0.916} & \textcolor{gray}{0.719} \\
 \bottomrule
 \end{tabular}}
 \end{table}
