@@ -1,0 +1,166 @@
+generators:
+  cochange: 15
+  bm25: 15
+  graph: 20
+  random: 10
+candidates:
+- path: CONTRIBUTING.md
+  sources:
+  - bm25
+- path: benches/rt_multi_threaded.rs
+  sources:
+  - graph
+- path: benches/signal.rs
+  sources:
+  - graph
+- path: benches/spawn.rs
+  sources:
+  - graph
+- path: benches/sync_mpsc.rs
+  sources:
+  - graph
+- path: examples/Cargo.toml
+  sources:
+  - cochange
+- path: examples/chat.rs
+  sources:
+  - graph
+- path: examples/connect.rs
+  sources:
+  - bm25
+  - graph
+- path: examples/tinyhttp.rs
+  sources:
+  - cochange
+  - bm25
+  - graph
+- path: examples/udp-codec.rs
+  sources:
+  - bm25
+- path: stress-test/examples/simple_echo_tcp.rs
+  sources:
+  - random
+- path: tests-integration/Cargo.toml
+  sources:
+  - graph
+- path: tokio-macros/Cargo.toml
+  sources:
+  - cochange
+- path: tokio-macros/src/lib.rs
+  sources:
+  - cochange
+- path: tokio-stream/src/lib.rs
+  sources:
+  - bm25
+- path: tokio-stream/tests/stream_chain.rs
+  sources:
+  - graph
+- path: tokio-stream/tests/stream_collect.rs
+  sources:
+  - graph
+- path: tokio-stream/tests/stream_empty.rs
+  sources:
+  - graph
+- path: tokio-stream/tests/stream_once.rs
+  sources:
+  - graph
+- path: tokio-stream/tests/stream_pending.rs
+  sources:
+  - graph
+- path: tokio-stream/tests/stream_stream_map.rs
+  sources:
+  - graph
+- path: tokio-stream/tests/stream_timeout.rs
+  sources:
+  - random
+- path: tokio-test/Cargo.toml
+  sources:
+  - cochange
+- path: tokio-test/src/io.rs
+  sources:
+  - graph
+- path: tokio-util/CHANGELOG.md
+  sources:
+  - cochange
+  - bm25
+- path: tokio-util/src/cfg.rs
+  sources:
+  - cochange
+- path: tokio-util/src/codec/bytes_codec.rs
+  sources:
+  - cochange
+- path: tokio-util/src/codec/encoder.rs
+  sources:
+  - random
+- path: tokio-util/src/codec/length_delimited.rs
+  sources:
+  - cochange
+  - bm25
+  - graph
+- path: tokio-util/src/codec/lines_codec.rs
+  sources:
+  - graph
+- path: tokio-util/src/io/mod.rs
+  sources:
+  - graph
+- path: tokio-util/src/lib.rs
+  sources:
+  - cochange
+  - bm25
+- path: tokio-util/src/udp/mod.rs
+  sources:
+  - graph
+- path: tokio-util/tests/codecs.rs
+  sources:
+  - graph
+- path: tokio-util/tests/time_delay_queue.rs
+  sources:
+  - random
+- path: tokio-util/tests/udp.rs
+  sources:
+  - cochange
+  - bm25
+- path: tokio/CHANGELOG.md
+  sources:
+  - bm25
+- path: tokio/Cargo.toml
+  sources:
+  - cochange
+- path: tokio/src/io/mod.rs
+  sources:
+  - cochange
+  - bm25
+- path: tokio/src/io/util/read_exact.rs
+  sources:
+  - bm25
+- path: tokio/src/io/util/split.rs
+  sources:
+  - bm25
+- path: tokio/src/lib.rs
+  sources:
+  - cochange
+  - bm25
+- path: tokio/src/net/tcp/stream.rs
+  sources:
+  - cochange
+- path: tokio/src/net/udp.rs
+  sources:
+  - bm25
+- path: tokio/src/sync/mpsc/error.rs
+  sources:
+  - random
+- path: tokio/src/sync/mpsc/unbounded.rs
+  sources:
+  - random
+- path: tokio/src/time/driver/mod.rs
+  sources:
+  - random
+- path: tokio/tests/io_driver.rs
+  sources:
+  - random
+- path: tokio/tests/macros_select.rs
+  sources:
+  - random
+- path: tokio/tests/task_local_set.rs
+  sources:
+  - random
