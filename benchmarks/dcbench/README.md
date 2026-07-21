@@ -49,6 +49,8 @@ gold:
     tier: essential | helpful
     role: definition | caller | test | config | doc | cochange | unspecified
     in_diff: true|false       # computed, not hand-set
+    hop: N                    # graph distance from diff files (computed via graph export)
+string_indirection: true|false  # gold linkage runs through a string (DI/event bus/routing)
 forbidden:                    # files that must NOT appear (noise markers)
   - path: ...
 nontrivial_gold_count: N      # gold files with in_diff: false
@@ -79,6 +81,54 @@ corpus of `test-repos/TOANALYZE.md`). Legacy labels carry
 re-annotation with roles is incremental follow-up work. The ~120 hand-curated
 commit notes in `test-repos/AlekseiNikiforovIBM/` (mostly pytorch) are the
 next expansion pool.
+
+## Expansion set (v0.2 targets)
+
+The existing 27 repos stay as the regression anchor. Eleven additions, each
+closing at least two uncovered dimensions (grammar-tail edge builders and/or a
+depth class no current repo generates):
+
+| Repo | Grammars | Depth class / dimension |
+|---|---|---|
+| rabbitmq/rabbitmq-server | Erlang, Elixir, Bazel | OTP behaviour → callback → supervisor, 3-hop |
+| gradle/gradle | Groovy, Java, Kotlin | buildSrc → convention plugin → build script, 3-hop through build logic |
+| ktorio/ktor | Kotlin | Kotlin-primary fixture for the jvm.rs regex → tree-sitter migration |
+| metabase/metabase | Clojure, TS | FE/BE polyglot boundary |
+| AppFlowy-IO/AppFlowy | Dart, Rust | second FFI type after PyO3 |
+| calcom/cal.com | Prisma, TS | codegen boundary (.prisma → client → consumer) |
+| hashicorp/terraform-provider-aws | HCL, Go | config edges + Go |
+| Perl/perl5 | Perl, C | grammar + legacy scale |
+| jgm/pandoc | Haskell | grammar, mono-language isolation |
+| tigerbeetle/tigerbeetle | Zig | grammar, exemplary commit hygiene |
+| gitlab-data/analytics (gitlab.com) | dbt, SQL | data-stack dimension |
+
+B-tier (only with spare sweep budget): JuliaLang/julia, tidyverse/ggplot2,
+nix-community/home-manager, sveltejs/kit. LaTeX/nim/openapi: not worth the
+sweep minutes.
+
+All expansion clones use `--filter=tree:0`: co-change works (full commit
+graph), but first-diff blob fetches hit the network and wall-clock is not a
+perf signal until caches warm. gradle and perl5 have giant histories and are
+expected to reproduce the near-dense hang class — run them only with
+per-instance timeouts on a dev binary.
+
+## Commit curation rules (per repo, ~25--30 commits)
+
+1. Stratify by diff shape (delete / rename / merge / big / binary), following
+   the existing TOANALYZE protocol.
+2. **Hop annotation is mandatory**: for every candidate commit, compute the
+   dependency-graph distance of each gold file from the diff files (via the
+   graph export) and record it as `hop: N` on the gold entry. Select commits
+   so that **at least 40\% have gold files at hop >= 2** --- otherwise the set
+   is biased to hop-1 neighbors and any depth sweep plateaus because commits
+   are shallow, not because depth is useless.
+3. Tag commits whose gold linkage runs through a string (DI by name, event
+   bus, URL routing, celery-style task names) with `string_indirection: true`
+   and report that slice separately --- structural parsers cannot see these
+   edges, so mixing them into pooled recall understates everything else.
+4. Gold labels via the same multi-reviewer protocol as the 109-commit set;
+   re-label / re-run the original react-native/gitpod/sentry trio on a dev
+   binary --- the 1.10.2-era summary numbers (hang=72) are dead data.
 
 ## Split policy
 
