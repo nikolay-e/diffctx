@@ -43,9 +43,10 @@ impl Default for AlgorithmLimits {
 pub const MAX_BLOB_READ_BYTES: usize = 16_000_000;
 
 pub const DEFAULT_PPR_ALPHA: f64 = 0.60;
-/// Calibrated on v1 manifest (2119 instances, 4 benchmarks). Winner
-/// of (tau, cbf) grid = (0.12, 0.5) at min(per_benchmark file_recall)
-/// = 0.1092. Top-3 within 0.001 — surface is flat, choice is robust.
+/// Confirmed by the v4 re-calibration on the EGO pipeline (5x3 grid,
+/// v1 calibration manifest): validated winner (tau, cbf) = (0.12, 0.5)
+/// at min(per_benchmark file_recall) = 0.6532, validation 0.6604.
+/// Surface flat and monotone (top-3 within 0.004) — choice is robust.
 pub const DEFAULT_STOPPING_THRESHOLD: f64 = 0.12;
 pub const DEFAULT_PIPELINE_TIMEOUT_SECONDS: u64 = 300;
 pub const DEFAULT_BUDGET_TOKENS: u32 = 4096;

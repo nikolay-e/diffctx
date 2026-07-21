@@ -9,12 +9,12 @@ pub struct SelectionConfig {
 impl Default for SelectionConfig {
     fn default() -> Self {
         Self {
-            // Calibrated on the v1 manifest (2119 instances across
-            // SWE-bench Lite, PolyBench, Multi-SWE-bench, ContextBench)
-            // with the pebble-fixed pool. Winner of the (tau, cbf) grid
-            // = (0.12, 0.5) at min(per_benchmark file_recall) = 0.1092.
-            // Surface is flat (top-3 within 0.001), so the choice is
-            // robust rather than tuned to a sharp optimum.
+            // Confirmed by the v4 re-calibration on the EGO pipeline
+            // (5x3 grid over the v1 calibration manifest): validated
+            // winner (tau, cbf) = (0.12, 0.5) at min(per_benchmark
+            // file_recall) = 0.6532. Surface is flat and monotone
+            // (top-3 within 0.004), so the choice is robust rather
+            // than tuned to a sharp optimum.
             core_budget_fraction: 0.5,
             r_cap_min: 0.01,
         }
