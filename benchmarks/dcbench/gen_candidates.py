@@ -38,7 +38,7 @@ N_RANDOM = 10
 COCHANGE_HISTORY = 200
 
 
-COCHANGE_DEADLINE_S = 120
+COCHANGE_DEADLINE_S = 30
 
 
 def git(repo: Path, *args: str, timeout: int = 60) -> str:
@@ -49,19 +49,32 @@ def git(repo: Path, *args: str, timeout: int = 60) -> str:
     return r.stdout if r.returncode == 0 else ""
 
 
-def cochange_candidates(repo: Path, base: str, diff_files: set[str]) -> list[str]:
-    import time
+MAX_COCHANGE_PATHSPECS = 10
 
-    deadline = time.monotonic() + COCHANGE_DEADLINE_S
+
+def cochange_candidates(repo: Path, base: str, diff_files: set[str]) -> list[str]:
+    paths = list(diff_files)[:MAX_COCHANGE_PATHSPECS]
+    shas = git(repo, "log", "--format=%H", f"-n{COCHANGE_HISTORY}", base, "--", *paths, timeout=COCHANGE_DEADLINE_S).split()
+    if not shas:
+        return []
+    try:
+        r = subprocess.run(
+            ["git", "-C", str(repo), "diff-tree", "--no-commit-id", "--name-only", "-r", "--stdin"],
+            input="\n".join(shas) + "\n",
+            capture_output=True,
+            text=True,
+            timeout=COCHANGE_DEADLINE_S,
+        )
+    except subprocess.TimeoutExpired:
+        return []
     counts: Counter[str] = Counter()
-    shas = git(repo, "log", "--format=%H", f"-n{COCHANGE_HISTORY}", base, "--", *sorted(diff_files)).split()
-    for sha in shas[:COCHANGE_HISTORY]:
-        if time.monotonic() > deadline:
-            break
-        for f in git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", sha, timeout=15).splitlines():
-            f = f.strip()
-            if f and f not in diff_files:
-                counts[f] += 1
+    for line in (r.stdout or "").splitlines():
+        f = line.strip()
+        if not f or f in diff_files:
+            continue
+        if len(f) == 40 and all(c in "0123456789abcdef" for c in f):
+            continue
+        counts[f] += 1
     return [f for f, _ in counts.most_common(TOP_COCHANGE)]
 
 
