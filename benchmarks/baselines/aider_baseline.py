@@ -17,6 +17,7 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -65,17 +66,23 @@ class _AiderProcess:
             "python",
             str(_RUNNER),
         ]
+        # stderr goes to a file, never a PIPE: the request loop only drains
+        # stdout, so a chatty helper (oracle mode floods warnings per gold
+        # path) fills a 64KB stderr pipe and deadlocks on write().
+        self._stderr_log = tempfile.NamedTemporaryFile(mode="w+", prefix="aider_helper_", suffix=".stderr", delete=False)
         self._proc = subprocess.Popen(
             cmd,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
+            stderr=self._stderr_log,
             text=True,
             bufsize=1,
         )
         ready = self._proc.stdout.readline().strip()  # type: ignore[union-attr]
         if not ready or json.loads(ready).get("ready") is not True:
-            err = self._proc.stderr.read() if self._proc.stderr else ""  # type: ignore[union-attr]
+            self._stderr_log.flush()
+            self._stderr_log.seek(0)
+            err = self._stderr_log.read()
             raise RuntimeError(f"Aider helper did not signal ready: {err[:500]}")
 
     def request(self, payload: dict, timeout: float) -> dict:
@@ -108,6 +115,13 @@ class _AiderProcess:
             except Exception:
                 self._proc.kill()
             self._proc = None
+        stderr_log = getattr(self, "_stderr_log", None)
+        if stderr_log is not None:
+            try:
+                stderr_log.close()
+            except Exception:
+                pass
+            self._stderr_log = None
 
 
 _DIFF_PREFIXES = ("--- a/", "+++ b/", "diff --git a/", "rename from ", "rename to ")
