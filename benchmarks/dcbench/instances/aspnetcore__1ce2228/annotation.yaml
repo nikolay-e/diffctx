@@ -61,6 +61,10 @@ nontrivial_gold_count: 0
 string_indirection: true
 annotator: llm/sonnet-5-2026-07-22
 candidates_from: [agent-exploration, candidates]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 129
+  description: Move unified validation APIs to separate package — 100+ file package extraction
 notes: >-
   Extracts the unified-validation APIs (IValidatableInfo, ValidationOptions,
   ValidatableTypeInfo, the ValidationsGenerator source generator, etc.) out of
