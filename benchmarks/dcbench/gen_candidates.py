@@ -38,16 +38,27 @@ N_RANDOM = 10
 COCHANGE_HISTORY = 200
 
 
-def git(repo: Path, *args: str) -> str:
-    r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True)
+COCHANGE_DEADLINE_S = 120
+
+
+def git(repo: Path, *args: str, timeout: int = 60) -> str:
+    try:
+        r = subprocess.run(["git", "-C", str(repo), *args], capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        return ""
     return r.stdout if r.returncode == 0 else ""
 
 
 def cochange_candidates(repo: Path, base: str, diff_files: set[str]) -> list[str]:
+    import time
+
+    deadline = time.monotonic() + COCHANGE_DEADLINE_S
     counts: Counter[str] = Counter()
     shas = git(repo, "log", "--format=%H", f"-n{COCHANGE_HISTORY}", base, "--", *sorted(diff_files)).split()
     for sha in shas[:COCHANGE_HISTORY]:
-        for f in git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", sha).splitlines():
+        if time.monotonic() > deadline:
+            break
+        for f in git(repo, "diff-tree", "--no-commit-id", "--name-only", "-r", sha, timeout=15).splitlines():
             f = f.strip()
             if f and f not in diff_files:
                 counts[f] += 1
@@ -76,16 +87,40 @@ def bm25_candidates(worktree: Path, patch_text: str, diff_files: set[str]) -> li
     return [p for p, s in ranked if s > 0 and p not in diff_files][:TOP_BM25]
 
 
-def graph_candidates(worktree: Path, diff_files: set[str]) -> list[str]:
-    from diffctx.diffctx.pipeline import compute_scored_state, select_with_params
+GRAPH_TIMEOUT_S = 240
+STANDALONE = DCBENCH.parent.parent / "diffctx" / "target" / "release" / "diffctx"
 
-    state = compute_scored_state(worktree, "HEAD~1..HEAD", scoring_mode="ego")
-    output = select_with_params(state, budget_tokens=32000, tau=0.12)
+
+def graph_candidates(worktree: Path, diff_files: set[str]) -> list[str]:
+    if not STANDALONE.exists():
+        return []
+    r = subprocess.run(
+        [
+            str(STANDALONE),
+            str(worktree),
+            "--diff",
+            "HEAD~1..HEAD",
+            "--budget",
+            "32000",
+            "--format",
+            "yaml",
+            "--no-content",
+            "--timeout",
+            str(GRAPH_TIMEOUT_S),
+        ],
+        capture_output=True,
+        text=True,
+        timeout=GRAPH_TIMEOUT_S + 60,
+    )
+    if r.returncode != 0:
+        return []
     seen: list[str] = []
-    for f in output.get("fragments") or []:
-        p = f.get("path")
-        if p and p not in diff_files and p not in seen:
-            seen.append(p)
+    for line in r.stdout.splitlines():
+        stripped = line.strip()
+        if stripped.startswith("- path:"):
+            p = stripped.split(":", 1)[1].strip().strip('"')
+            if p and p not in diff_files and p not in seen:
+                seen.append(p)
     return seen[:TOP_GRAPH]
 
 
