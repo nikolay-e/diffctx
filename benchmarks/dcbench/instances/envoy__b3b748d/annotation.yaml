@@ -2,13 +2,80 @@ repo: envoy
 base_commit: 6c6ccdc2835dc058d88d14c6bea2608afeed476f
 commit: b3b748d68c163d2a6f4becae116e063662ee89f0
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 40
   description: New dynamic_modules formatter extension — polyglot C++/C ABI/Rust SDK + proto + docs
-notes: ''
+gold:
+  - path: source/extensions/formatter/dynamic_modules/config.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines DynamicModuleFormatterFactory::createCommandParserFromProto, calls Extensions::DynamicModules::newDynamicModuleByName(module_config.name(), ...) and REGISTER_FACTORY(DynamicModuleFormatterFactory, ::Envoy::Formatter::CommandParserFactory) — the entry point wiring this extension into Envoy's formatter registry.
+  - path: source/extensions/formatter/dynamic_modules/formatter.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Declares DynamicModuleFormatterConfig, DynamicModuleFormatterProvider, and DynamicModuleCommandParser (implementing ::Envoy::Formatter::CommandParser) plus the FormatterContext struct passed to module callbacks — the core class shapes of the new extension.
+  - path: source/extensions/formatter/dynamic_modules/formatter.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Implements newDynamicModuleFormatterConfig, which resolves the four required ABI symbols (envoy_dynamic_module_on_formatter_config_new/parse/format/*_destroy) via dynamic_module->getFunctionPointer<...>(name) and drives DynamicModuleCommandParser::parse / DynamicModuleFormatterProvider::format.
+  - path: source/extensions/formatter/dynamic_modules/abi_impl.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Implements the extern "C" envoy_dynamic_module_callback_formatter_* host callbacks (get_headers, get_attribute_string/int/bool, get_dynamic_metadata, get_local_reply_body) by delegating to Extensions::DynamicModules::ContextAccessor, the Envoy side of the module ABI surface.
+  - path: source/extensions/dynamic_modules/abi/abi.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the ~266-line Formatter section of the polyglot C ABI — envoy_dynamic_module_type_formatter_config_module_ptr/formatter_provider_module_ptr and the envoy_dynamic_module_on_formatter_config_new/parse/format/destroy hook signatures that every module SDK (Rust, C, Go) must implement.
+  - path: source/extensions/dynamic_modules/abi_context_accessors.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New shared ContextAccessor class (headerMapByType, getAttributeString/Int/Bool, getDynamicMetadata, getLocalReplyBody) that both the access-logger and this new formatter abi_impl.cc call into — the refactor that also strips 478 lines out of access_loggers/dynamic_modules/abi_impl.cc in this same commit.
+  - path: api/envoy/extensions/formatter/dynamic_modules/v3/dynamic_modules.proto
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Defines the new DynamicModuleFormatter message (dynamic_module_config, formatter_name, formatter_config) that config.cc's createCommandParserFromProto downcasts and validates.
+  - path: envoy/formatter/substitution_formatter_base.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Pre-existing base interface CommandParser::parse() and CommandParserFactory::createCommandParserFromProto()/category()=="envoy.formatter" — DynamicModuleCommandParser and DynamicModuleFormatterFactory are new implementations of exactly these two abstract classes, not defined anywhere in the diff.
+  - path: source/extensions/dynamic_modules/dynamic_modules.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Pre-existing DynamicModule class and newDynamicModuleByName() (dlopen/RTLD_NODELETE/RTLD_GLOBAL, static-module symbol prefixing) that config.cc calls to actually load the shared object referenced by dynamic_module_config.name(); this loader itself is untouched by the diff.
+  - path: source/common/formatter/substitution_formatter.cc
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: Contains commandWithArgsRegex() (^%COMMAND(ARG):LEN%) and the parse loop that iterates command_parsers calling CommandParser::parse(command, command_arg, max_length) for each %COMMAND% token — the runtime string-name dispatch mechanism that ultimately invokes DynamicModuleCommandParser::parse.
+forbidden:
+  - path: source/extensions/access_loggers/dynamic_modules/access_log.h
+    reason: sibling dynamic-modules extension using the ThreadLocalLogger/Common::ImplBase pattern, architecturally distinct from the new CommandParser-based formatter and untouched by this commit.
+  - path: test/extensions/dynamic_modules/dynamic_modules_test.cc
+    reason: tests the generic DynamicModule loader (newDynamicModuleByName) itself, not formatter-specific behavior.
+  - path: test/extensions/matching/input_matchers/dynamic_modules/matcher_test.cc
+    reason: unrelated dynamic-modules extension (input matcher) that happens to reuse the same module loader.
+  - path: test/extensions/tracers/dynamic_modules/tracer_test.cc
+    reason: unrelated dynamic-modules extension (tracer) reusing the same loader, no formatter linkage.
+nontrivial_gold_count: 3
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >
+  Adds a new envoy.formatter.dynamic_modules CommandParserFactory that lets dynamic modules
+  (Rust/C/Go) implement custom %COMMAND% access-log and header formatting operators; it also
+  extracts the access-logger's ABI callback plumbing into a shared ContextAccessor
+  (abi_context_accessors.{h,cc}) that both extensions now use, explaining the 478-line deletion
+  in source/extensions/access_loggers/dynamic_modules/abi_impl.cc within the same commit.
+  string_indirection is true on two independent axes: %COMMAND% tokens are matched by name at
+  format-string parse time (substitution_formatter.cc), and the module's callback symbols are
+  resolved by string name via dlsym/dlopen (dynamic_module->getFunctionPointer("envoy_dynamic_module_on_formatter_...")).

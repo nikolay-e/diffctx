@@ -2,14 +2,53 @@ repo: firefox-ios
 base_commit: ac58868caa257bf34beb51ec3a2da518793a55be
 commit: 2c25273fa706f51d72482d35056bc5f9a1421b2e
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: firefox-ios/Client/Redux/GlobalState/AppComponent.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Renamed from ActiveScreenAction.swift; defines the AppComponent enum (was AppScreen), the case list every renamed call site (e.g. component == .toolbar) switches on."
+  - path: firefox-ios/Client/Redux/GlobalState/PresentedComponentsState.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Renamed from ActiveScreenState.swift; defines ComponentState (was AppScreenState) and PresentedComponentsState.reducer, the core add/remove-component logic every view controller's subscribeToRedux/unsubscribeFromRedux dispatches into."
+  - path: firefox-ios/Client/Redux/GlobalState/ComponentAction.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "New file split out of the old ActiveScreenAction.swift; defines ComponentAction (was ScreenAction) and ComponentActionType.addComponent/removeComponent (was ScreenActionType.showScreen/closeScreen), which every renamed store.dispatch(ComponentAction(...)) call site now constructs."
+  - path: firefox-ios/Client/Redux/GlobalState/AppState.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Renames the activeScreens field to presentedComponents and the screenState(for:window:) accessor to componentState(for:window:), rewritten at roughly 37 call sites across the diff."
+  - path: firefox-ios/Client.xcodeproj/project.pbxproj
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: "Xcode project file must track the file rename (ActiveScreenState.swift/ActiveScreenAction.swift to PresentedComponentsState.swift/AppComponent.swift) and register the new ComponentAction.swift under PBXFileReference/PBXBuildFile/Sources phases, or the target fails to compile."
+  - path: firefox-ios/Client/Redux/GlobalState/ScreenState.swift
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "Untouched protocol 'protocol ScreenState: StateType { var windowUUID: WindowUUID { get } }' is the generic constraint (S: ScreenState) on the renamed AppState.componentState<S: ScreenState> accessor; every renamed *State struct (ToolbarState, HomepageState, etc.) conforms to it, yet its own name was deliberately left as ScreenState even though the commit's stated goal is to purge misleading screen terminology, so understanding the change's actual scope requires seeing this file was intentionally excluded."
+forbidden:
+  - path: firefox-ios/Client/Frontend/Settings/ThemeSettings/ThemeMiddleware.swift
+    reason: "sibling of touched ThemeSettingsController.swift/ThemeSettingsState.swift in the same directory but never calls screenState/componentState, so it is untouched by the rename."
+  - path: firefox-ios/firefox-ios-tests/Tests/XCUITests/ScreenGraphTest.swift
+    reason: "uses an unrelated addScreenAction from the MappaMundi UI-test navigation graph framework, a name collision with Redux's ScreenAction/ComponentAction but no actual link."
+  - path: firefox-ios/Client/Frontend/Translations/TranslationsAction.swift
+    reason: "sibling Action file to the touched TranslationsMiddleware.swift, but defines the unrelated TranslationsAction/TranslationsActionType and was not part of this rename."
+  - path: adr/0005-redux-and-navigation.md
+    reason: "describes the general Redux+navigation pattern and BrowserViewControllerState but never mentions the activeScreens/AppScreen naming this commit fixes."
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 82
   description: Redux rename of `activeScreens` state terminology — large cross-cutting Redux refactor
     with project file
-notes: ''
+notes: "Mechanical rename (AppScreen/ScreenAction/ActiveScreensState to AppComponent/ComponentAction/PresentedComponentsState) touching ~80 call sites plus the Xcode project file; the one nontrivial gold is ScreenState.swift, the protocol left deliberately unrenamed that defines the type constraint the renamed accessor still uses."

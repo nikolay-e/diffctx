@@ -2,13 +2,71 @@ repo: aspnetcore
 base_commit: 773dd5a1b1e14c28908b5fffdf47282921f8ec93
 commit: 223fe49184a2cb8cad804385cd3a3d1772dbe34e
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/MvcRazorRuntimeCompilationOptions.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: MvcRazorRuntimeCompilationOptions is the central options type given [Obsolete("...", DiagnosticId = "ASPDEPR003")]; nearly every pragma suppression elsewhere in the diff exists because code references this type.
+  - path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/AssemblyPartExtensions.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Public extension class AssemblyPartExtensions marked [Obsolete] with ASPDEPR003, one of the five public API entry points this sweep deprecates.
+  - path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/DependencyInjection/RazorRuntimeCompilationMvcBuilderExtensions.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines RazorRuntimeCompilationMvcBuilderExtensions.AddRazorRuntimeCompilation(IMvcBuilder), the main public opt-in API now marked [Obsolete] with ASPDEPR003 - this is the symbol application authors call and will see deprecated.
+  - path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/DependencyInjection/RazorRuntimeCompilationMvcCoreBuilderExtensions.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines RazorRuntimeCompilationMvcCoreBuilderExtensions.AddServices, which RazorRuntimeCompilationHostingStartup.Configure calls; also marked [Obsolete] with ASPDEPR003.
+  - path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/FileProviderRazorProjectItem.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Public RazorProjectItem subclass marked [Obsolete] with ASPDEPR003; instantiated inside FileProviderRazorProjectFileSystem, which needs the added pragma suppressions.
+  - path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/RazorReferenceManager.cs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Internal consumer holding an MvcRazorRuntimeCompilationOptions field and constructor parameter; needs #pragma warning disable ASPDEPR003 to avoid CS0618 now that the options type is obsolete, illustrating the internal-caller side of the sweep.
+  - path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/RazorRuntimeCompilationHostingStartup.cs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: IHostingStartup.Configure calls the now-obsolete RazorRuntimeCompilationMvcCoreBuilderExtensions.AddServices, needing the added pragma suppression; shows how the DI auto-wiring path is affected by the attribute.
+forbidden:
+  - path: src/Mvc/Mvc.Razor/src/Compilation/DefaultViewCompiler.cs
+    reason: only mentions RazorRuntimeCompilationMvcCoreBuilderExtensions in a code comment, not an actual reference, so it triggers no CS0618 and needed no pragma suppression.
+  - path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/RuntimeViewCompiler.cs
+    reason: sibling file in the same package flagged by bm25/graph candidates, but does not reference any of the five obsoleted types and was untouched by the sweep.
+  - path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/CSharpCompiler.cs
+    reason: sibling file in the same package flagged by bm25/graph candidates, but does not reference any of the five obsoleted types and was untouched by the sweep.
+  - path: src/Mvc/Mvc.Razor.RuntimeCompilation/src/PublicAPI.Shipped.txt
+    reason: lists the public API surface of these classes but adding an [Obsolete] attribute does not change a symbol's public API signature, so this Roslyn tracking file needed no update.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [candidates]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 19
   description: Obsolete RazorRuntimeCompilation — pure C# attribute sweep
-notes: ''
+notes: 'Adds [Obsolete(..., DiagnosticId = "ASPDEPR003")] to the five public
+  types in Mvc.Razor.RuntimeCompilation (AssemblyPartExtensions,
+  RazorRuntimeCompilationMvcBuilderExtensions,
+  RazorRuntimeCompilationMvcCoreBuilderExtensions, FileProviderRazorProjectItem,
+  MvcRazorRuntimeCompilationOptions) and wraps every internal/test reference to
+  them in #pragma warning disable/restore ASPDEPR003 to suppress the resulting
+  CS0618. All real consumers of the obsoleted symbols are already covered by the
+  19-file diff (verified via git grep for each symbol name); no external file
+  needs to change for the sweep to compile, and no doc/config file references
+  ASPDEPR003, so this is a genuinely self-contained mechanical change with no
+  nontrivial gold beyond the diff itself - no_nontrivial_context is set
+  accordingly and gold is limited to the semantic core (5 obsoleted
+  definitions + 2 representative internal-caller pragma sites) rather than all
+  19 touched files.'

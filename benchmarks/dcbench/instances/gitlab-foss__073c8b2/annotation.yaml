@@ -2,13 +2,72 @@ repo: gitlab-foss
 base_commit: 254f78f5dc36d4aef26d1ab2a924e4fa916221c6
 commit: 073c8b25ea36b6b96eab05eb675e8726b1d5318e
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: app/graphql/gitlab_schema.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "adds the `elsif gid.model_class.respond_to?(:lazy_find)` branch to `object_from_id`, the dispatch point that routes a Discussion global ID to `Discussion.lazy_find` instead of the AR batch loader."
+  - path: app/graphql/mutations/notes/create/note.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "the mutation itself: adds the `discussion_id` argument and `authorize_discussion!`/`create_note_params` overrides that thread `in_reply_to_discussion_id` into note creation."
+  - path: app/graphql/types/notes/discussion_type.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "adds the `reply_id` GraphQL field, computed via `::Gitlab::GlobalId.build(object, id: object.reply_id)`, which is the value clients pass back as `discussion_id`."
+  - path: app/models/discussion.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "defines `Discussion.lazy_find` (the BatchLoader-backed lookup invoked from gitlab_schema.rb) and `#reply_id`, both consumed by the GraphQL layer added in this patch."
+  - path: lib/gitlab/global_id.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "new module defining `Gitlab::GlobalId.build`, needed because the GlobalID gem is hard-coded to `id`, so `DiscussionType#reply_id` uses this helper to mint a GID from `reply_id` instead."
+  - path: app/graphql/mutations/notes/create/base.rb
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "defines the original `create_note_params(noteable, args)` and `resolve` that `Notes::Create::Note#create_note_params` overrides and calls via `super(noteable, args).merge(...)`."
+  - path: app/policies/note_policy.rb
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: "defines the `:read_note` ability (via `can_read_noteable`/`enable :read_note`) checked by `authorize_discussion!`'s `Ability.allowed?(current_user, :read_note, discussion, scope: :user)`."
+  - path: lib/gitlab/graphql/loaders/batch_model_loader.rb
+    tier: helpful
+    role: cochange
+    in_diff: false
+    rationale: "the pre-existing `BatchLoader.for(...).batch` pattern for AR records that `Discussion.lazy_find` mirrors for the non-AR `Discussion` class, and that the `object_from_id` `if` branch already calls."
+  - path: lib/gitlab/graphql/errors.rb
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: "defines `Gitlab::Graphql::Errors::ResourceNotAvailable`, the error class raised by `authorize_discussion!` when the user lacks `:read_note` on the discussion."
+  - path: spec/requests/api/graphql/mutations/notes/create/note_spec.rb
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: "covering test for the new `discussion_id` mutation argument, exercising both the permission-denied path and the successful reply-in-discussion path end to end."
+forbidden:
+  - path: app/graphql/types/notes/note_type.rb
+    reason: sibling GraphQL type in the same directory, but its fields are unrelated to the new discussion_id/reply_id linkage.
+  - path: app/models/concerns/resolvable_discussion.rb
+    reason: mixed into Discussion for resolve/unresolve behavior, unrelated to lazy_find or reply_id.
+  - path: app/graphql/mutations/notes/base.rb
+    reason: shared Notes mutation base class, but the overridden methods in this patch live in Notes::Create::Base, not here.
+  - path: app/models/note.rb
+    reason: touched in the diff but only adds a one-line comment pointing at Discussion#lazy_find, no functional change.
+nontrivial_gold_count: 4
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 11
   description: GraphQL notes-in-discussions — graphql+models+lib
-notes: ''
+notes: "Adds a discussion_id argument to the createNote GraphQL mutation and a reply_id field on DiscussionType, wired through a new Discussion.lazy_find (mirroring the existing BatchModelLoader pattern) so GlobalId.object_from_id can batch-load non-AR Discussion objects; string_indirection=true because the whole mechanism hinges on GlobalID encoding the model class name as a string that object_from_id dynamically dispatches on (respond_to?(:lazy_find))."

@@ -2,13 +2,61 @@ repo: firefox-ios
 base_commit: b9c798b38f39338e8f744b18e43e670d4b6a93ea
 commit: 2a44c758d3d853a59cff266ebd4ae07bdf48fa1e
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: firefox-ios/Client/Frontend/Browser/SearchEngines/SearchEnginesManager.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renamed-in-place definition of the `class SearchEngines` -> `class SearchEnginesManager` that the whole patch fans out from; also absorbs the doc-comment rewrite.
+  - path: firefox-ios/Providers/Profile.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Declares the `Profile` protocol property `var searchEnginesManager: SearchEnginesManager { get }` (renamed from `searchEngines`) and the `BrowserProfile.searchEnginesManager` lazy accessor that every call site in the diff reads through."
+  - path: firefox-ios/Client/Frontend/Browser/Search/SearchViewModel.swift
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Renames the stored `model`/`searchEngines` -> `searchEnginesManager` property that SearchViewController and BrowserViewController depend on, representative of the caller-side rename fan-out.
+  - path: firefox-ios/Client.xcodeproj/project.pbxproj
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Xcode project file must be updated with new PBXFileReference/PBXBuildFile entries for the renamed SearchEngines.swift -> SearchEnginesManager.swift and the new Locale extension file, or the target fails to build.
+  - path: firefox-ios/Client/Extensions/Locale+possibilitiesForLanguageIdentifier.swift
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: New file the patch extracts `extension Locale.possibilitiesForLanguageIdentifier()` into (previously a private extension at the bottom of SearchEngines.swift), called from DefaultSearchEngineProvider.swift.
+  - path: firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Browser/SearchEngines/SearchEnginesManagerTests.swift
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Renamed covering unit-test file for SearchEnginesManager (`engines` var renamed to `searchEnginesManager` throughout), verifies the renamed class's public API is unchanged in behavior.
+forbidden:
+  - path: focus-ios/Blockzilla/Settings/Controller/AddSearchEngineViewController.swift
+    reason: sibling Mozilla app (Focus iOS, not firefox-ios) with its own unrelated `SearchEngineManager`/`AddSearchEngineDelegate` types — name-similar false lead, untouched by this commit.
+  - path: firefox-ios/Client/Frontend/Browser/DefaultSearchPrefs.swift
+    reason: defines `visibleDefaultEngines`/`searchDefault` called from DefaultSearchEngineProvider.swift, but its signature and behavior are unchanged by this refactor.
+  - path: firefox-ios/firefox-ios-tests/Tests/ClientTests/Frontend/Browser/SearchEngines/MockSearchEngineProvider.swift
+    reason: sibling test-double file in the same directory as the renamed test, implements SearchEngineProvider but has no `SearchEngines`/`SearchEnginesManager` references to rename.
+  - path: firefox-ios/Client/Frontend/Browser/SearchEngines/OpenSearchEngine.swift
+    reason: sibling class in the same SearchEngines/ directory with a confusingly similar name, but represents a single engine (unrelated type) and is not touched by this commit.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 26
   description: Rename SearchEngines to SearchEnginesManager — symbol rename fan-out across call sites
-notes: ''
+notes: >
+  Pure mechanical rename (SearchEngines -> SearchEnginesManager) plus extracting a
+  private Locale extension into its own file, a doc-comment rewrite, and one unrelated
+  small bugfix (early-return-on-error in SearchTests.swift) — all folded into this
+  single commit. Verified via git grep at the pinned commit that every call site of
+  the old name was updated (no leftover `.searchEngines` references) and that the
+  commit's 26-file diff-tree already covers every file that references the renamed
+  symbols, including the Xcode project file; no genuine external gold exists, so
+  no_nontrivial_context is set instead of padding with weak candidates.

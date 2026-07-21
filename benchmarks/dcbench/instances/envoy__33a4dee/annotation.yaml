@@ -2,13 +2,52 @@ repo: envoy
 base_commit: b5fb9e4f9360460fba76827062f6cf58d8c52f3a
 commit: 33a4deec71ccfff0773718d25a4c7ff8baa4e37b
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: envoy/config/subscription_factory.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the MuxFactory::create() pure-virtual interface whose bool use_eds_resources_cache parameter is dropped, forcing every implementer's signature to change.
+  - path: source/common/config/xds_manager_impl.cc
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: XdsManagerImpl::initializeAdsConnections/createAuthority compute use_eds_cache via Runtime::runtimeFeatureEnabled and pass it into factory->create(); this is the primary call site the guard removal simplifies.
+  - path: source/extensions/clusters/eds/eds.cc
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: EdsClusterImpl constructor's eds_resources_cache_ initialization drops the runtimeFeatureEnabled("envoy.restart_features.use_eds_cache_for_ads") ternary and always populates the cache.
+  - path: source/extensions/config_subscription/grpc/xds_mux/grpc_mux_impl.cc
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Both GrpcMuxSotw and GrpcMuxDelta factory create() overrides drop the use_eds_resources_cache flag and the runtimeFeatureEnabled check, unconditionally constructing EdsResourcesCacheImpl.
+  - path: test/extensions/clusters/eds/eds_test.cc
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: EdsCachedAssignmentTest drops the runtime_.mergeValues() guard setup and deletes UseCachedAssignmentOnWarmingFailureNoCache, the test that exercised the now-removed disabled-cache legacy path.
+  - path: source/common/runtime/runtime_features.cc
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: RUNTIME_GUARD(envoy_restart_features_use_eds_cache_for_ads) at line 94 is the actual registration/definition of the flag this commit removes usages of; it is a true-by-default restart-level guard (not reloadable), and notably this commit leaves the registration itself in place (removed later in a separate follow-up commit).
+forbidden:
+  - path: api/envoy/api/v2/eds.proto
+    reason: EDS proto message is unrelated; this commit is a pure C++ runtime-guard/legacy-code removal with no API/proto changes.
+  - path: api/envoy/service/endpoint/v3/eds.proto
+    reason: EDS discovery service proto is unrelated; the change never touches the xDS wire contract, only internal caching control flow.
+  - path: source/common/config/utility.cc
+    reason: Config::Utility helpers (parseRateLimitSettings, getGrpcControlPlane) are called unchanged in the touched create() overrides; not part of the removed guard logic.
+  - path: source/common/upstream/cluster_manager_impl.cc
+    reason: ClusterManager::edsResourcesCache() accessor invoked in eds.cc is unchanged; only the surrounding runtime-guard conditional around the call was removed.
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, graph, random]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 14
   description: Runtime guard removal use_eds_cache_for_ads + legacy code paths (source+test+docs+changelog)
-notes: ''
+notes: 'Removes the envoy.restart_features.use_eds_cache_for_ads runtime guard and its associated legacy (cache-disabled) code paths: the MuxFactory::create() interface drops its bool use_eds_resources_cache parameter, callers stop gating EDS-cache construction/lookup behind Runtime::runtimeFeatureEnabled, and tests/docs/changelog are updated to match. The guard is looked up by string name (Runtime::runtimeFeatureEnabled("envoy.restart_features.use_eds_cache_for_ads") / RUNTIME_GUARD macro), so string_indirection is true. Caveat: the RUNTIME_GUARD registration in runtime_features.cc is not touched by this commit (removed later in a separate commit), included as nontrivial gold since it defines the very flag this commit describes as removed.'

@@ -2,13 +2,124 @@ repo: aspnetcore
 base_commit: c4f8522649413b7e1000747f80a3b49b8bc1ed7a
 commit: 32ee668657c9738da67b9f1593947f80d4039dfd
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 17
   description: Get rid of package baseline — MSBuild plumbing + docs + code
-notes: ''
+gold:
+  - path: eng/Baseline.Designer.props
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: >-
+      The auto-generated MSBuild file (993 lines, deleted whole) that defined
+      AspNetCoreBaselineVersion and, per PackageId, BaselinePackageVersion /
+      BaselinePackageReference items consumed by ResolveReferences.targets and
+      Packaging.targets; it is the core data artifact of the "package baseline"
+      mechanism being removed.
+  - path: eng/Baseline.xml
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: >-
+      The hand-maintained source-of-truth list of package IDs/versions that
+      eng/tools/BaselineGenerator/Program.cs read to regenerate
+      eng/Baseline.Designer.props; deleting it is required for the baseline
+      mechanism to actually go away, not just its generated output.
+  - path: eng/targets/ResolveReferences.targets
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: >-
+      Central consumer logic: joins @(Reference) against @(BaselinePackageReference),
+      computes UnusedBaselinePackageReference (honoring @(SuppressBaselineReference)),
+      and raises error BUILD002 for servicing builds; the patch strips this whole
+      baseline-resolution branch, which is the functional heart of the change.
+  - path: eng/targets/Packaging.targets
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: >-
+      Defines the EnsureBaselineIsUpdated target, gated on
+      $(ValidateBaseline)/$(AspNetCoreBaselineVersion)/$(PreviousAspNetCoreReleaseVersion),
+      that errored during servicing builds if the baseline was stale; entirely
+      removed by this patch.
+  - path: eng/tools/BaselineGenerator/Program.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: >-
+      The CLI tool (`dotnet run --project eng/tools/BaselineGenerator/`) that
+      read eng/Baseline.xml, queried NuGet, and wrote eng/Baseline.Designer.props;
+      its invocation is also dropped from eng/scripts/CodeCheck.ps1 in the same
+      commit. Deleting this tool is the "code" part of the curation description.
+  - path: Directory.Build.targets
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: >-
+      Removes `<Import Project="eng\Baseline.Designer.props" />`, the single
+      point where the generated baseline file was pulled into every project's
+      build, plus the PropertyGroup that overrode AssemblyVersion/Version/
+      PackageVersion from $(BaselinePackageVersion) when
+      $(IsServicingBuild)=='true'; shows how the deleted file used to reach
+      every csproj.
+  - path: src/Components/Components/src/Microsoft.AspNetCore.Components.csproj
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: >-
+      The only real application-code consumer of `<SuppressBaselineReference>`
+      in the repo (verified via git grep) — Include="Microsoft.AspNetCore.Components.Analyzers"
+      and Include="Microsoft.AspNetCore.Authorization" with InNuspecFile="true";
+      shows what the removed suppression mechanism was actually protecting
+      against in practice.
+  - path: src/Components/Components/src/Microsoft.AspNetCore.Components.netcoreapp.nuspec
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: >-
+      Declares <dependency id="Microsoft.AspNetCore.Components.Analyzers"> and
+      <dependency id="Microsoft.AspNetCore.Authorization"> in its <dependencies>
+      group — exactly the two package IDs suppressed via SuppressBaselineReference
+      in the sibling .csproj (per its own comment: "Keep suppressions in sync
+      with the ... nuspec files"). Without this file the reason those two
+      SuppressBaselineReference lines existed is invisible.
+  - path: eng/targets/CSharp.Common.targets
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: >-
+      Contains `<Import Project="Packaging.targets" />` and `<Import
+      Project="ResolveReferences.targets" />`, the wiring that pulls both
+      edited target files into every C# project's build; establishes that
+      these two files are not independent but load together per-project.
+forbidden:
+  - path: eng/scripts/mark-shipped.ps1
+    reason: unrelated "Public API baseline" (PublicAPI.Shipped/Unshipped.txt) mechanism that shares the word "baseline" but has nothing to do with the deleted package-version baseline.
+  - path: eng/tools/RepoTasks/GenerateSharedFrameworkDepsFile.cs
+    reason: sibling custom MSBuild task under eng/tools/ next to the deleted BaselineGenerator, but generates shared-framework deps.json files, unrelated purpose.
+  - path: eng/ProjectReferences.props
+    reason: listed next to eng/Baseline.xml under "Important files" in docs/ReferenceResolution.md, but is an untouched, independently-generated assembly-to-project map with no baseline properties.
+  - path: Directory.Build.props
+    reason: sibling MSBuild file to the edited Directory.Build.targets (same base name) but contains no baseline/servicing-build properties (verified via grep) and is untouched by the commit.
+nontrivial_gold_count: 2
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, candidates]
+notes: >-
+  Removes ASP.NET Core's "package baseline" servicing mechanism end-to-end:
+  the generated data file (eng/Baseline.Designer.props) and its hand-written
+  source (eng/Baseline.xml), the generator tool (eng/tools/BaselineGenerator),
+  the MSBuild consumer logic that validated/enforced it
+  (Packaging.targets EnsureBaselineIsUpdated, ResolveReferences.targets
+  BaselinePackageReference/SuppressBaselineReference handling), the import
+  site (Directory.Build.targets), the CodeCheck.ps1 regen step, solution/slnf
+  entries, and docs describing the workflow. The linkage across files runs
+  entirely through MSBuild property/item names matched as strings
+  (BaselinePackageReference, SuppressBaselineReference, ValidateBaseline,
+  AspNetCoreBaselineVersion) rather than any typed/static reference, hence
+  string_indirection: true. Consulted candidates.yaml; nearly all of its
+  38 entries (docs indices, unrelated src/*.cs files, Helix/build scripts)
+  were bm25/graph noise from generic "eng"/"baseline"-adjacent term overlap
+  and are not included.

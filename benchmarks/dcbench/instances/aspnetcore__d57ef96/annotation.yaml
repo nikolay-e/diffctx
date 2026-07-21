@@ -2,13 +2,90 @@ repo: aspnetcore
 base_commit: 8ca8b6b7f7b991622e7dfafcb6e4d0d45ef1cb72
 commit: d57ef96c5c25e659e467d372da1468ced12e3daf
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: src/Components/Components/src/RenderTree/RendererInfo.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New file defining the RendererInfo sealed class (Name, IsInteractive) that replaces the deleted ComponentPlatform.cs — the type at the center of the rename.
+  - path: src/Components/Components/src/ComponentBase.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renames the public `Platform` property to `RendererInfo` (protected RendererInfo RendererInfo => _renderHandle.RendererInfo), the main entry point component authors use.
+  - path: src/Components/Components/src/RenderTree/Renderer.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Declares the virtual `RendererInfo` property (was `ComponentPlatform`) that every concrete renderer overrides — the abstraction point the rename propagates from.
+  - path: src/Components/Components/src/RenderHandle.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: RenderHandle.RendererInfo forwards to `_renderer?.RendererInfo`, the bridge between ComponentBase and the Renderer's RendererInfo property.
+  - path: src/Components/Components/src/PublicAPI.Unshipped.txt
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Roslyn PublicAPI analyzer baseline for the Components assembly; must list the exact new RendererInfo/ComponentBase.RendererInfo/RenderHandle.RendererInfo signatures or the build fails with RS0016/RS0017.
+  - path: src/Components/Server/src/Circuits/RemoteRenderer.cs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Overrides `RendererInfo` (field `_componentPlatform` now typed RendererInfo) to report the Interactive Server hosting model — one of the four renderer hosts the rename touches.
+  - path: src/Components/Web/src/HtmlRendering/StaticHtmlRenderer.cs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Overrides `RendererInfo` for the Static/SSR hosting model ("Static", isInteractive:false); pairs with the Web assembly's own PublicAPI.Unshipped.txt update.
+  - path: src/Components/WebAssembly/WebAssembly/src/Rendering/WebAssemblyRenderer.cs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Overrides `RendererInfo` for the WebAssembly hosting model ("WebAssembly", isInteractive:true).
+  - path: src/Components/WebView/WebView/src/Services/WebViewRenderer.cs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Overrides `RendererInfo` for the WebView hosting model ("WebView", isInteractive:true), completing the fourth renderer host in the rename.
+  - path: src/Components/Web/src/PublicAPI.Unshipped.txt
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Updates the Components.Web assembly's Roslyn PublicAPI baseline for `StaticHtmlRenderer.RendererInfo` override, showing the same enforcement mechanism applies per-assembly.
+forbidden:
+  - path: src/Components/Web/src/WebRenderer.cs
+    reason: bm25/graph candidate and common base class of RemoteRenderer/WebAssemblyRenderer/WebViewRenderer, but verified via git grep it never references ComponentPlatform/RendererInfo itself — each subclass overrides the property directly.
+  - path: src/Components/Components/src/IComponent.cs
+    reason: graph candidate, sibling file in the same src/Components/Components/src directory as the changed files, but contains no reference to ComponentPlatform or RendererInfo.
+  - path: src/Components/Components/src/RenderTree/Renderer.Log.cs
+    reason: graph candidate, sibling of Renderer.cs in the same RenderTree folder (partial-class logging helpers), but verified empty of any Platform/RendererInfo reference.
+  - path: src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/ComponentPlatform.razor
+    reason: coincidentally named after the deleted class (route "@page /componentplatform") but is an unrelated E2E test page hosting ComponentPlatformDetails.razor; untouched by this commit and not a consumer of the renamed API.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, graph]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 14
   description: Rename ComponentPlatform to RendererInfo — API rename across projects
-notes: ''
+notes: >-
+  Pure mechanical API rename: ComponentPlatform.cs is deleted and replaced by
+  RendererInfo.cs (same shape, primary-constructor syntax), and every
+  reference (ComponentBase.Platform, RenderHandle.Platform,
+  Renderer.ComponentPlatform, plus the four host overrides in
+  RemoteRenderer/StaticHtmlRenderer/WebAssemblyRenderer/WebViewRenderer and
+  the two PublicAPI.Unshipped.txt baselines) is updated in the same commit.
+  Verified via `git grep RendererInfo` and `git grep ComponentPlatform` across
+  all of src at the pinned commit that no file outside the 14-file diff
+  references either the old or new type/property name — the only leftover
+  "ComponentPlatform" strings are an unrelated E2E test page route/name
+  (src/Components/test/testassets/.../Pages/ComponentPlatform.razor,
+  InteractiveHostRendermodeTest.cs's Navigate URL) that is not the renamed
+  symbol. no_nontrivial_context is set accordingly; gold is the semantic core
+  (type definition, the three propagation points, the four renderer-host
+  overrides, and both PublicAPI baselines) rather than the three
+  test-asset .razor call sites which are mechanical property-name swaps of
+  the same pattern already shown in the core files.

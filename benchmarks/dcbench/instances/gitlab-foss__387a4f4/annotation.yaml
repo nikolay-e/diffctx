@@ -2,13 +2,72 @@ repo: gitlab-foss
 base_commit: 8ab0db4e8f74457c419e913dc6af6296a0a9fa52
 commit: 387a4f4b2cc9cffe2a21ef1060fe35c60d1ac769
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 24
-  description: Remove legacy artifact code — models+lib+specs
-notes: ''
+gold:
+  - path: app/models/ci/build.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Central diff file - drops `prepend ArtifactMigratable`, inlines artifacts_file/artifacts_size/artifacts_metadata/artifacts?/artifacts_metadata? directly on Ci::Build, adds 5 `ignore_column` calls for the now-dead artifacts_file/metadata/store/size columns, and rewrites with_artifacts_stored_locally/with_archived_trace_stored_locally to query Ci::JobArtifact instead of the removed mount_uploader fields.
+  - path: app/models/concerns/artifact_migratable.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Deleted module whose artifacts_file/artifacts_metadata/artifacts?/remove_artifacts_file!/legacy_artifacts_file methods are exactly what build.rb reimplements inline without the legacy fallback branches - the direct before/after comparison for the removal.
+  - path: app/uploaders/legacy_artifact_uploader.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Deleted CarrierWave uploader class that the two `mount_uploader :legacy_artifacts_file/:legacy_artifacts_metadata, LegacyArtifactUploader` lines removed from build.rb pointed at; its removal is why artifacts_file/artifacts_metadata now return a plain association-backed object instead of an always-present uploader.
+  - path: spec/models/ci/build_spec.rb
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Largest spec change (146 lines) - drops the `is_expected.to be_a(ArtifactMigratable)` assertion, the `:legacy_artifacts`/`ci_enable_legacy_artifacts` example groups, and switches `.exists?` uploader-style assertions to `.present?`, matching artifacts_file/artifacts_metadata now returning a CarrierWave file object or nil rather than an uploader instance.
+  - path: lib/api/helpers.rb
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: present_carrierwave_file! adds `file&.exists?` (was `file.exists?`) because Build#artifacts_file/#artifacts_metadata can now be nil (job_artifacts_archive&.file) once the always-instantiated LegacyArtifactUploader mounter is gone - a direct behavioral consequence of the build.rb rewrite.
+  - path: app/models/ci/job_artifact.rb
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "Defines `mount_uploader :file, JobArtifactUploader`, the `file_type` enum backing the `.archive`/`.trace` scopes used in build.rb's rewritten with_artifacts_stored_locally/with_archived_trace_stored_locally, and its own `update_project_statistics stat: :build_artifacts_size` call - which is why build.rb's identical `update_project_statistics stat: :build_artifacts_size, attribute: :artifacts_size` line could be deleted without losing size accounting."
+  - path: app/models/concerns/update_project_statistics.rb
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the `update_project_statistics` class macro whose call was removed from Ci::Build; shows it is a generic after_save/after_destroy size-delta hook (not artifact-specific), confirming the deletion is safe now that Ci::JobArtifact alone drives ProjectStatistics.build_artifacts_size.
+  - path: lib/api/job_artifacts.rb
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: Calls `present_carrierwave_file!(build.artifacts_file)` and `present_carrierwave_file!(latest_build.artifacts_file)` - a live consumer of both the redefined Build#artifacts_file method and the nil-guard added to present_carrierwave_file! in lib/api/helpers.rb.
+  - path: app/models/concerns/ignorable_column.rb
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the `ignore_column` class macro used by the 5 new `ignore_column :artifacts_file` / `:artifacts_metadata` / `:artifacts_file_store` / `:artifacts_metadata_store` / `:artifacts_size` calls added to build.rb - GitLab's safe-column-removal pattern (mark ignored in code first, drop columns in a later migration).
+forbidden:
+  - path: db/post_migrate/20170523083112_migrate_old_artifacts.rb
+    reason: pre-existing 2017 data migration matching the "old artifacts" topic by name but untouched by this commit; the one spec.rb assertion removed from its schema-pinned test is incidental, not evidence the migration itself is relevant.
+  - path: app/uploaders/job_artifact_uploader.rb
+    reason: near-identically-named sibling to the deleted LegacyArtifactUploader, but it is the pre-existing "new" uploader and is neither modified nor newly wired up by this patch.
+  - path: app/services/ci/retry_build_service.rb
+    reason: its spec's REJECT_ACCESSORS list was reshuffled in the diff, but the service's own CLONE_ACCESSORS never referenced artifacts_file/metadata/size, so the production code is unaffected by the removal.
+nontrivial_gold_count: 4
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >
+  Removes the legacy (pre-ci_job_artifacts) CI artifact storage path: deletes the
+  ArtifactMigratable prepend module and LegacyArtifactUploader class, inlines their
+  interface directly onto Ci::Build backed solely by Ci::JobArtifact, drops the
+  ci_enable_legacy_artifacts feature-flag branch, and marks the now-dead DB columns
+  ignored. A full-tree grep at the pinned commit confirms zero remaining references
+  to legacy_artifacts_file/metadata, LegacyArtifactUploader, ArtifactMigratable, or
+  ci_enable_legacy_artifacts outside this commit's own deletions, i.e. the removal is
+  complete. string_indirection: true because job_artifacts_archive/job_artifacts_metadata
+  (consumed by the new inline methods) are metaprogrammed via
+  `has_one :"job_artifacts_#{key}", ...` over Ci::JobArtifact.file_types in build.rb
+  itself, not statically defined methods a plain symbol search would surface.

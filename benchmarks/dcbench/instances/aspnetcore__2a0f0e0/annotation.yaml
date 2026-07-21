@@ -2,13 +2,57 @@ repo: aspnetcore
 base_commit: 5b47094e8cccb26640051fb37feb3aa6107774f2
 commit: 2a0f0e07211a043f76f44fbd75000420566c50e4
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: src/Components/Web/src/EnvironmentView.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: The renamed file itself; defines the `EnvironmentView` (formerly `EnvironmentBoundary`) sealed class whose name, XML-doc examples, and PublicAPI signature changed.
+  - path: src/Components/Web/src/PublicAPI.Unshipped.txt
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Roslyn PublicAPI analyzer manifest that must list the exact renamed member signatures (`Microsoft.AspNetCore.Components.Web.EnvironmentView...`); a stale entry fails the build, and its presence under Unshipped (not Shipped) proves the API never released so a plain rename (no `[Obsolete]` shim) is safe.
+  - path: src/Components/Web/test/EnvironmentViewTest.cs
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Unit test suite (renamed from EnvironmentBoundaryTest.cs) that exercises `EnvironmentView.Include`/`Exclude`/`ChildContent` and instantiates `EnvironmentView` directly via `renderer.InstantiateComponent<EnvironmentView>()`.
+  - path: src/Components/test/E2ETest/Tests/EnvironmentViewTest.cs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Selenium E2E test class renamed alongside the component; it mounts `EnvironmentViewContainer` in a real browser, proving the rename must propagate through the test asset chain too.
+  - path: src/Components/test/testassets/BasicTestApp/EnvironmentViewContainer.razor
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Razor test fixture whose markup tag `<EnvironmentBoundary>` had to become `<EnvironmentView>` for the E2E test above to compile and mount the component.
+  - path: src/Components/test/testassets/BasicTestApp/Index.razor
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: BasicTestApp demo menu references `BasicTestApp.EnvironmentBoundaryContainer` by string and had to be updated to `BasicTestApp.EnvironmentViewContainer` to keep the demo picker in sync with the renamed razor asset.
+  - path: src/Mvc/Mvc.TagHelpers/src/EnvironmentTagHelper.cs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: EnvironmentView.cs's XML doc explicitly says "This component is similar to the environment tag helper in MVC and Razor Pages," and its `ShouldRenderContent` include/exclude precedence logic mirrors this MVC `EnvironmentTagHelper`'s Include/Exclude/Names semantics — needed to understand why the component behaves the way it does, independent of the rename.
+forbidden:
+  - path: src/Components/Components/src/ComponentBase.cs
+    reason: generic base class EnvironmentView derives from, untouched by and unrelated to this rename
+  - path: src/Components/Web/test/Routing/NavLinkTest.cs
+    reason: unrelated component test in the same Web/test directory, only superficially similar by location
+  - path: src/Components/Components/test/RouteViewTest.cs
+    reason: tempting due to the "*View" naming match but tests the pre-existing, unrelated RouteView component
+  - path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/Infrastructure/ColumnsCollectedNotifier.cs
+    reason: graph-linked candidate with no code or semantic relation to EnvironmentBoundary/EnvironmentView
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, candidates]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 10
   description: 'Rename EnvironmentBoundary to EnvironmentView — rename of #19''s API'
-notes: ''
+notes: Pure mechanical rename of the Blazor EnvironmentBoundary component to EnvironmentView across its definition, PublicAPI manifest, unit test, E2E test, and test assets; full-repo grep at the pinned commit confirms zero leftover EnvironmentBoundary references, so the diff's 6 files are self-contained. The one external gold file (MVC's EnvironmentTagHelper) is cited by the component's own doc comment as its design analog and explains its Include/Exclude behavior, not the rename mechanics.

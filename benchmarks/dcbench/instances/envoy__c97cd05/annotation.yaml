@@ -2,13 +2,53 @@ repo: envoy
 base_commit: 25aedb7a02543311201bde661c6d6076c5a18168
 commit: c97cd05df9d5983873aee0e23b03f5ed7fad789e
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: source/common/upstream/load_stats_reporter.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: sendLoadStatsRequest() drops the runtimeFeatureEnabled("envoy.reloadable_features.report_load_with_rq_issued") branch and always uses `should_send_locality_stats = rq_issued != 0`, the core legacy-code-path removal.
+  - path: source/common/runtime/runtime_features.cc
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: deletes the `RUNTIME_GUARD(envoy_reloadable_features_report_load_with_rq_issued);` registry entry that declared the flag (via the file's own `#define RUNTIME_GUARD(name) ABSL_FLAG(bool, name, true, "")`), the central flag-declaration site.
+  - path: test/common/upstream/load_stats_reporter_test.cc
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: removes the parameterized LoadStatsReporterTestWithRqTotal fixture (built around mergeValues({{"envoy.reloadable_features.report_load_with_rq_issued", ...}})) and collapses UpstreamLocalityStats to a single unconditional TEST_F, matching the flag's removal.
+  - path: changelogs/current.yaml
+    tier: essential
+    role: doc
+    in_diff: true
+    rationale: adds the removed_config_or_runtime entry "Removed runtime guard envoy.reloadable_features.report_load_with_rq_issued and legacy code paths.", the user-facing record of this exact deprecation.
+forbidden:
+  - path: source/common/upstream/load_stats_reporter.h
+    reason: declares the LoadStatsReporter class/constructor, unchanged since only the .cc body's branch logic was touched, no signature or member changes.
+  - path: source/common/runtime/runtime_features.h
+    reason: only declares generic runtime-lookup functions (runtimeFeatureEnabled, isLegacyRuntimeFeature, etc.), has no per-flag entries and none touching report_load_with_rq_issued.
+  - path: changelogs/1.34.0.yaml
+    reason: historical changelog entry that already documented this flag defaulting to false in a prior release; frozen record, not modified or needed to understand this removal.
+  - path: test/test_common/test_runtime.h
+    reason: defines the generic TestScopedRuntime helper class used by many unrelated tests, not specific to report_load_with_rq_issued.
+  - path: docs/root/configuration/operations/runtime.rst
+    reason: generic runtime-flag documentation page with no per-flag listing for report_load_with_rq_issued; irrelevant to this removal.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 4
   description: Minimal runtime-flag deprecation report_load_with_rq_issued (2 source + test + changelog)
-notes: ''
+notes: >-
+  Removes the deprecated reloadable runtime flag report_load_with_rq_issued and
+  its legacy fallback path in LoadStatsReporter::sendLoadStatsRequest(), always
+  reporting rq_issued-based locality stats now. Verified via git grep at the
+  parent commit that the flag string appeared only in these 4 files plus the
+  frozen changelogs/1.34.0.yaml historical entry (excluded as forbidden); the
+  central RUNTIME_GUARD registry entry and its defining macro both live inside
+  source/common/runtime/runtime_features.cc, which is itself one of the 4
+  diffed files, so this change is fully self-contained and needs no gold
+  outside the diff.
+string_indirection: true

@@ -2,13 +2,76 @@ repo: envoy
 base_commit: e46570546acad753ffe1495c94190069062bcd10
 commit: 68d760a0d08439b95626b61d79c063b511d15773
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 18
-  description: New set_filter_state listener filter (api proto + source + test + docs + changelog)
-notes: ''
+gold:
+  - path: api/envoy/extensions/filters/listener/set_filter_state/v3/set_filter_state.proto
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the new Config message with the on_accept repeated FilterStateValue field that the listener filter parses; the semantic core of the API surface being added.
+  - path: source/extensions/filters/listener/set_filter_state/config.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Implements SetFilterState::onAccept and SetFilterStateConfigFactory, the actual behavior added by the commit.
+  - path: source/extensions/filters/listener/set_filter_state/config.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Declares the SetFilterState Network::ListenerFilter class whose onAccept is implemented in config.cc.
+  - path: source/common/listener_manager/active_tcp_socket.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Moves the socket_->connectionInfoProvider().setListenerInfo(listener_.config_->listenerInfo()) call into the ActiveTcpSocket constructor, which runs before listener-filter onAccept executes; this is what makes listener metadata available to the new filter via %METADATA(LISTENER:...)%.
+  - path: source/common/listener_manager/active_stream_listener_base.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes the now-redundant setListenerInfo call from ActiveStreamListenerBase::newConnection, the paired half of the listener-info-timing change in active_tcp_socket.cc.
+  - path: source/extensions/filters/common/set_filter_state/filter_config.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines Filters::Common::SetFilterState::Config, ConfigSharedPtr and updateFilterState(), which config.cc constructs directly from proto_config.on_accept() and calls in SetFilterState::onAccept.
+  - path: api/envoy/extensions/filters/common/set_filter_state/v3/value.proto
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines FilterStateValue, the message type imported by set_filter_state.proto and repeated in the new Config.on_accept field.
+  - path: source/extensions/filters/network/set_filter_state/config.cc
+    tier: helpful
+    role: cochange
+    in_diff: false
+    rationale: The existing network-filter sibling (envoy.filters.network.set_filter_state) whose onNewConnection/factory pattern the new listener filter's onAccept/factory is a near-verbatim structural port of, sharing the same Filters::Common::SetFilterState::Config machinery.
+  - path: test/extensions/filters/listener/set_filter_state/set_filter_state_test.cc
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Unit test constructing SetFilterState directly from a Config proto and asserting the filter state key is populated after onAccept, covering the core behavior in config.cc.
+  - path: test/extensions/filters/listener/set_filter_state/integration_test.cc
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: End-to-end test demonstrating the filter reading listener metadata via %METADATA(LISTENER:...)% during onAccept, exercising the active_tcp_socket.cc timing fix and confirming the intended use case from the commit message.
+forbidden:
+  - path: docs/root/configuration/http/http_filters/set_filter_state.rst
+    reason: docs for the pre-existing HTTP filter variant, not the new listener filter
+  - path: docs/root/configuration/listeners/network_filters/set_filter_state.rst
+    reason: docs for the pre-existing network filter variant, only a naming lookalike
+  - path: test/extensions/filters/network/set_filter_state/integration_test.cc
+    reason: integration test for the separate network-filter extension, not the new listener filter
+  - path: test/extensions/filters/listener/tls_inspector/tls_inspector_integration_test.cc
+    reason: unrelated listener filter test that only shares the test/extensions/filters/listener/ directory shape
+nontrivial_gold_count: 3
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, random]
+notes: >-
+  Adds a new envoy.filters.listener.set_filter_state listener filter that lets many
+  filter chains share one instance for setting connection filter state on accept,
+  reusing the existing Filters::Common::SetFilterState::Config machinery already
+  used by the http and network set_filter_state filters. It also relocates the
+  setListenerInfo() call from ActiveStreamListenerBase::newConnection into the
+  ActiveTcpSocket constructor so listener metadata (e.g. %METADATA(LISTENER:...)%)
+  is available during listener-filter onAccept, which is the mechanism the new
+  filter's integration test exercises.

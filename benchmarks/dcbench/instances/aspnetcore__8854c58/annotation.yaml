@@ -2,13 +2,67 @@ repo: aspnetcore
 base_commit: ede0ab904ef6e7f8c5a4af98dd1b87a82650cd02
 commit: 8854c583048646b78c7156fbdb498df6cbf9ae13
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: src/Components/Gateway/src/BlazorGateway.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Rewrites BuildWebHost to a new WebApplicationBuilder-taking overload, adds ConfigureOpenTelemetry(this IHostApplicationBuilder, TelemetryOptions) and internal LivenessHealthCheck — the core of the gateway/Aspire-parity change."
+  - path: src/Components/Gateway/src/BlazorGatewayOptions.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "New BlazorGatewayOptions POCO (Hsts, HttpsRedirection, HealthChecks, Telemetry, PathBase) bound from the 'BlazorGateway'/'Gateway' config section and read throughout BlazorGateway.BuildWebHost to gate every feature."
+  - path: src/Components/Gateway/src/TelemetryFilters.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Defines ShouldTraceInboundRequest / ShouldTraceOutboundRequest, wired into BlazorGateway.ConfigureOpenTelemetry as the AddAspNetCoreInstrumentation/AddHttpClientInstrumentation Filter/FilterHttpRequestMessage delegates to prevent an OTLP export feedback loop."
+  - path: src/Components/Gateway/src/Program.cs
+    tier: essential
+    role: caller
+    in_diff: false
+    rationale: "Unchanged 1-line entry point 'BlazorGateway.BuildWebHost(args).Run();' — shows how the public string[] overload (still delegating to the new internal WebApplicationBuilder overload) is actually invoked in production, distinguishing it from the test-only overload added by this patch."
+  - path: src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/Extensions.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "AddBlazorClientServiceDefaults / ConfigureBlazorClientOpenTelemetry: fixes issue #67032 (CircularDependencyException on ILoggerFactory) by skipping OTel wiring entirely when OTEL_EXPORTER_OTLP_ENDPOINT is unset and resolving per-signal OTLP endpoints against HostEnvironment.BaseAddress — the WASM-client counterpart to the gateway's ConfigureOpenTelemetry."
+  - path: src/Components/Gateway/src/build/Microsoft.AspNetCore.Components.Gateway.targets
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: "Adds _GatewayDefaultLoggingFiltersArgs and the GatewayDisableDefaultLoggingFilters MSBuild toggle, appending --Logging:LogLevel:* to RunArguments so the StaticAssets/Routing/OtlpExporter log filters (dropped from ConfigureOpenTelemetry in this same PR) apply only under 'dotnet run'/F5, not in production hosts."
+  - path: src/Components/Gateway/test/BlazorGatewayTests.cs
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: "End-to-end TestServer coverage for every BlazorGatewayOptions gate added by this patch (HealthChecks default/custom paths/disabled/shutdown-aware liveness, Hsts, HttpsRedirection Sec-Fetch-Dest scoping, PathBase), replacing the removed BlazorGatewayOptionsTests unit tests."
+  - path: src/Components/Gateway/test/GatewayTestHelpers.cs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: "StartGatewayAsync wraps the new internal BlazorGateway.BuildWebHost(WebApplicationBuilder) overload with UseTestServer — the shared fixture both BlazorGatewayTests and BlazorGatewayProxyTests depend on to exercise the refactored BuildWebHost split."
+  - path: src/Components/test/testassets/Components.TestServer/Components.TestServer.csproj
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: "BlazorGateway.cs is compiled into this project via <Compile Include>, not referenced as a library, so the new HealthChecks/HttpsPolicy/OpenTelemetry usings added to BlazorGateway.cs required matching <Reference> entries here or the build breaks — a non-obvious build-time coupling introduced by this patch."
+forbidden:
+  - path: src/ProjectTemplates/test/Templates.Tests/template-baselines.json
+    reason: mechanical short-name rename (blazor-wasm-servicedefaults -> blazorwasm-servicedefaults) from a separate incorporated PR, unrelated to the gateway/OTel logic
+  - path: src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/BlazorWebCSharp.1/Properties/launchSettings.json
+    reason: drops the legacy inspectUri debug-proxy hint, an orthogonal WASM-debugger cleanup with no bearing on the Aspire-parity gateway/telemetry change
+  - path: src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWasmServiceDefaults-CSharp/.template.config/ide/icon.ico
+    reason: binary IDE gallery icon asset from the incorporated shortName-rename PR, purely cosmetic
+  - path: src/ProjectTemplates/scripts/Run-BlazorWasmServiceDefaults-Locally.ps1
+    reason: local template-iteration convenience script, not part of the runtime behavior being changed
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 23
   description: Align Blazor gateway and templates with Aspire — compact-but-diverse
-notes: ''
+notes: "Wide 23-file PR porting Aspire's Gateway.cs.in production-readiness (typed BlazorGatewayOptions gating HSTS/HTTPS-redirect/health-checks/OTel telemetry, shutdown-aware liveness, WebApplicationBuilder split for testability) into Microsoft.AspNetCore.Components.Gateway, plus a matching WASM client-side OTel fix (skip wiring when OTEL_EXPORTER_OTLP_ENDPOINT unset, avoiding a CircularDependencyException). Gold picks the semantic core (gateway src + its new test suite + the WASM template counterpart) over the many mechanical/config-only files (icon, launchSettings inspectUri removal, template rename baseline). string_indirection=true because BlazorGatewayOptions is bound from configuration keys (e.g. 'Gateway:HealthChecks:Enabled', 'BlazorGateway' section name) rather than compile-time references."

@@ -2,13 +2,75 @@ repo: aspnetcore
 base_commit: 959c8e58ae7bb00aa971fc53d614fbfb5378cb44
 commit: 43b81a989650398c4971456562488bed8a00783a
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: src/Components/Web/src/Media/MediaComponentBase.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New abstract base class implementing IComponent/IHandleAfterRender/IAsyncDisposable that owns the load/cache/dispose lifecycle shared by Image, Video, and FileDownload; it calls JSRuntime.InvokeAsync("Blazor._internal.BinaryMedia.setContentAsync", ...), the central mechanism the whole commit generalizes.
+  - path: src/Components/Web/src/Media/MediaSource.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renamed/generalized from Image/ImageSource.cs; defines the MediaSource type (byte[]/Stream + MimeType + CacheKey) that MediaComponentBase.Source and all three components consume - the shared input contract for the whole suite.
+  - path: src/Components/Web/src/Media/MediaContext.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the MediaContext (ObjectUrl/IsLoading/HasError/Element) passed into the RenderFragment<MediaContext> ChildContent of Image and Video, and is the base class FileDownloadContext extends for FileDownload - the shared child-content API surface.
+  - path: src/Components/Web.JS/src/Rendering/BinaryMedia.ts
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renamed/rewritten from BinaryImageComponent.ts; implements setContentAsync and downloadAsync, the exact JS methods MediaComponentBase.cs and FileDownload.cs invoke by the string "Blazor._internal.BinaryMedia.<method>" via IJSRuntime - the only link between the C# and TS halves of the feature.
+  - path: src/Components/Web/src/Media/Image.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Concrete MediaComponentBase subclass (TargetAttributeName "src") demonstrating the generalized pattern the commit title calls out ("Generalize Image component"); shows the ChildContent/default-render split every subclass follows.
+  - path: src/Components/Web/src/Media/FileDownload.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New component that overrides ShouldAutoLoad=false and defines its own OnClickAsync/FileDownloadContext, invoking "Blazor._internal.BinaryMedia.downloadAsync" directly rather than the base class's setContentAsync path - the most divergent of the three new components and central to the "add ... FileDownload" half of the commit.
+  - path: src/Components/Web.JS/src/GlobalExports.ts
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Swaps the exported BinaryImageComponent for BinaryMedia on the Blazor._internal object, which is the JS-side registration point that makes the "Blazor._internal.BinaryMedia.*" interop string calls in MediaComponentBase.cs/FileDownload.cs resolvable at runtime.
+  - path: src/Components/Web/src/PublicAPI.Unshipped.txt
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Roslyn public-API-tracking file removing the old Microsoft.AspNetCore.Components.Web.Image.* surface and adding the full Media namespace surface (MediaComponentBase, MediaSource, MediaContext, Image, Video, FileDownload, FileDownloadContext) - the authoritative list of the new public API this commit introduces.
+forbidden:
+  - path: src/Components/Components/src/ComponentBase.cs
+    reason: name looks like the parent of MediaComponentBase but MediaComponentBase implements IComponent/IHandleAfterRender directly and does not inherit from this class.
+  - path: src/Components/Web/src/Virtualization/Virtualize.cs
+    reason: sibling component in the same Web project with a comparable JS-interop-plus-disposal shape, but it renders lists via IAsyncEnumerable and is untouched by this commit.
+  - path: src/Components/Web.JS/src/Services/NavigationEnhancement.ts
+    reason: same Web.JS/src tree and does browser-side interop, but it is about client-side navigation/enhanced-nav caching, not media streaming, and is not part of this diff.
+  - path: src/Components/Server/src/Circuits/CircuitHost.cs
+    reason: bm25 hit on "streaming"/render-batch terminology, but it manages SignalR circuit lifecycle server-side and has no relation to the browser-side media/object-URL caching this commit adds.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: true
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [candidates, agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 25
   description: Generalize Image component; add Video and FileDownload components
-notes: ''
+notes: 'Generalizes the old Image/ImageSource pair into a Media namespace: MediaComponentBase
+  (shared load/cache/dispose lifecycle) + MediaSource + MediaContext, with Image,
+  Video, and FileDownload as thin subclasses, all bridged to the browser via a
+  renamed/rewritten BinaryMedia.ts that the C# side calls purely by interop string
+  ("Blazor._internal.BinaryMedia.setContentAsync"/"downloadAsync") - hence
+  string_indirection: true. Searched git grep at the pinned commit for any
+  consumer of Components.Web.Image.*/BinaryImageComponent or
+  Blazor._internal.BinaryMedia outside the 25-file diff and found none: this is
+  a brand-new, self-contained feature suite with no external callers yet, so
+  no_nontrivial_context is set and gold is the 8-file semantic core (3 shared
+  primitives, 2 representative subclasses, JS interop counterpart, and the two
+  coupled config/registration files) rather than all 25 touched paths (tests
+  and remaining testasset/E2E files omitted as repetitive of the same pattern).'

@@ -2,13 +2,80 @@ repo: aspnetcore
 base_commit: 120dc2d459a8ac2306159020c323e7a596b06c1f
 commit: 65468ce8cf5a4686a4f3dc344b2d02ec493d198a
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: src/Components/Endpoints/src/TempData/TempData.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the internal `TempData` class implementing `ITempData` — the dictionary-with-retention-tracking (Get/Peek/Keep/Save/Load) that is the core data structure the whole feature revolves around.
+  - path: src/Components/Endpoints/src/TempData/ITempData.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the public `ITempData` interface (Get/Peek/Keep) that is exposed to component authors as a `[CascadingParameter]`, per PublicAPI.Unshipped.txt.
+  - path: src/Components/Endpoints/src/TempData/CookieTempDataProvider.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Implements `ITempDataProvider` as the default (`TempDataProviderType.Cookie`) storage backend, using `IDataProtector`/`ISpanDataProtector` and `ChunkingCookieManager` to persist TempData across requests via a cookie.
+  - path: src/Components/Endpoints/src/TempData/TempDataProviderServiceCollectionExtensions.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines `AddTempData()` (called from RazorComponentsServiceCollectionExtensions), selects the provider by `TempDataProviderType`, and registers `ITempData` as a cascading value via `GetOrCreateTempData`/`httpContext.Response.OnStarting`, wiring the whole feature together.
+  - path: src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Existing `AddRazorComponents` entry point now calls the new `services.AddTempData()`, the single call site that activates the feature for every Blazor SSR app.
+  - path: src/Components/Endpoints/src/TempData/SessionStorageTempDataProvider.cs
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Implements the alternate `ITempDataProvider` backend (`TempDataProviderType.SessionStorage`) storing TempData in `HttpContext.Session` under the `__BlazorTempData` key instead of a cookie.
+  - path: src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceOptions.cs
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Adds the `TempDataCookie` (`CookieBuilder`, defaulting `Name` to `CookieTempDataProvider.CookieName`) and `TempDataProviderType` options that `CookieTempDataProvider`/`AddTempData` read to configure the feature.
+  - path: src/Components/Components/src/CascadingValueServiceCollectionExtensions.cs
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines `TryAddCascadingValue`, the DI-cascading-value mechanism that `AddTempDataCascadingValue` in TempDataProviderServiceCollectionExtensions.cs relies on to expose `ITempData` as a `[CascadingParameter]` to every component.
+  - path: src/Shared/ChunkingCookieManager/ChunkingCookieManager.cs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines `ChunkingCookieManager`, newly linked into the Endpoints project via a csproj `Compile Include`, which `CookieTempDataProvider` uses (`GetRequestCookie`/`AppendResponseCookie`/`DeleteCookie`) to read/write/split the TempData cookie.
+  - path: src/DataProtection/Abstractions/src/ISpanDataProtector.cs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines `ISpanDataProtector`, which `CookieTempDataProvider` probes for (`_dataProtector as ISpanDataProtector`) to take a zero-allocation `Unprotect` path using `RefPooledArrayBufferWriter` instead of the byte-array-allocating fallback.
+forbidden:
+  - path: src/Mvc/Mvc.ViewFeatures/src/CookieTempDataProvider.cs
+    reason: same class name and cookie-based TempData concept but for the unrelated MVC/Razor Pages pipeline, not referenced by the new Blazor code
+  - path: src/Mvc/Mvc.ViewFeatures/src/TempDataDictionary.cs
+    reason: MVC's pre-existing TempData dictionary type, conceptually similar but a separate implementation never imported by Components.Endpoints
+  - path: src/Components/Endpoints/src/DependencyInjection/WebAssemblySettingsEmitter.cs
+    reason: sibling service registered in the same DI extension method (RazorComponentsServiceCollectionExtensions) but functionally unrelated to TempData
+  - path: src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.cs
+    reason: source of HttpContext for cascading values via a pre-existing pattern, but the class itself is untouched by this patch
+nontrivial_gold_count: 3
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, graph, random]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 27
   description: TempData support for Blazor — cross-project feature with csproj edits
-notes: ''
+notes: >
+  Adds TempData support to Blazor SSR: a cascading `ITempData` (Get/Peek/Keep,
+  case-insensitive, tracks which keys survive to the next request) backed by
+  a pluggable `ITempDataProvider` (cookie via `ChunkingCookieManager`+DataProtection,
+  or session storage), wired in through `AddTempData()`/`TryAddCascadingValue`.
+  Two shared-source files (ChunkingCookieManager, ISpanDataProtector) are newly
+  pulled into the Endpoints project purely via csproj `Compile Include` with no
+  textual diff of their own, so they only surface through cross-file grep, not
+  the patch text.

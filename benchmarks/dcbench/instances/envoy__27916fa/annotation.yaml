@@ -2,13 +2,46 @@ repo: envoy
 base_commit: 92669b766084b641d05b7df6f290fe9601a8cd07
 commit: 27916fa8fb986682f3d0dd5dfba6224c030bbcb8
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: api/envoy/config/bootstrap/v3/bootstrap.proto
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New home of the `ListenerManager`, `ValidationListenerManager`, and `ApiListenerManager` placeholder messages, referenced from the `listener_manager` TypedExtensionConfig field they configure.
+  - path: api/envoy/config/listener/v3/listener.proto
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Old home of the three placeholder messages being removed; needed to see the move is a pure relocation (identical message bodies) not a redefinition.
+  - path: source/common/listener_manager/listener_manager_impl.h
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: "`ListenerManagerFactoryImpl::createEmptyConfigProto` switches its `std::make_unique` target from `envoy::config::listener::v3::ListenerManager` to `envoy::config::bootstrap::v3::ListenerManager`, the primary production consumer of the moved type."
+  - path: source/extensions/listener_managers/validation_listener_manager/validation_listener_manager.h
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: "`ValidationListenerManagerFactoryImpl::createEmptyConfigProto` is repointed at `envoy::config::bootstrap::v3::ValidationListenerManager`, the validation-mode counterpart of the default listener manager factory."
+  - path: mobile/library/common/extensions/listener_managers/api_listener_manager/api_listener_manager.h
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: "`ApiListenerManagerFactoryImpl::createEmptyConfigProto` and the new `bootstrap.pb.h` include show the Envoy Mobile side of the same rename for `ApiListenerManager`."
+forbidden:
+  - path: source/common/listener_manager/listener_impl.cc
+    reason: same directory/component as the changed listener_manager_impl.h but never references ListenerManager/ApiListenerManager/ValidationListenerManager as proto types.
+  - path: mobile/library/cc/engine_builder.h
+    reason: header pairing engine_builder.cc (which is in the diff) but declares no reference to the moved proto types, so it needs no change.
+  - path: api/envoy/config/core/v3/base.proto
+    reason: plausible core-proto match by keyword but TypedExtensionConfig (the field type the placeholders configure) actually lives in extension.proto, not base.proto.
+  - path: mobile/docs/root/intro/version_history.rst
+    reason: 'mobile changelog that does not mention this move; commit is explicitly marked Release Notes N.'
+  - path: changelogs/1.38.0.yaml
+    reason: release-notes file untouched by this commit, which is marked not-implemented-hide and release-notes N.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 8
-  description: 'Proto move: listener manager protos relocated, coupled api + source + mobile edits'
-notes: ''
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, random]
+notes: 'Relocates three unpublished placeholder messages (ListenerManager, ValidationListenerManager, ApiListenerManager) from listener.proto to bootstrap.proto since they configure Bootstrap.listener_manager and are not xDS types; the five consumer edits are mechanical namespace updates to std::make_unique<...> calls with no behavior change. Searched for dedicated unit tests and config fixtures exercising these placeholder types and found none (they are empty marker messages looked up by factory name string, not exercised by value), so no nontrivial gold outside the diff qualified; the five gold entries are all diff-central.'

@@ -2,13 +2,77 @@ repo: firefox-ios
 base_commit: 301291d9a72bbb68e8c98c9b606dd27753310979
 commit: 1f932af7bfe1161255ad1493ba64a56a29169ce9
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: BrowserKit/Package.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Declares the SPM `.library`/`.target`/`.testTarget` entries renamed `VoiceSearchKit`/`VoiceSearchKitTests` -> `QuickAnswersKit`/`QuickAnswersKitTests`; anchors the whole module rename that every other file in the diff depends on.
+  - path: firefox-ios/Client/Coordinators/VoiceSearchCoordinator.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Renames `final class VoiceSearchCoordinator` -> `QuickAnswersCoordinator` (conforming to `QuickAnswersNavigationHandler`, importing `QuickAnswersKit`) while the file itself keeps its old filename — the app-side entry point that instantiates `QuickAnswersViewController`."
+  - path: BrowserKit/Sources/QuickAnswersKit/UI/QuickAnswersNavigationHandler.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renamed from `VoiceSearchNavigationHandler.swift`; defines `QuickAnswersNavigationType` and the `QuickAnswersNavigationHandler` protocol that `QuickAnswersCoordinator` conforms to and that gates the `dismissQuickAnswers(with:)` call site rename.
+  - path: firefox-ios/Client/FeatureFlags/NimbusFlaggableFeature.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renames the `NimbusFeatureFlagID` enum case `.voiceSearch` -> `.quickAnswers` and moves it between the alphabetized `debugKey`/build-channel switch lists, the source of truth every other feature-flag call site reads.
+  - path: firefox-ios/Client/Nimbus/NimbusFeatureFlagLayer.swift
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: "Switches on `.quickAnswers` and calls `nimbus.features.quickAnswersFeature.value().enabled` — the concrete string-indirected linkage into the Nimbus-FML-generated Swift accessor whose name derives from the YAML feature id."
+  - path: firefox-ios/nimbus-features/quickAnswersFeature.yaml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Renamed from `voiceSearchFeature.yaml`; defines the `quick-answers-feature` id string that Nimbus FML codegen compiles into the `nimbus.features.quickAnswersFeature` accessor referenced in `NimbusFeatureFlagLayer.swift` — the root of the string indirection.
+  - path: firefox-ios/nimbus.fml.yaml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: The manifest `include:` list swaps `nimbus-features/voiceSearchFeature.yaml` for `nimbus-features/quickAnswersFeature.yaml`; without this edit the renamed feature file would never be picked up by FML codegen.
+  - path: firefox-ios/Client.xcodeproj/project.pbxproj
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Replaces the `XCSwiftPackageProductDependency`/`PBXBuildFile` entries for the `VoiceSearchKit` product with `QuickAnswersKit` in the Frameworks build phase and package-product list, required for the app target to link against the renamed module.
+forbidden:
+  - path: BrowserKit/.swiftpm/xcode/xcshareddata/xcschemes/VoiceSearchKit.xcscheme
+    reason: local Xcode scheme file still named/keyed `VoiceSearchKit`/`VoiceSearchKitTests` and left untouched by this rename, but it is an auto-regenerable per-developer scheme, not part of the Swift/Nimbus semantics the diff changes.
+  - path: firefox-ios/Client.xcodeproj/xcshareddata/xcschemes/Fennec.xcscheme
+    reason: shared app scheme whose Frameworks/build-phase list still references `BlueprintIdentifier = "VoiceSearchKit"`, another stale leftover from the rename but not needed to understand what this commit does.
+  - path: BrowserKit/Sources/UnifiedSearchKit/SearchEngineTableView.swift
+    reason: sibling `*SearchKit` module in the same BrowserKit/Sources directory, easily confused by name with VoiceSearchKit/QuickAnswersKit, but implements the unrelated, already-shipped unified search bar and is untouched by this commit.
+  - path: firefox-ios/Client/Frontend/Browser/SearchEngines/TrendingSearchClient.swift
+    reason: another "search"-named feature with its own Nimbus flag check (`.trendingSearches` / `checkTrendingSearches`) sitting right next to the renamed `.quickAnswers` case in `NimbusFeatureFlagLayer.swift`, but it is a separate, unrenamed feature.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: true
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 67
   description: Quick Answers feature project rename — mass file moves + pbxproj + test plan + CI yaml
-notes: ''
+notes: >
+  Mechanical rename of the VoiceSearchKit SPM module (and its VoiceSearchCoordinator /
+  NimbusFeatureFlagID.voiceSearch / nimbus-features/voiceSearchFeature.yaml call sites)
+  to QuickAnswersKit / .quickAnswers / quickAnswersFeature.yaml, via git-mv-style file
+  renames plus the pbxproj/test-plan bookkeeping. Verified via git grep at the pinned
+  commit that every functional reference to the old names (VoiceSearchKit,
+  VoiceSearchCoordinator, voiceSearchFeature, .voiceSearch) inside Swift/YAML sources is
+  already covered by this commit's own 65-file diff-tree, except two auto-regenerable
+  Xcode `.xcscheme` files that still say "VoiceSearchKit" (listed as forbidden, not
+  gold: they don't help explain the change, they're leftover scheme cruft). No genuine
+  external gold exists, so no_nontrivial_context is set instead of padding.
+  string_indirection is true because the core Nimbus-flag linkage
+  (`quick-answers-feature` YAML id -> generated `nimbus.features.quickAnswersFeature`
+  Swift accessor) is FML-codegen-by-name, not a static reference — even though both
+  sides of that link happen to already be inside this diff.

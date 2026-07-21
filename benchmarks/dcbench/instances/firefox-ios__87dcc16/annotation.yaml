@@ -2,14 +2,68 @@ repo: firefox-ios
 base_commit: 2dbae356865db6e6cf41efc7122122c66681b6a2
 commit: 87dcc1641f953be97c43d83936112eba85d8e126
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: firefox-ios/Client/FeatureFlags/NimbusFlaggableFeature.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Drops the `.bottomSearchBar` case from `featureKey()`/`defaultValue()`/`setUserPreference()`, the old per-flag dispatch that `searchBarPosition` used to route through."
+  - path: firefox-ios/Client/FeatureFlags/UserFeaturePreferenceManager.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "New source of truth for `searchBarPosition` (via `HasUserFeaturePreferences`/`userPreferences`), replacing `featureFlags.getCustomState(for: .searchBarPosition)` everywhere in the patch."
+  - path: firefox-ios/Client/Frontend/Settings/SearchBar/SearchBarSettingsViewModel.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Defines the `SearchBarPosition` enum and the `SearchBarLocationProvider` protocol whose `isSearchBarLocationFeatureEnabled`/flag-backed `searchBarPosition` are replaced by direct `userPreferences` reads."
+  - path: firefox-ios/Client/Nimbus/NimbusManager.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Removes `HasNimbusSearchBar`/`bottomSearchBarLayer` and the injected `NimbusSearchBarLayer`, eliminating the last live reference to the deleted `NimbusSearchBarLayer.swift`."
+  - path: firefox-ios/Client/Coordinators/SettingsCoordinator.swift
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: "Migrates `addressBarMenu` checks from `LegacyFeatureFlagsManager.shared.isFeatureEnabled(.addressBarMenu, checking: .buildOnly)` to `featureFlagsProvider.isEnabled(.addressBarMenu)`, the new DI-resolved provider."
+  - path: firefox-ios/Client/FeatureFlags/FeatureFlagsProvider.swift
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "Defines `FeatureFlaggable` and `featureFlagsProvider` (resolved via `AppContainer.shared.resolve()`) that `SettingsCoordinator.swift` and `SearchBarSettingsViewModel.swift` now conform to/call, but this file itself is untouched by the patch."
+  - path: BrowserKit/Sources/Shared/Prefs.swift
+    tier: essential
+    role: config
+    in_diff: false
+    rationale: "Declares `PrefsKeys.FeatureFlags.SearchBarPosition = \"SearchBarPositionUsersPrefsKey\"`, the string prefs key that `UserFeaturePreferenceManager.searchBarPosition`/`setSearchBarPosition` read/write and that untouched consumers (`ProfilePrefsReader.swift`, `ToolbarMiddleware.swift`) still key off of — the string-indirection linkage tying the new preference layer to old readers."
+  - path: BrowserKit/Sources/Common/Constants/NotificationConstants.swift
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: "Declares `Notification.Name.SearchBarPositionDidChange` posted by `OnboardingService.swift`/`IntroViewController.swift` and observed by untouched files (`AccessoryViewProvider.swift`, `BrowserViewController.swift`, `StatusBarOverlay.swift`) — another string-keyed channel the patch's new `userPreferences.setSearchBarPosition` calls still feed."
+  - path: firefox-ios/firefox-ios-tests/Tests/ClientTests/DependencyInjection/DependencyHelperMock.swift
+    tier: helpful
+    role: test
+    in_diff: false
+    rationale: "Defines `bootstrapDependencies(injectedProfile:)` and `reset()`, the pre-existing DI helper that `SearchBarLocationSaverTests.swift`/`StatusBarOverlayTests.swift`/`SearchBarSettingsViewModelTests.swift` newly start calling in this patch to register a real `UserFeaturePreferenceManager`."
+forbidden:
+  - path: firefox-ios/Client/Frontend/Browser/Toolbars/Redux/ToolbarMiddleware.swift
+    reason: "consumes the `SearchBarPosition` enum for layout math but is unaffected by the flag-to-preference migration"
+  - path: firefox-ios/Client/ProfilePrefsReader.swift
+    reason: "reads the same `PrefsKeys.FeatureFlags.SearchBarPosition` string key but is a standalone external-read utility untouched by and irrelevant to the migration"
+  - path: firefox-ios/Client/Frontend/Components/StatusBarOverlay.swift
+    reason: "observes `.SearchBarPositionDidChange` like the touched files but its own logic is unchanged by this refactor, despite its test file being touched"
+  - path: firefox-ios/Client/Frontend/Onboarding/Models/IntroViewModel.swift
+    reason: "calls `saveSearchBarPosition()` on the view model but is a thin pass-through, not part of the flag-removal mechanism"
+nontrivial_gold_count: 4
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 25
   description: Remove toolbar position feature flag, migrate addressBarMenu — flag removal ripple with
     nimbus yaml
-notes: ''
+notes: 'Removes the searchBarPosition/bottomSearchBar Nimbus custom feature flag (and its NimbusSearchBarLayer/HasNimbusSearchBar plumbing), replacing it with UserFeaturePreferenceManager-backed userPreferences.searchBarPosition, and migrates addressBarMenu checks from LegacyFeatureFlagsManager to the new FeatureFlaggable/featureFlagsProvider DI path. Linkage runs through string-keyed Prefs (SearchBarPositionUsersPrefsKey) and NSNotification.Name (SearchBarPositionDidChange) consumed by several untouched files, hence string_indirection: true. No candidates.yaml present for this instance.'

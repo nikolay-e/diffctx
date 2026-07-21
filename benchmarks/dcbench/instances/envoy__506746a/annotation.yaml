@@ -2,13 +2,80 @@ repo: envoy
 base_commit: 6d7aa3b12a9a8e4209b6b469620f1ba5dc062828
 commit: 506746a6ee2bf670cefe583f7d23994ef77886af
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: api/envoy/extensions/filters/http/file_server/v3/file_server.proto
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines FileServerConfig (PathMapping, DirectoryBehavior, content_types) that config.cc/filter_config.cc parse and that filter.cc's runtime behavior implements.
+  - path: source/extensions/filters/http/file_server/config.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: FileServerFilterFactory::createFilterFactoryFromProtoTyped validates the proto and registers the filter via REGISTER_FACTORY(FileServerFilterFactory, NamedHttpFilterConfigFactory) — the entry point wiring config to runtime filter.
+  - path: source/extensions/filters/http/file_server/filter.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: FileServerFilter::decodeHeaders implements the request-handling logic (path mapping lookup, range header parsing, method checks) that is the core behavior being added.
+  - path: source/extensions/filters/http/file_server/filter_config.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: FileServerConfig::applyPathMapping implements the path-escape protection described in the commit message via std::filesystem::path lexically_normal checks, and builds the path_mappings_ RadixTree used by the filter.
+  - path: source/extensions/filters/http/file_server/file_streamer.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: FileStreamer::begin/startFile/readBodyChunk implement the async stat/open/read pipeline against AsyncFileManager that produces the streamed HTTP response.
+  - path: source/extensions/filters/http/common/factory_base.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines DualFactoryBase<ConfigProto, RouteConfigProto>, the base class FileServerFilterFactory (config.h) extends to get createFilterFactoryFromProtoTyped/createRouteSpecificFilterConfigTyped dispatch machinery.
+  - path: source/extensions/filters/http/common/pass_through_filter.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines Http::PassThroughDecoderFilter, the base class FileServerFilter (filter.h) extends so it only needs to override decodeHeaders/onDestroy.
+  - path: source/extensions/common/async_files/async_file_manager.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines the AsyncFileManager interface (stat/openExistingFile/read) that FileStreamer and FileServerConfig depend on for all non-blocking filesystem access — the whole filter's async model rests on this pre-existing abstraction.
+  - path: source/common/common/radix_tree.h
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the RadixTree template used as FileServerConfig::path_mappings_ (findLongestPrefix) for longest-prefix matching of request_path_prefix mappings; not obvious from the diff alone since it's a reused generic component.
+  - path: source/extensions/filters/http/file_system_buffer/filter_config.cc
+    tier: helpful
+    role: cochange
+    in_diff: false
+    rationale: Sibling HTTP filter already using the same AsyncFileManager/async_files pattern and sharing a CODEOWNERS owner (ravenblackx) with the new filter — the closest existing architectural precedent for how to wire AsyncFileManagerFactory into an HTTP filter.
+forbidden:
+  - path: source/extensions/filters/http/cache/cache_filter.cc
+    reason: unrelated HTTP cache filter (different caching subsystem, not filesystem serving) despite topical proximity in bm25 candidates
+  - path: source/common/router/router.cc
+    reason: generic core router logic, not touched or required to understand the new filter's behavior
+  - path: test/extensions/filters/http/file_system_buffer/filter_test.cc
+    reason: tests a different sibling filter (buffering, not serving); similar name/directory but exercises unrelated code paths
+  - path: api/envoy/config/core/v3/protocol.proto
+    reason: generic core HTTP protocol proto surfaced by keyword match; file_server.proto does not import or depend on it
+nontrivial_gold_count: 5
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, random]
+notes: >-
+  Adds a new work-in-progress HTTP file-serving filter (envoy.filters.http.file_server):
+  proto config with path-prefix mappings and content-type rules, a filter that resolves
+  request paths against those mappings with path-escape protection, and a FileStreamer
+  that streams file contents asynchronously via the existing AsyncFileManager
+  abstraction. string_indirection=true because runtime filter selection goes through
+  the extension/type-url string ("envoy.filters.http.file_server" in
+  extensions_build_config.bzl/extensions_metadata.yaml and the proto type URL via
+  REGISTER_FACTORY) rather than a static code reference.
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 28
   description: 'New file server filter: api + 13 source + 7 test + docs + bazel'
-notes: ''

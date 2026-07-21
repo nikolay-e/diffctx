@@ -2,14 +2,77 @@ repo: envoy
 base_commit: 93e658474ba0352992bce6cfedb582e868954f6c
 commit: 152db6cfc5756f35cce0cbd8b021159d3efa6fc3
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: contrib/contrib_build_config.bzl
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds `envoy.filters.http.peer_metadata`, `envoy.filters.http.istio_stats`, `envoy.filters.http.alpn`, and `envoy.filters.network.metadata_exchange` entries to the `CONTRIB_EXTENSIONS` dict — this is the central manifest mapping every migrated extension's canonical name to its new `//contrib/istio/...` bazel build target.
+  - path: contrib/extensions_metadata.yaml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds `security_posture`/`status`/`type_urls` metadata entries keyed by the same four extension names just registered in `contrib_build_config.bzl`; the two files must stay in lockstep for every migrated extension.
+  - path: api/BUILD
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds `proto_library` deps for the four new `//contrib/envoy/extensions/filters/.../v3:pkg` proto packages into the aggregated `//api:api` target, making the migrated istio protos part of envoy's published API surface.
+  - path: api/versioning/BUILD
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Mirrors the api/BUILD dep list for the versioning-checked proto set, adding the same four migrated `contrib/envoy/extensions/.../v3:pkg` targets.
+  - path: tools/type_whisperer/proto_build_targets_gen.py
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Adds `NONSTANDARD_V3_PKGS` (`stats`, `io.istio.http.peer_metadata`, `envoy.tcp.metadataexchange.config`, `istio.envoy.config.filter.http.alpn.v2alpha1`, `istio.workload`) and `nonstandard_v3_package()` because the migrated istio protos use non-Envoy package names that fail the standard `V3_REGEX`, requiring special-casing in the BUILD-file generator that produces api/BUILD-style dep lists.
+  - path: docs/root/api-v3/config/contrib/istio/istio.rst
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: New toctree page indexing the four migrated proto files (alpn, istio_stats, peer_metadata, metadata_exchange, workload_discovery) under Contrib > Istio, linked in from docs/root/api-v3/config/contrib/contrib.rst's new `istio/istio` entry.
+  - path: changelogs/current.yaml
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: 'States the change explicitly: "Migrated all extensions in the `istio/proxy` to the main Envoy repository''s contrib directory" — explains why this commit is pure additions with zero deletions in envoy''s own git history (the extensions previously lived in the separate istio/proxy repo, not here).'
+forbidden:
+  - path: api/contrib/envoy/extensions/private_key_providers/cryptomb/v3alpha/cryptomb.proto
+    reason: unrelated pre-existing contrib proto, only superficially similar (same `api/contrib/envoy/extensions/.../v3.../BUILD` directory shape) to the newly added istio protos.
+  - path: api/envoy/config/cluster/v3/cluster.proto
+    reason: bm25 false positive — unrelated core (non-contrib) proto untouched by this migration.
+  - path: source/common/router/router.cc
+    reason: bm25 false positive — unrelated core router source file, not part of the istio contrib migration.
+  - path: test/mocks/local_reply/BUILD
+    reason: random candidate — unrelated mock BUILD file with no reference to any migrated istio extension.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: true
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, random]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 55
   description: 'Extension restructure: migrate all istio extensions to contrib (api protos moved with
     code+docs)'
-notes: ''
+notes: >-
+  Vendors four istio proxy extensions (alpn, istio_stats, peer_metadata,
+  metadata_exchange, plus shared workload_discovery/metadata_object helpers) from
+  the external istio/proxy repo into envoy's contrib/, with matching api protos,
+  docs, and build/registry wiring (CODEOWNERS, api/BUILD, api/versioning/BUILD,
+  contrib_build_config.bzl, extensions_metadata.yaml, docs index, spelling
+  dictionary, type_whisperer nonstandard-package list). diff-tree shows 45 adds
+  and only 10 modifies, zero deletes — none of these paths existed in this repo
+  at base_commit, confirming this is a fresh vendor-in, not an in-repo file move.
+  Searched the generic consumers of the touched registries (contrib/BUILD,
+  contrib/all_contrib_extensions.bzl, contrib/exe/BUILD, test/exe/all_extensions_build_test.cc,
+  bazel/repositories.bzl) and CI config for istio-specific coupling outside the
+  diff; found none — those files iterate CONTRIB_EXTENSIONS/extensions_metadata.yaml
+  generically for every contrib extension and are unchanged by and non-specific to
+  this migration, so no_nontrivial_context: true. string_indirection is true because
+  contrib_build_config.bzl and extensions_metadata.yaml are linked to each other,
+  and ultimately to the runtime `Registry::FactoryCategoryRegistry`, purely through
+  matching extension-name strings (e.g. "envoy.filters.http.istio_stats"), not a
+  static code reference.

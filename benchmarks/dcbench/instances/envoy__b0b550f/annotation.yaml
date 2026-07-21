@@ -2,14 +2,78 @@ repo: envoy
 base_commit: e451caf9609b11418ec67f9d29b109e7a966a22c
 commit: b0b550f2a19d8db5859701a61096fc21dffd8ea0
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: envoy/server/factory_context.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the two new pure-virtual accessors `sslContextManager()` and `secretManager()` to `ServerFactoryContext`, the exact interface change this commit implements.
+  - path: envoy/server/transport_socket_config.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes the now-redundant `sslContextManager()`, `secretManager()`, and `clusterManager()` accessors from `TransportSocketFactoryContext`, since callers now reach them via `serverFactoryContext()`.
+  - path: source/server/server.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: InstanceImpl implements both `ServerFactoryContext` and `TransportSocketFactoryContext`; the diff moves the `sslContextManager()`/`secretManager()` overrides (both already forwarding to `server_.sslContextManager()`/`server_.secretManager()`) from the TransportSocketFactoryContext section to the ServerFactoryContext section, proving the move is a no-op at the implementation level.
+  - path: source/server/transport_socket_config_impl.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: TransportSocketFactoryContextImpl drops its own `context_manager_`/`cluster_manager_` members and the `sslContextManager()`/`secretManager()` overrides entirely, now relying on `server_context_.sslContextManager()`/`secretManager()` via `ServerFactoryContext&`.
+  - path: envoy/server/instance.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Pre-existing (untouched) `Server::Instance` interface already declares `virtual Ssl::ContextManager& sslContextManager() PURE` (line 84) and `virtual Secret::SecretManager& secretManager() PURE` (line 162) — the server-wide accessors this commit exposes through `ServerFactoryContext` already existed here, which is why the refactor is safe.
+  - path: envoy/secret/secret_manager.h
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the `Secret::SecretManager` interface (`addStaticSecret`, `findOrCreateTlsCertificateProvider`, etc.) that `ServerFactoryContext::secretManager()` now returns; needed to understand what the moved accessor exposes.
+  - path: envoy/ssl/context_manager.h
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the `Ssl::ContextManager` interface (`createSslClientContext`, `createSslServerContext`) that `ServerFactoryContext::sslContextManager()` now returns; needed to understand what the moved accessor exposes.
+  - path: source/common/tls/context_config_impl.cc
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Representative call-site pattern repeated across the diff — every `factory_context.secretManager()` call becomes `factory_context.serverFactoryContext().secretManager()` (e.g. in `getTlsCertificateConfigProviders`, `getProviderFromSds`), showing the mechanical propagation the wide diff consists of.
+  - path: test/mocks/server/server_factory_context.h
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: MockServerFactoryContext gains `MOCK_METHOD(Secret::SecretManager&, secretManager, ())` and `MOCK_METHOD(Ssl::ContextManager&, sslContextManager, ())` plus the `MockTransportSocketFactoryContext` class that replaces the deleted `test/mocks/server/transport_socket_factory_context.h`, anchoring how the test double hierarchy was restructured to match the interface move.
+forbidden:
+  - path: contrib/qat/private_key_providers/test/ops_test.cc
+    reason: mechanical single-line include swap (`test/mocks/server/transport_socket_factory_context.h` -> `test/mocks/server/server_factory_context.h`), not individually informative.
+  - path: test/extensions/transport_sockets/tcp_stats/tcp_stats_test.cc
+    reason: same mechanical include-rename pattern repeated verbatim across dozens of unrelated test files.
+  - path: contrib/sxg/filters/http/test/filter_test.cc
+    reason: contrib test file mechanically updated to call the new `serverFactoryContext().secretManager()` accessor chain, redundant with the representative caller already in gold.
+  - path: mobile/test/common/integration/BUILD
+    reason: Bazel BUILD-file dependency-target rename mirroring the mock-file rename, no semantic content about the interface change.
+nontrivial_gold_count: 3
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 73
   description: Context refactor moving secret/ssl-context managers to server context — 48 test + 16 source
     + contrib + mobile
-notes: ''
+notes: 'Moves sslContextManager()/secretManager() accessors from TransportSocketFactoryContext
+  (envoy/server/transport_socket_config.h) to ServerFactoryContext (envoy/server/factory_context.h)
+  so both are reachable as server-wide resources via factory_context.serverFactoryContext().*();
+  source/server/server.h (InstanceImpl) shows the move is a no-op since both accessors already
+  forwarded to the pre-existing Server::Instance interface (envoy/server/instance.h, outside the
+  diff). This is a wide mechanical-propagation commit (73 files: 48 test + 16 source + contrib +
+  mobile) touching every call site of the old accessors; gold was curated to the ~9 files that
+  define or anchor the semantic core (the interface change, its implementation, and the pre-existing
+  server-wide interfaces it builds on) plus one representative call-site and one representative
+  mock-restructuring file, deliberately excluding the dozens of near-identical mechanical test/BUILD
+  edits.'

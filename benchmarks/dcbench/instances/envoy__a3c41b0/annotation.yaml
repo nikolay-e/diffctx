@@ -2,13 +2,67 @@ repo: envoy
 base_commit: be7fa61a87d85117e937ea663d2baecd19e366d5
 commit: a3c41b0438cd8bb4f7e85730bbc6c0a952cf1e8d
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: api/envoy/extensions/filters/http/mcp_json_rest_bridge/v3/mcp_json_rest_bridge.proto
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the McpJsonRestBridge/ServerInfo/ServerToolConfig/ToolConfig/HttpRule messages that config.h/config.cc parse via FactoryBase<McpJsonRestBridge>.
+  - path: source/extensions/filters/http/mcp_json_rest_bridge/config.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Declares McpJsonRestBridgeFilterConfigFactory extending Common::FactoryBase<McpJsonRestBridge>, the class whose constructor and createFilterFactoryFromProtoTyped override are implemented in config.cc.
+  - path: source/extensions/filters/http/mcp_json_rest_bridge/config.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Implements createFilterFactoryFromProtoTyped (currently a no-op lambda) and REGISTER_FACTORY(McpJsonRestBridgeFilterConfigFactory, NamedHttpFilterConfigFactory) — this is the semantic core of the commit.
+  - path: test/extensions/filters/http/mcp_json_rest_bridge/config_test.cc
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Looks up the factory by the literal name "envoy.filters.http.mcp_json_rest_bridge" via Registry::FactoryRegistry::getFactory and asserts the empty-config filter chain callback is a no-op, directly covering config.cc's current stub behavior.
+  - path: source/extensions/extensions_build_config.bzl
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Adds the "envoy.filters.http.mcp_json_rest_bridge" key mapping to //source/extensions/filters/http/mcp_json_rest_bridge:config, the mechanism that includes the new extension in default Envoy builds.
+  - path: source/extensions/extensions_metadata.yaml
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Registers the envoy.filters.http.mcp_json_rest_bridge extension's category, alpha status, and type_url envoy.extensions.filters.http.mcp_json_rest_bridge.v3.McpJsonRestBridge for the extension database/docs tooling.
+  - path: source/extensions/filters/http/common/factory_base.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines the FactoryBase<ConfigProto> template (createFilterFactoryFromProto dispatch, name(), createFilterFactoryFromProtoTyped PURE virtual) that McpJsonRestBridgeFilterConfigFactory inherits from in config.h.
+  - path: envoy/registry/registry.h
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the REGISTER_FACTORY macro invoked in config.cc to statically register McpJsonRestBridgeFilterConfigFactory against NamedHttpFilterConfigFactory.
+  - path: envoy/server/filter_config.h
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines Server::Configuration::NamedHttpFilterConfigFactory, the base factory interface used both as the REGISTER_FACTORY base and as the FactoryBase parent class in config.h.
+forbidden:
+  - path: source/extensions/filters/http/mcp/config.cc
+    reason: sibling filter directly above in the CODEOWNERS diff hunk and shares the "mcp" name prefix, but it is a distinct extension (raw MCP JSON-RPC filter) not referenced by any new code
+  - path: source/extensions/filters/http/mcp_router/config.cc
+    reason: another CODEOWNERS-adjacent "mcp_*" sibling filter, unrelated implementation and proto
+  - path: source/extensions/filters/http/a2a/BUILD
+    reason: changelog entry for area a2a sits immediately above the new mcp_json_rest_bridge entry in changelogs/current.yaml, but it is an unrelated filter with no code coupling
+  - path: source/extensions/filters/http/well_known_names.h
+    reason: central HTTP filter name constants file that looks like the natural place to register a new filter's string name, but this commit does not add an entry there (confirmed absent) — filter name only lives in FactoryBase's constructor arg and the build/metadata files
+nontrivial_gold_count: 3
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 14
   description: 'MCP JSON REST bridge filter config: compact api+source+test+changelog commit'
-notes: ''
+notes: 'Adds a work-in-progress skeleton HTTP filter (envoy.filters.http.mcp_json_rest_bridge) that will transcode MCP JSON-RPC tool calls into REST HTTP requests — this commit only wires up the proto schema, build registration, and a stub filter factory (createFilterFactoryFromProtoTyped returns a no-op lambda), with real transcoding logic deferred (see TODO in config_test.cc). Filter lookup and registration both run through the string "envoy.filters.http.mcp_json_rest_bridge" (FactoryBase name, extensions_build_config.bzl key, extensions_metadata.yaml key, and the test''s getFactory() call), hence string_indirection is true.'

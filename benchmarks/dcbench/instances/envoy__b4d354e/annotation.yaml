@@ -2,14 +2,70 @@ repo: envoy
 base_commit: 87d2600993e694b6d82c756b0c3fa805b6253f74
 commit: b4d354eff35b9727d3cee301260f08ed7d03ab3c
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 28
-  description: 'New BandwidthShare HTTP filter: api proto + source/extensions + test + 4 docs rst + changelog
-    in one commit'
-notes: ''
+gold:
+  - path: api/envoy/extensions/filters/http/bandwidth_share/v3/bandwidth_share.proto
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the BandwidthShare proto message (request_limit/response_limit, tenant_name_selector matcher, tenant_configs) that config.cc's protoToSharedState() parses into FilterConfig.
+  - path: source/extensions/filters/http/bandwidth_share/config.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: BandwidthShareFilterFactory registers the filter under REGISTER_FACTORY and builds FilterConfig from the proto, including compiling the tenant_name_selector matcher tree via MatcherDataInputValidator.
+  - path: source/extensions/filters/http/bandwidth_share/filter.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Implements BandwidthShare::decodeHeaders/decodeData/encodeHeaders/encodeData, constructing Common::StreamRateLimiter instances per direction and updating per-tenant stats — the core runtime behavior of the new filter.
+  - path: source/extensions/filters/http/bandwidth_share/filter_config.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines FilterConfig (Router::RouteSpecificFilterConfig) with getRequestBucket/getResponseBucket/getTenantName/getTenantConfig, the per-route shared state that filter.cc reads via getConfig().
+  - path: source/extensions/filters/http/bandwidth_share/token_bucket_singleton.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: TokenBucketSingleton wraps FairTokenBucket::Bucket behind SINGLETON_MANAGER_REGISTRATION(fair_token_bucket_singleton) with per-worker thread-local caching, the shared bucket that config.cc's bucket_singleton->setBucket() populates.
+  - path: test/extensions/filters/http/bandwidth_share/filter_integration_test.cc
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: End-to-end integration test exercising the filter's request/response bandwidth limiting and per-tenant weighted sharing behavior described in bandwidth_share_filter.rst.
+  - path: source/extensions/filters/http/bandwidth_limit/bandwidth_limit.h
+    tier: helpful
+    role: cochange
+    in_diff: false
+    rationale: Commit message names BandwidthLimitFilter as the direct architectural predecessor ("similar in concept and implementation to BandwidthLimit... resolving usability issues"); it is unmodified by this diff, confirming BandwidthShare is a parallel filter rather than a refactor of it.
+  - path: source/extensions/filters/http/common/stream_rate_limiter.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Common::StreamRateLimiter is instantiated directly in filter.cc's decodeHeaders/encodeHeaders (request_limiter_/response_limiter_) to perform the actual buffered-write throttling; it is reused unmodified from the sibling bandwidth_limit filter's implementation.
+  - path: source/extensions/filters/http/common/factory_base.h
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: BandwidthShareFilterFactory in config.cc extends Common::DualFactoryBase<ProtoConfig, ProtoConfig> from this header to get both per-listener and per-route factory registration plumbing.
+forbidden:
+  - path: source/common/common/shared_token_bucket_impl.h
+    reason: sounds like the relevant token-bucket primitive, but it's the plain (non-fair, non-weighted) bucket used by the sibling bandwidth_limit filter — bandwidth_share instead uses its own pre-existing FairTokenBucket in fair_token_bucket_impl.h
+  - path: source/extensions/filters/http/local_ratelimit
+    reason: name suggests rate limiting relevance, but it's a request-count-based local rate limit filter, unrelated to byte-bandwidth fair sharing
+  - path: source/extensions/filters/http/ratelimit
+    reason: global rate-limit-service filter operating on request counts via an external RLS, not on byte bandwidth
+  - path: source/extensions/filters/network/tcp_bandwidth_limit
+    reason: shares the "bandwidth_limit" name and CODEOWNERS block but is a TCP network filter, a different layer from this HTTP filter
+nontrivial_gold_count: 3
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Adds the BandwidthShare HTTP filter: a per-tenant weighted-fair-share bandwidth
+  limiter built on the already-landed FairTokenBucket/TokenBucketSingleton (prior
+  PRs), reusing Common::StreamRateLimiter and Common::DualFactoryBase from the shared
+  filter-common library. Factory is registered/looked up by the string "envoy.filters.http.bandwidth_share"
+  in extensions_build_config.bzl and BandwidthShare::filterName(). The commit message
+  explicitly frames BandwidthLimitFilter as the rejected-refactor-target/architectural
+  ancestor, motivating its inclusion as nontrivial context despite being untouched
+  by the diff.'

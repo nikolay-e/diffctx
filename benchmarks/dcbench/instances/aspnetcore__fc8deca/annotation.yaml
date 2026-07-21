@@ -2,13 +2,60 @@ repo: aspnetcore
 base_commit: 89c2ef34b30fb2e836c198e57a29d4fa309187d6
 commit: fc8decab6ac53d05adb19093ddce83ef1b5f1c31
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: src/Testing/src/Microsoft.AspNetCore.InternalTesting.csproj
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New project file that replaces src/Testing/src/Microsoft.AspNetCore.Testing.csproj, defining the renamed package's PackageId/assembly identity that every consumer now references.
+  - path: src/Testing/src/build/Microsoft.AspNetCore.InternalTesting.props
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: New MSBuild props (replacing Microsoft.AspNetCore.Testing.props) that injects the AssemblyAttribute pointing xunit at Microsoft.AspNetCore.InternalTesting.AspNetTestFramework, wiring the renamed package into every test project's build.
+  - path: eng/ProjectReferences.props
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Central name-to-path ProjectReferenceProvider map updated from Microsoft.AspNetCore.Testing to Microsoft.AspNetCore.InternalTesting, the string-keyed indirection every csproj's <Reference Include="Microsoft.AspNetCore.InternalTesting" /> resolves through.
+  - path: eng/targets/CSharp.Common.props
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Common test-project import that switches the auto-added <Reference Include="..."/> and the <Import Project="...\build\...props"/> from Testing to InternalTesting for every $(IsTestProject) in the repo.
+  - path: src/Testing/Testing.slnf
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Solution filter listing the Testing project's src/test csproj paths, updated to the new Microsoft.AspNetCore.InternalTesting(.Tests).csproj file names.
+  - path: AspNetCore.sln
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Top-level solution file drops the Microsoft.AspNetCore.Testing(.Tests) project entries and adds Microsoft.AspNetCore.InternalTesting(.Tests) entries pointing at the renamed csproj paths.
+forbidden:
+  - path: eng/Versions.props
+    reason: central version-number props file, superficially related to any "package rename" but this commit is a pure name change with no version bump, so it is untouched
+  - path: docs/BuildFromSource.md
+    reason: generic build-from-source doc surfaced by keyword match on "testing" but never mentions or requires updating for the Microsoft.AspNetCore.Testing/InternalTesting package name
+  - path: src/Framework/App.Runtime/src/Microsoft.AspNetCore.App.Runtime.csproj
+    reason: shared-framework packaging project unrelated to the internal, non-shipping test-utilities package being renamed
+  - path: src/Servers/Kestrel/Core/src/CoreStrings.resx
+    reason: Kestrel's own resource-string file, matched by BM25 on "testing"-adjacent tokens but has no reference to the Testing/InternalTesting package
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: true
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, random]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 779
   description: Rename Microsoft.AspNetCore.Testing to InternalTesting — repo-wide mega-rename stress
-notes: ''
+notes: >
+  Mechanical repo-wide rename of the internal Microsoft.AspNetCore.Testing test-utilities
+  package to Microsoft.AspNetCore.InternalTesting (csproj, props, namespaces, and every
+  consumer's using/Reference directive across 779 files). The 6 gold entries are the
+  semantic core of the rename mechanism (new csproj/props definition plus the MSBuild/
+  solution config that wires consumers to it by name); the other ~770 changed files are
+  mechanically identical find/replace edits with no independent understanding value, so
+  no_nontrivial_context: true — there is no useful context outside the diff itself.

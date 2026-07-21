@@ -2,13 +2,67 @@ repo: gitlab-foss
 base_commit: 546355f734f74c040d0ef0917ade50751fd90731
 commit: 07559fda51dd32cf23a14567cc7077c02c3900d4
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: app/controllers/projects/merge_requests/content_controller.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New controller with the `widget` action that is the entire point of the extraction — renders MergeRequestWidgetEntity behind a dedicated cacheable endpoint.
+  - path: app/serializers/merge_request_widget_entity.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renames `status_path` into `merge_request_basic_path`/`merge_request_widget_path`, the exact contract the frontend and content_controller now depend on.
+  - path: config/routes/project.rb
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: "Adds `get :widget, to: 'merge_requests/content#widget'` inside the `as: :json` scope, which is what generates `widget_project_json_merge_request_path` used by the entity."
+  - path: app/assets/javascripts/vue_merge_request_widget/services/mr_widget_service.js
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: poll()/checkStatus() switch from `statusPath?serializer=...` query params to the two new dedicated endpoint properties, the frontend half of the split.
+  - path: app/controllers/projects/merge_requests_controller.rb
+    tier: helpful
+    role: cochange
+    in_diff: true
+    rationale: Source of the `close_merge_request_if_no_source_project` method moved out to the shared ApplicationController; its still-present `show`/json action is the original endpoint this PR complements rather than replaces.
+  - path: spec/controllers/projects/merge_requests/content_controller_spec.rb
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Only spec covering the new `widget` action — asserts mergeability check, schema match, and the moved `close_merge_request_if_no_source_project` behavior via `content_controller`.
+  - path: app/controllers/projects/application_controller.rb
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines `allow_gitaly_ref_name_caching`, the around_action content_controller.rb wraps its widget action in — this is the caching mechanism the commit message says the extraction exists to enable.
+  - path: app/serializers/merge_request_serializer.rb
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "Defines `MergeRequestSerializer#represent`, which maps `serializer: 'widget'` to `MergeRequestWidgetEntity` — the exact call content_controller.rb#widget makes."
+  - path: lib/gitlab/polling_interval.rb
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines `PollingInterval.set_header`, called in content_controller.rb#widget to set the `Poll-Interval` response header.
+forbidden:
+  - path: app/serializers/merge_request_basic_entity.rb
+    reason: unchanged entity reused verbatim by the existing serializer=basic route; this patch renames the path property, not the entity.
+  - path: app/models/project_services/buildkite_service.rb
+    reason: defines an unrelated `commit_status_path` — name collision with `status_path` only, different CI-integration domain.
+  - path: spec/javascripts/vue_mr_widget/components/mr_widget_header_spec.js
+    reason: mocks an unrelated local `statusPath` prop on mr_widget_header.vue, coincidental name match not exercised by this patch.
+  - path: app/controllers/projects/merge_requests/diffs_controller.rb
+    reason: sibling controller in the same routes scope and directory but untouched, unrelated to the widget extraction.
+nontrivial_gold_count: 3
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 12
   description: Extract MR widget into separate endpoint — compact, 5 ext types
-notes: ''
+notes: 'Splits the polling MR-status endpoint (/merge_requests/1.json?serializer=widget) into a dedicated cacheable /merge_requests/1/widget.json route/controller, renaming the frontend statusPath prop into two explicit paths and moving a shared before_action up to the base controller. string_indirection=true because the route-to-controller link (get :widget, to: "merge_requests/content#widget") and the serializer dispatch (opts[:serializer] == "widget" string key in MergeRequestSerializer) are both name/string based rather than static references.'

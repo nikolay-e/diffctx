@@ -2,13 +2,81 @@ repo: envoy
 base_commit: 56af06f53954c5eb1a2b2073634ef4de33d9f5aa
 commit: 7bc6bb9d1e34c1ff0010d9b9b3135c877c046b8e
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: source/extensions/filters/http/upstream_rbac/upstream_rbac_filter.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines UpstreamRoleBasedAccessControlFilter, the new upstream HTTP filter class that subclasses RBACFilter::RoleBasedAccessControlFilter and implements Http::UpstreamCallbacks::onHostSelected — the core of this change.
+  - path: source/extensions/filters/http/upstream_rbac/upstream_rbac_filter.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Implements onHostSelected()/setUpstreamAddress(), which write the selected host into StreamInfo::UpstreamAddress filter state and re-run evaluateShadowEngine/evaluateEnforcedEngine before the upstream connection is established.
+  - path: source/extensions/filters/http/upstream_rbac/config.cc
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: UpstreamRoleBasedAccessControlFilterConfigFactory::createFilterFactoryFromProto registers the filter via REGISTER_FACTORY against UpstreamHttpFilterConfigFactory, wiring envoy.filters.http.upstream_rbac to the RBAC v3 proto and constructing RoleBasedAccessControlFilterConfig with an empty stats prefix.
+  - path: source/extensions/filters/http/rbac/rbac_filter.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: RoleBasedAccessControlFilter is changed from `final` to a non-final base class and evaluateShadowEngine/evaluateEnforcedEngine are moved from private to protected specifically so UpstreamRoleBasedAccessControlFilter can subclass it and reuse the evaluation logic.
+  - path: source/extensions/filters/http/rbac/rbac_filter.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: evaluateEnforcedEngine's headers parameter is retyped from `Http::RequestHeaderMap&` to `const Http::RequestHeaderMap&` so the upstream filter can call it with the const request-header pointer obtained from streamInfo().getRequestHeaders() in onHostSelected().
+  - path: docs/root/configuration/http/http_filters/upstream_rbac_filter.rst
+    tier: essential
+    role: doc
+    in_diff: true
+    rationale: New doc explains the filter must be attached as an upstream HTTP filter (per-cluster typed_extension_protocol_options or Router.upstream_http_filters), why upstream_ip_port now works for all cluster types, and the stats-scope semantics implemented in config.cc.
+  - path: envoy/http/filter.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines the Http::UpstreamCallbacks interface (onHostSelected PURE, onUpstreamConnectionEstablished PURE) and UpstreamStreamFilterCallbacks::addUpstreamCallbacks that the new filter implements/registers with in setDecoderFilterCallbacks(); added by the prerequisite PR #43764 referenced in the commit message.
+  - path: source/common/stream_info/upstream_address.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines StreamInfo::UpstreamAddress and its key(), the exact FilterState entry setUpstreamAddress() overwrites at LifeSpan::Request so the upstream_ip_port RBAC matcher can resolve the selected host.
+  - path: api/envoy/extensions/rbac/matchers/upstream_ip_port/v3/upstream_ip_port_matcher.proto
+    tier: essential
+    role: config
+    in_diff: false
+    rationale: Defines UpstreamIpPortMatcher, whose doc comment says it "requires a filter in the chain to have saved the upstream address in the filter state ... with key envoy.stream.upstream_address" — exactly the gap this new filter closes for cluster types where dynamic_forward_proxy never populates that state; linkage is via the FilterState string key, not a static reference.
+  - path: source/extensions/filters/http/dynamic_forward_proxy/proxy_filter.cc
+    tier: helpful
+    role: cochange
+    in_diff: false
+    rationale: The only other writer of StreamInfo::UpstreamAddress::key() (via save_upstream_address at proxy_filter.cc:441); the new filter's "always (re)write" comment and its ReevaluatesSelectedHostIgnoringStaleFilterState test are guarding against exactly this filter's stale/foreign entry.
+  - path: api/envoy/extensions/filters/http/rbac/v3/rbac.proto
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: The RBAC proto message the new filter's config factory decodes (MessageUtil::downcastAndValidate<...RBAC&>) and that upstream_rbac_filter.rst tells users to configure with type.googleapis.com/envoy.extensions.filters.http.rbac.v3.RBAC; no new proto was added because this one is reused verbatim.
+forbidden:
+  - path: source/extensions/filters/network/rbac/rbac_filter.cc
+    reason: separate network-level RBAC filter under a sibling package path; unrelated to this HTTP upstream filter despite the shared "rbac_filter.cc" name
+  - path: source/extensions/filters/http/rbac/config.cc
+    reason: factory registration for the existing downstream RBAC filter; the new filter has its own independent config.cc and does not modify this one
+  - path: source/extensions/filters/common/rbac/engine_impl.h
+    reason: underlying RBAC engine implementation is reused unmodified through the inherited evaluate{Shadow,Enforced}Engine helpers; its internals are not needed to understand this change
+  - path: test/extensions/filters/http/rbac/rbac_filter_test.cc
+    reason: tests the existing downstream RBAC filter; a separate test suite from the new test/extensions/filters/http/upstream_rbac/ tests added by this commit
+nontrivial_gold_count: 5
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 18
-  description: New upstream RBAC HTTP filter matching on selected host (source+test+docs+changelog+CODEOWNERS)
-notes: ''
+notes: >-
+  Adds a new opt-in envoy.filters.http.upstream_rbac upstream HTTP filter that is a thin subclass of
+  the downstream RBAC filter, running RBAC evaluation from the onHostSelected() callback (added by
+  prerequisite #43764) instead of decodeHeaders(), so the upstream_ip_port matcher's required
+  FilterState (StreamInfo::UpstreamAddress, key "envoy.stream.upstream_address") is populated for
+  every cluster type, not just dynamic_forward_proxy dns_cache mode, enabling SSRF default-deny
+  policies. No new proto is introduced; it reuses the existing rbac.v3.RBAC and upstream_ip_port_matcher
+  protos, so the string-keyed FilterState linkage between the new filter, the reused matcher proto, and
+  dynamic_forward_proxy's proxy_filter.cc is the crux of the non-obvious context.

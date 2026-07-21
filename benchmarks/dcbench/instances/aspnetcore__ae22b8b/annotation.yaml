@@ -2,13 +2,83 @@ repo: aspnetcore
 base_commit: 3940c8a491c3ad2efbf0e90a8b0895d5c4e5323e
 commit: ae22b8b45bc3aad18767daa262e544b94a3250e7
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: src/Mvc/Mvc.Core/src/CompatibilityVersion.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Deletes the `CompatibilityVersion` enum itself, the central symbol the whole removal revolves around.
+  - path: src/Mvc/Mvc.Core/src/Infrastructure/ConfigureCompatibilityOptions.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Deletes `ConfigureCompatibilityOptions<TOptions>`, the abstract base class that consumed `MvcCompatibilityOptions.CompatibilityVersion` to post-configure switches; its removal is the reason `CompatibilitySwitch.cs`/`ICompatibilitySwitch.cs` doc comments had to be reworded.
+  - path: src/Mvc/Mvc.Core/src/Infrastructure/MvcCompatibilityOptions.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Deletes `MvcCompatibilityOptions.CompatibilityVersion`, the options object that `SetCompatibilityVersion` extension methods configured and `ConfigureCompatibilityOptions<TOptions>` read.
+  - path: src/Mvc/Mvc.Core/src/DependencyInjection/MvcCoreMvcBuilderExtensions.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes `SetCompatibilityVersion(this IMvcBuilder, CompatibilityVersion)`, the primary app-facing entry point into the whole compatibility-version mechanism being deleted.
+  - path: src/Mvc/Mvc.Abstractions/src/ModelBinding/Metadata/ModelMetadataIdentity.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes the obsolete 3-arg `ForProperty(Type modelType, string name, Type containerType)` overload while retaining the `ForProperty(PropertyInfo, Type, Type)` overload that BindAttributeTest/DefaultModelMetadataTest were migrated to call.
+  - path: src/Mvc/Mvc.TagHelpers/src/ImageTagHelper.cs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes the obsolete `ImageTagHelper(IWebHostEnvironment, TagHelperMemoryCacheProvider, ...)` constructor plus the `HostingEnvironment`/`Cache` properties it backed, unrelated to the `[ActivatorUtilitiesConstructor]` ctor that remains.
+  - path: src/Mvc/Mvc.Core/src/DependencyInjection/MvcCoreMvcCoreBuilderExtensions.cs
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Removes the sibling `SetCompatibilityVersion(this IMvcCoreBuilder, CompatibilityVersion)` overload, same mechanism as MvcCoreMvcBuilderExtensions but for the lower-level builder type.
+  - path: src/Mvc/Mvc.Core/src/PublicAPI.Unshipped.txt
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Records every removed Mvc.Core symbol (CompatibilityVersion, MvcCompatibilityOptions, ConfigureCompatibilityOptions<TOptions>, SetCompatibilityVersion overloads) as `*REMOVED*` entries — the contract-tracking baseline that makes the removal Roslyn-analyzer-clean; representative of the same `*REMOVED*` pattern applied in Mvc.Abstractions/PublicAPI.Unshipped.txt and Mvc.TagHelpers/PublicAPI.Unshipped.txt.
+  - path: src/Mvc/Mvc.Core/test/BindAttributeTest.cs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Covering test for `BindAttribute`/`ModelMetadataIdentity.ForProperty` that had to switch from the deleted `ForProperty(Type, string, Type)` overload to `ForProperty(PropertyInfo, Type, Type)`, proving the removal is call-site-compatible.
+  - path: src/Mvc/Mvc.Core/src/MvcOptions.cs
+    tier: helpful
+    role: cochange
+    in_diff: false
+    rationale: Implements `IEnumerable<ICompatibilitySwitch>` with `_switches = Array.Empty<ICompatibilitySwitch>()` — confirms the surviving `ICompatibilitySwitch`/`CompatibilitySwitch<T>` primitive is untouched and already had zero live switches wired to `CompatibilityVersion`, showing why deleting the version-selector layer is safe and why MvcOptions itself needed no edit.
+forbidden:
+  - path: src/Mvc/Mvc.TagHelpers/test/ImageTagHelperTest.cs
+    reason: same class under test as ImageTagHelper.cs but its `GetHelper()` helper already calls the surviving `[ActivatorUtilitiesConstructor]` ctor, so the deletion of the obsolete ctor required no change here.
+  - path: src/Mvc/Mvc.Core/test/Infrastructure/CompatibilitySwitchTest.cs
+    reason: tests `CompatibilitySwitch<T>`, the still-present primitive backing `ICompatibilitySwitch`, not the `CompatibilityVersion`/`ConfigureCompatibilityOptions<TOptions>` layer this commit actually deletes.
+  - path: src/Mvc/Mvc.Core/test/ModelBinding/Metadata/DefaultModelMetadataProviderTest.cs
+    reason: same ModelBinding.Metadata area and a bm25/graph candidate but exercises `GetMetadataForProperty(PropertyInfo, Type)`, never the removed `ForProperty(Type, string, Type)` overload.
+  - path: src/Mvc/Mvc.DataAnnotations/src/DataAnnotationsMetadataProvider.cs
+    reason: its test file (DataAnnotationsMetadataProviderTest.cs) is in the diff — a test-only assertion about the obsolete `ForProperty` overload was deleted — but the provider source itself never calls `ForProperty` and needed no edit.
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, bm25, graph]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 16
   description: Remove long-obsolete MVC APIs — API removal + baseline churn
-notes: ''
+notes: >-
+  Removes the .NET-6-era `CompatibilityVersion` enum, `MvcCompatibilityOptions`,
+  `ConfigureCompatibilityOptions<TOptions>`, both `SetCompatibilityVersion`
+  extension overloads, the obsolete `ModelMetadataIdentity.ForProperty(Type,
+  string, Type)` overload, and an obsolete `ImageTagHelper` constructor/props,
+  migrating tests to the surviving APIs and recording every removal in
+  PublicAPI.Unshipped.txt baselines. Verified via git grep at the pinned commit
+  that no production callers of the removed symbols remain and that
+  `ConfigureCompatibilityOptions<TOptions>` had exactly one (test-only)
+  subclass before deletion, so the removal is self-contained; nontrivial gold
+  is thin (1 entry) because this is intentionally dead-code excision with no
+  live external consumers left to trace.

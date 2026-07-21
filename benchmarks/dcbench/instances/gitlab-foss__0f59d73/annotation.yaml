@@ -2,13 +2,66 @@ repo: gitlab-foss
 base_commit: c965625833c45db84d564da818f580505dc0a1b6
 commit: 0f59d73ef2f65aba791b6738a5e705fe1a8da789
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: db/migrate/20190822175441_rename_epics_state_to_state_id.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: The regular migration that calls MigrationHelpers#rename_column_concurrently(:epics, :state, :state_id) — the core mechanism of the change.
+  - path: db/post_migrate/20190822185441_cleanup_epics_state_id_rename.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: The paired post-deployment migration that calls MigrationHelpers#cleanup_concurrent_column_rename(:epics, :state, :state_id) to drop the old column and rename triggers; required to complete the rename started by the regular migration.
+  - path: db/schema.rb
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Snapshot of the epics table showing the rename result — column "state" (limit 2, default 1) replaced by "state_id" (same limit/default) in the create_table "epics" block.
+  - path: spec/db/schema_spec.rb
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: IGNORED_FK_COLUMNS[:epics] list is updated from [...] to add "state_id" so the schema-wide FK-presence check does not fail for the renamed column, matching the pre-existing issues/merge_requests "state_id" exemptions.
+  - path: changelogs/unreleased/issue_10770.yml
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: Changelog entry documenting the user-facing change ("Rename epic column state to state_id") and linking it to merge_request 32270.
+  - path: lib/gitlab/database/migration_helpers.rb
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines rename_column_concurrently (line 455) and cleanup_concurrent_column_rename (line 550) — the exact methods invoked by both migrations in the diff; understanding the trigger-based copy/sync/cleanup behavior requires reading these definitions.
+  - path: doc/development/what_requires_downtime.md
+    tier: helpful
+    role: doc
+    in_diff: false
+    rationale: The Renaming Columns section gives the canonical two-migration template (rename_column_concurrently in db/migrate + cleanup_concurrent_column_rename in db/post_migrate) that this patch's two files follow almost verbatim, explaining why a single rename_column migration would not suffice.
+forbidden:
+  - path: app/models/epic.rb
+    reason: only a CE placeholder class reserving the "&" reference prefix (ee/app/models/epic.rb holds the real Epic model with the state enum, not present in this foss-only checkout) — never touches the state/state_id column.
+  - path: lib/banzai/reference_parser/epic_parser.rb
+    reason: epic-reference-parsing for markdown links, unrelated to the epics.state column.
+  - path: db/migrate/20190211131150_add_state_id_to_issuables.rb
+    reason: similarly named prior migration but for issues/merge_requests using an additive add_column+background-sync pattern, not the rename_column_concurrently mechanism this patch uses.
+  - path: config/pseudonymizer.yml
+    reason: has an "epics:" whitelist section but it never lists the state/state_id column, so it is unaffected by the rename.
+nontrivial_gold_count: 2
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 5
   description: Rename epic state column to state_id — migration+schema+spec
-notes: ''
+notes: >
+  Renames epics.state to epics.state_id via GitLab's standard two-phase
+  concurrent-column-rename (regular migration + post-deployment cleanup
+  migration), matching the earlier issues/merge_requests state_id convention.
+  ee/app/models/epic.rb (the real Epic model with the state enum) is not
+  present in this foss-only checkout, so the linkage is annotated through the
+  generic migration helper and its documented pattern instead of the EE
+  model. The migrate/post_migrate pairing and the FK-ignore-list match are
+  coupled only by shared column-name strings/timestamps, not static
+  references, hence string_indirection: true.

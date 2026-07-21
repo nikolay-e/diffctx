@@ -2,14 +2,73 @@ repo: firefox-ios
 base_commit: 5675bd15c068b2b70f28f4f26e0b4526fbc0944c
 commit: 8c36775f571f49269c6b4c358eb0a07320b8b61d
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 25
-  description: OhttpGleanUploader bridging A-S OHttpManager to Glean PingUploader — SwiftPM resolved +
-    Glean yaml + project coupling
-notes: ''
+gold:
+  - path: firefox-ios/Client/Utils/GleanPingUploader.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines struct GleanPingUploader conforming to Glean's PingUploader, the orchestrator that dispatches to httpUploader/ohttpUploader based on CapablePingUploadRequest.capable(["http"/"ohttp"]) — the central type named in the curation description.
+  - path: firefox-ios/Client/Utils/GleanOhttpUploader.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "defines ASOhttpManager protocol and `extension OhttpManager: ASOhttpManager {}`, the actual bridge from A-S OhttpManager to the Glean upload path."
+  - path: firefox-ios/Client/Utils/GleanHttpUploader.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines GleanHttpUploader (PingUploaderProtocol conformance) used as the non-OHTTP fallback branch inside GleanPingUploader.upload(request:callback:).
+  - path: firefox-ios/Client/Utils/PingUploaderProtocol.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines PingUploaderProtocol.buildRequest(url:data:headers:) shared by both GleanHttpUploader.uploadHttpRequest and GleanOhttpUploader.uploadOhttpRequest to construct the outgoing URLRequest.
+  - path: firefox-ios/Client/Telemetry/TelemetryWrapper.swift
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: "constructs GleanPingUploader() and passes it as Configuration(httpClient:) to Glean.initialize, gated on featureFlags.isFeatureEnabled(.ohttpManagerGleanUploader, checking: .buildOnly) — the actual wiring point where the new uploader is activated."
+  - path: MozillaRustComponents/Sources/MozillaRustComponentsWrapper/ASOhttpClient/OhttpManager.swift
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "defines the concrete A-S `public class OhttpManager` with `func data(for request:) async throws -> (Data, HTTPURLResponse)`, the exact signature GleanOhttpUploader.swift bridges via `extension OhttpManager: ASOhttpManager {}` — not touched by this diff but is the class being bridged."
+  - path: firefox-ios/nimbus-features/ohttpGleanUploaderCapabilityFeature.yaml
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Nimbus FML source defining the string-keyed feature `ohttp-glean-uploader-capability-feature` with `enabled` variable, codegen'd into `nimbus.features.ohttpGleanUploaderCapabilityFeature` read by NimbusFeatureFlagLayer.checkOhttpManagerGleanUploader.
+  - path: firefox-ios/Client/Nimbus/NimbusFeatureFlagLayer.swift
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: adds checkOhttpManagerGleanUploader(from:) reading nimbus.features.ohttpGleanUploaderCapabilityFeature.value().enabled, the layer that turns the Nimbus yaml into the NimbusFeatureFlagID.ohttpManagerGleanUploader boolean consumed by TelemetryWrapper.
+  - path: firefox-ios/firefox-ios-tests/Tests/ClientTests/Utils/GleanOhttpUploaderTests.swift
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: exercises GleanOhttpUploader.uploadOhttpRequest success/failure/error paths against MockASOHttpManager, the primary test coverage for the A-S bridging logic.
+forbidden:
+  - path: firefox-ios/Client.xcodeproj/project.pbxproj
+    reason: mechanical Xcode project registration of the new files/groups — no behavior, pure build bookkeeping.
+  - path: MozillaRustComponents/Package.resolved
+    reason: routine glean-swift 65.0.2->65.0.3 pin bump with no semantic connection to the uploader bridging logic itself.
+  - path: firefox-ios/firefox-ios-tests/Tests/ClientTests/Wallpaper/Mocks/MockURLSession.swift
+    reason: unrelated Wallpaper test mock, only renamed from WallpaperURLSessionMock.swift as drive-by cleanup in this patch — not used by any Glean uploader code or test.
+  - path: firefox-ios/Client/FeatureFlags/LegacyFeatureFlagsManager.swift
+    reason: generic Nimbus flag-checking singleton (defines isFeatureEnabled/.buildOnly) used by dozens of unrelated flags — explains the mechanism but is untouched and not specific to this feature.
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >
+  Adds GleanPingUploader/GleanOhttpUploader/GleanHttpUploader/PingUploaderProtocol to bridge
+  A-S's OhttpManager into Glean's PingUploader so telemetry pings can go out over OHTTP with an
+  HTTP fallback, wired into TelemetryWrapper.setup behind the new ohttpManagerGleanUploader Nimbus
+  flag. Wide 24-file diff dominated by Xcode project registration and a Glean SwiftPM bump; picked
+  the four new uploader/protocol files, the TelemetryWrapper call site, the out-of-diff OhttpManager
+  definition, the Nimbus feature yaml/layer, and the ohttp test as the semantic core.
+  string_indirection: true because the Nimbus feature is looked up by generated accessor
+  `ohttpGleanUploaderCapabilityFeature` derived from the yaml's string key
+  `ohttp-glean-uploader-capability-feature`, and PingCapabilities are matched via
+  CapablePingUploadRequest.capable(["http"/"ohttp"]) string tokens rather than static references.

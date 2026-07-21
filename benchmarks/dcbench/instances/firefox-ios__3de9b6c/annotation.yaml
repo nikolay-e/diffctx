@@ -2,14 +2,63 @@ repo: firefox-ios
 base_commit: 0e33e0c9c02e1c132531eccc1e4e7b129eaf55b8
 commit: 3de9b6c7a7a021238cfce43b9eb86d3deb84b685
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: BrowserKit/Sources/Shared/URLSession/URLSessionProtocol.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines `URLSessionProtocol`, renamed from internal to `public`, and is the file being relocated from the app target into the Shared package — the core of the migration.
+  - path: BrowserKit/Sources/Shared/URLSession/URLSessionDataTaskProtocol.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines `URLSessionDataTaskProtocol`/`URLSessionUploadTaskProtocol`, moved and made `public` alongside `URLSessionProtocol` in the same commit since `dataTaskWith` returns `URLSessionDataTaskProtocol`.
+  - path: BrowserKit/Sources/TestKit/MockURLSession.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: The `MockURLSession`/`MockURLSessionDataTask`/`MockURLSessionUploadTask` test doubles are relocated from ClientTests into the new `TestKit` target and made `public`, requiring `import Shared` to see the now-relocated protocols.
+  - path: BrowserKit/Package.swift
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: "Adds `dependencies: [\"Shared\"]` to the `TestKit` target so `MockURLSession.swift` can conform to `URLSessionProtocol` from its new home package."
+  - path: firefox-ios/Client.xcodeproj/project.pbxproj
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Removes the now-stale `PBXBuildFile`/`PBXFileReference`/`PBXGroup` entries for `URLSessionProtocol.swift`, `URLSessionDataTaskProtocol.swift` and `MockURLSession.swift` since those sources left the Xcode project and now build via SPM.
+  - path: firefox-ios/Client/Frontend/Home/Homepage/Wallpapers/v1/NetworkServices/WallpaperNetworkModule.swift
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: "`WallpaperNetworkingModule` stores `private let urlSession: URLSessionProtocol` — a real consumer of the moved protocol whose covering test (`WallpaperNetworkingModuleTests.swift`) is one of the three files touched to add `import TestKit`."
+  - path: firefox-ios/Client/Utils/GleanHttpUploader.swift
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: "`GleanHttpUploader` stores `private let session: URLSessionProtocol` — consumer whose covering test (`GleanOhttpUploaderTests.swift`) is touched in the diff to add `import TestKit`."
+  - path: firefox-ios/Client/Frontend/Home/UnifiedAds/UnifiedAdsUserDataRemover.swift
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: Consumer of `URLSessionProtocol` for its network delete request whose covering test (`UnifiedAdsUserDataRemoverTests.swift`) is touched in the diff to add `import TestKit`.
+forbidden:
+  - path: firefox-ios/Client/Frontend/Home/Homepage/TopSites/DataManagement/UnifiedTileNetworking.swift
+    reason: another real `URLSessionProtocol` consumer (also already `import Shared`), but untouched by this commit and not backed by any changed test — redundant with the three caller/test pairs already included.
+  - path: firefox-ios/Client/Utils/PingUploaderProtocol.swift
+    reason: similarly-named networking protocol whose `PBXBuildFile` entry sits adjacent to the removed lines in project.pbxproj, but it is an unrelated ping-upload abstraction, not touched or referenced by this migration.
+  - path: firefox-ios/firefox-ios-tests/Tests/ClientTests/Wallpaper/Mocks/NetworkingMock.swift
+    reason: sibling mock left in the same Mocks/ directory that MockURLSession.swift was moved out of, but implements the unrelated `WallpaperNetworking` protocol and was not relocated.
+  - path: firefox-ios/firefox-ios-tests/Tests/ClientTests/Utils/Mocks/MockGleanPingUploadRequest.swift
+    reason: sibling test mock whose `PBXBuildFile`/`PBXFileReference` lines are near the removed URLSession entries in project.pbxproj, but it mocks Glean ping payloads and is unrelated to the URLSession protocol move.
+nontrivial_gold_count: 3
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 11
   description: Move URLSessionProtocol into BrowserKit package — app→package source migration with project
     file
-notes: ''
+notes: Relocates `URLSessionProtocol`/`URLSessionDataTaskProtocol` from the app target into the BrowserKit `Shared` package (made `public`) and moves `MockURLSession` into a new `TestKit` target, updating `Package.swift` dependencies and pruning the stale Xcode project entries; three ClientTests files gain `import TestKit` to keep using the relocated mock. Linkage throughout is static Swift import/type-checking (protocol conformance, SPM target dependencies) — no string-keyed indirection is load-bearing here, so string_indirection is false despite the project.pbxproj edits (those are Xcode's internal UUID bookkeeping, not a design-level string linkage).

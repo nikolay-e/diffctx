@@ -2,14 +2,79 @@ repo: firefox-ios
 base_commit: bd1e8565beb036c7a9d669cbcdd968fd062bf8e3
 commit: 2439e773b29a053a954fc506e321e7d693b43d1d
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: BrowserKit/Sources/OnboardingKit/Models/OnboardingVariant.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the `OnboardingVariant` enum whose `.modern` case is renamed
+      to `.base = "modern"`, the semantic core of the commit.
+  - path: firefox-ios/Client/IntroScreenManager.swift
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: 'onboardingKitVariant performs `OnboardingKit.OnboardingVariant(rawValue:
+      onboardingVariant.rawValue) ?? .base`, the exact string-bridge the rename
+      depends on.'
+  - path: firefox-ios/Client/Coordinators/LaunchView/OnboardingLaunchScreenViewController.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: File+class rename target (from ModernLaunchScreenViewController),
+      the other identifier renamed by this commit.
+  - path: firefox-ios/Client/Coordinators/Scene/SceneCoordinator.swift
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Instantiates and type-casts to the renamed OnboardingLaunchScreenViewController.
+  - path: firefox-ios/nimbus-features/onboardingFrameworkFeature.yaml
+    tier: essential
+    role: config
+    in_diff: false
+    rationale: 'Nimbus fml source defines `enums.OnboardingVariant.variants.modern`
+      (line ~669) — the wire-format contract that forces `OnboardingVariant.swift`''s
+      rawValue to stay "modern" while only the Swift case identifier renames to
+      `.base`; explains the rename''s central constraint.'
+  - path: firefox-ios/Client/Nimbus/OnboardingFeatureLayer/NimbusOnboardingKitFeatureLayer.swift
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: Consumes a same-named-but-distinct `Client.OnboardingVariant` (nimbus-fml-generated
+      from onboardingFrameworkFeature.yaml, still has `.modern`) — shows why this
+      file is correctly untouched despite the naming collision with OnboardingKit.OnboardingVariant.
+  - path: firefox-ios/Client/Glean/probes/onboarding.yaml
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: Glean `onboarding_variant` extra key is documented as taking the
+      wire value "modern" — the second string-keyed consumer of the preserved
+      rawValue that IntroScreenManager.swift's new comment references.
+forbidden:
+  - path: firefox-ios/Client/Coordinators/LaunchView/LaunchScreenViewController.swift
+    reason: sibling file in the same directory with a near-identical name, but it
+      is the unrelated legacy launch VC, not renamed by this commit
+  - path: firefox-ios/firefox-ios-tests/Tests/ClientTests/Helpers/IntroScreenManagerTests.swift
+    reason: tests IntroScreenManager but only asserts against the untouched
+      Nimbus-side `.modern` case, never exercises the OnboardingKit rename
+  - path: firefox-ios/Client/FeatureFlags/FeatureFlagID.swift
+    reason: defines the unrelated boolean flag `.modernOnboardingUI` — name
+      collision with "modern" but no bearing on the enum-identifier rename
+  - path: firefox-ios/firefox-ios-tests/Tests/ClientTests/OnboardingTests/NimbusOnboardingKitFeatureLayerTests.swift
+    reason: dozens of `.modern` hits by grep volume, but all reference the
+      untouched Nimbus-generated type, not the renamed OnboardingKit case
+nontrivial_gold_count: 3
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 14
   description: Rename onboarding "modern" identifiers to "base" (classes + file renames) — identifier/file
     rename coupling
-notes: ''
+notes: Renames OnboardingKit's `OnboardingVariant.modern` case to `.base` (keeping
+  rawValue "modern") and the ModernLaunchScreenViewController class/file to
+  OnboardingLaunchScreenViewController; the rawValue is pinned to "modern" because
+  it round-trips through IntroScreenManager's rawValue string-bridge to a
+  same-named-but-distinct Nimbus-fml-generated OnboardingVariant type (onboardingFrameworkFeature.yaml)
+  and the Glean onboarding_variant telemetry key, both of which are untouched wire
+  formats outside the diff.

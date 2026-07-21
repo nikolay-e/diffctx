@@ -2,14 +2,105 @@ repo: firefox-ios
 base_commit: da6196d52e9416075194d37d5fc724ef0e093be7
 commit: e94268914a7e448ea50ca6ef5d00ef8c814defeb
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: BrowserKit/Package.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: >-
+      Adds the new .library(name: "Shared", targets: ["Shared"]) product and
+      .target(name: "Shared", dependencies: ["Common", "WebEngine"],
+      swiftSettings: [.unsafeFlags(["-enable-testing"])]) — this is the SPM
+      module definition the entire diff exists to create.
+  - path: firefox-ios/Client.xcodeproj/project.pbxproj
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: >-
+      Rewires every app/extension target that previously linked the
+      Shared.framework Xcode target to instead reference the new SPM package
+      product Shared (many productRef PBXBuildFile entries), and removes the
+      old Shared PBXNativeTarget wiring.
+  - path: BrowserKit/.swiftpm/xcode/xcshareddata/xcschemes/Shared.xcscheme
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: >-
+      Renamed/rewritten from
+      firefox-ios/Client.xcodeproj/xcshareddata/xcschemes/Shared.xcscheme
+      (R052); BuildableReference changes from BlueprintIdentifier =
+      "288A2D85..." / Shared.framework (Xcode target) to BlueprintIdentifier =
+      "Shared" / ReferencedContainer = "container:" (SPM package product) —
+      the concrete evidence of the framework-to-package scheme migration.
+  - path: BrowserKit/Sources/Shared/AppConstants.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: >-
+      100%-similarity git rename (R100) from
+      firefox-ios/Shared/AppConstants.swift, representative of the ~50 pure
+      source-code moves that make up the bulk of this diff (defines
+      AppConstants, AppName, KVOConstants used app-wide).
+  - path: .swiftlint.yml
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: >-
+      Adds BrowserKit/Sources/Shared/Deferred/ to the lint excluded list,
+      coupling the new package path (housing the also-relocated
+      ThirdParty/Deferred and ThirdParty/Result sources) to repo-wide lint
+      config.
+  - path: firefox-ios/firefox-ios-tests/Tests/XCUITests/ActivityStreamTest.swift
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: >-
+      Adds an explicit "import Shared" that was previously satisfied
+      transitively when Shared lived inside the same Xcode project/module
+      graph; illustrates the blast radius of the module boundary becoming a
+      real SPM package boundary.
+  - path: firefox-ios/firefox-ios-tests/Tests/SharedTests/DeferredTests.swift
+    tier: essential
+    role: test
+    in_diff: false
+    rationale: >-
+      Untouched by this "part 1" commit, still does "@testable import Shared"
+      to exercise internal (non-public) Deferred/Maybe APIs — directly
+      explains why BrowserKit/Package.swift's new Shared target carries
+      swiftSettings: [.unsafeFlags(["-enable-testing"])]; the old SharedTests
+      Xcode PBXNativeTarget (E6F9650B...) is also left in project.pbxproj
+      unmigrated, a leftover coupling a reader needs to know about to
+      understand the diff's scope ("part 1" — tests not moved).
+forbidden:
+  - path: firefox-ios/Client.xcodeproj/xcshareddata/xcschemes/Storage.xcscheme
+    reason: sibling scheme in the same xcschemes/ directory as the moved Shared.xcscheme, but untouched
+      and unrelated to the module extraction
+  - path: BrowserKit/Sources/Common/README.md
+    reason: docs for the Common module that Shared newly (formally) depends on, but Common predates this
+      diff unchanged and its README explains nothing about the move itself
+  - path: firefox-ios/Client.xcodeproj/xcshareddata/xcschemes/Fennec.xcscheme
+    reason: main-app scheme in the same directory as the moved Shared.xcscheme; plausible by proximity
+      but not touched or needed to understand the migration
+  - path: BrowserKit/Sources/Shared/Deferred/Reachability.swift
+    reason: another moved file in the new Deferred/ subfolder, but redundant with the AppConstants.swift
+      gold entry already representing the pure-rename pattern
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 123
   description: Move Shared framework to BrowserKit part 1 — stress module extraction into package, Xcode
     project + schemes coupled
-notes: ''
+notes: >-
+  Pure module-extraction: ~50 files under firefox-ios/Shared and
+  firefox-ios/ThirdParty (Deferred, Result, Reachability) are git-renamed
+  (R096-R100) into the new BrowserKit/Sources/Shared/ SPM target with no
+  behavioral changes; project.pbxproj/scheme/swiftlint updated for the new
+  package boundary, and a handful of test files gain explicit "import
+  Shared". The link is static (module/product name "Shared" is preserved end
+  to end, no string-keyed indirection); the one genuine out-of-diff gotcha is
+  firefox-ios-tests/Tests/SharedTests/ left entirely unmigrated and still
+  using "@testable import Shared", which is why Package.swift needed the
+  -enable-testing unsafe flag.

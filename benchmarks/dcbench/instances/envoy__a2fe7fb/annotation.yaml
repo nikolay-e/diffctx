@@ -2,13 +2,87 @@ repo: envoy
 base_commit: be23b067ff03ea3e4dff567dc72b8db572f042d6
 commit: a2fe7fbe3cdcd6550cd4207e0a90115b17dc8ccf
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: api/envoy/extensions/tracers/dynamic_modules/v3/dynamic_modules.proto
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the new DynamicModuleTracer message (dynamic_module_config, tracer_name, tracer_config fields) that the whole C++ side parses and wires up.
+  - path: source/extensions/tracers/dynamic_modules/tracer_config.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Declares DynamicModuleTracerConfig, DynamicModuleSpan (implements Tracing::Span) and DynamicModuleDriver (implements Tracing::Driver), the core classes the ABI hooks and config.cc build on.
+  - path: source/extensions/tracers/dynamic_modules/tracer_config.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Implements DynamicModuleSpan/DynamicModuleDriver span lifecycle (startSpan, injectContext, spawnChild, baggage, trace/span id) by calling into the new envoy_dynamic_module_on_tracer_* ABI hooks declared in abi.h.
+  - path: source/extensions/tracers/dynamic_modules/config.cc
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: DynamicModuleTracerFactory::createTracerDriver downcasts the DynamicModuleTracer proto, loads the module via newDynamicModuleByName, and REGISTER_FACTORY-registers it as envoy.tracers.dynamic_modules, gluing proto -> module -> Tracing::Driver.
+  - path: source/extensions/dynamic_modules/abi/abi.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the full C ABI surface for tracing (envoy_dynamic_module_on_tracer_*, envoy_dynamic_module_callback_tracer_* and the metrics-define/increment callbacks) that both the C++ driver and the Rust SDK bind against.
+  - path: source/extensions/dynamic_modules/sdk/rust/src/tracer.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New Rust SDK module implementing the tracer side of the same ABI (TracerConfigContext, metric handles, NewTracerConfigFunction) so Rust dynamic modules can implement tracers.
+  - path: test/extensions/tracers/dynamic_modules/tracer_test.cc
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Exercises DynamicModuleDriver/DynamicModuleSpan against the tracer_no_op.c/tracer_with_values.c fixtures, covering the span lifecycle contract added in tracer_config.cc.
+  - path: envoy/server/tracer_config.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines Server::Configuration::TracerFactory and TracerFactoryContext, the base interface DynamicModuleTracerFactory::createTracerDriver/createEmptyConfigProto override and REGISTER_FACTORY registers against.
+  - path: envoy/tracing/trace_driver.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines the Tracing::Driver and Tracing::Span abstract interfaces (startSpan, setTag, log, finishSpan, injectContext, spawnChild, etc.) that DynamicModuleDriver and DynamicModuleSpan implement override-for-override.
+  - path: api/envoy/extensions/dynamic_modules/v3/dynamic_modules.proto
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines DynamicModuleConfig (name, do_not_close, load_globally, metrics_namespace), imported by the new dynamic_modules.proto as the required dynamic_module_config field and read directly in config.cc.
+  - path: source/extensions/dynamic_modules/dynamic_modules.h
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Declares DynamicModule/DynamicModulePtr and newDynamicModuleByName, which DynamicModuleTracerFactory::createTracerDriver calls to dlopen the shared object before handing it to newDynamicModuleTracerConfig.
+  - path: source/common/runtime/runtime_features.cc
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: Registers the FALSE_RUNTIME_GUARD for envoy_reloadable_features_dynamic_modules_strip_custom_stat_prefix, the flag config.cc looks up by string name to decide whether to register the metrics_namespace as a custom stat namespace.
+forbidden:
+  - path: source/extensions/tracers/opentelemetry/config.cc
+    reason: another existing tracer factory in the same directory but an unrelated, independent implementation not touched or referenced by this change
+  - path: source/extensions/tracers/fluentd/config.cc
+    reason: sibling tracer extension only coincidentally adjacent in docs/trace.rst listing; no code coupling to the new tracer
+  - path: source/extensions/load_balancing_policies/dynamic_modules/config.cc
+    reason: a different dynamic_modules extension point (load balancing) sharing the pattern name but no shared code with the tracer
+  - path: source/extensions/upstreams/http/dynamic_modules/config.cc
+    reason: another sibling dynamic_modules extension (upstream HTTP TCP bridge) with a similar factory shape but unrelated to tracing
+nontrivial_gold_count: 5
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 29
   description: New dynamic_modules tracing extension (C++/C/Rust + api + docs + changelog)
-notes: ''
+notes: >-
+  Adds a new "envoy.tracers.dynamic_modules" tracer extension: a proto (DynamicModuleTracer), a
+  C++ Driver/Span implementation that bridges to a new tracer section of the dynamic-modules C ABI
+  (span lifecycle, trace-context get/set/remove, metrics define/increment), and a matching Rust SDK
+  module. string_indirection=true because the metrics_namespace stat-prefix behavior and the
+  dynamic_modules_strip_custom_stat_prefix runtime guard are both looked up by string name.

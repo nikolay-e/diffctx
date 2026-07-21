@@ -2,14 +2,59 @@ repo: firefox-ios
 base_commit: 1442259873acf64da99a11d331d51d7ba73f0f8c
 commit: b54d1c5b89b142bb7e6135fa090484c4385ef2d1
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: firefox-ios/Client.xcodeproj/project.pbxproj
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes the PBXBuildFile/PBXFileReference/PBXGroup/PBXFrameworksBuildPhase entries for the six Adjust source files plus the XCRemoteSwiftPackageReference "ios_sdk" and XCSwiftPackageProductDependency "Adjust" — the Xcode project graph that wired the SPM package and its wrapper sources into the Client target build.
+  - path: firefox-ios/Client.xcodeproj/project.xcworkspace/xcshareddata/swiftpm/Package.resolved
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Drops the "ios_sdk" pin (revision f7a0ad4a9f99fcbfc4c73dcad557ea3c86c5aaf6, version 4.37.0, github.com/adjust/ios_sdk) and updates originHash — the SPM lockfile counterpart to the pbxproj package-reference removal.
+  - path: firefox-ios/Client/Application/AppLaunchUtil.swift
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Deletes the last two commented-out call sites (`adjustHelper` property and `adjustHelper.setupAdjust()` in postLaunchDependencies) that had referenced the now fully-removed AdjustHelper, completing the cleanup begun in #21524.
+  - path: firefox-ios/Client/Telemetry/Wrapper/AdjustWrapper.swift
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Deleted file defined `AdjustWrapper`/`DefaultAdjustWrapper`, which forwarded to `GleanMetrics.Adjust.*` (deeplinkReceived, campaign, adGroup, creative, network) — shows exactly which Glean metrics lose their (already-dead, commented-out) consumer.
+  - path: firefox-ios/Client/FeatureFlags/CoreFlaggableFeature.swift
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Still defines `CoreFeatureFlagID.adjustEnvironmentProd`, the feature flag `AdjustHelper.getConfig()` read via `featureFlags.isCoreFeatureEnabled(.adjustEnvironmentProd)`; this commit leaves the flag case in place even though its sole consumer is now gone, showing the SPM removal is not a full flag cleanup.
+  - path: firefox-ios/Client/Glean/probes/metrics.yaml
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: Defines the `adjust` Glean metrics group (deeplink_received, campaign, ad_group, creative, network) that generates `GleanMetrics.Adjust.*`, the symbols `AdjustWrapper.swift` forwarded to; the metric definitions are untouched by this commit and become orphaned once the wrapper is deleted.
+forbidden:
+  - path: firefox-ios/Client/FeatureFlags/LegacyFeatureFlagsManager.swift
+    reason: registers CoreFlaggableFeature(.adjustEnvironmentProd) alongside CoreFlaggableFeature.swift's definition, but it's a second sighting of the same orphaned-flag fact, not needed once that file is seen.
+  - path: firefox-ios/Client/Info.plist
+    reason: still declares the `AdjustAppToken` build-setting placeholder key, but Info.plist entries are inert without the SDK and aren't needed to understand the code/package removal.
+  - path: firefox-ios/Client/Assets/About/Licenses.html
+    reason: leftover third-party license entry for "Adjust ios_sdk"; legal boilerplate untouched by this commit, irrelevant to understanding the dependency removal itself.
+  - path: firefox-ios/Client/TermsOfServiceManager.swift
+    reason: in the diff (drops a one-line `// AdjustHelper.setEnabled($0)` comment) but is a trivial comment-only edit with no behavioral coupling beyond what AppLaunchUtil.swift already demonstrates.
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 10
   description: Remove Adjust SPM package — dependency removal coupling Package.resolved + pbxproj + call
     sites
-notes: ''
+notes: >-
+  Removes the Adjust (ios_sdk) SPM package and its already-dead (fully commented-out since #21524)
+  AdjustHelper/AdjustTelemetryHelper/AdjustWrapper sources, mocks and tests, updating project.pbxproj and
+  Package.resolved in lockstep. Nontrivial gold documents an incomplete cleanup — the adjustEnvironmentProd
+  feature flag and the adjust Glean metrics group that the deleted (dead) code referenced are left in
+  place, now fully orphaned. No live/uncommented callers of any Adjust symbol remain post-commit
+  (verified via git grep at the pinned commit).

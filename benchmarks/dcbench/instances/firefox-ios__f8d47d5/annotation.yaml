@@ -2,14 +2,53 @@ repo: firefox-ios
 base_commit: 1c1858c0b76ce5329da289f76c8b87bdf01f4cf2
 commit: f8d47d5593b7692a4308da919d2aff6a40acdc80
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: Client.xcodeproj/project.pbxproj
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Flips every target from SWIFT_VERSION 3.0 to 4.0 and adds SWIFT_SWIFT3_OBJC_INFERENCE = Off/On per target — this build-setting flip is the root cause forcing every explicit @objc addition in the diff.
+  - path: Client/Frontend/Browser/BrowserViewController.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Central file with the widest set of newly @objc-annotated selectors (appWillResignActiveNotification, appDidBecomeActiveNotification, tappedTopArea, dynamicFontChanged), each reached only via NotificationCenter.addObserver(selector:) or UIControl.addTarget(action:) string-selector lookups defined a few lines below in the same file.
+  - path: Client/Frontend/Intro/IntroViewController.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'Defines IntroCard.buttonSelector as a String ("Selector is a string that is synthisized into a Selector via NSSelectorFromString (for LeanPlum''s sake)") and resolves it at runtime with `self.responds(to: NSSelectorFromString(selectorString))` / `cardView.button.addTarget(self, action: NSSelectorFromString(selectorString), ...)` — the purest string_indirection instance in the diff: @objc func login()/startBrowsing() are invoked purely by a string name, not a static #selector reference at the call site.'
+  - path: Client/Frontend/Browser/URLBarView.swift
+    tier: helpful
+    role: cochange
+    in_diff: true
+    rationale: Adds @objc to `dynamic var locationBorderColor/locationActiveBorderColor/cancelTintColor/showQRButtonTintColor` — `dynamic` properties backing UIAppearance's KVC-based appearance-proxy mechanism, which look up properties by name via the ObjC runtime and now require explicit @objc since inference is off.
+  - path: Client/Frontend/Browser/TabToolbar.swift
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: 'Changes `@objc / open class TabToolbarHelper: NSObject` to `@objcMembers`, illustrating the alternate fix (blanket-expose all members) used alongside the per-method @objc sweep once implicit inference stopped covering the class''s target-action methods.'
+  - path: Client/Application/LeanplumIntegration.swift
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: 'Not touched by this commit but is the actual consumer that requires IntroViewController''s buttonSelector strings to resolve: `var introScreenVars = LPVar.define("IntroScreen", with: IntroCard.defaultCards().flatMap({ $0.asDictonary() }))` ships each card''s String selector name to the remote LeanPlum config, which IntroViewController later reconstitutes via NSSelectorFromString(selectorString) — the round-trip only works if the target methods are @objc-visible.'
+forbidden:
+  - path: Shared/KeyboardHelper.swift
+    reason: also registers NotificationCenter observers via #selector(keyboardWillShow)/#selector(keyboardWillHide) but those methods already carry @objc pre-commit and the file is untouched by this diff — a same-pattern red herring, not linked to this change.
+  - path: Client/Frontend/Login Management/LoginListViewController.swift
+    reason: uses #selector(beginEditing) for a UIBarButtonItem target-action, but `@objc func beginEditing()` was already explicit before this commit and the file is not in the diff.
+  - path: Client/Frontend/Home/PanelDataObservers.swift
+    reason: contains `#selector(self.notificationReceived)` (same method name as several diff files) but it targets a different class, ActivityStreamDataObserver, whose notificationReceived already had @objc pre-commit — coincidental naming, not an actual link.
+  - path: Extensions/Today/TodayViewController.swift
+    reason: 'uses addTarget(self, action: #selector(onPressNewTab)) style target-action wiring in the same Extensions/ family as touched files, but its handlers already carry @objc pre-commit and the file is untouched by this diff.'
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 50
   description: Disable ObjC inference, add `@objc` to all runtime-exposed selectors — cross-cutting Swift/ObjC
     interop sweep
-notes: ''
+notes: Disables implicit Swift3 ObjC inference (SWIFT_VERSION 3.0->4.0, SWIFT_SWIFT3_OBJC_INFERENCE=Off/On per target in project.pbxproj) and adds explicit @objc to every method/property reached via #selector, NotificationCenter selectors, UIControl target-action, dynamic UIAppearance properties, and — the strongest case — IntroViewController's NSSelectorFromString(card.buttonSelector) runtime lookup fed by LeanplumIntegration.swift's remote-config serialization. Verified via git grep across the full repo at the pinned commit that no out-of-diff file calls #selector() against a newly-@objc'd symbol except two already-explicit pre-existing cases (now listed as forbidden distractors).
