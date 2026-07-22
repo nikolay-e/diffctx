@@ -2,14 +2,74 @@ repo: kubernetes
 base_commit: 5505c010fd7c29d24b2718ae8659a4296cb2cc37
 commit: b7c4f21d411fa0eddf400e305bc8c1a12e2fcdee
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 12
-  description: 'MutatingAdmissionPolicy v1 api wiring + validation: 6 hand-written go + regenerated pb/openapi
-    json/yaml fixtures mixed in one commit'
-notes: ''
+gold:
+- path: pkg/registry/admissionregistration/rest/storage_apiserver.go
+  tier: essential
+  role: definition
+  in_diff: true
+  rationale: Adds the v1Storage() wiring for "mutatingadmissionpolicies" and "mutatingadmissionpolicybindings",
+    the core of promoting MutatingAdmissionPolicy to v1 in the apiserver.
+- path: pkg/apis/admissionregistration/v1/defaults.go
+  tier: essential
+  role: definition
+  in_diff: true
+  rationale: Adds SetDefaults_MutatingAdmissionPolicySpec for v1, wired into SetObjectDefaults_MutatingAdmissionPolicy
+    in the companion zz_generated.defaults.go diff hunk.
+- path: pkg/controlplane/storageversionhashdata/data.go
+  tier: helpful
+  role: config
+  in_diff: true
+  rationale: Adds GVRToStorageVersionHash entries for admissionregistration.k8s.io/v1/mutatingadmissionpolicies
+    and mutatingadmissionpolicybindings required once the v1 resources are enabled in storage.
+- path: pkg/apis/admissionregistration/validation/validation.go
+  tier: helpful
+  role: definition
+  in_diff: true
+  rationale: findMutatingPolicyPreexistingExpressions loop var renamed v->m, touched alongside the v1
+    wiring in this commit's validation path for MutatingAdmissionPolicy.
+- path: staging/src/k8s.io/api/admissionregistration/v1/types.go
+  tier: essential
+  role: definition
+  in_diff: false
+  rationale: Pre-existing MutatingAdmissionPolicy/MutatingAdmissionPolicySpec/MutatingAdmissionPolicyBinding
+    struct definitions (FailurePolicy, ReinvocationPolicy, MatchConstraints, Mutations fields) that the
+    new v1 defaulting and storage wiring operate on.
+- path: pkg/registry/admissionregistration/mutatingadmissionpolicy/storage/storage.go
+  tier: essential
+  role: definition
+  in_diff: false
+  rationale: Defines NewREST(optsGetter, authorizer, resourceResolver) which storage_apiserver.go's new
+    v1 "mutatingadmissionpolicies" block calls directly.
+- path: pkg/registry/admissionregistration/mutatingadmissionpolicybinding/storage/storage.go
+  tier: essential
+  role: definition
+  in_diff: false
+  rationale: Defines NewREST(..., policyGetter, ...) and DefaultPolicyGetter that storage_apiserver.go's
+    new v1 "mutatingadmissionpolicybindings" block instantiates and calls.
+- path: pkg/apis/admissionregistration/v1beta1/defaults.go
+  tier: helpful
+  role: cochange
+  in_diff: false
+  rationale: Contains the pre-existing SetDefaults_MutatingAdmissionPolicySpec for v1beta1 that the new
+    v1 defaults.go function in this commit mirrors almost verbatim.
+forbidden:
+- path: pkg/apis/admissionregistration/v1alpha1/defaults.go
+  reason: alpha-version defaulting sibling, not touched or needed to understand the v1 promotion
+- path: pkg/registry/admissionregistration/validatingadmissionpolicy/storage/storage.go
+  reason: sibling storage for a different resource (ValidatingAdmissionPolicy), similarly named but not
+    wired in this commit
+- path: staging/src/k8s.io/api/admissionregistration/v1beta1/types.go
+  reason: v1beta1 type definitions, superseded target for promotion but not read to understand v1 wiring
+- path: api/openapi-spec/swagger.json
+  reason: mechanical OpenAPI aggregation output, not present in this commit's diff and not needed for
+    review
+nontrivial_gold_count: 4
+string_indirection: false
+no_nontrivial_context: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from:
+- agent-exploration
+notes: 'Promotes MutatingAdmissionPolicy/Binding from v1beta1 to v1: registers v1 storage in storage_apiserver.go,
+  adds v1 defaulting mirroring the existing v1beta1 defaulting, records storage-version hashes, and adds
+  roundtrip testdata fixtures. The MutatingAdmissionPolicy v1 types themselves and the storage.go NewREST
+  constructors already existed and are gold context outside the diff.'
