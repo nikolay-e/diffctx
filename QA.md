@@ -475,6 +475,13 @@ ephemeral CI runners building our own artifacts (incl. `pip install -e .`,
 which cannot be hash-locked) → bulk `accept` transition with a rationale
 comment. bench-image CI verifies `--only-binary` compatibility of the lock.
 
+Sonar keeps doing this: a rule activation lands findings on code nobody touched,
+so the verification-loop re-fetch after a push surfaces issues that were not in
+the initial pass (2026-07: `python:S8997` on `tests/test_tokens.py`, manual
+`sys.stderr` swap → `capsys`). Budget for one extra loop iteration whenever the
+first Sonar fetch is non-empty, and never treat a clean initial fetch as proof
+the post-push fetch will be clean.
+
 ## Rust Binary vs Python CLI Render Differences (grep traps)
 
 The standalone Rust binary (`diffctx/target/release/diffctx`) renders YAML
