@@ -428,6 +428,35 @@ Fragment contents from real repos can contain literal special-token text
 (`<|endoftext|>`). Any script that re-tokenizes diffctx output with tiktoken
 must pass `encode(text, disallowed_special=())` or it dies mid-batch.
 
+## Generated API-Dump Files Are a Lockfile-Class Cost Sink (#105)
+
+Gradle/Kotlin-multiplatform repos running binary-compatibility-validator commit
+`*.api` / `*.klib.api` dumps. A public-API change touches a handful of lines in
+them, but the chunk fallback renders 200-line chunks: ktor `a400de87` turned 9
+changed lines into 57 KB (35% of the whole output). Correctness holds (hunks land
+inside the rendered chunks, `role: "changed"` present) — it is purely the #105
+granularity cost, same policy class as the lockfiles on #112. Treat any
+`*.api`-heavy diff as a #105 repro, not a new finding.
+
+## LEVERAGE.md Is Lint-Gated Like Any Repo Markdown
+
+`/review-leverage` writes `LEVERAGE.md` at prose width, but the repo's
+markdownlint hook enforces MD013 at 80 columns repo-wide, so an uncommitted
+audit log blocks the next `git add -A` commit. Reflow before committing (wrap
+prose only — tables and fenced blocks are already exempt via `.markdownlint.yaml`).
+Note the trap when checking width: `awk 'length > 80'` counts BYTES, so the
+`·`/`→`/`—` characters these logs are full of produce phantom violations —
+markdownlint counts characters. Verify with `pre-commit run markdownlint --files
+LEVERAGE.md`, not with awk.
+
+## dcbench Annotation Scripts: `--single` Rebuilds the Whole Project Graph
+
+`annotate_hops.py --single <inst>` on an instance whose gold entries lack `hop`
+builds the full project graph of a large repo — minutes, or a #116-class hang.
+Only the already-annotated path returns fast (`skip (done)`). For a smoke test of
+these scripts, pick an instance that is already done, and exercise the failure
+path with a bogus `--repos-root` instead of waiting on a real graph build.
+
 ## Pre-commit False-Fail from Concurrent Background Writers
 
 A hook reported as `Failed ... files were modified by this hook` can mean a
