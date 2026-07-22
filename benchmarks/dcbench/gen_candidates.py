@@ -199,6 +199,36 @@ def process(inst_dir: str, repos_root: str) -> str:
     return f"{inst.name}: ok candidates={len(merged)} ({doc['generators']})"
 
 
+def instance_dirs(pending_only: bool, limit: int) -> list[str]:
+    dirs = []
+    for inst in sorted((DCBENCH / "instances").iterdir()):
+        ann = yaml.safe_load((inst / "annotation.yaml").read_text())
+        if pending_only and ann.get("annotator") != "pending":
+            continue
+        dirs.append(str(inst))
+    return dirs[:limit] if limit else dirs
+
+
+def run_isolated(inst_dir: str, repos_root: Path, timeout_s: int) -> str:
+    cmd = [
+        sys.executable,
+        "-m",
+        "benchmarks.dcbench.gen_candidates",
+        "--repos-root",
+        str(repos_root),
+        "--single",
+        inst_dir,
+    ]
+    try:
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s, cwd=str(DCBENCH.parent.parent))
+    except subprocess.TimeoutExpired:
+        return f"{Path(inst_dir).name}: FAIL timeout>{timeout_s}s"
+    out = (r.stdout or "").strip().splitlines()
+    if r.returncode != 0:
+        return f"{Path(inst_dir).name}: FAIL rc={r.returncode}"
+    return out[-1] if out else f"{Path(inst_dir).name}: FAIL no output"
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--repos-root", type=Path, default=DCBENCH.parent.parent / "test-repos")
@@ -210,44 +240,19 @@ def main() -> int:
     args = ap.parse_args()
 
     if args.single:
-        print(process(str(args.single), str(args.repos_root)), flush=True)
-        return 0
+        result = process(str(args.single), str(args.repos_root))
+        print(result, flush=True)
+        return 1 if ": FAIL" in result else 0
 
-    dirs = []
-    for inst in sorted((DCBENCH / "instances").iterdir()):
-        ann = yaml.safe_load((inst / "annotation.yaml").read_text())
-        if args.pending_only and ann.get("annotator") != "pending":
-            continue
-        dirs.append(str(inst))
-    if args.limit:
-        dirs = dirs[: args.limit]
+    dirs = instance_dirs(args.pending_only, args.limit)
     print(f"generating candidates for {len(dirs)} instances")
 
-    def run_isolated(inst_dir: str) -> str:
-        cmd = [
-            sys.executable,
-            "-m",
-            "benchmarks.dcbench.gen_candidates",
-            "--repos-root",
-            str(args.repos_root),
-            "--single",
-            inst_dir,
-        ]
-        try:
-            r = subprocess.run(
-                cmd, capture_output=True, text=True, timeout=args.per_instance_timeout, cwd=str(DCBENCH.parent.parent)
-            )
-        except subprocess.TimeoutExpired:
-            return f"{Path(inst_dir).name}: FAIL timeout>{args.per_instance_timeout}s"
-        out = (r.stdout or "").strip().splitlines()
-        if r.returncode != 0:
-            return f"{Path(inst_dir).name}: FAIL rc={r.returncode}"
-        return out[-1] if out else f"{Path(inst_dir).name}: FAIL no output"
-
+    failures = 0
     with ThreadPoolExecutor(max_workers=args.jobs) as pool:
-        for res in pool.map(run_isolated, dirs):
+        for res in pool.map(lambda d: run_isolated(d, args.repos_root, args.per_instance_timeout), dirs):
             print(res, flush=True)
-    return 0
+            failures += ": FAIL" in res
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":
