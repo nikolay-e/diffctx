@@ -2,14 +2,29 @@ repo: kubernetes
 base_commit: 9f61a6b2ca6e243ae057745ebb942ac1ec9cce82
 commit: ec84379a64df4c5c14db3ea6560e98cc0a895600
 patch_stored: false
-gold: []
-forbidden: []
+gold:
+  - path: go.mod
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Root module's require block bumps go.etcd.io/etcd/{api,client/pkg,client}/v3 from v3.6.11 to v3.7.0-rc.0 (plus transitive golang-jwt/logrus point bumps) — the single hand-written source of truth for this whole commit; all 275 vendor/ files and go.sum churn are `go mod vendor` fallout of this line change.
+  - path: staging/src/k8s.io/apiserver/go.mod
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: k8s.io/apiserver directly requires go.etcd.io/etcd/server/v3 (the actual etcd client/server library used by the storage backend), bumped here to v3.7.0-rc.0 in lockstep with the root module.
+forbidden:
+  - path: vendor/go.etcd.io/etcd/client/v3/client.go
+    reason: vendored upstream library source pulled in verbatim by `go mod vendor`, not a Kubernetes-authored change
+  - path: vendor/modules.txt
+    reason: mechanical vendor manifest regenerated from go.mod/go.sum, not itself a source of the change
+  - path: LICENSES/vendor/go.etcd.io/etcd/server/v3/LICENSE
+    reason: license text snapshot auto-synced by the vendoring tool, not explanatory of the version bump
+  - path: staging/src/k8s.io/kube-scheduler/go.sum
+    reason: transitive checksum lockfile update with no direct etcd dependency of its own, mechanical fallout only
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 296
-  description: 'Bump etcd to v3.7.0-rc.0 + vendor update: 275/296 vendor/generated files vs a handful
-    of real go.mod/hack changes — flagship vendor-noise case'
-notes: ''
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Pure dependency bump ("Bump etcd to v3.7.0-rc.0 and update vendor"): 275 of 296 changed files are vendor/ or LICENSES/vendor/ content synced by `go mod vendor`, plus mechanical go.sum/go.work.sum churn across every staging module. The entire intent is captured by the version-string edits in go.mod and the staging modules that directly require etcd (apiserver); no external non-diff context is needed to understand it.'

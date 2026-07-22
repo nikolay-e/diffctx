@@ -2,13 +2,75 @@ repo: gitlab-foss
 base_commit: 2cf9769d12bb93c7a55432f8c8c08e89e6735461
 commit: e7ee84aad4237eaa16f2aba75b4d2c7860625c9d
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: app/models/ci/build_need.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New Ci::BuildNeed model (belongs_to :build, validates :name) storing each needs entry parsed from .gitlab-ci.yml, backing Ci::Build#needs.
+  - path: db/migrate/20190731084415_add_build_need.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Migration creating ci_build_needs (build_id, name, unique index) that Ci::BuildNeed maps to.
+  - path: app/models/ci/build.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds has_many :needs / accepts_nested_attributes_for :needs, and dependencies() now filters to options[:needs] in addition to options[:dependencies].
+  - path: app/models/commit_status.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Adds the with_needs scope (EXISTS against Ci::BuildNeed.scoped_build) used by ProcessPipelineService#process_builds_with_needs, and switches PipelineProcessWorker.perform_async(pipeline_id) to BuildProcessWorker.perform_async(id) on completion."
+  - path: app/services/ci/process_pipeline_service.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Core DAG orchestration; process_builds_with_needs/process_build_with_needs evaluate a completed build's dependents via with_needs and Ci::ProcessBuildService, gated by Feature.enabled?(:ci_dag_support, project).
+  - path: app/workers/build_process_worker.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New worker calling build.pipeline.process!(build.name), the entry point that feeds trigger_build_name into ProcessPipelineService#execute after each build completes.
+  - path: lib/gitlab/ci/yaml_processor.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Builds needs_attributes from job[:needs] for accepts_nested_attributes_for :needs, and validate_job_needs! enforces that a need refers to a job in a prior stage."
+  - path: lib/gitlab/ci/config/entry/job.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds needs to ALLOWED_KEYS/attributes/helpers and validates it as an array of strings, plus a cross-check that dependencies is a subset of needs, the actual YAML-level parsing of the new keyword.
+  - path: lib/gitlab/ci/config/normalizer.rb
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: "expand_names now expands both dependencies and needs job-name lists when a referenced job is parallelized, so needs: still resolves correctly against parallel job instances."
+  - path: app/services/ci/process_build_service.rb
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines the schedule/actionize/enqueue-or-skip logic that ProcessPipelineService#process_build_with_needs calls via Ci::ProcessBuildService.new(project, user).execute(subject, current_status).
+  - path: app/models/concerns/has_status.rb
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines COMPLETED_STATUSES, the constant process_build_with_needs checks (HasStatus::COMPLETED_STATUSES.include?(current_status)) before evaluating a dependent build.
+forbidden:
+  - path: app/workers/pipeline_process_worker.rb
+    reason: similarly-named pre-existing worker still used elsewhere for non-DAG pipeline processing, not the new per-build BuildProcessWorker this patch adds
+  - path: app/models/ci/build_trace_chunk.rb
+    reason: unrelated sibling Ci::Build* model, not touched or referenced by the needs/DAG feature
+  - path: lib/gitlab/ci/config/entry/stage.rb
+    reason: "sibling YAML entry class for stage ordering; needs: validation reads stage indexes but this file itself is untouched and not required to follow the change"
+nontrivial_gold_count: 2
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 24
   description: CI DAG support — migration+schema+models+services+lib+specs
-notes: ''
+notes: 'Implements the `needs:` CI keyword (DAG support): new ci_build_needs table/model, YAML-processor parsing/validation of needs (including parallel-job name expansion), and a new BuildProcessWorker that re-triggers ProcessPipelineService per completed build so downstream jobs with matching needs can start out of stage order. string_indirection is true because the whole out-of-order evaluation path is gated by Feature.enabled?(:ci_dag_support, project), a name-based flag lookup with no static reference.'

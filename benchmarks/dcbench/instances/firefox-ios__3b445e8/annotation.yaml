@@ -2,13 +2,79 @@ repo: firefox-ios
 base_commit: c33f01948ff1c40d445424e15f69e8284cc9613e
 commit: 3b445e818b38b30c70c5d452fcffccbaa2e02837
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: firefox-ios/Client/Frontend/Translations/Engine/Bridge.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines the `Bridge` class (WKScriptMessageHandler) that forwards JSON between `portA`/`portB` by matching `message.name` against each endpoint's `handlerName` — the semantic core of the change.
+  - path: firefox-ios/Client/Frontend/Translations/Engine/BridgeEndpoint.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines the `BridgeEndpoint` protocol (`handlerName`, `send`, `registerScriptHandler`) that `Bridge` operates against and that both `WebViewBridgeEndpoint` and the test `FakeEndpoint` implement.
+  - path: firefox-ios/Client/Frontend/Translations/Engine/WebViewBridgeEndpoint.swift
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: concrete `BridgeEndpoint` backed by a real `WKWebView`; introduces `handlerName`/`contentWorld`/`receiveFunction` — the exact three parameters ("left"/"right", `window.receive`) that the paired JS user scripts expect.
+  - path: firefox-ios/Client/Frontend/UserContent/UserScripts/MainFrame/AtDocumentStart/TranslationsEntrypoint.js
+    tier: essential
+    role: caller
+    in_diff: false
+    rationale: JS side of one bridge port — calls `window.webkit.messageHandlers.left.postMessage(...)` and defines `window.receive = (message) => {...}`, the exact handlerName ("left") / receiveFunction ("window.receive") convention `WebViewBridgeEndpoint` is built to drive.
+  - path: firefox-ios/Client/Frontend/UserContent/UserScripts/TranslationsEngine/TranslationsEngine.js
+    tier: essential
+    role: caller
+    in_diff: false
+    rationale: JS side of the other bridge port — calls `window.webkit.messageHandlers.right.postMessage(...)` and defines its own `window.receive`, showing the "right" endpoint of the two-webview pair that `Bridge(portA:portB:)` connects.
+  - path: firefox-ios/Client/Frontend/UserContent/UserScripts/TranslationsEngine/TranslationsEngine.html
+    tier: helpful
+    role: doc
+    in_diff: false
+    rationale: the background HTML document that loads TranslationsEngine.js into its own WKWebView, confirming there are literally two separate webviews (entrypoint page vs. engine background page) for the bridge to connect.
+  - path: firefox-ios/firefox-ios-tests/Tests/ClientTests/TranslationsTests/BridgeTests.swift
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: exercises `Bridge`'s forward-by-handlerName, invalid-JSON-drop, and teardown/unregister behavior, making the intended semantics executable and explicit.
+  - path: firefox-ios/firefox-ios-tests/Tests/ClientTests/TranslationsTests/FakeBridgeEndpoint.swift
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: defines `FakeEndpoint`, the `BridgeEndpoint` test double `BridgeTests.swift` uses in place of a real `WKWebView`.
+  - path: firefox-ios/Client.xcodeproj/project.pbxproj
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: registers the 5 new Swift files (Bridge.swift, BridgeEndpoint.swift, WebViewBridgeEndpoint.swift, BridgeTests.swift, FakeBridgeEndpoint.swift) as PBXBuildFile/PBXFileReference entries and adds the new `Engine` PBXGroup so they actually compile into the Client and ClientTests targets.
+forbidden:
+  - path: firefox-ios/Client/Frontend/Translations/SchemeHandler/TranslationsSchemeHandler.swift
+    reason: same Translations feature and same sibling group in project.pbxproj, but implements an unrelated JS<->native channel (custom `translations://` URL scheme + WKURLSchemeTask), not the webview-to-webview message bridge.
+  - path: firefox-ios/Client/Frontend/Translations/LanguageDetector/WebViewLanguageSampleSource.swift
+    reason: same feature directory and a similar "protocol-wrapped WKWebView adapter for testability" idiom, but a self-contained language-sampling subsystem with no coupling to Bridge/BridgeEndpoint.
+  - path: BrowserKit/Sources/Shared/Extensions/WKWebViewExtensions.swift
+    reason: defines a similarly-purposed `evaluateJavascriptInCustomContentWorld` helper, but WebViewBridgeEndpoint.send(json:) calls WKWebView's native `evaluateJavaScript(_:in:in:)` directly instead of using this extension.
+  - path: firefox-ios/Client/Frontend/Translations/TranslationsMiddleware.swift
+    reason: the Redux middleware that will eventually own the translate button/state machine, but at this commit it has no reference to Bridge/BridgeEndpoint — the app-level wiring lands in a later, separate commit.
+nontrivial_gold_count: 3
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 6
   description: 'Translations: add bridge between webviews — new bridge component wired into project'
-notes: ''
+notes: >-
+  Adds a generic Bridge/BridgeEndpoint abstraction plus a concrete WKWebView-backed
+  WebViewBridgeEndpoint that forwards JSON messages between two WKScriptMessageHandler
+  ports; ships with unit tests and a fake endpoint, and is registered in
+  project.pbxproj. At the pinned commit no Swift call site instantiates Bridge yet (git
+  log shows FXIOS-13784 has only this one commit), so the essential context proving the
+  design is not another Swift caller but the pre-existing paired JS user scripts
+  (TranslationsEntrypoint.js using messageHandlers.left/window.receive,
+  TranslationsEngine.js using messageHandlers.right/window.receive) that define exactly
+  the handlerName/receiveFunction contract WebViewBridgeEndpoint implements.
+  string_indirection: true because the whole mechanism is keyed by string handler names
+  ("left"/"right") and a string-invoked JS function name ("window.receive"), not a
+  static Swift reference.

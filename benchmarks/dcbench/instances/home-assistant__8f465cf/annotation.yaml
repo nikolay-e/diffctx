@@ -2,14 +2,68 @@ repo: home-assistant
 base_commit: 4e29476dd92ce7b5b5cea0cca49758a426882f2b
 commit: 8f465cf2ca5a0d619b42d5567986285b1d443fb6
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: homeassistant/components/snapcast/media_player.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Core of the change - deletes SnapcastGroupDevice/SnapcastBaseDevice split and the custom async_join/async_unjoin/deprecation-issue methods, merging everything into a single SnapcastClientDevice that implements the standard async_join_players/async_unjoin_player/group_members protocol.
+  - path: homeassistant/components/snapcast/const.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes GROUP_PREFIX/GROUP_SUFFIX/SERVICE_JOIN/SERVICE_UNJOIN/ATTR_MASTER, the string constants that media_player.py, services.yaml and strings.json all keyed off of for the deleted group entity and custom join/unjoin services.
+  - path: homeassistant/components/snapcast/services.yaml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Removes the join/unjoin custom-service schemas (string-keyed to SERVICE_JOIN/SERVICE_UNJOIN in const.py) now that grouping is handled by the standard media_player join/unjoin actions.
+  - path: homeassistant/components/snapcast/strings.json
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Removes the deprecated_group_entities/deprecated_grouping_actions issue strings and join/unjoin service translations, string-keyed to the issue_registry translation_key and service names deleted from media_player.py/services.yaml.
+  - path: homeassistant/components/snapcast/icons.json
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Removes the join/unjoin service icon entries, string-keyed by service name to the schemas deleted from services.yaml.
+  - path: tests/components/snapcast/test_media_player.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Removes test_legacy_join_issue and test_deprecated_group_entity_issue (the deprecation-issue coverage) and switches to importing SERVICE_JOIN/SERVICE_UNJOIN from homeassistant.components.media_player instead of the deleted snapcast-specific service.
+  - path: tests/components/snapcast/snapshots/test_media_player.ambr
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Deletes the syrupy snapshot entries for the now-removed snapcast_group_* entities (test_group_1/test_group_2), matching the SnapcastGroupDevice removal.
+  - path: tests/components/snapcast/const.py
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Removes TEST_GROUP_ENTITY_ID, the test constant for the deleted group entity id, keeping test fixtures in sync with the client-only entity model.
+  - path: homeassistant/components/media_player/__init__.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines the core SERVICE_JOIN/SERVICE_UNJOIN actions and the async_join_players/async_unjoin_player/group_members contract gated by MediaPlayerEntityFeature.GROUPING that SnapcastClientDevice now implements natively, explaining why the custom snapcast.join/unjoin services and their deprecation issues could be deleted.
+forbidden:
+  - path: homeassistant/components/snapcast/entity.py
+    reason: Trivial pass-through CoordinatorEntity base class, unaffected by the group-entity removal.
+  - path: homeassistant/components/snapcast/coordinator.py
+    reason: Defines SnapcastUpdateCoordinator/server access already used unchanged by both old and new code; not touched by this refactor.
+  - path: homeassistant/components/snapcast/config_flow.py
+    reason: Config flow for setting up the integration, unrelated to entity/service architecture being removed.
+  - path: tests/components/snapcast/conftest.py
+    reason: Shared test fixtures/mocks, not modified by this commit and not needed to understand the deletion.
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 8
   description: Remove deprecated Snapcast group entities and custom services — services.yaml + snapshots
     + strings coupling
-notes: ''
+notes: 'Removes the deprecated Snapcast "group" media_player entities and the custom snapcast.join/unjoin services (and their deprecation issues), collapsing everything onto a single SnapcastClientDevice that implements the standard core media_player join/unjoin/grouping protocol. Linkage from const.py service name constants to services.yaml/icons.json/strings.json is string-keyed (service names), so string_indirection is true.'

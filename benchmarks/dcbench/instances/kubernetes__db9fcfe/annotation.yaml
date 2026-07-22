@@ -2,14 +2,44 @@ repo: kubernetes
 base_commit: eca1f9d2d5ecb06b80cbd114e1ca1631fc3ff100
 commit: db9fcfeed29b860d8dd7188bc1903c4709977890
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: staging/src/k8s.io/kubelet/pkg/cri/streaming/server.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: The streaming.Server implementation itself, 100%-content-preserved but relocated from pkg/kubelet/cri/streaming to the new k8s.io/kubelet staging module — the object of the move.
+  - path: pkg/kubelet/server/server.go
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Sole non-test consumer of the streaming package; its import block is rewritten from k8s.io/kubernetes/pkg/kubelet/cri/streaming to k8s.io/kubelet/pkg/cri/streaming, the concrete evidence of why the move is safe.
+  - path: staging/publishing/rules.yaml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds/updates the staging-publisher rule for k8s.io/kubelet so cri/streaming is now published as part of that staging repo instead of living only inside pkg/kubelet.
+  - path: pkg/kubelet/kubelet_pods.go
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Second consumer whose portforward/remotecommandserver imports are repointed to k8s.io/kubelet/pkg/cri/streaming/{portforward,remotecommand}.
+  - path: staging/src/k8s.io/kubelet/go.mod
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: New go.mod requires (grpc, go-restful, etc.) needed because streaming's dependencies now live in the k8s.io/kubelet module instead of the main module.
+forbidden:
+  - path: staging/src/k8s.io/kubelet/pkg/cri/streaming/server_test.go
+    reason: moved test file, content-identical aside from package path, not needed beyond server.go to understand the move
+  - path: hack/testdata/levee/levee-config.yaml
+    reason: unrelated security-lint source-tracking config entry removed because the source moved out of pkg/, not itself explanatory of the move
+  - path: vendor/modules.txt
+    reason: mechanical vendor manifest update following go.mod changes, not source of the change
+  - path: staging/src/k8s.io/dynamic-resource-allocation/go.mod
+    reason: unrelated staging module incidentally touched (go.sum-style bump), not part of the streaming move
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 48
-  description: 'Move cri/streaming from pkg/kubelet to staging k8s.io/kubelet: same code deleted in pkg/
-    and added under staging/src + vendor/modules.txt — mirrored-move duplication case'
-notes: ''
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Pure mechanical relocation: cri/streaming moves from pkg/kubelet to the new k8s.io/kubelet staging repo (git-detected as ~100% renames) so external CRI runtimes can vendor it instead of copying it. Only change beyond the move itself is import-path fixups in the two consumers (server.go, kubelet_pods.go) and staging publishing-rule/go.mod plumbing; no external non-diff context is needed to understand it, so all gold is in-diff.'

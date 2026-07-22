@@ -2,14 +2,58 @@ repo: home-assistant
 base_commit: 0e2190fb255d4b20eb185db2eae60a4186c22c44
 commit: bc6060f98b69baacf377a2e1d9e4355a3f91e6f6
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: homeassistant/components/voip/binary_sensor.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Entirely deleted - defined VoIPCallInProgress, the deprecated binary sensor entity and its async_setup_entry, which is the thing being removed.
+  - path: homeassistant/components/voip/repairs.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Entirely deleted - VoIP's async_create_fix_flow wiring for the "assist_in_progress_deprecated" repair issue, now dead code since the only entity that could raise that issue (VoIPCallInProgress) is gone.
+  - path: homeassistant/components/voip/__init__.py
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Removes Platform.BINARY_SENSOR from PLATFORMS so async_setup_entry no longer forwards setup to the deleted binary_sensor.py module.
+  - path: homeassistant/components/voip/strings.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Removes entity.binary_sensor.call_in_progress's translated name and the issues.assist_in_progress_deprecated fix-flow strings, both string-keyed to the deleted entity/repair flow.
+  - path: tests/components/voip/test_binary_sensor.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Entirely deleted - was the covering test suite for the call_in_progress sensor, its disabled-by-default behavior, and its deprecation issue/repair flow.
+  - path: tests/components/voip/test_repairs.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Entirely deleted - was the covering test for repairs.async_create_fix_flow, which no longer exists.
+  - path: homeassistant/components/assist_pipeline/repair_flows.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines AssistInProgressDeprecatedRepairFlow, the shared repair-flow class that VoIP's now-deleted repairs.py imported and dispatched to for the "assist_in_progress_deprecated" issue_id prefix; explains what the removed wiring depended on.
+forbidden:
+  - path: homeassistant/components/voip/devices.py
+    reason: Defines VoIPDevice's is_active/set_is_active state tracking, still used by the remaining assist_satellite platform; not touched by this removal.
+  - path: homeassistant/components/voip/entity.py
+    reason: Defines the shared VoIPEntity base class still used by select/switch/assist_satellite platforms, unaffected by deleting only the binary_sensor platform.
+  - path: homeassistant/components/voip/select.py
+    reason: Sibling platform file in the same integration directory, untouched by this commit.
+  - path: homeassistant/components/voip/assist_satellite.py
+    reason: The other consumer of VoIPDevice's active-call state; looks related but its own entity/logic is untouched here.
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 6
   description: Remove deprecated VoIP call_in_progress binary sensor — entity removal touching integration
     + strings + tests
-notes: ''
+notes: 'Removes the deprecated VoIPCallInProgress binary sensor (and the repairs.py deprecation-issue wiring it triggered) entirely: the platform registration, the entity module, the repair flow, the translated strings, and both test files are all deleted together. The one piece of context outside the diff is assist_pipeline/repair_flows.py, which defines the shared AssistInProgressDeprecatedRepairFlow class the deleted repairs.py dispatched to by issue_id string prefix.'

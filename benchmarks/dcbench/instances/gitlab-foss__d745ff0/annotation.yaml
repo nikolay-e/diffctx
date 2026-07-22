@@ -2,13 +2,50 @@ repo: gitlab-foss
 base_commit: 4b050fc283fcc0f703d219a54dab4a02f10e475d
 commit: d745ff0431130a760a7a59899c26410dc887f77a
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: app/models/deploy_token.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Core change: username override now returns super || default_username instead of a fixed gitlab+deploy-token-#{id}, plus the new format/length validation on the username column."
+  - path: db/migrate/20190613044655_add_username_to_deploy_tokens.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Migration adding the username column to deploy_tokens that DeployToken#username/default_username now reads and writes.
+  - path: app/services/deploy_tokens/create_service.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: DeployTokens::CreateService now sets deploy_token.username from params[:username].presence when creating a token, the write path from the form.
+  - path: app/controllers/projects/settings/repository_controller.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: deploy_token_params now permits :username, allowing the new form field's value through to CreateService.
+  - path: app/views/projects/deploy_tokens/_form.html.haml
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the username text_field and help text to the deploy token creation form, the UI entry point for the new attribute.
+  - path: lib/gitlab/auth.rb
+    tier: essential
+    role: caller
+    in_diff: false
+    rationale: "deploy_token_check compares `login != token.username`; this is the actual consumer that makes the custom username meaningful for authentication, and why spec/lib/gitlab/auth_spec.rb is updated in this commit despite auth.rb itself being unchanged."
+forbidden:
+  - path: app/models/project_deploy_token.rb
+    reason: join model between Project and DeployToken; unrelated to the username attribute added on DeployToken itself
+  - path: app/models/personal_access_token.rb
+    reason: similarly-purposed auth-token model but a separate feature, not touched or affected by this change
+  - path: lib/gitlab/auth/user_auth_finders.rb
+    reason: handles request-based auth lookup, not the login/password deploy-token comparison that actually uses the new username
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 13
   description: Add username to deploy tokens — migration+schema+model+service+Haml views
-notes: ''
+notes: 'Adds an optional custom username column to deploy_tokens; DeployToken#username falls back to the old gitlab+deploy-token-{id} default when unset, CreateService/controller/form wire the new field through, and Gitlab::Auth#deploy_token_check (outside the diff) is the reason the attribute matters, since it authenticates by comparing the HTTP login against token.username. Linkage is a static method override, no string indirection.'

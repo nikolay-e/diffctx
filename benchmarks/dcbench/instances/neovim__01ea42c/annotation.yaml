@@ -2,13 +2,64 @@ repo: neovim
 base_commit: 62a80c36c158ecf4ffc8c93d8891aeb2f0d2f287
 commit: 01ea42c32afe8d235d2110a5fcf12a353a7d2a71
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: src/nvim/ex_cmds.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: previously defined ex_trust(), which the patch deletes from here and relocates to secure.c.
+  - path: src/nvim/lua/executor.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: previously defined nlua_read_secure()/nlua_trust() and static helpers nlua_error()/nlua_pcall()/global_lstate access, which the patch either removes (moved) or un-statics via the new get_global_lstate() accessor for secure.c to use.
+  - path: src/nvim/lua/secure.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new file that is the destination of the relocation — now defines ex_trust(), nlua_read_secure(), and static nlua_trust() together.
+  - path: src/nvim/lua/secure.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new header declaring the relocated ex_trust() prototype, replacing lua/executor.h as the include needed by callers.
+  - path: src/nvim/main.c
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: calls nlua_read_secure(VIMRC_LUA_FILE/VIMRC_FILE/EXRC_FILE) and switches its include from lua/executor.h to the new lua/secure.h.
+  - path: src/nvim/ex_docmd.c
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: its generated cmdnames[] dispatch table invokes cmd_func for ex_trust, so it now includes lua/secure.h instead of relying on lua/executor.h for the prototype.
+  - path: src/nvim/ex_cmds.lua
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: "declares the ':trust' Ex command entry with func='ex_trust', which genex_cmds.lua codegen turns into the ex_docmd.c cmdnames[] entry pointing at ex_trust — the string-keyed wiring that makes the relocated function reachable at all."
+forbidden:
+  - path: src/nvim/ex_cmds_defs.h
+    reason: generated command-table header, but it is codegen output with no hand-written logic relevant to the move
+  - path: runtime/lua/vim/secure.lua
+    reason: same-named Lua module invoked via lua_getfield(lstate, "secure"), but its implementation is unchanged and irrelevant to understanding this pure C-side relocation
+  - path: src/nvim/lua/executor.h
+    reason: sibling header of executor.c; looks like it should gain new declarations but neovim's INCLUDE_GENERATED_DECLARATIONS build step auto-generates them, so this file is untouched and not needed
+  - path: src/nvim/globals.h
+    reason: defines e_trustfile message string used by the moved nlua_trust(), but the string itself is unchanged and not needed to understand the relocation
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 6
   description: 'refactor(vim.secure): move to lua/secure.c — Lua-C interop relocation'
-notes: ''
+notes: >
+  Pure code-motion refactor: ex_trust() moves from ex_cmds.c into new
+  src/nvim/lua/secure.c alongside nlua_read_secure()/nlua_trust() pulled out of
+  lua/executor.c; executor.c gains a get_global_lstate() accessor and un-statics
+  nlua_error()/nlua_pcall() so secure.c can call them. No behavior changes.
+  ex_cmds.lua is the one nontrivial (out-of-diff) file: it is the codegen source
+  that wires the ':trust' command name to the ex_trust symbol via a string field,
+  which is why cmdnames[] in ex_docmd.c can dispatch to the relocated function.

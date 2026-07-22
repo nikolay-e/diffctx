@@ -2,13 +2,81 @@ repo: gitlab-foss
 base_commit: 24d8c415c8745354063f6f96f3228f214605f837
 commit: 80b2c3cd4dda10c462612f963cc29210c1f7a24c
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: app/assets/javascripts/work_items/board/components/work_item_card.vue
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: The largest hunk in the commit (175 lines) — adds milestone/iteration/weight/health-status/parent/relationship-icon metadata rendering to the board card, gated by a new `hiddenMetadataKeys` prop and `isMetadataHidden()`.
+  - path: app/assets/javascripts/work_items/constants.js
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds `isAvailableInBoard` flags to `WORK_ITEM_LIST_PREFERENCES_METADATA_FIELDS` and defines `METADATA_KEYS`, which `work_item_card.vue`'s `isMetadataHidden()` and `display_settings_preferences.js`'s `applicableMetadataFields` both key off.
+  - path: app/assets/javascripts/work_items/board/graphql/get_board_work_items.query.graphql
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: "Adds MILESTONE/START_AND_DUE_DATE/HIERARCHY to the `widgets(onlyTypes: ...)` selection, the GraphQL data source for the new milestone/dueDate/parent computed properties in work_item_card.vue."
+  - path: app/assets/javascripts/work_items/list/display_settings_preferences.js
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: '`applicableMetadataFields` gains a `viewMode` param that filters out fields where `!item.isAvailableInBoard` when `VIEW_MODE_BOARD`, controlling which toggles reach `hiddenMetadataKeys`.'
+  - path: app/assets/javascripts/work_items/board/components/column_group.vue
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Passes the new `hidden-metadata-keys` and `root-page-full-path` props down into each `work-item-card`, the direct wiring for the new feature.
+  - path: app/assets/javascripts/work_items/pages/planning_view.vue
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Derives `hiddenMetadataKeys` from `namespacePreferences.hiddenMetadataKeys` and passes it into `board_view.vue`, the top of the prop-threading chain.
+  - path: app/assets/javascripts/work_items/utils.js
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines `findMilestoneWidget`, `findStartAndDueDateWidget`, `findWeightWidget`, `findIterationWidget`, `findHealthStatusWidget`, `findLinkedItemsWidget`, `findHierarchyWidget`, and `getDisplayReference` — every new computed property in work_item_card.vue calls one of these, but the file itself is untouched by this commit.
+  - path: spec/frontend/work_items/board/components/work_item_card_spec.js
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: 265-line spec addition directly covering the new metadata display/hide behavior of work_item_card.vue.
+  - path: spec/frontend/work_items/board/mock_data.js
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: New fixtures (milestone/iteration/weight/health-status/parent widget payloads) that work_item_card_spec.js consumes.
+forbidden:
+  - path: app/controllers/concerns/granular_token_authorization.rb
+    reason: unrelated feature bundled into the same mirror-sync commit (webhook resend token scoping), no linkage to the work-items board card change
+  - path: lib/gitlab/web_hooks/logger.rb
+    reason: unrelated structured webhook-logging feature swept into the same sync commit
+  - path: app/assets/javascripts/super_sidebar/components/super_sidebar.vue
+    reason: unrelated top-nav sidebar restructuring bundled in the same sync, shares no symbols with the board-card feature
+  - path: workhorse/internal/ai_assist/duoworkflow/runner.go
+    reason: unrelated Go/workhorse AI-assist websocket streaming change, different subsystem entirely
+  - path: app/models/ci/build.rb
+    reason: unrelated CI pipeline-state change bundled in the same sync commit
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 275
   description: Mirror-sync mega-commit — 275 files, 11 ext types, full stack incl. migrations
-notes: ''
+notes: >
+  This is a GitLab-Bot mirror-sync commit ("Add latest changes from
+  gitlab-org/gitlab@master") that squashes dozens of unrelated upstream MRs into one
+  275-file commit — there is no single coherent "change" to explain. Per protocol
+  guidance for wide diffs ("pick the semantic core, not every touched file"), gold
+  focuses on the single largest, most tightly-coupled cluster: extending the work-items
+  board card with milestone/iteration/weight/health/parent/relationship metadata gated
+  by per-board hidden-metadata preferences (work_item_card.vue is the biggest hunk at
+  175 lines, with a matching 265-line spec). The other ~10 unrelated feature clusters in
+  this commit (granular webhook tokens, structured webhook logging, super-sidebar
+  restructuring, duo-workflow websocket streaming, CI build/pipeline changes, DB
+  migrations, and ~150 files of pure doc-link churn) are treated as noise and sampled
+  into the forbidden list rather than gold.

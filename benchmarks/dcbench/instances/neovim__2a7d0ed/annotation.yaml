@@ -2,13 +2,51 @@ repo: neovim
 base_commit: 55c5d0de262b8a9eb03a65f6e6f45e8d26213eb4
 commit: 2a7d0ed6145bf3f8b139c2694563f460f829813a
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: src/nvim/lua/api_wrappers.c
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: representative example of the mechanical pattern — every existing #include gets a trailing `// IWYU pragma: keep` annotation, no code changes.
+  - path: src/nvim/move.c
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: representative example of the other mechanical pattern — drops now-unused includes (highlight.h, highlight_defs.h, search.h, stddef.h) and adds ones for symbols actually used (grid_defs.h, normal_defs.h, stdlib.h), with zero logic changes.
+  - path: src/nvim/msgpack_rpc/packer.c
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: representative example of a file gaining several previously-implicit transitive includes (lauxlib.h, klib/kvec.h, api/private/helpers.h, memory.h, types_defs.h) that IWYU determined were used directly.
+  - path: Makefile
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: defines the `iwyu` target ($(CMAKE) --preset iwyu; iwyu-fix-includes --only_re="src/nvim" --ignore_re=...) that the commit message says produced this diff — explains the tool and scope (only_re/ignore_re) behind the mechanical edits.
+forbidden:
+  - path: src/nvim/window.c
+    reason: also touched by this commit (pure include removals) but functionally identical in kind to the already-selected representative examples — adds no new information
+  - path: src/nvim/eval/encode.c
+    reason: named in the iwyu Makefile target's ignore_re exclusion list, so it looks tool-relevant but is explicitly NOT touched by this commit
+  - path: src/nvim/api/private/helpers.c
+    reason: one of the 136 touched files but is a plain include-list edit identical in kind to the chosen representatives; including it would pad without adding signal
+  - path: .clang-tidy
+    reason: sibling static-analysis config that sounds like it could govern include rules, but IWYU is a separate tool (driven by the Makefile `iwyu` target/CMake preset) and this file is unrelated to the change
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 136
   description: 'refactor: iwyu — repo-wide include restructuring (stress)'
-notes: ''
+notes: >
+  Mechanical, repo-wide "Result of `make iwyu`" commit: every one of the 136
+  files gets #include lines added, removed, or annotated with
+  `// IWYU pragma: keep` — verified by sampling large and small hunks (e.g.
+  the 30-line api_wrappers.c change, move.c, msgpack_rpc/packer.c) and finding
+  zero non-include-line changes throughout. There is no semantic "central"
+  file since every file is an equally mechanical instance of the same pattern;
+  three representative examples are listed as gold instead of all 136. The one
+  nontrivial (out-of-diff) file is the Makefile's `iwyu` target itself, which
+  is the tool invocation that generated this diff.

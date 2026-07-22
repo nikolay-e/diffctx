@@ -2,13 +2,76 @@ repo: neovim
 base_commit: c538ec85220aea11bbdb52028aa335787e9e4f42
 commit: 2f85bbe61513d12c746641fed6ad07559bd95719
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: runtime/lua/tohtml.lua
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: the new file — a from-scratch Lua reimplementation of the entire TOhtml conversion (tohtml() function, vim.tohtml.opt/state classes) replacing the deleted Vimscript.
+  - path: runtime/plugin/tohtml.lua
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new plugin entry point — nvim_create_user_command('TOhtml', ...) now calls require('tohtml').tohtml() instead of sourcing autoload/tohtml.vim.
+  - path: runtime/autoload/tohtml.vim
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: deleted old implementation (tohtml#Convert2HTML, tohtml#GetUserSettings, encoding/charset tables) that the new Lua module replaces — needed to see what behavior/options were dropped.
+  - path: runtime/syntax/2html.vim
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: deleted core :runtime syntax/2html.vim converter script that the old autoload/tohtml.vim sourced — the other half of the legacy implementation being replaced wholesale.
+  - path: runtime/plugin/tohtml.vim
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: deleted old plugin file that previously defined the :TOhtml command and its changelog/version string, superseded by plugin/tohtml.lua.
+  - path: test/functional/plugin/tohtml_spec.lua
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: new functional test suite covering the rewritten tohtml() behavior — the only test coverage for this migration.
+  - path: runtime/doc/syntax.txt
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: strips out ~430 lines of old 2html.vim/g:html_* option documentation, replaced by "documentation has been moved to |:TOhtml|", confirming which legacy options are no longer supported.
+  - path: scripts/gen_vimdoc.lua
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: "registers 'tohtml.lua' and its module/helptag naming (\"Lua module: tohtml\", *tohtml*) in the vimdoc generator config, which is what turns tohtml.lua's @brief block into the runtime/doc/lua.txt entry."
+  - path: runtime/doc/lua.txt
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: generated output showing the new :TOhtml and tohtml.tohtml({winid},{opt}) signatures, i.e. the documented contract for the rewritten function.
+forbidden:
+  - path: runtime/menu.vim
+    reason: GUI menu system references the :TOhtml command by name for its "Syntax > Convert to HTML" entry, but is untouched since the command name is preserved — irrelevant to the rewrite
+  - path: runtime/doc/map.txt
+    reason: contains an unrelated example string "/usr/share/vim/vim-7.0/plugin/tohtml.vim" inside a `:verbose map` sample output — a coincidental name match, not a real dependency
+  - path: runtime/lua/vim/_meta/api.lua
+    reason: generated API stub file, sibling of other _meta files touched by similar doc-migration commits, but not involved here — tohtml.lua is not part of the vim.api surface
+  - path: runtime/doc/vim_diff.txt
+    reason: gains one line noting the rewrite happened, but is a changelog-style cross-reference rather than content needed to understand the change itself
 nontrivial_gold_count: 0
-annotator: pending
+string_indirection: true
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 11
   description: 'feat!: rewrite TOhtml in lua — vimscript-to-Lua migration, compact-diverse'
-notes: ''
+notes: >
+  Full rewrite of :TOhtml from Vimscript (autoload/tohtml.vim +
+  syntax/2html.vim + plugin/tohtml.vim, ~3270 lines deleted) into a single Lua
+  module runtime/lua/tohtml.lua (1335 lines) wired up by plugin/tohtml.lua via
+  require('tohtml') — a string-keyed module-path indirection. Every file
+  needed to understand the migration (old implementation, new implementation,
+  new tests, doc regeneration wiring, doc content) is already inside the
+  11-file diff; a genuine search turned up no external symbol/caller/config
+  dependency the reader would need beyond it, hence no_nontrivial_context.

@@ -2,13 +2,65 @@ repo: gitlab-foss
 base_commit: c509b35b489ff69121c4760faa52d81e7666e9ca
 commit: d8bb8d458c09146d70261026a5c90e97903b99c4
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: app/assets/javascripts/repository/graphql.js
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Replaces the local @client mock resolver with a real Apollo client configured with IntrospectionFragmentMatcher (using fragmentTypes.json) and a dataIdFromObject cache-key function for TreeEntry/Submodule/Blob.
+  - path: app/assets/javascripts/repository/queries/getFiles.graphql
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Query rewritten from a flat files(path,ref) @client list to a paginated project.repository.tree{trees,submodules,blobs} shape with TreeEntry/PageInfo fragments, matching the real GraphQL schema.
+  - path: app/assets/javascripts/repository/components/table/index.vue
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: fetchFiles() now issues getFiles as an imperative $apollo.query with projectPath/nextPageCursor/pageSize variables and paginates via hasNextPage, replacing the old reactive files apollo query.
+  - path: app/assets/javascripts/repository/queries/getProjectPath.graphql
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New local query supplying the projectPath variable that index.vue's fetchFiles() passes into getFiles.graphql.
+  - path: app/assets/javascripts/repository/components/table/row.vue
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: id prop becomes String (was Number) and isFolder now checks type === 'tree' (was 'folder'), matching the real GraphQL TreeEntry shape returned by the rewritten getFiles query.
+  - path: app/assets/javascripts/repository/fragmentTypes.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: New introspection-query result data (Entry interface with Blob/Submodule/TreeEntry possibleTypes) passed as introspectionQueryResultData into graphql.js's IntrospectionFragmentMatcher.
+  - path: app/assets/javascripts/repository/utils/icon.js
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: entryTypeIcons key renamed from folder to tree, matching row.vue's isFolder check against the real API's type === 'tree' value.
+  - path: app/assets/javascripts/repository/router.js
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: TreePage route strips the leading slash from pathMatch before it becomes the path prop that flows into getFiles.graphql's $path variable.
+  - path: app/assets/javascripts/lib/graphql.js
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines createDefaultClient(resolvers, config), whose config.cacheConfig is passed straight into new InMemoryCache(); graphql.js's new call createDefaultClient({}, { cacheConfig }) only makes sense against this signature.
+forbidden:
+  - path: app/assets/javascripts/repository/queries/getRef.graphql
+    reason: sibling local query for the ref mixin, unrelated to the file-tree pagination/fragment-matcher change
+  - path: app/assets/javascripts/repository/components/table/header.vue
+    reason: sibling table component, only referenced with v-once and otherwise untouched by this patch
+  - path: app/assets/javascripts/repository/index.js
+    reason: top-level app mount point; unaffected by the query/cache restructuring
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 13
   description: Repository tree fetched via GraphQL frontend
-notes: ''
+notes: 'Switches the repository file-tree Vue app from a hardcoded local @client Apollo resolver to real paginated GraphQL queries against project.repository.tree, adding a fragment matcher/cache-key config, a getProjectPath query, and matching row.vue/icon.js updates for the tree/submodule/blob type values and string IDs returned by the real API. Linkage is static (imports, Vue props/apollo options); no string-based indirection beyond ordinary GraphQL type-name matching.'

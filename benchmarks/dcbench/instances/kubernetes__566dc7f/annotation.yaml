@@ -2,14 +2,73 @@ repo: kubernetes
 base_commit: 16900015564cca04ffa7e93f9ade4d5c0e2207cf
 commit: 566dc7f3f30192650178ae34165ee52a76a31ff7
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: pkg/features/kube_features.go
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: DRADeviceTaints flips to Beta/Default:true and DRADeviceTaintRules to Beta/Default:false at version 1.36 — these two gate flips are the root cause driving every other file in the diff.
+  - path: staging/src/k8s.io/api/resource/v1beta2/types.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds DeviceTaintRule/DeviceTaintRuleSpec/DeviceTaintSelector/DeviceTaintRuleStatus to the beta API group and relabels the taint/toleration field doc comments on Device/ExactDeviceRequest/etc. from "alpha field" to "beta field".
+  - path: staging/src/k8s.io/api/resource/v1beta2/register.go
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: addKnownTypes registers the new &DeviceTaintRule{} / &DeviceTaintRuleList{} with the v1beta2 SchemeGroupVersion, the API surface being graduated.
+  - path: pkg/registry/resource/rest/storage_resource.go
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: v1beta2Storage() adds a "devicetaintrules" REST resource (plus "/status") guarded by apiResourceConfigSource.ResourceEnabled, making DeviceTaintRule reachable through the API server at the new version.
+  - path: cmd/kube-controller-manager/app/core.go
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: newDeviceTaintEvictionController switches its DeviceTaintRules informer from InformerFactory.Resource().V1alpha3() to V1beta2() — the line that actually makes the eviction controller consume the graduated API instead of the alpha one.
+  - path: test/integration/dra/device_taints_test.go
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: integration coverage exercising DeviceTaintRule end-to-end through the new v1beta2 storage path and its now-default-on DRADeviceTaints gate.
+  - path: plugin/pkg/auth/authorizer/rbac/bootstrappolicy/controller_policy.go
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: 'builds the "device-taint-eviction-controller" ClusterRole only `if utilfeature.DefaultFeatureGate.Enabled(features.DRADeviceTaints)`, adding a devicetaintrules rule additionally gated on DRADeviceTaintRules — flipping DRADeviceTaints''s default to true in kube_features.go is why the untouched-source golden RBAC testdata below now materializes this role.'
+  - path: plugin/pkg/auth/authorizer/rbac/bootstrappolicy/testdata/controller-roles.yaml
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: regenerated golden RBAC data now includes the device-taint-eviction-controller ClusterRole because DRADeviceTaints defaults to true as of this commit; the resource name "devicetaintrules" here must string-match the one registered in storage_resource.go.
+  - path: pkg/apis/resource/v1alpha3/types.go
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: pre-existing alpha-stage DeviceTaintRule/DeviceTaintRuleSpec/DeviceTaintSelector definitions that the new v1beta2 struct in types.go mirrors field-for-field, showing this is a same-shape version graduation.
+  - path: pkg/registry/resource/devicetaintrule/strategy.go
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: adds "resource.k8s.io/v1beta2" entries to GetResetFields for both the main and status strategies, giving the new version its own server-side-apply field ownership set.
+forbidden:
+  - path: pkg/registry/resource/devicetaintrule/storage/storage.go
+    reason: defines the NewREST used by storage_resource.go's new devicetaintrules wiring, but is version-agnostic boilerplate that this graduation does not modify
+  - path: staging/src/k8s.io/api/resource/v1beta1/types.go
+    reason: only a doc-comment relabel (alpha->beta wording); the commit message explicitly states "the v1beta1 API is left unchanged"
+  - path: test/integration/apiserver/apply/reset_fields_test.go
+    reason: a generic reset-fields count assertion bumped mechanically, not specific to DeviceTaintRule or the beta graduation
+  - path: pkg/apis/resource/v1alpha3/doc.go
+    reason: only adds declarative-validation code-generator tags, a side fix for TestVersionedValidationByFuzzing rather than the graduation itself
+nontrivial_gold_count: 2
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 26
   description: 'DRA device taints graduate to beta: gate flips + controller + registry + admission + staging
     + integration/e2e tests across 7 dirs — max scatter graduation'
-notes: ''
+notes: Graduates DRA device taints from alpha to beta by flipping DRADeviceTaints to Beta/default-true and adding DeviceTaintRule to the (off-by-default) v1beta2 API under DRADeviceTaintRules; the scatter reaches storage wiring, the controller's informer source, RBAC bootstrap policy (via an untouched feature-gate-conditional source file whose golden testdata regenerates), and declarative-validation fuzz-test consistency across v1alpha3.
+string_indirection: true

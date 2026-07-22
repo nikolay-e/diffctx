@@ -2,14 +2,44 @@ repo: home-assistant
 base_commit: 25e0b9c456f66b0af6a48f426795f2aaa0dd2599
 commit: 2707686f9d8fd8d147256f67a2946b086771c6fd
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: homeassistant/components/modbus/manifest.json
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Source of truth for the display name — changes "name" from "Modbus" to "Manual Modbus", which strings.json's new "title" key and generated/integrations.json both must agree with.
+  - path: homeassistant/components/modbus/strings.json
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'Adds root-level "title": "Manual Modbus" — the translation override that duplicates the manifest name and is exactly what script/hassfest/translations.py''s name/title-collision check inspects.'
+  - path: script/hassfest/translations.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'Its check_translation_files logic (see `if title == integration.name and not allow_name_translation(integration): add_error(...)`) is why "modbus" had to be added to ALLOW_NAME_TRANSLATION — without the allowlist entry, setting title equal to the manifest name would fail hassfest validation.'
+  - path: homeassistant/generated/integrations.json
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: 'Hassfest-generated catalog; drops the now-redundant explicit "name": "Modbus" override (since strings.json now supplies the translated title) and adds "modbus" to the has-own-translated-name domain list.'
+forbidden:
+  - path: homeassistant/components/modbus/__init__.py
+    reason: core setup/entity logic for the integration, untouched by and irrelevant to the display-name rename
+  - path: homeassistant/generated/config_flows.py
+    reason: modbus is YAML-configured with no config_flow, so this file never mentions modbus and is unaffected
+  - path: tests/components/modbus/test_init.py
+    reason: sibling test file for the integration's setup behavior, does not assert on display name/title strings
+  - path: homeassistant/components/modbus/const.py
+    reason: similarly-named sibling module defining DOMAIN and other constants, unrelated to the cosmetic name/title change
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: true
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 4
   description: Rename Modbus integration to "Manual Modbus" — manifest/strings/generated-config rename
     churn
-notes: ''
+notes: 'Pure display-name rename ("Modbus" -> "Manual Modbus") plus the mechanical hassfest bookkeeping it requires: manifest.json/strings.json/generated/integrations.json stay in sync by string key (domain "modbus"), and script/hassfest/translations.py needed "modbus" added to its ALLOW_NAME_TRANSLATION allowlist because its validator forbids strings.json title == manifest name unless allow-listed. All 4 diffed files are self-contained gold; no external symbol definitions are needed to understand the change (no_nontrivial_context: true). string_indirection is true because the manifest/strings/generated-catalog/hassfest-allowlist linkage is entirely by the "modbus" domain string, not a static code reference.'

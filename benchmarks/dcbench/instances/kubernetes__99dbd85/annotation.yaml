@@ -2,14 +2,44 @@ repo: kubernetes
 base_commit: 797475e1137914faab71f4c3b18d9041bf73cfc8
 commit: 99dbd85c45f77a4fd719ff9271128e8a4ed46082
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 69
-  description: 'DRA device-taints API generated files: 67/69 generated churn across resource.k8s.io versions
-    — companion noise commit to hand-written taints work'
-notes: ''
+gold:
+  - path: staging/src/k8s.io/api/resource/v1alpha3/types.go
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Hand-written definitions of DeviceTaintRule/DeviceTaintRuleSpec/DeviceTaintSelector that this commit's zz_generated.*, generated.pb.go, and client-go typed/informer/lister files are mechanically regenerated from.
+  - path: pkg/apis/resource/types.go
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Internal-version DeviceTaintRule/DeviceTaintRuleSpec struct that pkg/apis/resource/v1alpha3/zz_generated.conversion.go and zz_generated.defaults.go (touched in this commit) are generated to convert to/from.
+  - path: staging/src/k8s.io/api/resource/v1beta1/devicetaint.go
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Hand-written DeviceTaint/DeviceToleration types for v1beta1 that drive the regenerated staging/src/k8s.io/api/resource/v1beta1/generated.pb.go and zz_generated.deepcopy.go in this commit.
+  - path: staging/src/k8s.io/api/resource/v1beta1/types.go
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Hand-written BasicDevice.Taints field wiring DeviceTaint into the v1beta1 API, source of the regenerated v1beta1 deepcopy/proto/openapi churn in this commit.
+  - path: staging/src/k8s.io/api/resource/v1alpha3/register.go
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: Registers &DeviceTaintRule{} and &DeviceTaintRuleList{} with SchemeBuilder, the source that client-go/informers/generic.go and the new devicetaintrule typed client/lister/informer files (regenerated here) are keyed off of.
+forbidden:
+  - path: api/openapi-spec/swagger.json
+    reason: aggregated OpenAPI spec is a downstream mechanical artifact of types.go, not itself explanatory
+  - path: staging/src/k8s.io/api/testdata/HEAD/resource.k8s.io.v1alpha3.DeviceTaintRule.json
+    reason: roundtrip fixture snapshot auto-updated by codegen, not authoritative source
+  - path: pkg/generated/openapi/zz_generated.openapi.go
+    reason: generated OpenAPI Go definitions, redundant with types.go which is already gold
+  - path: staging/src/k8s.io/client-go/applyconfigurations/utils.go
+    reason: generated applyconfiguration registry switch statement, mechanical fallout of new types
+nontrivial_gold_count: 5
+string_indirection: false
+no_nontrivial_context: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Pure codegen commit ("DRA: generated files for device taints API") regenerating zz_generated/proto/openapi/client-go artifacts for the DeviceTaintRule API added by hand-written parent commit 797475e. All 69 diff files are generated; gold points to the hand-written type/register sources in v1alpha3 and v1beta1 that the generators consumed, per protocol preference for hand-written source over generated output.'

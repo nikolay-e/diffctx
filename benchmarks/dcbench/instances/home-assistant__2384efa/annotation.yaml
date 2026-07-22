@@ -2,14 +2,53 @@ repo: home-assistant
 base_commit: 08af9799b7952d6b85b2454a159f3f7b6d55bd94
 commit: 2384efae2690d59b3a54c051df1e223e33aeecac
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: homeassistant/components/llm/__init__.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Central diff file — defines async_setup, LLMTools, LLMToolsPlatformProtocol and async_get_tools, the whole surface of the new integration.
+  - path: homeassistant/helpers/llm.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines LLMContext (line 182) and Tool (line 212), the framework types __init__.py imports and re-exposes — the new component is explicitly a thin wrapper around this pre-existing helper module.
+  - path: homeassistant/helpers/integration_platform.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines LazyIntegrationPlatforms (line 272), the lazy per-integration-platform loader that DATA_PLATFORMS instantiates and that discovers each integration's `<domain>/llm.py` module by name convention.
+  - path: tests/components/llm/test_init.py
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Exercises and documents the intended contract — sorted merge order across platforms, prompt concatenation, and isolation of a platform whose async_get_tools raises.
+  - path: homeassistant/components/llm/const.py
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Defines DOMAIN = "llm" used by __init__.py for the HassKey namespace and CONFIG_SCHEMA.
+  - path: homeassistant/components/llm/manifest.json
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Declares the llm domain as integration_type "system"/quality_scale "internal", establishing it as core infrastructure rather than a user-facing platform.
+forbidden:
+  - path: homeassistant/helpers/entity_platform.py
+    reason: similarly-named "platform" helper module but is the per-entity-platform loader (sensor/switch/etc.), unrelated to the LLM tools platform mechanism
+  - path: homeassistant/components/conversation/__init__.py
+    reason: plausible future consumer of LLM tools/prompts but does not reference homeassistant.components.llm or homeassistant.helpers.llm in this commit
+  - path: homeassistant/components/labs/__init__.py
+    reason: alphabetically adjacent entry in .core_files.yaml/CODEOWNERS diff hunks, otherwise unrelated integration
+  - path: script/hassfest/mypy_config.py
+    reason: sibling hassfest generator script to the touched quality_scale.py but not part of this commit's diff or logic
+nontrivial_gold_count: 2
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 8
   description: Add LLM integration — tiny new component wrapping existing helpers/llm.py core module;
     component vs helper disambiguation
-notes: ''
+notes: 'Scaffolding commit: introduces the homeassistant.components.llm integration whose whole job is discovering per-integration `<domain>/llm.py` platform modules (via LazyIntegrationPlatforms, string_indirection true) and merging their Tool lists/prompts, built on the pre-existing helpers/llm.py (Tool, LLMContext) and helpers/integration_platform.py (LazyIntegrationPlatforms) modules. No integration implements the `llm.py` platform hook yet in this commit — it is pure framework wiring.'

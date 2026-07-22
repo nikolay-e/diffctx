@@ -2,14 +2,53 @@ repo: home-assistant
 base_commit: 226f606cb995a71a08abc1aaa020bfdda544299d
 commit: b7f1171c08ea285599974f05d49ce250fc84460e
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: homeassistant/components/overseerr/manifest.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Changes the "name" field from "Overseerr" to "Seerr" - the single source-of-truth for the integration's display name that hassfest regenerates homeassistant/generated/integrations.json from; note the "domain" key stays "overseerr" (this is a display rebrand, not a domain rename).
+  - path: homeassistant/generated/integrations.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Auto-generated mirror of manifest.json's "name" field for the "overseerr" domain key; must be regenerated (via hassfest) whenever manifest.json's name changes.
+  - path: homeassistant/components/overseerr/strings.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Updates the user-facing data_description and get_requests service description/field text that mention the brand name "Overseerr" -> "Seerr".
+  - path: homeassistant/components/overseerr/config_flow.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Changes the hardcoded async_create_entry(title="Overseerr", ...) literal to "Seerr", the default config entry title shown to the user.
+  - path: tests/components/overseerr/test_config_flow.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Updates the assertion result["title"] == "Overseerr" to "Seerr", the covering test for config_flow.py's title change.
+  - path: script/hassfest/config_flow.py
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: The hassfest generator (generate()/integrations_path) that produces homeassistant/generated/integrations.json's "name" field from each integration's manifest.json, explaining why the generated file must be updated whenever manifest.json's name changes.
+forbidden:
+  - path: homeassistant/components/overseerr/const.py
+    reason: DOMAIN stays "overseerr" here (unchanged); only the user-facing display name changed, not the integration/domain identifier.
+  - path: homeassistant/components/overseerr/coordinator.py
+    reason: Data-update coordinator logic, unrelated to the display-name string rebrand.
+  - path: homeassistant/components/overseerr/services.py
+    reason: Service action implementations, unrelated to the display-name change (only services.yaml/strings.json text, not this file, was touched).
+  - path: homeassistant/components/overseerr/icons.json
+    reason: Sibling metadata file in the same directory that looks relevant to a rebrand but contains only icon mappings, untouched by this commit.
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 5
   description: Rename Overseerr integration to Seerr — user-facing domain rebranding across manifest +
     strings + generated files
-notes: ''
+notes: 'Rebrands the Overseerr integration''s user-facing display name to "Seerr" everywhere it appears (manifest "name", generated integrations.json, strings.json prose, the config-flow entry title, and the matching test) while leaving the "overseerr" domain/module identifiers unchanged. The manifest.json -> generated/integrations.json linkage is a direct codegen coupling (hassfest), not string indirection.'

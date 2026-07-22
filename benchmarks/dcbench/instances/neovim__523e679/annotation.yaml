@@ -2,13 +2,66 @@ repo: neovim
 base_commit: 9174157f7498bb79c51164d94aeaef6ce7508410
 commit: 523e679ead65e57af8159b7bba49da98251df44e
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: runtime/lua/nvim/matchparen.lua
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new file — the full Lua reimplementation (M.enable/M.highlight_matching_pair/M.remove_matches/M.do_matchparen/M.no_matchparen) replacing the deleted Vimscript autocommand/function logic.
+  - path: runtime/plugin/matchparen.vim
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: stripped from 229 lines of s:Highlight_Matching_Pair()/s:Remove_Matches()/autocmd definitions down to a single `runtime plugin/matchparen.lua` — shows exactly what old logic (E118 timeout fallback, t_Co<8 guard, cpo save/restore) was dropped or moved.
+  - path: runtime/plugin/matchparen.lua
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new thin entrypoint that plugin/matchparen.vim now `runtime`s into — guards on vim.g.loaded_matchparen then calls require('nvim.matchparen').enable(), the string-keyed module-path link to lua/nvim/matchparen.lua.
+  - path: runtime/doc/pi_paren.txt
+    tier: essential
+    role: doc
+    in_diff: false
+    rationale: documents the behavior contract the rewrite must preserve — g:matchparen_disable_cursor_hl, g:matchparen_timeout/insert_timeout, and the *:NoMatchParen*/*:DoMatchParen* commands the Lua M.no_matchparen()/M.do_matchparen() implement.
+  - path: test/functional/plugin/matchparen_spec.lua
+    tier: essential
+    role: test
+    in_diff: false
+    rationale: functional coverage asserting api.nvim_get_var('loaded_matchparen') and screen output for matching-pair highlighting after i_<Up> — exercises the rewritten M.enable()/M.highlight_matching_pair() end-to-end.
+  - path: test/functional/legacy/matchparen_spec.lua
+    tier: essential
+    role: test
+    in_diff: false
+    rationale: directly does `source $VIMRUNTIME/plugin/matchparen.vim` in its test setup, so it exercises the modified plugin/matchparen.vim entrypoint file (now just a `runtime` redirect) and the scroll/redraw behavior it triggers.
+  - path: test/old/testdir/test_plugin_matchparen.vim
+    tier: helpful
+    role: test
+    in_diff: false
+    rationale: underlying oldtest Vim9 script (Test_visual_block_scroll, etc.) that test/functional/legacy/matchparen_spec.lua ports/wraps — the original regression coverage the rewrite must not break.
+forbidden:
+  - path: runtime/doc/syntax.txt
+    reason: documents the *hl-MatchParen* highlight group's appearance/colors, not the matchparen plugin's autocommand/timeout logic this patch rewrites
+  - path: test/functional/legacy/display_spec.lua
+    reason: sources the unrelated test/old/testdir/samples/matchparen.vim fixture for a general redraw test — coincidental filename match, not this plugin
+  - path: test/functional/autocmd/autocmd_oldtest_spec.lua
+    reason: also sources the samples/matchparen.vim fixture incidentally while testing generic autocmd behavior, not the rewritten plugin
+  - path: test/unit/viml/expressions/parser_spec.lua
+    reason: lists `MatchParen` only as one entry in a table of known highlight-group names for expression-parser validation, unrelated to plugin logic
+nontrivial_gold_count: 4
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 3
   description: 'refactor(matchparen): rewrite matchparen plugin in Lua'
-notes: ''
+notes: >
+  Rewrites the matchparen standard plugin from Vimscript into Lua:
+  runtime/plugin/matchparen.vim shrinks to a one-line `runtime
+  plugin/matchparen.lua` redirect, the new plugin/matchparen.lua guards on
+  vim.g.loaded_matchparen and calls require('nvim.matchparen').enable() (a
+  string-keyed module path), and lua/nvim/matchparen.lua holds the full
+  reimplementation. Nontrivial gold is the behavior contract this rewrite must
+  preserve without touching: doc/pi_paren.txt (config vars and commands) and
+  the three test files (two functional specs plus the oldtest source) that
+  exercise the plugin end-to-end but are not part of the 3-file diff.

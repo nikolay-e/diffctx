@@ -2,13 +2,72 @@ repo: gitlab-foss
 base_commit: 42e876b7c01c61e74e3c7b0cb637ae43809ce1d2
 commit: a00a23ca828488ae343e02d8528bb94936d0e624
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: app/graphql/mutations/notes/base.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New shared base class for all Notes mutations; defines find_object (delegates to GitlabSchema.object_from_id) and check_object_is_noteable!/check_object_is_note! used by every subclass.
+  - path: app/graphql/mutations/notes/create/base.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Core create resolve() logic (calls Notes::CreateService) subclassed by Create::Note, Create::DiffNote and Create::ImageDiffNote.
+  - path: app/graphql/types/mutation_type.rb
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: mount_mutation calls for Notes::Create::Note/DiffNote/ImageDiffNote/Update/Destroy are the actual schema integration point exposing the new mutations.
+  - path: app/graphql/mutations/notes/update.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Independent resolve() path (Notes::UpdateService) not shared with the Create hierarchy, authorized via authorize :admin_note.
+  - path: app/graphql/mutations/notes/destroy.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Independent resolve() path (Notes::DestroyService) not shared with the Create hierarchy, authorized via authorize :admin_note.
+  - path: spec/support/shared_examples/graphql/notes_creation_shared_examples.rb
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Shared examples (a Note mutation that creates a Note, when the user does not have permission, etc.) that every new mutation spec (create/diff_note_spec.rb, create/note_spec.rb, destroy_spec.rb, update_spec.rb) is built on via it_behaves_like.
+  - path: spec/support/helpers/graphql_helpers.rb
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Adds prepare_input_for_mutation to recursively fieldnamerize nested hashes, required for the nested position/paths input arguments used by the diff_note and image_diff_note mutations.
+  - path: app/graphql/mutations/base_mutation.rb
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Superclass of Mutations::Notes::Base defining current_user, the shared field :errors, and errors_on_object(record) that Create::Base and Update return in their resolve() hash.
+  - path: lib/gitlab/graphql/authorize/authorize_resource.rb
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines the authorize DSL and authorized_find!/authorize! used by every new mutation (authorize :create_note / :admin_note) and the exact permission-denied error string asserted in notes_creation_shared_examples.rb.
+  - path: lib/gitlab/graphql/copy_field_description.rb
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the copy_field_description class method (prepended onto BaseInputObject in this same commit) used throughout the new input/mutation classes to copy field descriptions from Types::Notes::NoteType/DiffPositionType.
+forbidden:
+  - path: app/graphql/mutations/award_emojis/toggle.rb
+    reason: unrelated existing mutation shown alongside the new mount_mutation lines in mutation_type.rb, not touched or reused
+  - path: app/graphql/types/notes/discussion_type.rb
+    reason: similarly-named sibling GraphQL type, not referenced by the new note mutations
+  - path: app/models/note.rb
+    reason: Note model is only referenced via is_a?(Note); its large internals are unaffected by and unnecessary to follow the mutation flow
+  - path: app/graphql/mutations/merge_requests/set_wip.rb
+    reason: another unrelated existing mutation adjacent to the new lines in mutation_type.rb
+nontrivial_gold_count: 3
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 21
   description: GraphQL mutations for managing Notes
-notes: ''
+notes: 'Adds GraphQL CreateNote/CreateDiffNote/CreateImageDiffNote/UpdateNote/DestroyNote mutations backed by the existing Notes::CreateService/UpdateService/DestroyService, plus supporting input types and a shared authorization/base-mutation layer. Linkage is static (Ruby class inheritance, mount_mutation, copy_field_description); no string-based indirection beyond ordinary GraphQL field naming.'

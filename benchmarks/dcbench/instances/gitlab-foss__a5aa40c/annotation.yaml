@@ -2,13 +2,72 @@ repo: gitlab-foss
 base_commit: 946f7c0687760ec49aca582a329d0ec3c7ac3037
 commit: a5aa40c5fe93dc3daba8a578f4c09c4e443fcbec
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: app/models/ci/job_variable.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New Ci::JobVariable ActiveRecord model backing the feature; belongs_to :job (Ci::Build), includes NewHasVariable, validates key uniqueness scoped to job_id.
+  - path: db/migrate/20190711124721_create_job_variables.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Migration creating the ci_job_variables table (key/encrypted_value/job_id/variable_type) that Ci::JobVariable maps to.
+  - path: app/models/ci/build.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds has_many :job_variables / accepts_nested_attributes_for :job_variables, changes play(current_user, job_variables_attributes) signature, and concats job_variables into the runner Variables::Collection.
+  - path: app/services/ci/play_build_service.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "PlayBuildService#execute gains job_variables_attributes and passes it through build.update(job_variables_attributes: ...), the write path invoked by Build#play."
+  - path: app/controllers/projects/jobs_controller.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: play action now calls @build.play(current_user, play_params[:job_variables_attributes]) with a new play_params strong-parameters method permitting key/secret_value pairs from the frontend form.
+  - path: app/assets/javascripts/jobs/components/manual_variables_form.vue
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New Vue component rendering the key/value inputs and dispatching triggerManualJob with the variables the user entered before playing a manual job.
+  - path: app/models/concerns/new_has_variable.rb
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: New concern included by Ci::JobVariable that layers attr_encrypted aes-256-gcm value encryption on top of the shared HasVariable concern.
+  - path: app/assets/javascripts/jobs/components/empty_state.vue
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Renders <manual-variables-form> when shouldRenderManualVariables (playable && !scheduled), wiring the new component into the job page's empty state.
+  - path: app/assets/javascripts/jobs/store/actions.js
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: New triggerManualJob action strips the client-side id field and POSTs job_variables_attributes to the job's play endpoint that jobs_controller.rb#play now reads.
+  - path: app/models/concerns/has_variable.rb
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Existing concern (included by NewHasVariable) defining key format validation, the variable_type enum, and to_runner_variable, which Ci::Build#variables relies on when it concats job_variables into Gitlab::Ci::Variables::Collection.
+forbidden:
+  - path: app/models/ci/variable.rb
+    reason: similarly-named project-level CI variable model; unrelated to the new per-job Ci::JobVariable/migration
+  - path: spec/models/ci/variable_spec.rb
+    reason: covers the pre-existing project-level Ci::Variable model, not the new Ci::JobVariable added here
+  - path: app/assets/javascripts/ci_variable_list/ci_variable_list.js
+    reason: existing project/group CI/CD settings variable-list widget, a different feature from the manual-job variables form
+  - path: app/assets/javascripts/ci_variable_list/native_form_variable_list.js
+    reason: sibling of ci_variable_list.js for the pre-existing project/group settings form, unrelated to the new manual-job variables form
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 29
   description: 'Add Job specific variables — full-stack: migration+schema+model+service+Haml+Vue'
-notes: ''
+notes: 'Adds a per-job CI variable feature: new ci_job_variables table/model/concern, Build#play and PlayBuildService thread job_variables_attributes through to build.update, jobs_controller permits them from the frontend, and a new ManualVariablesForm Vue component (rendered from empty_state.vue, submitted via the new triggerManualJob Vuex action) lets users enter key/value pairs before triggering a manual job. Linkage is static Rails associations/service calls plus Vue prop/component wiring, no string indirection.'

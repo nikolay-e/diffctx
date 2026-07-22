@@ -2,13 +2,60 @@ repo: gitlab-foss
 base_commit: ecb05e59014ffdc2e9b9e933a61684e86f541bf0
 commit: df3d9361e505db61de41b8e39516470d50c0e851
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: app/assets/javascripts/repository/components/last_commit.vue
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Rewrites the apollo update() to read data.project.repository.tree.lastCommit (was .commit) and template/computed to use commit.sha and commit.latestPipeline (was commit.id/commit.pipeline).
+  - path: app/assets/javascripts/repository/queries/pathLastCommit.query.graphql
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Query fields renamed from commit{id,pipeline{...}} to lastCommit{sha,latestPipeline{...}} to match the real backend GraphQL schema field names.
+  - path: app/views/projects/_files.html.haml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Switches the last-commit block from `if commit` (server-rendered shared/commit_well) to `if vue_file_list_enabled?` mounting the new `#js-last-commit` Vue+GraphQL widget.
+  - path: app/assets/javascripts/repository/index.js
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes the `if (commitEl)` guard, now unconditionally mounting the LastCommit Vue app onto #js-last-commit since _files.html.haml always renders that element when vue_file_list_enabled?.
+  - path: app/assets/javascripts/lib/graphql.js
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "ApolloLink.split condition adds || operation.getContext().isSingleRequest, which last_commit.vue's new context: { isSingleRequest: true } apollo option relies on to route the query away from request batching."
+  - path: app/graphql/types/tree/tree_type.rb
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines `field :last_commit, Types::CommitType` on the Tree GraphQL type; this is the backend field pathLastCommit.query.graphql's renamed `lastCommit` selection actually targets.
+  - path: app/graphql/types/commit_type.rb
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines `field :sha` and `field :latest_pipeline` on the Commit GraphQL type; these are the pre-existing backend field names the frontend query/component are updated to match instead of the old id/pipeline names.
+  - path: app/helpers/projects_helper.rb
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: "Defines vue_file_list_enabled? as `Gitlab::Graphql.enabled? && Feature.enabled?(:vue_file_list, @project)`, the feature-flag check _files.html.haml now branches on to pick the Vue/GraphQL last-commit path over the legacy server-rendered one."
+forbidden:
+  - path: app/views/shared/_commit_well.html.haml
+    reason: legacy server-rendered commit partial kept only as the elsif fallback; its internals are unaffected by this GraphQL rewrite
+  - path: app/assets/javascripts/projects/tree/components/commit_pipeline_status_component.vue
+    reason: import removed from last_commit.vue in this patch; the component itself is untouched and superseded by the existing CiIcon usage
+  - path: app/graphql/types/tree/tree_entry_type.rb
+    reason: sibling GraphQL type on Tree (trees/blobs entries), not the last_commit field this change targets
+nontrivial_gold_count: 3
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 9
   description: Last-commit data via GraphQL — schema-to-frontend ripple, 6 ext types
-notes: ''
+notes: 'Aligns the frontend LastCommit Vue component and its GraphQL query with field names that already existed on the backend Tree/Commit GraphQL types (lastCommit/sha/latestPipeline), switches its transport to a non-batched single request, and flips _files.html.haml to mount the Vue widget behind the pre-existing vue_file_list feature flag instead of server-rendering the commit well. string_indirection is true because the rendering path switch is gated by Feature.enabled?(:vue_file_list, @project), a name-based flag lookup.'

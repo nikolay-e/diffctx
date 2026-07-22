@@ -2,14 +2,53 @@ repo: kubernetes
 base_commit: d820c046f5c520aab51ec850b263524b1fa5a4e9
 commit: 5505c010fd7c29d24b2718ae8659a4296cb2cc37
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: staging/src/k8s.io/api/admissionregistration/v1/types.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds MutatingAdmissionPolicy, MutatingAdmissionPolicyList, MutatingAdmissionPolicyBinding, MutatingAdmissionPolicyBindingList and their Spec types to the v1 (GA) group version; this hand-written seed is what the other 33 generated files in the diff mechanically derive from.
+  - path: staging/src/k8s.io/api/admissionregistration/v1/register.go
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: addKnownTypes registers the four new MutatingAdmissionPolicy* structs with the v1 SchemeGroupVersion, making them resolvable/servable under the existing v1 admissionregistration group.
+  - path: staging/src/k8s.io/api/admissionregistration/v1/generated.proto
+    tier: helpful
+    role: cochange
+    in_diff: true
+    rationale: regenerated protobuf IDL for the new v1 MutatingAdmissionPolicy* messages, the most legible of the mechanical codegen artifacts confirming the wire-format additions.
+  - path: staging/src/k8s.io/client-go/applyconfigurations/admissionregistration/v1/mutatingadmissionpolicy.go
+    tier: helpful
+    role: cochange
+    in_diff: true
+    rationale: generated apply-configuration builder for the new v1 MutatingAdmissionPolicy type, enabling typed server-side-apply against it.
+  - path: staging/src/k8s.io/client-go/kubernetes/typed/admissionregistration/v1/mutatingadmissionpolicy.go
+    tier: helpful
+    role: cochange
+    in_diff: true
+    rationale: generated typed clientset interface/methods giving callers CRUD access to the new v1 MutatingAdmissionPolicy resource.
+  - path: staging/src/k8s.io/api/admissionregistration/v1beta1/types.go
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: pre-existing v1beta1 MutatingAdmissionPolicy/MutatingAdmissionPolicySpec/MutatingAdmissionPolicyBinding definitions that this commit promotes to v1 (GA); comparing the two shows the promotion is a same-shape group-version graduation, not a redesign.
+forbidden:
+  - path: staging/src/k8s.io/api/admissionregistration/v1/generated.pb.go
+    reason: 4760-line mechanical protobuf marshal/unmarshal regen, a pure byproduct of types.go already visible in the generated.proto diff
+  - path: pkg/generated/openapi/zz_generated.openapi.go
+    reason: mechanically regenerated Go-embedded OpenAPI schema for the new types, redundant with types.go for understanding
+  - path: staging/src/k8s.io/client-go/listers/admissionregistration/v1/mutatingadmissionpolicy.go
+    reason: one of several generated lister/informer files following the same boilerplate already used by ValidatingAdmissionPolicy in the same package
+  - path: staging/src/k8s.io/api/admissionregistration/v1alpha1/types.go
+    reason: an older alpha-stage MutatingAdmissionPolicy definition in a sibling directory; not the version this commit actually promotes from (that's v1beta1)
+nontrivial_gold_count: 1
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 35
   description: 'Promote MutatingAdmissionPolicy to v1: new types.go plus 33/35 generated (deepcopy, conversions,
     clients, listers, informers) — tiny hand-written seed, huge codegen blast'
-notes: ''
+notes: Adds the MutatingAdmissionPolicy/MutatingAdmissionPolicyBinding types (and their Spec/List types) to the GA admissionregistration/v1 group, promoting them out of v1beta1; the entire 35-file diff is generated from two hand-written files (types.go, register.go) via ./hack/update-codegen.sh, so the v1beta1 source they were promoted from is the key nontrivial context.
+string_indirection: false

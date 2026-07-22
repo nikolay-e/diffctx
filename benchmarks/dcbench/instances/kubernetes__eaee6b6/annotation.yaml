@@ -2,14 +2,54 @@ repo: kubernetes
 base_commit: dd6f46856dc365688b515d7a17a4410582457c7d
 commit: eaee6b6bce0155bce1b7be00e704a23dd2ace54e
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 15
-  description: 'DRA device taints: separate feature gate for rules — pkg/features + scheduler + controller
-    + admission plugin + integration/e2e tests scattered across 6 top-level dirs'
-notes: ''
+gold:
+  - path: pkg/features/kube_features.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the new DRADeviceTaintRules featuregate.Feature const, its v1.35 alpha default, and its dependency on DRADeviceTaints — the feature-gate split this whole commit implements.
+  - path: pkg/controller/devicetainteviction/device_taint_eviction.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New() now only wires ruleInformer/ruleLister and the AddEventHandler subscription when utilfeature.DefaultFeatureGate.Enabled(features.DRADeviceTaintRules) is true, the runtime behavior change this commit introduces.
+  - path: staging/src/k8s.io/dynamic-resource-allocation/resourceslice/tracker/tracker.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renames Options.EnableDeviceTaints/enableDeviceTaints to EnableDeviceTaintRules/enableDeviceTaintRules throughout the Tracker, decoupling the tracker's gating from the original DRADeviceTaints gate.
+  - path: pkg/scheduler/scheduler.go
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Switches resourceSliceTrackerOpts.EnableDeviceTaintRules to be keyed off features.DRADeviceTaintRules instead of features.DRADeviceTaints when starting the scheduler's resource slice tracker.
+  - path: plugin/pkg/auth/authorizer/rbac/bootstrappolicy/controller_policy.go
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Splits the device-taint-eviction-controller ClusterRole so the devicetaintrules/status and devicetaintrules read rules are only granted when features.DRADeviceTaintRules is enabled, separate from the base DRADeviceTaints-gated rules.
+  - path: plugin/pkg/auth/authorizer/rbac/bootstrappolicy/policy.go
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Kube-scheduler's read permission on devicetaintrules is regated from features.DRADeviceTaints to the new features.DRADeviceTaintRules.
+  - path: cmd/kube-controller-manager/app/core.go
+    tier: essential
+    role: caller
+    in_diff: false
+    rationale: newDeviceTaintEvictionController unconditionally passes InformerFactory.Resource().V1alpha3().DeviceTaintRules() into devicetainteviction.New and gates the whole controller only on features.DRADeviceTaints (not the new gate), which is exactly why New() must internally feature-check DRADeviceTaintRules before touching that informer.
+forbidden:
+  - path: staging/src/k8s.io/dynamic-resource-allocation/resourceslice/tracker/tracker_test.go
+    reason: mechanical field-rename follow-through in tests, no new logic beyond the renamed struct field already covered by tracker.go
+  - path: test/integration/scheduler_perf/dra.go
+    reason: perf-test benchmark config mirroring the same EnableDeviceTaints->EnableDeviceTaintRules rename, not a distinct behavior
+  - path: pkg/scheduler/eventhandlers_test.go
+    reason: test-only coverage addition for the new gate combination, not needed to understand the production wiring change
+  - path: test/compatibility_lifecycle/reference/versioned_feature_list.yaml
+    reason: auto-generated feature-gate version table entry, mechanical fallout of the kube_features.go const addition
+nontrivial_gold_count: 1
+string_indirection: false
+no_nontrivial_context: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Splits the existing DRADeviceTaints gate into two: DRADeviceTaints stays required for basic device taints/tolerations, while the new DRADeviceTaintRules gate limits the "blast radius" of the DeviceTaintRule-specific code path (extra informers in scheduler/controller, status handling) so it can be disabled independently. Central hand-written files are all in the diff (feature def, controller, tracker, scheduler, RBAC); the one nontrivial external file is the controller-manager wiring that unconditionally hands the rule informer to devicetainteviction.New, explaining why the internal gate check in that constructor matters.'

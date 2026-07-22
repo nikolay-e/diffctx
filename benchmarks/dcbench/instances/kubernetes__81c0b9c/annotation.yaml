@@ -2,14 +2,37 @@ repo: kubernetes
 base_commit: 880a6dda4cb642221ebbc9638f669aaa2adc83a4
 commit: 81c0b9ce3422413cc28efffeedd5b4e7817abf13
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: pkg/features/kube_features.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: declares the DRAListTypeAttributes featuregate.Feature constant, registers it Alpha/default-false at 1.36 in defaultVersionedKubernetesFeatureGates, and adds its DynamicResourceAllocation dependency in defaultKubernetesFeatureGateDependencies.
+  - path: test/compatibility_lifecycle/reference/versioned_feature_list.yaml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: compatibility-lifecycle reference entry for DRAListTypeAttributes mirrors the exact version/default/prerelease values just registered in kube_features.go.
+  - path: test/compatibility_lifecycle/reference/feature_list.md
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: adds the human-readable feature-table row for DRAListTypeAttributes, cross-linking it to KEP-5491 and its DynamicResourceAllocation parent feature.
+forbidden:
+  - path: pkg/apis/resource/types.go
+    reason: defines the ResourceSlice/ResourceClaim matchAttribute/distinctAttribute types the gate's doc comment describes extending, but this commit is a pure gate stub with no implementation touching it yet
+  - path: staging/src/k8s.io/api/resource/v1beta2/types.go
+    reason: current external device-attribute API types a reader might expect "list type attributes" to extend, but no such change exists in this KEP-5491 gate-only commit
+  - path: test/e2e/dra/dra.go
+    reason: the DRA e2e suite looks like the natural place to cover a new DRA gate, but has zero references to DRAListTypeAttributes at this commit
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 3
   description: 'DRAListTypeAttributes alpha feature gate: minimal 3-file gate addition (features go +
     versioned_kube_features yaml + doc) — smallest gate anchor'
-notes: ''
+notes: Pure KEP-5491 feature-gate stub — registers DRAListTypeAttributes as Alpha/default-false at 1.36 with no code anywhere in the tree yet reading or branching on it, so the 3 diffed files (Go registration, compat-lifecycle YAML, feature-table doc) are the entire gold set with no nontrivial external context.
+string_indirection: false
+no_nontrivial_context: true

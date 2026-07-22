@@ -2,13 +2,74 @@ repo: neovim
 base_commit: 71507281fb86deaaa7f47460e8c7a503b46663f6
 commit: 19b25f3feacfedc18a57eb2a1368a1ed07ac5faa
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: src/nvim/api/extmark.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: previously defined nvim_buf_add_highlight() and non-static src2ns(), both of which the patch deletes from here.
+  - path: src/nvim/api/deprecated.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new home of nvim_buf_add_highlight() (now FUNC_API_DEPRECATED_SINCE(13)) and a fresh static src2ns() helper duplicated for local use.
+  - path: runtime/lua/vim/_meta/api.lua
+    tier: essential
+    role: doc
+    in_diff: true
+    rationale: generated Lua signature stub for nvim_buf_add_highlight() gains the @deprecated tag and loses its prose, mirroring the C doc-comment move.
+  - path: runtime/doc/api.txt
+    tier: essential
+    role: doc
+    in_diff: true
+    rationale: removes the *nvim_buf_add_highlight()* vimdoc entry and its pynvim/Vimscript examples, replacing them with a pointer to vim.hl.range().
+  - path: runtime/doc/deprecated.txt
+    tier: essential
+    role: doc
+    in_diff: true
+    rationale: adds the canonical deprecation-table entry `nvim_buf_add_highlight() Use vim.hl.range() or nvim_buf_set_extmark()` that this whole patch exists to create.
+  - path: runtime/doc/map.txt
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: rewrites its command-preview example from nvim_buf_add_highlight(buf, ns, hl, line, col_start, col_end) to vim.hl.range(buf, ns, hl, {line, col_start}, {line, col_end}), demonstrating the new call shape.
+  - path: runtime/doc/ui.txt
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: updates the `"syntax"` highlight-kind cross reference from nvim_buf_add_highlight() to nvim_buf_set_extmark().
+  - path: runtime/lua/vim/hl.lua
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines M.range(bufnr, ns, higroup, start, finish, opts), the vim.hl.range() function that map.txt's rewritten example and deprecated.txt's pointer both reference as the replacement — needed to see the new (line,col) tuple argument shape.
+  - path: test/functional/api/highlight_spec.lua
+    tier: helpful
+    role: test
+    in_diff: false
+    rationale: exercises nvim_buf_add_highlight() end-to-end (e.g. "nvim_buf_add_highlight to other buffer doesn't crash if undo is disabled") and continues to pass unchanged, confirming the relocation preserves behavior.
+forbidden:
+  - path: src/nvim/api/extmark.h
+    reason: sibling header of extmark.c; declarations are handled by generated headers so it is untouched and irrelevant to the move
+  - path: src/nvim/decoration.c
+    reason: implements the underlying extmark_set()/DecorInline machinery nvim_buf_add_highlight() calls, but is unchanged infrastructure not needed to understand the deprecation
+  - path: test/functional/ui/bufhl_spec.lua
+    reason: also references nvim_buf_add_highlight by name but is a UI-rendering test of buffer highlight display, not the API-level behavior this patch touches
+  - path: scripts/gen_vimdoc.lua
+    reason: generates runtime/lua/vim/_meta/api.lua and doc/api.txt from C doc-comments, but the generated outputs are already committed in this diff so the generator itself isn't needed to understand it
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 7
   description: 'feat(api): deprecate nvim_buf_add_highlight() — C + Lua + 4 doc files'
-notes: ''
+notes: >
+  nvim_buf_add_highlight() is deprecated in favor of vim.hl.range()/nvim_buf_set_extmark():
+  its implementation and a duplicated static src2ns() helper move from extmark.c into
+  deprecated.c with FUNC_API_DEPRECATED_SINCE(13) added, and four doc files plus the
+  generated Lua API stub are updated to match. All touched files are already in the
+  7-file diff; the two nontrivial finds are vim.hl.range()'s real definition (needed to
+  read the rewritten map.txt example) and the functional test that still covers the
+  deprecated function's runtime behavior.

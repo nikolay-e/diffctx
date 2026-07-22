@@ -2,13 +2,63 @@ repo: gitlab-foss
 base_commit: 6f4350e46ed839d6b1317d1e874670bad263e57e
 commit: 5e8f16bd00e7ed67f92ee3ea86381758ecc23585
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: app/assets/javascripts/cycle_analytics/components/stage_nav_item.vue
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New Vue component that replaces the haml stage-nav-item `%li`, defining props (title, value, isActive, isUserAllowed, canEdit, isDefaultStage) mirroring the removed template's bindings.
+  - path: app/assets/javascripts/cycle_analytics/components/stage_card_list_item.vue
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New wrapper component imported and used by stage_nav_item.vue (`<stage-card-list-item :is-active :can-edit>`), providing the actions dropdown slot.
+  - path: app/views/projects/cycle_analytics/show.html.haml
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Replaces the inline `%li.stage-nav-item` haml markup with the new `%stage-nav-item` custom element, the mechanical core of the migration.
+  - path: app/assets/javascripts/cycle_analytics/cycle_analytics_bundle.js
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: "Registers `'stage-nav-item': stageNavItem` in the root Vue instance's components so the haml's `%stage-nav-item` tag resolves, and defines `selectStage(stage)` invoked by the component's `@select` emit."
+  - path: app/assets/javascripts/cycle_analytics/cycle_analytics_store.js
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines the shape of `state.stages` items (title, value, active, isUserAllowed set in `setStages`/`setActiveStage`) that stage_nav_item.vue's props (`:title`, `:value`, `:is-active`, `:is-user-allowed`) are bound to via `v-for="stage in state.stages"`.
+  - path: spec/frontend/cycle_analytics/stage_nav_item_spec.js
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: New test suite added specifically for stage_nav_item.vue, covering active/inactive, permission, and edit-menu states.
+  - path: app/assets/stylesheets/pages/cycle_analytics.scss
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Reworks `.stage-nav-item` and `.stage-nav-item-cell` styles to match the new component markup/classes, and removes rules the haml previously needed.
+forbidden:
+  - path: app/assets/javascripts/cycle_analytics/components/stage_component.vue
+    reason: sibling stage-detail component (issue/plan/production) rendered elsewhere in the page, untouched and unrelated to the nav-item migration
+  - path: app/assets/javascripts/cycle_analytics/components/stage_code_component.vue
+    reason: sibling stage-detail component for the code stage, not part of this nav-item change
+  - path: app/assets/javascripts/vue_shared/components/icon.vue
+    reason: generic shared icon component imported by stage_card_list_item.vue but not specific to this change
+  - path: locale/gitlab.pot
+    reason: mechanically regenerated translation catalog reflecting new strings ('Edit stage', 'Hide stage', 'Remove stage'), not needed to understand the migration itself
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 7
   description: Cycle analytics Haml templates migrated to Vue
-notes: ''
+notes: >
+  Migrates the cycle-analytics stage-nav-item haml markup to two new Vue components
+  (stage_nav_item.vue, stage_card_list_item.vue), wired in via the bundle's component
+  registry (string_indirection: the haml's `%stage-nav-item` tag resolves to the
+  registered component only through the string key 'stage-nav-item'). Gold includes the
+  out-of-diff store file that defines the `stage` object shape the new component's props
+  bind to.

@@ -2,14 +2,43 @@ repo: home-assistant
 base_commit: d42d02f20a77b3f3d068fc8afc9dbb80c854de16
 commit: 35397b818d27f9999ec4eaad225361add2221182
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: homeassistant/components/device_tracker/entity.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'Central diff file — adds `__init_subclass__` to BaseTrackerEntity that warns when a subclass overrides the now-deprecated `battery_level` cached_property; mirrors the pre-existing `location_name` deprecation `__init_subclass__` already in this same file (lines ~254-270), the direct precedent this change copies.'
+  - path: tests/components/device_tracker/test_entity.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Central diff test file — asserts a subclass overriding battery_level logs the deprecation warning and one that does not override it stays silent, pinning the __init_subclass__ behavior.
+  - path: homeassistant/components/mobile_app/device_tracker.py
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: 'Real built-in subclass of BaseTrackerEntity that overrides `battery_level` (line ~118) — demonstrates why the new code special-cases `cls.__module__.startswith("homeassistant.components.")` to skip warning on core integrations (mobile_app, gpslogger, icloud, owntracks, traccar, tractive, zha, lojack, starline all currently override it).'
+  - path: homeassistant/loader.py
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines async_suggest_report_issue (line 1764), the helper the new warning calls to build the "please %s" report-an-issue suggestion text embedded in the log message.
+forbidden:
+  - path: homeassistant/components/device_tracker/config_entry.py
+    reason: sibling module in the same package (config-entry-based tracker scaffolding) but does not touch BaseTrackerEntity or battery_level
+  - path: homeassistant/components/device_tracker/legacy.py
+    reason: legacy YAML-platform tracker scaffolding in the same package, unrelated to the deprecation warning logic
+  - path: homeassistant/components/device_tracker/const.py
+    reason: shared constants module, sibling to entity.py but not implicated in the deprecation mechanism
+  - path: homeassistant/components/zha/device_tracker.py
+    reason: also overrides battery_level like mobile_app/device_tracker.py, but is a redundant duplicate example of the same caller pattern
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 2
   description: Deprecate device_tracker battery_level property — component base-class change all tracker
     integrations inherit
-notes: ''
+notes: 'Adds a __init_subclass__ deprecation-warning hook to BaseTrackerEntity for the battery_level cached_property, directly modeled on the pre-existing location_name deprecation already implemented in the same file. Linkage to affected integrations is via Python class inheritance (BaseTrackerEntity subclassing), not string lookup, so string_indirection is false; the cls.__module__.startswith(...) built-in exemption check is incidental, not the primary linking mechanism.'

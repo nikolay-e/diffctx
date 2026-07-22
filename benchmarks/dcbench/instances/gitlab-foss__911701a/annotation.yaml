@@ -2,13 +2,57 @@ repo: gitlab-foss
 base_commit: 9de3130e0c1f5c6906bdc1d96d96b761cff5a3b4
 commit: 911701ae473f28eebf5d1d3cf4d4eef5130f384e
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: app/assets/javascripts/notes/components/discussion_notes.vue
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New file defining the DiscussionNotes component that NoteableDiscussion now delegates its notes list, componentName/componentData dispatch, and footer/avatar-badge slots to.
+  - path: app/assets/javascripts/notes/components/noteable_discussion.vue
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Refactored to import and render <discussion-notes> in place of the inline notes/replies markup, methods (componentName/componentData), and computed props (hasReplies/replies/commit) that moved into discussion_notes.vue.
+  - path: app/assets/javascripts/notes/stores/getters.js
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the userCanReply getter that discussion_notes.vue consumes via mapGetters(['userCanReply']) in place of the removed canReply computed property.
+  - path: app/assets/javascripts/notes/components/notes_app.vue
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Its canReply computed switches from getNoteableData.current_user.can_create_note to the new userCanReply getter added in getters.js, showing a second consumer of the same rename.
+  - path: spec/frontend/notes/components/discussion_notes_spec.js
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: New Jest spec covering the extracted DiscussionNotes component's rendering, componentName dispatch to NoteableNote/PlaceholderNote/SystemNote, and the footer/avatar-badge scoped slots.
+  - path: spec/javascripts/diffs/components/diff_discussions_spec.js
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Rewrites DiffDiscussions tests with Vue Test Utils to assert it mounts NoteableDiscussion which in turn contains DiscussionNotes, proving the extraction preserved diff-view commenting behavior.
+  - path: app/assets/javascripts/diffs/components/diff_discussions.vue
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: Production component that renders <noteable-discussion>, the exact composition asserted against (wrapper.find(NoteableDiscussion)/find(DiscussionNotes)) in the modified diff_discussions_spec.js.
+forbidden:
+  - path: app/assets/javascripts/notes/components/discussion_counter.vue
+    reason: similarly-named sibling component in the same directory, unrelated to the notes-list extraction
+  - path: app/assets/javascripts/notes/components/discussion_filter.vue
+    reason: similarly-named sibling filtering discussions, not touched or needed to follow the change
+  - path: app/assets/javascripts/notes/components/toggle_replies_widget.vue
+    reason: imported unchanged into discussion_notes.vue; no logic in it was modified by this patch
+  - path: app/assets/javascripts/notes/components/noteable_note.vue
+    reason: existing leaf note renderer reused as-is via componentName(); unaffected by the extraction
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 9
   description: Extract discussion notes into new Vue component
-notes: ''
+notes: 'Extracts the notes-list rendering (componentName/componentData dispatch, replies grouping, footer/avatar-badge slots) out of NoteableDiscussion into a new DiscussionNotes component, and adds a userCanReply Vuex getter to replace duplicated current_user.can_create_note lookups. All linkage is static (Vue component registration and mapGetters), no string-based indirection.'

@@ -2,14 +2,48 @@ repo: kubernetes
 base_commit: ef27338bef90d32d046736f186a549f4841b8b01
 commit: 09a1abda998fc37e2e29a120a82be7c6271656e0
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: staging/src/k8s.io/apimachinery/pkg/runtime/serializer/cbor/cbor.go
+    tier: essential
+    role: caller
+    in_diff: false
+    rationale: pre-existing placeholder package that blank-imports `github.com/fxamacker/cbor/v2` (`_ "github.com/fxamacker/cbor/v2"`), which is the sole reason this dependency needs to be vendored at all.
+  - path: staging/src/k8s.io/apimachinery/go.mod
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: the apimachinery module's go.mod is where `require github.com/fxamacker/cbor/v2` actually lands for the module containing the cbor.go consumer; the root go.mod mirrors it via a replace directive.
+  - path: go.mod
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: adds the top-level `require github.com/fxamacker/cbor/v2` and `github.com/x448/float16` entries that trigger the entire go.sum/vendor/ payload in this diff.
+  - path: staging/src/k8s.io/apiserver/pkg/server/config_test.go
+    tier: helpful
+    role: test
+    in_diff: false
+    rationale: asserts (config_test.go:372-380) that apiserver construction still refuses `application/cbor` media type today, documenting that this vendoring is preparatory and CBOR is not yet wired into content negotiation.
+  - path: test/fuzz/cbor/cbor.go
+    tier: helpful
+    role: cochange
+    in_diff: false
+    rationale: a second pre-existing placeholder package that blank-imports the apimachinery cbor serializer purely to pull it (and thus fxamacker/cbor) into the kubernetes module's dependency graph for future fuzzing.
+forbidden:
+  - path: vendor/github.com/fxamacker/cbor/v2/decode.go
+    reason: third-party vendored library internals, mechanically copied by `go mod vendor` — not k8s-authored change surface
+  - path: vendor/github.com/fxamacker/cbor/v2/encode.go
+    reason: third-party vendored library internals, mechanically copied by `go mod vendor` — not k8s-authored change surface
+  - path: vendor/modules.txt
+    reason: mechanically regenerated module manifest listing every vendored package, no semantic content of its own
+  - path: LICENSES/vendor/github.com/fxamacker/cbor/v2/LICENSE
+    reason: boilerplate upstream license text pulled in by license-scanning tooling, not needed to understand the change
+nontrivial_gold_count: 3
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 54
   description: 'New CBOR library vendored: go.mod/go.sum churn across staging modules + vendor/ payload
     alongside the code that starts using the dep'
-notes: ''
+notes: 'Pure vendoring commit ("Update vendoring to take new CBOR library dependency") — go.mod/go.sum churn plus the fxamacker/cbor and x448/float16 vendor payload, no k8s logic touched. The actual "usage" is a pre-existing blank-import placeholder (apimachinery cbor.go) added by an earlier commit specifically to force this dependency into the module graph ahead of a future CBOR-serializer KEP; config_test.go shows the feature is still explicitly refused at this commit.'
