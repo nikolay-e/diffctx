@@ -1,0 +1,114 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 13
+  random: 10
+candidates:
+- path: .azure/pipelines/ci-public.yml
+  sources:
+  - random
+- path: src/Antiforgery/test/DefaultAntiforgeryTokenGeneratorTest.cs
+  sources:
+  - random
+- path: src/Components/Components/src/IComponent.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/RenderTree/Renderer.Log.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/Routing/Router.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.Prerendering.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.cs
+  sources:
+  - bm25
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/Columns/ColumnBase.razor.cs
+  sources:
+  - graph
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/QuickGrid.razor.cs
+  sources:
+  - graph
+- path: src/Components/Server/src/Circuits/CircuitFactory.cs
+  sources:
+  - bm25
+- path: src/Components/Server/src/Circuits/CircuitHost.cs
+  sources:
+  - bm25
+- path: src/Components/Server/src/Circuits/RemoteJSRuntime.cs
+  sources:
+  - bm25
+- path: src/Components/Server/test/Circuits/CircuitHostTest.cs
+  sources:
+  - bm25
+- path: src/Components/Server/test/Circuits/RemoteRendererTest.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Components/Shared/src/ResourceCollectionProvider.cs
+  sources:
+  - graph
+- path: src/Components/Shared/src/WebRootComponentManager.cs
+  sources:
+  - graph
+- path: src/Components/Web.JS/src/Rendering/Renderer.ts
+  sources:
+  - graph
+- path: src/Components/Web/src/WebRenderer.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHost.cs
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostBuilder.cs
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/WebAssembly/src/Services/DefaultWebAssemblyJSRuntime.cs
+  sources:
+  - bm25
+- path: src/Components/WebView/WebView/src/IpcSender.cs
+  sources:
+  - bm25
+- path: src/Components/WebView/WebView/src/PageContext.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Components/WebView/WebView/src/Services/WebViewJSRuntime.cs
+  sources:
+  - bm25
+- path: src/Components/WebView/WebView/src/WebViewManager.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/InteractiveHostRendermodeTest.cs
+  sources:
+  - graph
+- path: src/Components/test/E2ETest/Tests/WebAssemblyLoggingTest.cs
+  sources:
+  - graph
+- path: src/Components/test/testassets/Components.TestServer/RazorComponents/Pages/Forms/NonEnhancedPlainForm.razor
+  sources:
+  - random
+- path: src/DataProtection/DataProtection/src/AuthenticatedEncryption/ManagedAuthenticatedEncryptorFactory.cs
+  sources:
+  - random
+- path: src/Mvc/Mvc.Razor/src/TagHelpers/HeadTagHelper.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorWebSite/Views/TemplateExpander/_Partial.cshtml
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/VersioningWebSite/Controllers/TicketsController.cs
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ViewImports/.template.config/localize/templatestrings.pt-BR.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/Worker-FSharp/.template.config/localize/templatestrings.tr.json
+  sources:
+  - random
+- path: src/Razor/Razor.Runtime/src/Hosting/DefaultRazorCompiledItem.cs
+  sources:
+  - random

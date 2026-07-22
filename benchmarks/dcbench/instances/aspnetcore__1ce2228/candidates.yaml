@@ -1,0 +1,81 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 0
+  random: 10
+candidates:
+- path: .azure/pipelines/identitymodel-helix-matrix.yml
+  sources:
+  - random
+- path: Directory.Build.props
+  sources:
+  - bm25
+- path: docs/UpdatingMajorVersionAndTFM.md
+  sources:
+  - bm25
+- path: eng/Baseline.Designer.props
+  sources:
+  - bm25
+- path: eng/Baseline.xml
+  sources:
+  - bm25
+- path: eng/Dependencies.props
+  sources:
+  - bm25
+- path: eng/Versions.props
+  sources:
+  - bm25
+- path: src/Components/Components.slnf
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/WebAssembly.Authentication/src/IAccessTokenProviderAccessor.cs
+  sources:
+  - random
+- path: src/Components/test/E2ETest/Tests/FormsTest.cs
+  sources:
+  - random
+- path: src/DataProtection/build.sh
+  sources:
+  - random
+- path: src/Framework/Framework.slnf
+  sources:
+  - bm25
+- path: src/Http/Http.Extensions/test/RequestDelegateGenerator/RequestDelegateCreationTestBase.cs
+  sources:
+  - bm25
+- path: src/Middleware/Middleware.slnf
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.Razor/src/TagHelpers/ITagHelperComponentPropertyActivator.cs
+  sources:
+  - random
+- path: src/Mvc/Mvc.slnf
+  sources:
+  - bm25
+- path: src/Mvc/test/WebSites/RazorWebSite/Views/TemplateExpander/_Partial.cshtml
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/VersioningWebSite/Controllers/VouchersController.cs
+  sources:
+  - random
+- path: src/OpenApi/test/Microsoft.AspNetCore.OpenApi.SourceGenerators.Tests/SnapshotTestHelper.cs
+  sources:
+  - bm25
+- path: src/ProjectTemplates/ProjectTemplates.slnf
+  sources:
+  - bm25
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ViewImports/.template.config/localize/templatestrings.zh-Hans.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/EmptyWeb-CSharp/Program.cs
+  sources:
+  - random
+- path: src/ProjectTemplates/xunit.runner.json
+  sources:
+  - random
+- path: src/Security/Security.slnf
+  sources:
+  - bm25
+- path: src/Tools/Tools.slnf
+  sources:
+  - bm25

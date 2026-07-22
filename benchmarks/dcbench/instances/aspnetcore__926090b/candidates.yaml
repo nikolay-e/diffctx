@@ -1,0 +1,94 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 5
+  random: 10
+candidates:
+- path: .github/ISSUE_TEMPLATE/config.yml
+  sources:
+  - random
+- path: src/Components/Endpoints/src/FormMapping/Metadata/FormDataTypeMetadata.cs
+  sources:
+  - random
+- path: src/Components/WebAssembly/Samples/HostedBlazorWebassemblyApp/Server/HostedBlazorWebassemblyApp.Server.csproj
+  sources:
+  - random
+- path: src/Components/WebAssembly/WebAssembly/src/Services/WebAssemblyNavigationManager.cs
+  sources:
+  - random
+- path: src/DefaultBuilder/test/Microsoft.AspNetCore.Tests/WebApplicationTests.cs
+  sources:
+  - bm25
+- path: src/Hosting/Hosting/src/Internal/WebHost.cs
+  sources:
+  - bm25
+- path: src/Hosting/TestHost/src/HttpContextBuilder.cs
+  sources:
+  - graph
+- path: src/Hosting/TestHost/src/RequestBuilder.cs
+  sources:
+  - graph
+- path: src/Hosting/TestHost/src/WebSocketClient.cs
+  sources:
+  - graph
+- path: src/Mvc/Mvc.slnf
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorBuildWebSite.Views/RazorBuildWebSite.Views.csproj
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/PropertyBinding/BindFormFile.cshtml
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ApiController/.template.config/template.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/StarterWeb-CSharp/Views/Shared/_Layout.cshtml
+  sources:
+  - random
+- path: src/Razor/Razor.Runtime/test/Runtime/TagHelpers/TagHelperRunnerTest.cs
+  sources:
+  - random
+- path: src/Servers/IIS/IIS/test/testassets/InProcessWebSite/Startup.cs
+  sources:
+  - bm25
+- path: src/Servers/Kestrel/Core/test/KestrelServerTests.cs
+  sources:
+  - bm25
+- path: src/Servers/Kestrel/Kestrel/src/WebHostBuilderKestrelExtensions.cs
+  sources:
+  - graph
+- path: src/Servers/Kestrel/Kestrel/test/KestrelConfigurationLoaderTests.cs
+  sources:
+  - bm25
+- path: src/Servers/Kestrel/stress/Program.cs
+  sources:
+  - bm25
+- path: src/Servers/Kestrel/test/FunctionalTests/RequestTests.cs
+  sources:
+  - bm25
+- path: src/Servers/Kestrel/test/FunctionalTests/ResponseTests.cs
+  sources:
+  - bm25
+- path: src/Servers/Kestrel/test/InMemory.FunctionalTests/HttpsTests.cs
+  sources:
+  - bm25
+- path: src/Servers/Kestrel/test/Interop.FunctionalTests/Http2WebSocketInteropTests.cs
+  sources:
+  - bm25
+- path: src/Servers/Kestrel/test/Interop.FunctionalTests/Http3/Http3RequestTests.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Servers/Kestrel/test/Interop.FunctionalTests/HttpClientHttp2InteropTests.cs
+  sources:
+  - bm25
+- path: src/SignalR/clients/csharp/Client/test/FunctionalTests/HubConnectionTests.cs
+  sources:
+  - bm25
+- path: src/SignalR/clients/csharp/Http.Connections.Client/src/Internal/WebSocketsTransport.cs
+  sources:
+  - bm25
+- path: src/SignalR/common/Http.Connections/test/HttpConnectionDispatcherTests.cs
+  sources:
+  - bm25

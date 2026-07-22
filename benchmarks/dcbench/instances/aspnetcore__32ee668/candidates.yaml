@@ -1,0 +1,137 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 20
+  random: 10
+candidates:
+- path: .azure/pipelines/identitymodel-helix-matrix.yml
+  sources:
+  - graph
+- path: Directory.Build.props
+  sources:
+  - bm25
+- path: docs/AddingNewProjects.md
+  sources:
+  - graph
+- path: docs/BuildErrors.md
+  sources:
+  - bm25
+  - graph
+- path: docs/BuildFromSource.md
+  sources:
+  - bm25
+- path: docs/Helix.md
+  sources:
+  - bm25
+- path: docs/ProjectProperties.md
+  sources:
+  - graph
+- path: docs/Trimming.md
+  sources:
+  - bm25
+- path: eng/ProjectReferences.props
+  sources:
+  - bm25
+- path: eng/build.ps1
+  sources:
+  - bm25
+- path: eng/common/core-templates/steps/send-to-helix.yml
+  sources:
+  - graph
+- path: eng/common/tools.ps1
+  sources:
+  - bm25
+- path: eng/common/tools.sh
+  sources:
+  - bm25
+  - graph
+- path: eng/targets/CSharp.Common.targets
+  sources:
+  - bm25
+- path: eng/tools/RepoTasks/GenerateSharedFrameworkDepsFile.cs
+  sources:
+  - graph
+- path: eng/tools/RepoTasks/GenerateTestDevCert.cs
+  sources:
+  - graph
+- path: eng/tools/RepoTasks/RemoveSharedFrameworkDependencies.cs
+  sources:
+  - graph
+- path: src/Components/Components/perf/RouteTableFactoryBenchmarks.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/src/Assets/ImportMapSerializerContext.cs
+  sources:
+  - random
+- path: src/Components/README.md
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/Samples/HostedBlazorWebassemblyApp/Client/wwwroot/index.html
+  sources:
+  - random
+- path: src/Components/WebAssembly/testassets/CustomBasePathApp/wwwroot/index.html
+  sources:
+  - random
+- path: src/DataProtection/DataProtection/src/Repositories/FileSystemXmlRepository.cs
+  sources:
+  - graph
+- path: src/Framework/test/TargetingPackTests.cs
+  sources:
+  - bm25
+- path: src/Framework/test/TestData.cs
+  sources:
+  - graph
+- path: src/Grpc/JsonTranscoding/src/Shared/ServiceDescriptorHelpers.cs
+  sources:
+  - graph
+- path: src/Middleware/OutputCaching/src/OutputCacheKeyProvider.cs
+  sources:
+  - graph
+- path: src/Middleware/StaticFiles/src/FileExtensionContentTypeProvider.cs
+  sources:
+  - graph
+- path: src/Middleware/build.cmd
+  sources:
+  - random
+- path: src/Mvc/Mvc.Razor/test/RazorHotReloadTest.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorWebSite/Controllers/BackSlashController.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RoutingWebSite/Controllers/EmployeeController.cs
+  sources:
+  - random
+- path: src/OpenApi/src/Services/Schemas/OpenApiSchemaService.cs
+  sources:
+  - graph
+- path: src/OpenApi/test/Microsoft.AspNetCore.OpenApi.Build.Tests/GenerateAdditionalXmlFilesForOpenApiTests.cs
+  sources:
+  - graph
+- path: src/ProjectTemplates/README.md
+  sources:
+  - bm25
+- path: src/ProjectTemplates/Shared/TemplatePackageInstaller.cs
+  sources:
+  - graph
+- path: src/ProjectTemplates/Web.ItemTemplates/content/RazorComponent/.template.config/localize/templatestrings.cs.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/StarterWeb-FSharp/wwwroot/lib/bootstrap/LICENSE
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/WebApiAot-CSharp/.template.config/localize/templatestrings.pt-BR.json
+  sources:
+  - random
+- path: src/Servers/IIS/IntegrationTesting.IIS/src/IISDeployer.cs
+  sources:
+  - graph
+- path: src/SiteExtensions/LoggingAggregate/src/Microsoft.AspNetCore.AzureAppServices.SiteExtension/Microsoft.AspNetCore.AzureAppServices.SiteExtension.csproj
+  sources:
+  - bm25
+- path: src/Tools/Microsoft.dotnet-openapi/src/Commands/BaseCommand.cs
+  sources:
+  - bm25
+- path: src/Tools/Shared/CommandLine/CommandLineApplicationExtensions.cs
+  sources:
+  - graph

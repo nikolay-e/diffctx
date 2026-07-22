@@ -1,0 +1,137 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 20
+  random: 10
+candidates:
+- path: .bazelrc
+  sources:
+  - bm25
+- path: .github/copilot-instructions.md
+  sources:
+  - bm25
+- path: BUILD
+  sources:
+  - graph
+- path: Cargo.lock
+  sources:
+  - bm25
+- path: MODULE.bazel.lock
+  sources:
+  - bm25
+- path: api/BUILD
+  sources:
+  - graph
+- path: api/contrib/envoy/extensions/compression/qatzip/compressor/v3alpha/BUILD
+  sources:
+  - graph
+- path: api/contrib/envoy/extensions/compression/qatzstd/compressor/v3alpha/BUILD
+  sources:
+  - graph
+- path: api/contrib/envoy/extensions/filters/http/alpn/v3/BUILD
+  sources:
+  - graph
+- path: api/envoy/extensions/filters/http/file_server/v3/file_server.proto
+  sources:
+  - random
+- path: api/envoy/extensions/filters/network/thrift_proxy/v3/thrift_proxy.proto
+  sources:
+  - random
+- path: api/test/build/build_test.cc
+  sources:
+  - graph
+- path: bazel/BUILD
+  sources:
+  - bm25
+- path: bazel/DEVELOPER.md
+  sources:
+  - graph
+- path: bazel/README.md
+  sources:
+  - bm25
+  - graph
+- path: bazel/deps.yaml
+  sources:
+  - bm25
+  - graph
+- path: bazel/emsdk.patch
+  sources:
+  - bm25
+- path: bazel/envoy_internal.bzl
+  sources:
+  - bm25
+- path: bazel/external/cargo/remote/BUILD.protobuf-2.24.1.bazel
+  sources:
+  - bm25
+- path: bazel/foreign_cc/BUILD
+  sources:
+  - bm25
+- path: bazel/repositories.bzl
+  sources:
+  - bm25
+- path: bazel/repository_locations.bzl
+  sources:
+  - bm25
+- path: mobile/test/java/org/chromium/net/testing/data/redirect_invalid_scheme.html.mock-http-headers
+  sources:
+  - random
+- path: source/extensions/dynamic_modules/sdk/rust/README.md
+  sources:
+  - graph
+- path: source/extensions/dynamic_modules/sdk/rust/build.rs
+  sources:
+  - graph
+- path: source/extensions/dynamic_modules/sdk/rust/src/access_log.rs
+  sources:
+  - graph
+- path: source/extensions/dynamic_modules/sdk/rust/src/cert_validator.rs
+  sources:
+  - graph
+- path: source/extensions/dynamic_modules/sdk/rust/src/lib.rs
+  sources:
+  - graph
+- path: source/server/admin/prometheus_stats.cc
+  sources:
+  - graph
+- path: test/common/http/conn_manager_impl_test_base.h
+  sources:
+  - graph
+- path: test/common/http/path_utility_corpus/Testcase_4
+  sources:
+  - random
+- path: test/common/json/config_schemas_test_data/BUILD
+  sources:
+  - random
+- path: test/common/upstream/utility.h
+  sources:
+  - random
+- path: test/extensions/dynamic_modules/BUILD
+  sources:
+  - bm25
+- path: test/extensions/dynamic_modules/test_data/rust/bootstrap_function_registry_test.rs
+  sources:
+  - graph
+- path: test/extensions/dynamic_modules/test_data/rust/bootstrap_shared_data_test.rs
+  sources:
+  - graph
+- path: test/extensions/dynamic_modules/test_data/rust/test_data.bzl
+  sources:
+  - bm25
+- path: test/extensions/filters/http/grpc_http1_bridge/http1_bridge_filter_test.cc
+  sources:
+  - random
+- path: test/extensions/filters/http/transform/BUILD
+  sources:
+  - random
+- path: test/extensions/filters/network/thrift_proxy/compact_protocol_impl_test.cc
+  sources:
+  - random
+- path: test/mocks/network/socket.cc
+  sources:
+  - random
+- path: tools/spelling/check_spelling_pedantic.py
+  sources:
+  - graph
+- path: tools/vscode/generate_debug_config.py
+  sources:
+  - graph

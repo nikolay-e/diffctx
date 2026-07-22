@@ -2,14 +2,46 @@ repo: home-assistant
 base_commit: 9c344775594f3f1404cff8bd537d20affc56d91f
 commit: d1275c1128030cca53d16beafaed61d3c5a8a92f
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: homeassistant/const.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Replaces the CONCENTRATION_* module-level Final constants with `_DEPRECATED_CONCENTRATION_*` DeprecatedConstant/DeprecatedConstantEnum sentinels, relying on the module's existing `__getattr__ = check_if_deprecated_constant` hook to keep old attribute access working with a warning.
+  - path: tests/test_const.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Adds test_deprecated_concentration_constant, parametrized over the six replacement enum members, asserting each old CONCENTRATION_* name still resolves via import_and_test_deprecated_constant_enum.
+  - path: homeassistant/components/prometheus/__init__.py
+    tier: helpful
+    role: cochange
+    in_diff: true
+    rationale: Updates a code comment referencing the old constant name to the new UnitOfDensity enum member, a cosmetic cochange caused by the rename.
+  - path: homeassistant/helpers/deprecation.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines DeprecatedConstant/DeprecatedConstantEnum and check_if_deprecated_constant, which looks up `_DEPRECATED_<name>` in module globals by string-concatenated name and returns/warns on the replacement — the entire mechanism this commit relies on.
+  - path: tests/common.py
+    tier: essential
+    role: test
+    in_diff: false
+    rationale: Defines import_and_test_deprecated_constant_enum, the helper the new parametrized test calls to assert the deprecated attribute access and captured warning text.
+forbidden:
+  - path: homeassistant/components/bthome/sensor.py
+    reason: real existing consumer of the deprecated CONCENTRATION_* constants, but untouched since the deprecation preserves backward-compatible attribute access
+  - path: homeassistant/components/tasmota/sensor.py
+    reason: another existing consumer of CONCENTRATION_* constants left unmodified by this commit
+  - path: homeassistant/helpers/frame.py
+    reason: related "report usage" deprecation-warning machinery, but the constant-deprecation path here goes through helpers/deprecation.py, not frame.py
+nontrivial_gold_count: 2
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 3
   description: Deprecate CONCENTRATION_* constants in homeassistant/const.py — core constants used by
     hundreds of integrations
-notes: ''
+notes: Converts six CONCENTRATION_* module constants in const.py to deprecated sentinels resolved through the `_DEPRECATED_` name-prefix convention in homeassistant/helpers/deprecation.py, keeping the hundreds of existing `from homeassistant.const import CONCENTRATION_*` call sites working (with a warning) without touching any of them except a comment fix in prometheus.

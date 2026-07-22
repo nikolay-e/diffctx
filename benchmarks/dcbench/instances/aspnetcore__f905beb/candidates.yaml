@@ -1,0 +1,141 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 20
+  random: 10
+candidates:
+- path: .vscode/launch.json
+  sources:
+  - random
+- path: src/Components/Components/src/IComponent.cs
+  sources:
+  - graph
+- path: src/Components/Components/test/PersistentState/ComponentStatePersistenceManagerTest.cs
+  sources:
+  - graph
+- path: src/Components/Components/test/PersistentState/PersistentServicesRegistryTest.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/src/Builder/ResourcePreloadCollection.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/src/Builder/ResourcePreloadService.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/src/DependencyInjection/RazorComponentsRazorComponentBuilderExtensions.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/src/Rendering/Buffering/TextChunk.cs
+  sources:
+  - random
+- path: src/Components/Endpoints/src/Rendering/SSRRenderModeBoundary.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/test/EndpointHtmlRendererTest.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/test/RazorComponentResultTest.cs
+  sources:
+  - graph
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid.EntityFrameworkAdapter/src/EntityFrameworkAdapterServiceCollectionExtensions.cs
+  sources:
+  - graph
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid.EntityFrameworkAdapter/src/EntityFrameworkAsyncQueryExecutor.cs
+  sources:
+  - graph
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid.EntityFrameworkAdapter/src/PublicAPI.Shipped.txt
+  sources:
+  - graph
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/Columns/Align.cs
+  sources:
+  - graph
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/Columns/PropertyColumn.cs
+  sources:
+  - graph
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/Infrastructure/AsyncQueryExecutorSupplier.cs
+  sources:
+  - graph
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/Infrastructure/ColumnsCollectedNotifier.cs
+  sources:
+  - graph
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/Infrastructure/EventCallbackSubscriber.cs
+  sources:
+  - graph
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/Pagination/Paginator.razor.cs
+  sources:
+  - graph
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/QuickGrid.razor.cs
+  sources:
+  - graph
+- path: src/Components/Samples/BlazorServerApp/Pages/_Layout.cshtml
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/Samples/HostedBlazorWebassemblyApp/Server/Pages/_Host.cshtml
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/WebAssembly/src/PublicAPI.Unshipped.txt
+  sources:
+  - random
+- path: src/Components/WebAssembly/testassets/ThreadingApp.Server/Components/App.razor
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/testassets/WasmLinkerTest/README.md
+  sources:
+  - random
+- path: src/Components/benchmarkapps/BlazingPizza.Server/Pages/_Host.cshtml
+  sources:
+  - bm25
+- path: src/Components/test/testassets/Components.TestServer/RazorComponentEndpointsStartup.cs
+  sources:
+  - graph
+- path: src/Identity/UI/src/Areas/Identity/Pages/V4/_Layout.cshtml
+  sources:
+  - bm25
+- path: src/Identity/UI/src/Areas/Identity/Pages/V5/_Layout.cshtml
+  sources:
+  - bm25
+- path: src/Identity/samples/IdentitySample.DefaultUI/Views/Shared/_Layout.cshtml
+  sources:
+  - bm25
+- path: src/Identity/samples/IdentitySample.PasskeyUI/wwwroot/app.js
+  sources:
+  - graph
+- path: src/Identity/testassets/Identity.DefaultUI.WebSite/Pages/_Layout.cshtml
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.Razor.RuntimeCompilation/test/TestInfrastructure/FileNode.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/Antiforgery/IgnoreAntiforgery.cshtml.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RoutingWebSite/ControllerRouteTokenTransformerConvention.cs
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ApiController/.template.config/localize/templatestrings.ko.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/ComponentsWebAssembly-CSharp/wwwroot/index.html
+  sources:
+  - bm25
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/RazorPagesWeb-CSharp/Pages/Shared/_Layout.cshtml
+  sources:
+  - bm25
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/StarterWeb-CSharp/Views/Shared/_Layout.cshtml
+  sources:
+  - bm25
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/Worker-FSharp/Program.fs
+  sources:
+  - random
+- path: src/Razor/Razor.Runtime/src/PublicAPI.Shipped.txt
+  sources:
+  - random
+- path: src/Security/samples/DynamicSchemes/Pages/_Layout.cshtml
+  sources:
+  - bm25
+- path: src/Security/samples/Identity.ExternalClaims/Pages/_Layout.cshtml
+  sources:
+  - bm25
+- path: src/Security/samples/StaticFilesAuth/Views/Shared/_Layout.cshtml
+  sources:
+  - bm25

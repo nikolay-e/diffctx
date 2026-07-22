@@ -1,0 +1,81 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 0
+  random: 10
+candidates:
+- path: Directory.Build.props
+  sources:
+  - bm25
+- path: docs/BuildFromSource.md
+  sources:
+  - bm25
+- path: eng/Dependencies.props
+  sources:
+  - bm25
+- path: eng/Versions.props
+  sources:
+  - bm25
+- path: eng/targets/CSharp.Common.targets
+  sources:
+  - bm25
+- path: src/Components/Web/src/RenderMode/RenderMode.cs
+  sources:
+  - random
+- path: src/Framework/App.Runtime/src/Microsoft.AspNetCore.App.Runtime.csproj
+  sources:
+  - bm25
+- path: src/Http/Routing/src/IRouteNameMetadata.cs
+  sources:
+  - random
+- path: src/Http/Routing/test/testassets/RoutingWebSite/HelloExtension/HelloOptions.cs
+  sources:
+  - random
+- path: src/Middleware/Rewrite/test/UrlActions/GoneActionTests.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/BasicWebSite/Controllers/RequestSizeLimitController.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/CorsWebSite/Properties/launchSettings.json
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/HtmlGenerationWebSite/Controllers/Catalog_CacheTagHelperController.cs
+  sources:
+  - random
+- path: src/ProjectTemplates/README.md
+  sources:
+  - bm25
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ViewStart/.template.config/localize/templatestrings.it.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/Worker-CSharp/appsettings.Development.json
+  sources:
+  - random
+- path: src/ProjectTemplates/test/Templates.Blazor.WebAssembly.Tests/Templates.Blazor.WebAssembly.Tests.csproj
+  sources:
+  - random
+- path: src/Servers/IIS/IIS/src/Core/IISHttpContext.cs
+  sources:
+  - bm25
+- path: src/Servers/Kestrel/Core/src/CoreStrings.resx
+  sources:
+  - bm25
+- path: src/Servers/Kestrel/Core/src/Internal/Http2/Http2Connection.cs
+  sources:
+  - bm25
+- path: src/Servers/Kestrel/Core/src/Internal/Http2/Http2Stream.cs
+  sources:
+  - bm25
+- path: src/Servers/Kestrel/Core/src/Internal/Http3/Http3Stream.cs
+  sources:
+  - bm25
+- path: src/Servers/Kestrel/Core/src/Middleware/HttpsConnectionMiddleware.cs
+  sources:
+  - bm25
+- path: src/Servers/Kestrel/stress/Program.cs
+  sources:
+  - bm25
+- path: src/SignalR/clients/csharp/Http.Connections.Client/src/HttpConnection.cs
+  sources:
+  - bm25

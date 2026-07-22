@@ -1,0 +1,135 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 20
+  random: 10
+candidates:
+- path: .azure/pipelines/components-e2e-tests.yml
+  sources:
+  - graph
+- path: .azuredevops/pull_request_template/minimal.md
+  sources:
+  - random
+- path: eng/common/core-templates/job/job.yml
+  sources:
+  - graph
+- path: src/Components/Components/src/CascadingParameterState.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/ComponentBase.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/IComponent.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/IComponentRenderMode.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/Microsoft.AspNetCore.Components.WarningSuppressions.xml
+  sources:
+  - graph
+- path: src/Components/Components/src/PersistentComponentState.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Components/Components/src/PersistentState/ComponentStatePersistenceManager.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Components/Components/src/PersistentState/IPersistentServiceRegistration.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/PersistentState/PersistentServiceRegistration.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/PersistentState/RegisteredPersistentServiceRegistrationCollection.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/Reflection/ComponentProperties.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/RenderTree/Renderer.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Components/Components/src/Routing/Router.cs
+  sources:
+  - bm25
+- path: src/Components/Components/test/PersistentState/ComponentStatePersistenceManagerTest.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/DependencyInjection/RazorComponentsServiceCollectionExtensions.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/Rendering/Buffering/TextChunkListBuilder.cs
+  sources:
+  - random
+- path: src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/Rendering/SSRRenderModeBoundary.cs
+  sources:
+  - bm25
+- path: src/Components/Server/src/Circuits/CircuitPersistenceManager.cs
+  sources:
+  - graph
+- path: src/Components/Server/src/ComponentHub.cs
+  sources:
+  - bm25
+- path: src/Components/Server/src/DependencyInjection/ComponentServiceCollectionExtensions.cs
+  sources:
+  - bm25
+- path: src/Components/Web.JS/src/InputFile.ts
+  sources:
+  - graph
+- path: src/Components/Web.JS/src/Platform/Circuits/CircuitManager.ts
+  sources:
+  - bm25
+- path: src/Components/Web.JS/src/Platform/Circuits/ReconnectDisplay.ts
+  sources:
+  - graph
+- path: src/Components/Web.JS/src/Services/JSEventRegistry.ts
+  sources:
+  - graph
+- path: src/Components/Web/src/JSComponents/JSComponentInterop.cs
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/WebAssembly.Authentication/src/IAccessTokenProviderAccessor.cs
+  sources:
+  - random
+- path: src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHost.cs
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostBuilder.cs
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/testassets/HostedInAspNet.Client/_Imports.razor
+  sources:
+  - random
+- path: src/Framework/AspNetCoreAnalyzers/src/Analyzers/Infrastructure/RoutePattern/RoutePatternParser.cs
+  sources:
+  - graph
+- path: src/JSInterop/Microsoft.JSInterop.JS/src/package.json
+  sources:
+  - graph
+- path: src/Mvc/Mvc.Razor.RuntimeCompilation/test/DependencyInjection/RazorRuntimeCompilationMvcCoreBuilderExtensionsTest.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/Antiforgery/AntiforgeryDefault.cshtml.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RoutingWebSite/StartupForGroups.cs
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ApiController/.template.config/localize/templatestrings.de.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/BlazorWeb-CSharp/.template.config/template.json
+  sources:
+  - graph
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/Worker-FSharp/.template.config/template.json
+  sources:
+  - random
+- path: src/Razor/Razor.Runtime/src/Runtime/TagHelpers/TagHelperExecutionContext.cs
+  sources:
+  - random

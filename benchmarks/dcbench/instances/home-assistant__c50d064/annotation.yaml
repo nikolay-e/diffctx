@@ -2,14 +2,63 @@ repo: home-assistant
 base_commit: 1484a9c0ee507e9fee5e34cc8326090883b7bc5b
 commit: c50d0646abd1b34cec1681d33e57db58db9ea648
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: homeassistant/components/ecobee/manifest.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds "single_config_entry" true, the representative mechanical edit this whole sweep applies to ~10 integrations.
+  - path: homeassistant/components/ecobee/config_flow.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes the manual `_async_current_entries()` / `single_instance_allowed` abort check now superseded by the manifest flag.
+  - path: tests/components/ecobee/test_config_flow.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Rewrites test_abort_if_already_setup to drive `hass.config_entries.flow.async_init` instead of calling the (now check-less) flow handler directly, proving the abort now comes from the centralized manifest-driven mechanism.
+  - path: homeassistant/generated/integrations.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: hassfest-generated aggregate that must mirror each touched integration's new single_config_entry flag.
+  - path: homeassistant/config_entries.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines `_support_single_config_entry_only()`, called from the flow-init paths, which reads `integration.single_config_entry` and performs the abort that used to be hand-written per integration.
+  - path: homeassistant/loader.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines `Integration.single_config_entry` property and the `single_config_entry` field parsed from manifest.json, the mechanism that makes the new manifest key meaningful.
+  - path: script/hassfest/manifest.py
+    tier: helpful
+    role: config
+    in_diff: false
+    rationale: "hassfest JSON-schema validator with `vol.Optional(\"single_config_entry\"): bool`, the schema that allows the new manifest key."
+  - path: script/hassfest/config_flow.py
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: hassfest generator that copies each integration's manifest `single_config_entry` into homeassistant/generated/integrations.json.
+forbidden:
+  - path: homeassistant/components/ecobee/strings.json
+    reason: sibling file with a matching single_instance_allowed abort key, but untouched by this commit and not needed to explain the change
+  - path: homeassistant/components/zwave_js/manifest.json
+    reason: same filename/type in an unrelated integration outside this alphabetic [a-i] batch
+  - path: homeassistant/strings.json
+    reason: defines the shared common single_instance_allowed translation key referenced via [%key:...%], but that key predates this commit and is unchanged
+  - path: script/hassfest/__main__.py
+    reason: hassfest CLI entry point, same tool family as the gold hassfest files but contains neither the schema nor the generator logic involved
+nontrivial_gold_count: 4
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 34
   description: Mark integrations single_config_entry in manifest [a-i] — manifest.json-only sweep across
     ~30 integrations + hassfest
-notes: ''
+notes: Adds a declarative "single_config_entry" manifest flag to ~10 integrations and deletes their hand-written single-instance abort checks, relying on homeassistant/config_entries.py + loader.py to enforce it centrally; picked one representative integration (ecobee) plus the generated aggregate and the enforcement/schema/generator code as gold rather than all 34 mechanically-similar files.

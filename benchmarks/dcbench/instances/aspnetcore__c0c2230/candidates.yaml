@@ -1,0 +1,135 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 20
+  random: 10
+candidates:
+- path: .azure/pipelines/stress.yml
+  sources:
+  - random
+- path: .github/workflows/issue-triage-agent.md
+  sources:
+  - bm25
+- path: src/Components/Analyzers/src/VirtualizeItemComparerAnalyzer.cs
+  sources:
+  - graph
+- path: src/Components/Analyzers/test/VirtualizeItemComparerAnalyzerTest.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/CascadingParameterAttributeBase.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/CascadingParameterSubscription.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/PersistentState/PersistentServicesRegistry.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/PersistentState/PersistentValueProviderComponentSubscription.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Components/Components/src/RenderTree/Renderer.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/Routing/Router.cs
+  sources:
+  - bm25
+- path: src/Components/Components/test/DynamicComponentTest.cs
+  sources:
+  - random
+- path: src/Components/Components/test/PersistentState/ComponentStatePersistenceManagerTest.cs
+  sources:
+  - bm25
+- path: src/Components/Components/test/PersistentValueProviderComponentSubscriptionTests.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/Rendering/SSRRenderModeBoundary.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/TempData/TempDataCascadingValueSupplier.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/test/Builder/ResourceCollectionUrlEndpointTest.cs
+  sources:
+  - random
+- path: src/Components/Endpoints/test/EndpointHtmlRendererTest.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Components/Endpoints/test/TempData/SessionStorageTempDataProviderTest.cs
+  sources:
+  - graph
+- path: src/Components/Endpoints/test/TempData/TempDataCascadingValueSupplierTest.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/test/TempData/TempDataSubscriptionTest.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Components/Testing/eng/targets/Microsoft.AspNetCore.Components.Testing.targets
+  sources:
+  - random
+- path: src/Components/Web/src/SupplyParameterFromTempDataAttribute.cs
+  sources:
+  - graph
+- path: src/Components/test/E2ETest/Infrastructure/ServerTestBase.cs
+  sources:
+  - graph
+- path: src/Components/test/E2ETest/Tests/HttpClientTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/testassets/BasicTestApp/wwwroot/appsettings.Development.json
+  sources:
+  - graph
+- path: src/Components/test/testassets/BasicTestApp/wwwroot/appsettings.Production.json
+  sources:
+  - graph
+- path: src/Components/test/testassets/BasicTestApp/wwwroot/appsettings.json
+  sources:
+  - graph
+- path: src/Components/test/testassets/Components.TestServer/RazorComponentEndpointsStartup.cs
+  sources:
+  - bm25
+- path: src/DataProtection/DataProtection/test/Microsoft.AspNetCore.DataProtection.Tests/KeyManagement/KeyRingTests.cs
+  sources:
+  - graph
+- path: src/HealthChecks/build.sh
+  sources:
+  - random
+- path: src/Http/Http.Extensions/gen/Microsoft.AspNetCore.Http.RequestDelegateGenerator/DiagnosticDescriptors.cs
+  sources:
+  - graph
+- path: src/Http/Http.Extensions/gen/Microsoft.AspNetCore.Http.RequestDelegateGenerator/StaticRouteHandlerModel/StaticRouteHandlerModel.Emitter.cs
+  sources:
+  - graph
+- path: src/Http/Http.Features/src/IHttpResponseFeature.cs
+  sources:
+  - graph
+- path: src/Http/Http.Features/src/ISession.cs
+  sources:
+  - graph
+- path: src/Http/Http.Features/src/ISessionFeature.cs
+  sources:
+  - graph
+- path: src/Http/Http/test/DefaultHttpContextTests.cs
+  sources:
+  - bm25
+- path: src/JSInterop/Microsoft.JSInterop.JS/src/.eslintrc.json
+  sources:
+  - graph
+- path: src/Mvc/test/WebSites/HtmlGenerationWebSite/Views/HtmlGeneration_Home/EditWarehouse.cshtml
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/ViewData/ViewDataToViewComponentPage.cshtml
+  sources:
+  - random
+- path: src/ProjectTemplates/README.md
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ViewImports/.template.config/localize/templatestrings.zh-Hant.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/StarterWeb-CSharp/Views/Shared/_LoginPartial.OrgAuth.cshtml
+  sources:
+  - random

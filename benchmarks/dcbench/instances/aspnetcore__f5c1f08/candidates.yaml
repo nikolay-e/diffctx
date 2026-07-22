@@ -1,0 +1,137 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 20
+  random: 10
+candidates:
+- path: .github/ISSUE_TEMPLATE/30_api_proposal.md
+  sources:
+  - random
+- path: src/Components/Authorization/test/AuthorizeRouteViewTest.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/ComponentBase.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/RenderTree/Renderer.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/Routing/Router.cs
+  sources:
+  - bm25
+- path: src/Components/Components/test/CascadingParameterTest.cs
+  sources:
+  - bm25
+- path: src/Components/Components/test/DynamicComponentTest.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Components/Components/test/Routing/RouterTest.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/FormMapping/Factories/NullableConverterFactory.cs
+  sources:
+  - random
+- path: src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.EventDispatch.cs
+  sources:
+  - bm25
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/GridItemsProviderResult.cs
+  sources:
+  - graph
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/Infrastructure/ColumnsCollectedNotifier.cs
+  sources:
+  - graph
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/test/GridSortTest.cs
+  sources:
+  - graph
+- path: src/Components/Web.JS/src/Platform/Mono/MonoPlatform.ts
+  sources:
+  - graph
+- path: src/Components/WebAssembly/DevServer/src/Server/Program.cs
+  sources:
+  - random
+- path: src/Components/WebAssembly/JSInterop/src/WebAssemblyJSRuntime.cs
+  sources:
+  - random
+- path: src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHost.cs
+  sources:
+  - graph
+- path: src/Components/dotnet-runtime-js/dotnet.d.ts
+  sources:
+  - graph
+- path: src/Components/test/E2ETest/Infrastructure/ServerTestBase.cs
+  sources:
+  - graph
+- path: src/Components/test/E2ETest/ServerRenderingTests/EnhancedNavigationTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/ServerRenderingTests/StreamingRenderingTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/ComponentRenderingTestBase.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/ErrorBoundaryTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/ErrorNotificationTest.cs
+  sources:
+  - graph
+- path: src/Components/test/E2ETest/Tests/EventBubblingTest.cs
+  sources:
+  - graph
+- path: src/Components/test/E2ETest/Tests/EventTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/RoutingTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/E2ETest/Tests/WebAssemblyLazyLoadTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/testassets/BasicTestApp/CascadingValueTest/CascadingValueTypes.cs
+  sources:
+  - graph
+- path: src/Components/test/testassets/BasicTestApp/InteropTest/JSStreamReferenceInterop.cs
+  sources:
+  - graph
+- path: src/Components/test/testassets/BasicTestApp/InteropTest/TestDTO.cs
+  sources:
+  - graph
+- path: src/Components/test/testassets/BasicTestApp/wwwroot/js/customLinkElement.js
+  sources:
+  - graph
+- path: src/Components/test/testassets/BasicTestApp/wwwroot/js/jsinteroptests.js
+  sources:
+  - graph
+- path: src/JSInterop/Microsoft.JSInterop.JS/src/.eslintrc.json
+  sources:
+  - graph
+- path: src/JSInterop/Microsoft.JSInterop.JS/src/package.json
+  sources:
+  - graph
+- path: src/JSInterop/Microsoft.JSInterop.JS/src/tsconfig.json
+  sources:
+  - graph
+- path: src/Mvc/Mvc.Razor.RuntimeCompilation/test/TestInfrastructure/NotFoundProjectItem.cs
+  sources:
+  - random
+- path: src/Mvc/Mvc.TagHelpers/src/EnvironmentTagHelper.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/Antiforgery/_ViewImports.cshtml
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RoutingWebSite/TestParameterTransformer.cs
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ViewImports/.template.config/localize/templatestrings.pt-BR.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/Worker-FSharp/.template.config/localize/templatestrings.de.json
+  sources:
+  - random
+- path: src/Razor/Razor.Runtime/src/Hosting/DefaultRazorCompiledItem.cs
+  sources:
+  - random

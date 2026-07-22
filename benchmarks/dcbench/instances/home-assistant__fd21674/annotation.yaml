@@ -2,14 +2,64 @@ repo: home-assistant
 base_commit: 2e4185840af625e168d7f6ca8bfe3fdbca25d5cf
 commit: fd21674ca13d78523627d86b3e65970c586eb1c0
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: homeassistant/components/melcloud_home/__init__.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: async_setup_entry builds the MELCloudHome/MelCloudHomeAuth client from CONF_EMAIL/CONF_PASSWORD, wires up the coordinator, and forwards to PLATFORMS = [Platform.CLIMATE] — the entry point wiring the whole integration together.
+  - path: homeassistant/components/melcloud_home/coordinator.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines MelCloudHomeCoordinator (DataUpdateCoordinator) and the MelCloudHomeConfigEntry type alias used throughout __init__.py, climate.py, and entity.py.
+  - path: homeassistant/components/melcloud_home/climate.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: The integration's sole platform — implements the ClimateEntity subclass that exposes MELCloud Home devices, the largest and most substantive new file (372 lines).
+  - path: homeassistant/components/melcloud_home/config_flow.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New ConfigFlow implementing the email/password login step that creates the config entry consumed by __init__.py.
+  - path: homeassistant/components/melcloud_home/entity.py
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Shared CoordinatorEntity base class that climate.py's entities subclass for device_info and coordinator wiring.
+  - path: homeassistant/components/melcloud_home/manifest.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Declares domain "melcloud_home" (distinct from the pre-existing "melcloud"), config_flow true, and the aiomelcloudhome requirement — establishes this is a new, independent integration.
+  - path: tests/components/melcloud_home/test_climate.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Snapshot-based coverage of the climate entities created from the coordinator's device data.
+  - path: tests/components/melcloud_home/conftest.py
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Defines the mock client/auth fixtures that test_init.py, test_config_flow.py, and test_climate.py all depend on.
+forbidden:
+  - path: homeassistant/components/melcloud/manifest.json
+    reason: pre-existing, unrelated integration sharing the "MELCloud" brand name and codeowner, but a completely separate domain/codebase using a different client library (python-melcloud vs aiomelcloudhome)
+  - path: homeassistant/components/melcloud/climate.py
+    reason: same platform type (climate) in the unrelated legacy melcloud integration, not touched or needed by this new-integration PR
+  - path: homeassistant/components/melcloud/__init__.py
+    reason: entry point of the unrelated legacy melcloud integration, same author, coincidental name similarity only
+  - path: tests/components/melcloud/test_config_flow.py
+    reason: config-flow tests for the unrelated legacy melcloud integration, not part of this commit
 nontrivial_gold_count: 0
-annotator: pending
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 20
   description: Add MELCloud Home integration — new domain adjacent to existing melcloud; name-collision
     stress for relevance filtering
-notes: ''
+notes: Adds a brand-new, self-contained "melcloud_home" integration (own domain, own PyPI client aiomelcloudhome, own codeowner entry) unrelated in code to the pre-existing "melcloud" integration despite the near-identical branding; understanding it needs only the new files, so no_nontrivial_context is set and the forbidden list targets the old melcloud/* files that a naive name-similarity heuristic would wrongly pull in.

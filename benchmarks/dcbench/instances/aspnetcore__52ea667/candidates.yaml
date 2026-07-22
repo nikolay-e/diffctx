@@ -1,0 +1,81 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 0
+  random: 10
+candidates:
+- path: .github/ISSUE_TEMPLATE/config.yml
+  sources:
+  - random
+- path: src/Components/Components/src/ComponentBase.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/Reflection/ComponentProperties.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/RenderTree/Renderer.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/Routing/Router.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/FormMapping/Metadata/FormDataPropertyMetadata.cs
+  sources:
+  - random
+- path: src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.Prerendering.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.Streaming.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/Rendering/SSRRenderModeBoundary.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/test/EndpointHtmlRendererTest.cs
+  sources:
+  - bm25
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/QuickGrid.razor.cs
+  sources:
+  - bm25
+- path: src/Components/Server/src/Circuits/RemoteRenderer.cs
+  sources:
+  - bm25
+- path: src/Components/Server/test/Circuits/RemoteRendererTest.cs
+  sources:
+  - bm25
+- path: src/Components/Web.JS/src/Services/NavigationEnhancement.ts
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostBuilder.cs
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/WebAssembly/src/PublicAPI.Unshipped.txt
+  sources:
+  - random
+- path: src/Components/WebAssembly/testassets/ThreadingApp/App.razor
+  sources:
+  - random
+- path: src/JSInterop/Microsoft.JSInterop/src/Infrastructure/DotNetDispatcher.cs
+  sources:
+  - bm25
+- path: src/Mvc/.vsconfig
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/ControllersFromServicesClassLibrary/GenericController.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/PropertyBinding/PageModelWithPropertyAndArgumentBinding.cs
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ApiController/.template.config/localize/templatestrings.es.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/StarterWeb-CSharp/Views/Shared/_LoginPartial.Identity.cshtml
+  sources:
+  - random
+- path: src/Razor/Razor.Runtime/test/Runtime/TagHelpers/TestTagHelpers/TagHelperDescriptorFactoryTagHelpers.cs
+  sources:
+  - random
+- path: src/SignalR/clients/csharp/Client.Core/src/HubConnection.cs
+  sources:
+  - bm25

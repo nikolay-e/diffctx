@@ -2,14 +2,68 @@ repo: tokio
 base_commit: 06d6adf4b7597fa316f3277c2aa60da27dac59fc
 commit: ee1f0c473f5e9b70a96756bc67fe5a04e691294d
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: tokio-util/Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: 'moves tokio-stream from [dependencies] to [dev-dependencies] and adds tokio''s sync feature -- the root cause forcing every `use tokio_stream::Stream` in the crate to be replaced.'
+  - path: tokio-util/src/codec/framed_impl.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'replaces `use tokio_stream::Stream;` with `use futures_core::Stream;` in the shared FramedImpl::poll_next state machine that both FramedRead and FramedWrite build on.'
+  - path: tokio-util/src/codec/framed.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'public Framed<T, U> struct swaps its Stream import from tokio_stream::Stream to futures_core::Stream and updates four doc-comment links to match.'
+  - path: tokio-util/src/codec/framed_read.rs
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: 'same tokio_stream::Stream -> futures_core::Stream import/doc-link substitution applied to the read-half of the codec split.'
+  - path: tokio-util/src/codec/framed_write.rs
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: 'same tokio_stream::Stream -> futures_core::Stream import substitution applied to the write-half of the codec split.'
+  - path: tokio-util/src/udp/frame.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'UdpFramed''s impl Stream for UdpFramed<C> swaps its use tokio_stream::Stream for use futures_core::Stream, showing the same decoupling applied outside the codec module (the udp part of the curation description).'
+  - path: tokio-util/src/io/reader_stream.rs
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: 'only the [Stream]: tokio_stream::Stream doc-comment links change here (the code already imports futures_core::stream::Stream), confirming the io part of the decoupling was purely cosmetic in this file.'
+  - path: tokio-stream/src/lib.rs
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: 'line 105 `pub use futures_core::Stream;` proves tokio_stream::Stream is nothing but a re-export of futures_core::Stream, so replacing every use tokio_stream::Stream with use futures_core::Stream in tokio-util is behavior-preserving, not just a rename of convenience.'
+forbidden:
+  - path: tokio-util/src/codec/bytes_codec.rs
+    reason: 'sibling codec file in the same directory but never imports Stream/tokio_stream, so it is untouched by the decoupling'
+  - path: tokio-util/src/codec/length_delimited.rs
+    reason: 'another codec sibling referencing Stream only in prose doc comments, no import to migrate'
+  - path: tokio-util/CHANGELOG.md
+    reason: 'describes released versions, not the technical linkage between the dependency swap and the trait re-export'
+  - path: tokio-stream/tests/stream_chain.rs
+    reason: 'unrelated tokio-stream test file (random-generator distractor), no connection to tokio-util''s import swap'
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration, cochange, bm25, graph, random]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 10
   description: 'util: remove tokio-stream dependency from tokio-util — inter-crate dependency decoupling
     across codec/io/udp'
-notes: ''
+notes: 'Cargo.toml demotes tokio-stream to a dev-dependency and every use tokio_stream::Stream
+  in tokio-util is swapped for use futures_core::Stream (plus matching doc links); the swap is
+  behavior-preserving because tokio-stream/src/lib.rs just re-exports futures_core::Stream. Two of
+  the ten diffed files (reader_stream.rs, stream_reader.rs) only touch doc comments since their code
+  already imported futures_core::Stream directly; stream_reader.rs was folded out of gold in favor
+  of reader_stream.rs as the io-domain representative to avoid padding near-duplicate entries.'

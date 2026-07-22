@@ -1,0 +1,81 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 0
+  random: 10
+candidates:
+- path: CONTRIBUTING.md
+  sources:
+  - bm25
+- path: PULL_REQUESTS.md
+  sources:
+  - bm25
+- path: PULL_REQUEST_TEMPLATE.md
+  sources:
+  - bm25
+- path: api/envoy/extensions/transport_sockets/tls/v3/common.proto
+  sources:
+  - bm25
+- path: bazel/envoy_binary.bzl
+  sources:
+  - random
+- path: changelogs/1.18.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.20.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.22.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.27.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.28.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.30.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.32.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.37.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.38.0.yaml
+  sources:
+  - bm25
+- path: compat/openssl/test/certs/intermediate_ca_1_key.pem.h
+  sources:
+  - random
+- path: contrib/kafka/filters/network/source/tagged_fields.h
+  sources:
+  - random
+- path: docs/root/intro/arch_overview/security/ssl.rst
+  sources:
+  - bm25
+- path: mobile/examples/java/hello_world/README.md
+  sources:
+  - random
+- path: test/common/common/base64_differential_corpus/singleton
+  sources:
+  - random
+- path: test/common/http/http2/hpack_corpus/use_after_free
+  sources:
+  - random
+- path: test/common/tls/context_impl_test.cc
+  sources:
+  - bm25
+- path: test/extensions/filters/http/wasm/test_data/grpc_stream_rust.rs
+  sources:
+  - random
+- path: test/extensions/filters/listener/http_inspector/http_inspector_test.cc
+  sources:
+  - random
+- path: test/extensions/filters/network/http_connection_manager/BUILD
+  sources:
+  - random
+- path: test/extensions/tracers/opentelemetry/resource_detectors/resource_provider_test.cc
+  sources:
+  - random

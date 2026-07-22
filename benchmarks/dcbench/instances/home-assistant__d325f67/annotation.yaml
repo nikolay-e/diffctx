@@ -2,14 +2,51 @@ repo: home-assistant
 base_commit: f786ec18a9a39661d58665c5cc919cb9ac934a9f
 commit: d325f677df58770bc55ee696f72081cab304b6d8
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: homeassistant/helpers/target.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renames TargetSelectorData to TargetSelection (has_any_selector -> has_any_target) and adds a `@deprecated_class("TargetSelection", ...)`-decorated TargetSelectorData subclass that keeps the old name/property working as a thin shim.
+  - path: homeassistant/helpers/service.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: The heaviest internal consumer (async_extract_entities, async_extract_entity_ids, async_extract_referenced_entity_ids, entity_service_call all construct TargetSelection now); also updates its own deprecated ServiceTargetSelector shim to subclass TargetSelection instead of TargetSelectorData.
+  - path: tests/helpers/test_target.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: test_extract_referenced_entity_ids is parametrized over both target.TargetSelection and target.TargetSelectorData, proving the deprecated subclass stays behaviorally interchangeable with the new class.
+  - path: tests/helpers/test_service.py
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: test_deprecated_service_target_selector_class asserts the renamed has_any_target property through the deprecated ServiceTargetSelector/TargetSelectorData chain.
+  - path: homeassistant/components/unifiprotect/services.py
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: The widest single-integration ripple of the rename (five call sites), representative of how TargetSelectorData(...) -> TargetSelection(...) propagates to component consumers.
+  - path: homeassistant/helpers/deprecation.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines the `deprecated_class` decorator applied to both TargetSelectorData (in target.py) and ServiceTargetSelector (in service.py) — it wraps __init__ to log the "instantiated ... use X instead" warning that makes the deprecation actually fire.
+forbidden:
+  - path: homeassistant/helpers/entity_component.py
+    reason: adjacent core helper module, but does not reference TargetSelectorData/TargetSelection and is untouched
+  - path: homeassistant/components/group/__init__.py
+    reason: target.py imports `group.expand_entity_ids` from here, but this module itself has no TargetSelector usage and is unaffected by the rename
+  - path: homeassistant/components/script/__init__.py
+    reason: a heavy consumer of service-target-extraction indirectly via helpers/service.py, but does not reference TargetSelectorData/TargetSelection directly and needed no change
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 11
   description: Deprecate TargetSelectorData in favor of TargetSelection — helpers/target.py API change
     rippling into multiple component consumers
-notes: ''
+notes: Renames helpers/target.py's TargetSelectorData class to TargetSelection (and has_any_selector to has_any_target), keeping the old name as a `@deprecated_class`-wrapped subclass for backward compatibility, then updates every internal call site (helpers/service.py and six component integrations) to construct the new name directly.

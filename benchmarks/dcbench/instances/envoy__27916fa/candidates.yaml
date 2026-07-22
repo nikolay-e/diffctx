@@ -1,0 +1,81 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 0
+  random: 10
+candidates:
+- path: CONTRIBUTING.md
+  sources:
+  - bm25
+- path: api/STYLE.md
+  sources:
+  - bm25
+- path: api/envoy/api/v2/core/base.proto
+  sources:
+  - bm25
+- path: api/envoy/config/cluster/v3/cluster.proto
+  sources:
+  - bm25
+- path: api/envoy/config/core/v3/base.proto
+  sources:
+  - bm25
+- path: bazel/bazel_deps.bzl
+  sources:
+  - random
+- path: bazel/external/BUILD
+  sources:
+  - random
+- path: changelogs/1.16.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.17.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.18.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.37.0.yaml
+  sources:
+  - bm25
+- path: changelogs/1.38.0.yaml
+  sources:
+  - bm25
+- path: compat/openssl/test/certs/server_2_cert.cfg
+  sources:
+  - random
+- path: contrib/kafka/filters/network/source/mesh/command_handlers/api_versions.cc
+  sources:
+  - random
+- path: docs/root/operations/admin.rst
+  sources:
+  - bm25
+- path: mobile/docs/root/intro/version_history.rst
+  sources:
+  - bm25
+- path: mobile/envoy_build_config/extension_registry.cc
+  sources:
+  - bm25
+- path: mobile/library/cc/engine_builder.h
+  sources:
+  - bm25
+- path: source/common/listener_manager/listener_impl.cc
+  sources:
+  - bm25
+- path: test/common/formatter/substitution_formatter_corpus/headers
+  sources:
+  - random
+- path: test/common/http/codec_impl_corpus/clusterfuzz-testcase-minimized-codec_impl_fuzz_test-5686080614694912
+  sources:
+  - random
+- path: test/extensions/filters/http/wasm/test_data/test_panic_cpp.cc
+  sources:
+  - random
+- path: test/extensions/filters/listener/http_inspector/http_inspector_test.cc
+  sources:
+  - random
+- path: test/extensions/filters/network/http_connection_manager/BUILD
+  sources:
+  - random
+- path: test/extensions/tracers/skywalking/skywalking_tracer_impl_test.cc
+  sources:
+  - random

@@ -1,0 +1,91 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 4
+  random: 10
+candidates:
+- path: src/Components/Components/src/RenderTree/Renderer.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/Routing/Router.cs
+  sources:
+  - bm25
+- path: src/Components/QuickGrid/Microsoft.AspNetCore.Components.QuickGrid/src/QuickGrid.razor.cs
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/WebAssembly.Authentication/test/RemoteAuthenticatorCoreTests.cs
+  sources:
+  - bm25
+- path: src/Components/test/testassets/BasicTestApp/FormsTest/InputWithCustomValueParser.cs
+  sources:
+  - random
+- path: src/Http/Headers/src/ContentRangeHeaderValue.cs
+  sources:
+  - random
+- path: src/Http/Http/src/Features/FormFeature.cs
+  sources:
+  - random
+- path: src/Identity/Core/src/IdentityApiEndpointRouteBuilderExtensions.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Identity/Core/src/IdentityServiceCollectionExtensions.cs
+  sources:
+  - bm25
+- path: src/Identity/test/Identity.FunctionalTests/MapIdentityApiTests.cs
+  sources:
+  - bm25
+- path: src/Middleware/HeaderPropagation/src/HeaderPropagationValues.cs
+  sources:
+  - random
+- path: src/Middleware/HttpLogging/src/HttpLoggingMiddleware.cs
+  sources:
+  - graph
+- path: src/Mvc/test/WebSites/BasicWebSite/StartupWithCookieTempDataProviderAndCookieConsent.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/FilesWebSite/readme.md
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/TagHelpersWebSite/Views/_ViewImports.cshtml
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ItemTemplates/content/RazorPage/.template.config/dotnetcli.host.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/GrpcService-CSharp/Properties/launchSettings.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/RazorClassLibrary-CSharp/_Imports.razor
+  sources:
+  - random
+- path: src/Security/Authentication/OpenIdConnect/src/OpenIdConnectHandler.cs
+  sources:
+  - bm25
+- path: src/Security/Authentication/samples/SocialSample/Startup.cs
+  sources:
+  - bm25
+- path: src/Security/Authorization/Policy/src/AuthorizationMiddleware.cs
+  sources:
+  - graph
+- path: src/Servers/HttpSys/src/HttpSysRequestTimingType.cs
+  sources:
+  - graph
+- path: src/Servers/HttpSys/src/RequestProcessing/RequestContext.FeatureCollection.cs
+  sources:
+  - bm25
+- path: src/Servers/IIS/IIS/src/Core/IISHttpContext.FeatureCollection.cs
+  sources:
+  - bm25
+- path: src/Servers/IIS/IIS/src/Core/IISHttpContext.cs
+  sources:
+  - bm25
+- path: src/SignalR/clients/csharp/Client.Core/src/HubConnection.cs
+  sources:
+  - bm25
+- path: src/SignalR/common/Http.Connections/src/Internal/HttpConnectionDispatcher.cs
+  sources:
+  - bm25
+- path: src/SignalR/common/Http.Connections/test/HttpConnectionDispatcherTests.cs
+  sources:
+  - bm25

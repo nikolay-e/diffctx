@@ -1,0 +1,137 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 20
+  random: 10
+candidates:
+- path: .azuredevops/pull_request_template.md
+  sources:
+  - random
+- path: src/Components/Components/src/IComponent.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/PersistentState/ComponentStatePersistenceManager.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Components/Components/src/PersistentState/PersistentServicesRegistry.cs
+  sources:
+  - bm25
+  - graph
+- path: src/Components/Components/src/PersistentStateProviderServiceCollectionExtensions.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/PersistingComponentStateSubscription.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/RegisterPersistentComponentStateServiceCollectionExtensions.cs
+  sources:
+  - bm25
+- path: src/Components/Components/src/RegisterRenderingMetricsServiceCollectionExtensions.cs
+  sources:
+  - graph
+- path: src/Components/Components/src/RenderTree/Renderer.cs
+  sources:
+  - bm25
+- path: src/Components/Components/test/PersistentState/ComponentStatePersistenceManagerTest.cs
+  sources:
+  - bm25
+- path: src/Components/Components/test/PersistentState/PersistentServicesRegistryTest.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/Rendering/Buffering/TextChunkListBuilder.cs
+  sources:
+  - random
+- path: src/Components/Endpoints/src/Rendering/EndpointHtmlRenderer.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/src/Rendering/SSRRenderModeBoundary.cs
+  sources:
+  - bm25
+- path: src/Components/Endpoints/test/EndpointHtmlRendererTest.cs
+  sources:
+  - bm25
+- path: src/Components/Server/src/Circuits/CircuitPersistenceManager.cs
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHost.cs
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/WebAssembly/src/Hosting/WebAssemblyHostBuilder.cs
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/WebAssembly/src/Rendering/WebAssemblyComponentState.cs
+  sources:
+  - random
+- path: src/Components/WebAssembly/WebAssembly/src/Rendering/WebAssemblyRenderer.cs
+  sources:
+  - bm25
+- path: src/Components/WebAssembly/testassets/Wasm.Prerendered.Server/Pages/_Layout.cshtml
+  sources:
+  - random
+- path: src/Components/test/E2ETest/ServerRenderingTests/StreamingRenderingTest.cs
+  sources:
+  - bm25
+- path: src/Components/test/testassets/Components.WasmMinimal/Properties/launchSettings.json
+  sources:
+  - graph
+- path: src/Components/test/testassets/GlobalizationWasmApp/Program.cs
+  sources:
+  - graph
+- path: src/Components/test/testassets/TestContentPackage/ComponentFromPackage.razor.js
+  sources:
+  - graph
+- path: src/Components/test/testassets/TestContentPackage/MyPrompt.cs
+  sources:
+  - graph
+- path: src/Components/test/testassets/TestContentPackage/Properties/launchSettings.json
+  sources:
+  - graph
+- path: src/Components/test/testassets/TestContentPackage/Services/AsyncOperationService.cs
+  sources:
+  - graph
+- path: src/Components/test/testassets/TestContentPackage/Services/InteractiveServerService.cs
+  sources:
+  - graph
+- path: src/Components/test/testassets/TestContentPackage/Services/InteractiveWebAssemblyService.cs
+  sources:
+  - graph
+- path: src/Components/test/testassets/TestContentPackage/wwwroot/counterInterop.js
+  sources:
+  - graph
+- path: src/Framework/AspNetCoreAnalyzers/src/Analyzers/Infrastructure/VirtualChars/System.Text/Rune.cs
+  sources:
+  - graph
+- path: src/JSInterop/Microsoft.JSInterop/src/Infrastructure/DotNetDispatcher.cs
+  sources:
+  - bm25
+- path: src/Mvc/Mvc.Razor.RuntimeCompilation/test/TestInfrastructure/FileNode.cs
+  sources:
+  - random
+- path: src/Mvc/Mvc.TagHelpers/src/ComponentTagHelper.cs
+  sources:
+  - graph
+- path: src/Mvc/perf/Microbenchmarks/Microsoft.AspNetCore.Mvc/PreserveComponentStateBenchmark.cs
+  sources:
+  - graph
+- path: src/Mvc/test/WebSites/RazorPagesWebSite/Pages/Antiforgery/IgnoreAntiforgery.cshtml.cs
+  sources:
+  - random
+- path: src/Mvc/test/WebSites/RoutingWebSite/ControllerRouteTokenTransformerConvention.cs
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ItemTemplates/content/ApiController/.template.config/localize/templatestrings.en.json
+  sources:
+  - random
+- path: src/ProjectTemplates/Web.ProjectTemplates/content/Worker-FSharp/Program.fs
+  sources:
+  - random
+- path: src/Razor/Razor.Runtime/src/Runtime/TagHelpers/TagHelperScopeManager.cs
+  sources:
+  - random
+- path: src/Servers/Kestrel/Core/src/Internal/Http2/Http2OutputProducer.cs
+  sources:
+  - graph
+- path: src/Servers/Kestrel/stress/Program.cs
+  sources:
+  - graph

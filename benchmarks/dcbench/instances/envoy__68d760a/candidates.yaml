@@ -1,0 +1,81 @@
+generators:
+  cochange: 0
+  bm25: 15
+  graph: 0
+  random: 10
+candidates:
+- path: api/envoy/extensions/bootstrap/reverse_tunnel/upstream_socket_interface/v3/BUILD
+  sources:
+  - random
+- path: api/envoy/extensions/filters/http/ext_authz/v3/ext_authz.proto
+  sources:
+  - random
+- path: docs/root/configuration/http/http_filters/set_filter_state.rst
+  sources:
+  - bm25
+- path: docs/root/configuration/listeners/network_filters/set_filter_state.rst
+  sources:
+  - bm25
+- path: mobile/test/kotlin/apps/experimental/BUILD
+  sources:
+  - random
+- path: test/common/http/http2/http2_connection_corpus/HDRS006
+  sources:
+  - random
+- path: test/common/tls/cert_validator/default_validator_integration_test.cc
+  sources:
+  - bm25
+- path: test/common/tls/io_handle_bio_test.cc
+  sources:
+  - random
+- path: test/common/upstream/health_check_corpus/tcp_raise-go-away
+  sources:
+  - random
+- path: test/extensions/filters/http/ext_proc/matching_utils_test.cc
+  sources:
+  - random
+- path: test/extensions/filters/http/rate_limit_quota/config_test.cc
+  sources:
+  - random
+- path: test/extensions/filters/listener/proxy_protocol/proxy_proto_integration_test.cc
+  sources:
+  - bm25
+- path: test/extensions/filters/listener/tls_inspector/tls_inspector_integration_test.cc
+  sources:
+  - bm25
+- path: test/extensions/filters/network/geoip/geoip_filter_integration_test.cc
+  sources:
+  - bm25
+- path: test/extensions/filters/network/match_delegate/match_delegate_integration_test.cc
+  sources:
+  - bm25
+- path: test/extensions/filters/network/reverse_tunnel/integration_test.cc
+  sources:
+  - bm25
+- path: test/extensions/filters/network/set_filter_state/integration_test.cc
+  sources:
+  - bm25
+- path: test/extensions/filters/network/thrift_proxy/buffer_helper_test.cc
+  sources:
+  - random
+- path: test/extensions/transport_sockets/starttls/upstream_starttls_integration_test.cc
+  sources:
+  - bm25
+- path: test/integration/filter_manager_integration_test.cc
+  sources:
+  - bm25
+- path: test/integration/listener_lds_integration_test.cc
+  sources:
+  - bm25
+- path: test/integration/quic_http_integration_test.cc
+  sources:
+  - bm25
+- path: test/integration/tcp_proxy_integration_test.cc
+  sources:
+  - bm25
+- path: test/integration/xds_integration_test.cc
+  sources:
+  - bm25
+- path: test/mocks/redis/BUILD
+  sources:
+  - random
