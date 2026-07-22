@@ -45,7 +45,7 @@ forbidden:
     reason: deleted alongside the module but a peripheral internal (local queue impl), not needed to understand the removal's shape
   - path: tokio/src/runtime/tests/loom_multi_thread_alt.rs
     reason: deleted loom test harness for the alt scheduler, mechanical fallout of the module deletion rather than central to it
-  - path: tokio/src/runtime/scheduler/current_thread.rs
+  - path: tokio/src/runtime/scheduler/current_thread/mod.rs
     reason: unrelated scheduler flavor, not affected by the alt multi-thread removal
 nontrivial_gold_count: 0
 string_indirection: false

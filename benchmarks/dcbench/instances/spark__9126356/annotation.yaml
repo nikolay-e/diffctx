@@ -2,13 +2,80 @@ repo: spark
 base_commit: 8885867c9be23d66ec0087186d7eb7faafd2d561
 commit: 91263564ce649bbb3fc286a18e0ca323102dc2ce
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes the `TYPES_FRAMEWORK_ENABLED` (`spark.sql.types.framework.enabled`) config definition and the `typesFrameworkEnabled` getter, and simplifies `timestampNanosTypesEnabled` to no longer AND against it — the root removal this whole commit is about.
+  - path: sql/api/src/main/scala/org/apache/spark/sql/types/ops/TypeApiOps.scala
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: "`TypeApiOps.apply`/`fromArrowType` drop the `if (!SqlApiConf.get.typesFrameworkEnabled) return None` guard — the client-side type-operations registration point now unconditionally dispatches to `TimeTypeApiOps`/`TimestampNTZNanosTypeApiOps`/`TimestampLTZNanosTypeApiOps`."
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/types/ops/TypeOps.scala
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: "`TypeOps.apply` drops the same `if (!SQLConf.get.typesFrameworkEnabled) return None` guard — the server-side twin of TypeApiOps.apply, now unconditionally dispatching to `TimeTypeOps`/nanos-type Ops."
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/types/ops/TimeTypeOps.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds `checkTimeTypeEnabled()`, called from `createSerializer`/`createDeserializer` — the relocated TIME-enabled gate that used to live on the legacy (flag-off) path in Serializer/DeserializerBuildHelper, now the single gate reached via the always-on framework dispatch.
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/DeserializerBuildHelper.scala
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Removes the `case LocalTimeEncoder if !SQLConf.get.isTimeTypeEnabled => throw ...` legacy branch and the now-dead `createDeserializerForLocalTime` helper — this is the flag-off code path being deleted, its gate relocated into TimeTypeOps.createDeserializer.
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/SerializerBuildHelper.scala
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Removes the matching legacy `LocalTimeEncoder`-gated serializer branch and `createSerializerForLocalTime`, the serializer-side counterpart of the DeserializerBuildHelper change.
+  - path: sql/connect/common/src/main/scala/org/apache/spark/sql/connect/common/types/ops/ConnectTypeOps.scala
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Removes the flag checks from `apply`, `toLiteralProtoForValue`, and `opsForKindCase` (server-side proto dispatch) — the Spark Connect analog of TypeOps/TypeApiOps now also unconditional.
+  - path: sql/api/src/main/scala/org/apache/spark/sql/internal/SqlApiConf.scala
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Removes `typesFrameworkEnabled` from the `SqlApiConf` trait and its `DefaultSqlApiConf` implementation, the sql/api-side declaration of the flag being deleted.
+  - path: sql/catalyst/src/test/scala/org/apache/spark/sql/catalyst/types/ops/TimeTypeOpsSuite.scala
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: New suite explicitly pinning the relocated gate — building a TIME serializer/deserializer with `spark.sql.timeType.enabled=false` is rejected with `UNSUPPORTED_TIME_TYPE`, proving TimeTypeOps.checkTimeTypeEnabled preserves the old behavior.
+  - path: sql/catalyst/src/test/scala/org/apache/spark/sql/RowJsonSuite.scala
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Drops the `withSQLConf(TYPES_FRAMEWORK_ENABLED -> ...)` wrappers (framework is now always on) and deletes the "TIME column renders via the legacy path with the framework disabled" test, since that code path no longer exists.
+forbidden:
+  - path: sql/catalyst/src/test/scala/org/apache/spark/sql/catalyst/types/ops/TimestampNanosTypeOpsSuite.scala
+    reason: only drops now-impossible disabled-framework test cases, the identical mechanical cleanup pattern already shown by RowJsonSuite.scala in gold.
+  - path: sql/core/src/test/scala/org/apache/spark/sql/SparkSessionBuilderSuite.scala
+    reason: one-line removal of a now-nonexistent `.config(TYPES_FRAMEWORK_ENABLED.key, ...)` call in an unrelated session-builder test, incidental collateral.
+  - path: sql/hive/src/test/resources/conf/binding-policy-exceptions/configs-without-binding-policy-exceptions
+    reason: mechanical removal of the config's audit-allowlist entry by name, bookkeeping rather than behavioral.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 13
   description: Remove the Types Framework feature flag (flag removal ripples through SQL)
-notes: ''
+notes: >-
+  Removes the internal `spark.sql.types.framework.enabled` kill switch (on under tests,
+  off in production, never GA) so the Types Framework (TimeType, nanosecond timestamp
+  types) is unconditionally the single dispatch path in TypeOps/TypeApiOps/ConnectTypeOps,
+  collapsing the legacy flag-off serializer/deserializer branches in
+  Serializer/DeserializerBuildHelper. The TIME-type-enabled check that used to live only
+  on that now-deleted legacy path is relocated into TimeTypeOps.createSerializer/
+  createDeserializer (checkTimeTypeEnabled), preserving UNSUPPORTED_TIME_TYPE behavior —
+  pinned by the new TimeTypeOpsSuite. string_indirection is true because the config's
+  audit-allowlist entry (configs-without-binding-policy-exceptions) matches configs by
+  their plain string name, not a static reference.

@@ -45,8 +45,8 @@ forbidden:
     reason: unrelated signal driver, only touched for a mechanical import-path update, not part of the I/O driver relocation itself
   - path: tokio/src/process/unix/orphan.rs
     reason: process reaping internals, touched only for a mechanical import-path fixup
-  - path: tokio/src/runtime/park.rs
-    reason: sibling runtime file (thread parking), not touched by and unrelated to the I/O driver move
+  - path: tokio/src/runtime/enter.rs
+    reason: sibling runtime-internal file (runtime-entry guard), not touched by and unrelated to the I/O driver move
 nontrivial_gold_count: 0
 string_indirection: false
 annotator: llm/sonnet-5-2026-07-22

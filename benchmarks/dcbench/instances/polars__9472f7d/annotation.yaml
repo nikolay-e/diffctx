@@ -2,13 +2,75 @@ repo: polars
 base_commit: 877f30f33b22d2919932db90b13964df3b6af4ac
 commit: 9472f7d9300aa0faec6b883af25d82fffbc88571
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: crates/polars-ops/src/series/ops/various.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Refactors is_sorted into is_sorted_impl and adds SeriesMethods::is_sorted_any plus resolve_sort_options/infer_nulls_last/infer_descending — the core algorithm that infers descending/nulls_last from the data when either hint is None, which is the actual new capability behind Expr.is_sorted.
+  - path: crates/polars-plan/src/dsl/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the public Expr::is_sorted(descending, nulls_last) DSL builder, mapping to BooleanFunction::IsSorted — the entry point of the feature.
+  - path: crates/polars-expr/src/dispatch/boolean.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Eager-engine dispatch calling series.is_sorted_any(descending, nulls_last), the in-memory execution path for IRBooleanFunction::IsSorted.
+  - path: crates/polars-stream/src/nodes/is_sorted.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New 250-line IsSortedNode implementing an online, single-pass sortedness check across streaming morsels — tracks committed_descending/committed_nulls_last and the previous morsel's last value to check cross-morsel boundaries, short-circuiting as soon as unsortedness is proven.
+  - path: crates/polars-stream/src/physical_plan/lower_expr.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Lowers AExpr::Function(IRBooleanFunction::IsSorted) into a PhysNodeKind::IsSorted node for the streaming engine, the bridge between the IR-level function and the new streaming node.
+  - path: py-polars/src/polars/expr/expr.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Public Expr.is_sorted(*, descending=False, nulls_last=False) Python method; passing None for either lets the check accept either direction/placement by inferring it from the data.
+  - path: py-polars/tests/unit/expr/test_is_sorted.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: New test file covering None-inference, interleaved nulls (rejected), and streaming-engine cross-chunk boundary cases (test_is_sorted_streaming_nulls_after_null_free_chunk, test_is_sorted_streaming_interleaved_across_chunks) that specifically exercise IsSortedNode's morsel-boundary logic.
+  - path: crates/polars-plan/src/plans/aexpr/function_expr/boolean.rs
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Adds IRBooleanFunction::IsSorted and marks it FunctionOptions::aggregation() (reduces to a single scalar per group), following the same DSL-to-IR enum duplication pattern used throughout polars-plan.
+  - path: crates/polars-stream/src/physical_plan/to_graph.rs
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Instantiates nodes::is_sorted::IsSortedNode from PhysNodeKind::IsSorted when building the execution graph.
+  - path: crates/polars-python/src/expr/general.rs
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: PyExpr::is_sorted FFI binding exposing Expr::is_sorted across the PyO3 boundary.
+  - path: crates/polars-utils/src/sort.rs
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines reorder_cmp(prev, first, descending, nulls_last), which IsSortedNode::boundary_ok calls to determine whether the last value of one morsel orders correctly before the first value of the next under the resolved sort options — the exact primitive that makes cross-morsel streaming correctness possible.
+forbidden:
+  - path: py-polars/src/polars/series/series.py
+    reason: Series.is_sorted(*, descending=False, nulls_last=False) already existed before this commit with fixed bool-only parameters and is not touched — this commit only adds the None-inferring Expr-level version, it does not extend Series
+  - path: crates/polars-stream/src/nodes/is_first_distinct.rs
+    reason: a similarly-named sibling streaming node (is_first_distinct) in the same nodes/ directory with a superficially similar single-column-in/single-column-out shape, but an unrelated, untouched implementation
+  - path: crates/polars-plan/dsl-schema-hashes.json
+    reason: mechanical schema-hash bump generated from the enum change, not needed to understand the feature
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 19
   description: Add `Expr.is_sorted` — new expression across Rust/Python boundary
-notes: ''
+notes: Adds Expr.is_sorted(descending=..., nulls_last=...) where either argument may be None to mean "infer/accept either", backed by a refactored is_sorted_impl + new resolve_sort_options inference in polars-ops, an eager dispatch path, and a genuinely new streaming ComputeNode (IsSortedNode) that checks sortedness online across morsels using the pre-existing reorder_cmp primitive for boundary comparisons. Series.is_sorted() is a separate, older, untouched bool-only API.

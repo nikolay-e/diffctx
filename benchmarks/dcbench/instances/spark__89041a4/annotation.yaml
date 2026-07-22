@@ -2,13 +2,81 @@ repo: spark
 base_commit: 5299e5423f439ce702d14666c79f9d42eb446943
 commit: 89041a4a8c7b7787fa10f090d4324f20447c4dd3
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: First-time registration `expression[XmlToStructs]("from_xml")`/`expression[SchemaOfXml]("schema_of_xml")` — these expressions already existed (used internally by the XML datasource) but were never exposed to the SQL function registry before this commit.
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/xmlExpressions.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds `@ExpressionDescription` to the pre-existing `XmlToStructs`/`SchemaOfXml` case classes (needed now that they're SQL-callable) and rewrites `SchemaOfXml`'s examples from CSV-style to XML-style — the semantic documentation of the newly-exposed functions.
+  - path: sql/core/src/main/scala/org/apache/spark/sql/functions.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the public Scala/Java `from_xml`/`schema_of_xml` overloads (StructType/String/Column schema variants) wrapping `XmlToStructs`/`SchemaOfXml`.
+  - path: connector/connect/client/jvm/src/main/scala/org/apache/spark/sql/functions.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the matching Spark Connect JVM-client `from_xml` overloads (StructType/String/Column schema), sending `"from_xml"`/`"schema_of_xml"` as string function names over the Connect protocol.
+  - path: python/pyspark/sql/functions.py
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Adds the PySpark classic-API `from_xml`/`schema_of_xml` with type-dispatch on `schema`/`xml` (StructType/Column/str) and doctests, raising `NOT_COLUMN_OR_STR_OR_STRUCT`/`NOT_COLUMN_OR_STR` on bad input types.
+  - path: python/pyspark/sql/connect/functions.py
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Adds the PySpark Connect-client parity implementations of `from_xml`/`schema_of_xml`, reusing the classic module's docstrings.
+  - path: python/pyspark/errors/error_classes.py
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Adds the new `NOT_COLUMN_OR_STR_OR_STRUCT` error-class message template that `from_xml`'s Python type-check raises for invalid `schema` arguments.
+  - path: sql/core/src/test/scala/org/apache/spark/sql/DataFrameFunctionsSuite.scala
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Removes `"from_xml"`/`"schema_of_xml"` from the list of functions expected to be missing from the SQL function registry, confirming they are now first-class SQL functions (mirrors array_prepend/day precedents in this codebase).
+  - path: sql/core/src/test/resources/sql-tests/inputs/xml-functions.sql
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: New SQL test file covering `from_xml`/`schema_of_xml` including error cases (`INVALID_SCHEMA.NON_STRING_LITERAL`, `INVALID_OPTIONS.NON_MAP_FUNCTION`, `WRONG_NUM_ARGS`) and complex/nested/datetime schemas.
+  - path: sql/core/src/test/resources/sql-tests/results/xml-functions.sql.out
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Golden output pinning observable behavior, e.g. `from_xml('<p><a>1</a></p>', 'a INT')` -> `{"a":1}`.
+forbidden:
+  - path: sql/core/src/test/resources/sql-functions/sql-expression-schema.md
+    reason: auto-generated function catalog row, redundant with xmlExpressions.scala's own `@ExpressionDescription`.
+  - path: sql/core/src/test/resources/sql-tests/analyzer-results/xml-functions.sql.out
+    reason: intermediate analyzer-stage golden, redundant with the final query-result golden already in gold.
+  - path: sql/core/src/test/scala/org/apache/spark/sql/execution/datasources/xml/XmlSuite.scala
+    reason: incidental collateral (Scala `Map` -> `java.util.Map` signature change at one call site) in an unrelated XML-datasource test suite, not about the new SQL/PySpark functions.
+  - path: python/pyspark/sql/tests/connect/test_connect_function.py
+    reason: large Connect-vs-classic parity test, redundant with python/pyspark/sql/tests/test_functions.py already covering the type-error paths.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 16
   description: Add from_xml/schema_of_xml to SQL, PySpark and Spark Connect + docs
-notes: ''
+notes: >-
+  Exposes the pre-existing `XmlToStructs`/`SchemaOfXml` catalyst expressions (already
+  used internally by the native XML datasource) as first-class SQL/Scala/PySpark/Connect
+  `from_xml`/`schema_of_xml` functions — part of a series of PRs adding native XML
+  support (SPARK-44265). Unlike the bit_length/dateadd precedents where FunctionRegistry
+  was untouched, here the registration itself is new and in-diff, so no external
+  nontrivial gold was needed; xmlExpressions.scala is genuinely part of the diff (gains
+  `@ExpressionDescription` annotations). string_indirection is true because
+  FunctionRegistry links "from_xml"/"schema_of_xml" to their expressions by string key,
+  and the Connect client sends the same names as strings over the wire.

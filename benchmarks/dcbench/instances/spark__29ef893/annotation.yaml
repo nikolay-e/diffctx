@@ -2,13 +2,86 @@ repo: spark
 base_commit: 185a0a5a23958676e4236eaf9e4d78cdfd2dd2d7
 commit: 29ef893eb2d4ee2819ecc8bbec5d2b6fd428e21e
 patch_stored: false
-gold: []
-forbidden: []
+gold:
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/ExtendedAnalysisException.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "New file — subclasses `AnalysisException` to host the `plan: Option[LogicalPlan]` field that moving `AnalysisException` to sql/api forced out; `def this(e: AnalysisException, plan: LogicalPlan)` is the constructor used by every internal caller that needs to attach a plan."
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/Analyzer.scala
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: The core behavioral change — `checkAnalysis`'s catch block now does `throw new ExtendedAnalysisException(e, analyzed)` instead of `e.copy(plan = Option(analyzed))`, since `AnalysisException.copy` no longer accepts a `plan` parameter.
+  - path: sql/api/src/main/scala/org/apache/spark/sql/AnalysisException.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'Renamed/moved from sql/catalyst to sql/api and stripped of the `plan: Option[LogicalPlan]` field/constructor param and the plan-annotated `getMessage` override — the destination and the actual "lighten the class" change this PR title describes.'
+  - path: sql/api/src/main/scala/org/apache/spark/sql/catalyst/parser/parsers.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "`ParseException` now `extends AnalysisException` directly instead of `SparkException`, only possible because `AnalysisException` moved into sql/api alongside `ParseException` — the payoff described in the PR body (\"ParseException is an AnalysisException again\")."
+  - path: sql/core/src/test/scala/org/apache/spark/sql/SQLQueryTestHelper.scala
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: "`Seq(a.getClass.getName, ...)` in the golden-file-generating helper is exactly why the class-name rename `org.apache.spark.sql.AnalysisException` -> `org.apache.spark.sql.catalyst.ExtendedAnalysisException` propagates into all ~200 `sql-tests/analyzer-results/*.sql.out` files touched by this commit — the root of the diff's blast radius."
+  - path: project/MimaExcludes.scala
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds `ProblemFilters.exclude[MissingClassProblem]("org.apache.spark.sql.AnalysisException")`/`"...AnalysisException$"`, acknowledging by fully-qualified string that this is a breaking binary-compat change (the class moved packages and its constructor signature changed).
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/UnsupportedOperationChecker.scala
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: "`throwError` switches from `new AnalysisException(msg, ..., Some(operator))` to `new ExtendedAnalysisException(...)`, a real call site needing the plan-carrying subclass now that the base class lost the field."
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/ResolveTimeWindows.scala
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Second real call site switching `throw new AnalysisException(..., plan = Some(p))` to `throw new ExtendedAnalysisException(..., plan = Some(p))`.
+  - path: sql/core/src/test/scala/org/apache/spark/sql/QueryTest.scala
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: "Test-infrastructure `getResult`/`checkAnswer` switch their `catch case ae: AnalysisException` (checking `ae.plan`) to `case ae: ExtendedAnalysisException`, since `plan` no longer exists on the base class."
+  - path: sql/core/src/test/resources/sql-tests/analyzer-results/ansi/array.sql.out
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: One representative golden file showing the observable effect — `org.apache.spark.sql.AnalysisException` header lines become `org.apache.spark.sql.catalyst.ExtendedAnalysisException` for every analysis error, driven by SQLQueryTestHelper's `getClass.getName`.
+forbidden:
+  - path: sql/core/src/test/resources/sql-tests/analyzer-results/ansi/cast.sql.out
+    reason: one of ~200 near-identical mechanical golden diffs reflecting the same class-name rename already shown by the array.sql.out example in gold.
+  - path: sql/core/src/test/resources/sql-tests/analyzer-results/ansi/date.sql.out
+    reason: same mechanical rename noise, different SQL test file — redundant once the pattern is understood from one example.
+  - path: docs/sql-migration-guide.md
+    reason: user-facing migration note about the dropped `plan` field, describes the consequence but adds nothing about the implementation.
+  - path: sql/core/src/test/scala/org/apache/spark/sql/SQLQuerySuite.scala
+    reason: one more already-updated test call site (renames a test title and its catch clause) adding nothing beyond the QueryTest.scala/SQLQueryTestHelper.scala pattern already in gold.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 217
   description: 'Move AnalysisException to sql/api: 13 scala files + 203 golden .out files (noise stress)'
-notes: ''
+notes: >-
+  Moves `AnalysisException` from sql/catalyst to sql/api so `ParseException` (already in
+  sql/api) can extend it directly again; since sql/api cannot depend on `LogicalPlan`
+  (sql/catalyst), the `plan` field is extracted into a new `ExtendedAnalysisException`
+  subclass that `Analyzer.checkAnalysis` and other internal throw sites now use instead.
+  The semantic core is 6-9 Scala files; the other ~203 changed files are golden
+  `sql-tests/analyzer-results/*.sql.out` outputs that mechanically flip
+  `org.apache.spark.sql.AnalysisException` to
+  `org.apache.spark.sql.catalyst.ExtendedAnalysisException` because
+  `SQLQueryTestHelper.scala` records `a.getClass.getName` verbatim — traced that
+  mechanism explicitly (`nontrivial_gold_count: 0`, only one representative `.out` file
+  kept as gold, several near-duplicates marked forbidden) rather than padding gold with
+  redundant golden diffs. string_indirection is true because MimaExcludes keys its
+  binary-compat exclusion on the fully-qualified class-name string, and the golden-file
+  blast radius itself is driven by a stringified class name (`getClass.getName`).

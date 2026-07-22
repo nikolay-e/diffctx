@@ -46,7 +46,7 @@ gold:
 forbidden:
   - path: py-polars/src/series/mod.rs
     reason: has its own unrelated __getstate__/__setstate__ pickle support but no serialize()/deserialize() public API at all — not touched by or relevant to this DataFrame/Expr/LazyFrame-only change
-  - path: py-polars/polars/io/ipc.py
+  - path: py-polars/polars/io/ipc/functions.py
     reason: unrelated IPC file-format read/write path; this commit is about the in-memory serialize()/deserialize() round-trip API, not file I/O formats
   - path: py-polars/src/expr/general.rs
     reason: loses its old inline serialize/deserialize methods (moved to the new expr/serde.rs) but the diff hunk itself is just deletions with no new logic to understand beyond what serde.rs (and the dataframe/serde.rs analog already in gold) show
@@ -61,4 +61,4 @@ curation:
   source: TOANALYZE-2026-07-07
   n_files: 20
   description: Binary serialization of LazyFrame/DataFrame/Expr as default — serde across FFI
-notes: ''
+notes: Splits DataFrame/Expr/LazyFrame serialize()/deserialize() into binary (ciborium, new default) and json variants via a shared Python serialize_polars_object() helper and per-type Rust serde.rs modules; identical pattern applied 3x (DataFrame is the representative example; Expr.meta and LazyFrame mirror it exactly). A ciborium-driven deserialize fix in polars-core's Utf8ViewArray Wrap impl (owned String instead of borrowed &str) was required alongside the format split.

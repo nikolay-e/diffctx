@@ -2,14 +2,78 @@ repo: plausible
 base_commit: 49e818d01257c3edb50607aa2d1a155058127ef6
 commit: d298071482d08508e6add785dc92bc67d10ebcff
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: lib/plausible/stats/exploration.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New module defining Exploration.next_steps/3 and Exploration.journey_funnel/2, the actual ClickHouse query logic for the funnel-exploration feature that everything else in this commit exposes or renders.
+  - path: lib/plausible_web/controllers/api/stats_controller.ex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Defines exploration_next/2 and exploration_funnel/2 actions that call Exploration.next_steps/3 and journey_funnel/2, gated by `plug PlausibleWeb.SuperAdminOnlyPlug when action in [:exploration_next, :exploration_funnel]`.
+  - path: assets/js/dashboard/stats/exploration.js
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New FunnelExploration React component (ExplorationColumn, fetchColumnData) that calls the /exploration/next API and renders the journey-picker UI shown in the Behaviours tab.
+  - path: lib/plausible/stats/util.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: percentage/2 is extracted here from extra/lib/plausible/stats/funnel.ex and imported by both funnel.ex and exploration.ex to compute dropoff_percentage.
+  - path: lib/plausible_web/router.ex
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds `get "/:domain/exploration/next"` and `/exploration/funnel` routes wiring StatsController.exploration_next/2 and :exploration_funnel by atom action name.
+  - path: assets/js/dashboard/stats/behaviours/modes-context.tsx
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds Mode.EXPLORATION with isAvailableKey/optedOutKey set to nil, and changes getInitiallyAvailableModes to treat a nil optedOutKey as "always available" — the mechanism that makes the exploration tab unconditionally offered once explorationAvailable is true.
+  - path: assets/js/dashboard/stats/behaviours/index.js
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: renderExploration/0 mounts <FunnelExploration/> and the new TabButton is gated on `!site.isConsolidatedView && site.explorationAvailable`, the actual UI integration point for the new component.
+  - path: lib/plausible_web/controllers/stats_controller.ex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Computes exploration_available? = Plausible.Auth.is_super_admin?(current_user) and passes it to stats.html.heex as data-exploration-available, the server-rendered flag site-context.tsx reads into explorationAvailable.
+  - path: lib/plausible_web/plugs/super_admin_only_plug.ex
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines the plug module referenced by name in api/stats_controller.ex's `plug PlausibleWeb.SuperAdminOnlyPlug when action in [...]` — the actual enforcement behind "Only allow superadmins to query exploration API for now" from the commit message.
+  - path: lib/plausible/stats/base.ex
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines base_event_query/1, the ClickHouse query builder that Exploration.next_steps/2 and journey_funnel/2 both pipe into before layering their step/window logic.
+forbidden:
+  - path: assets/js/dashboard/extra/funnel.js
+    reason: sibling dashboard funnel visualization component for the pre-existing, unrelated Funnels feature
+  - path: lib/plausible/stats/sql/fragments.ex
+    reason: generic SQL fragment helpers (scale_sample, selected_as) imported by exploration.ex but pre-existing and not specific to this feature
+  - path: test/plausible_web/controllers/api/stats_controller/funnels_test.exs
+    reason: sibling API test file for the existing Funnels feature, not the new exploration endpoints
+  - path: extra/lib/plausible/funnel.ex
+    reason: similarly-named EE funnel context module but models saved multi-step funnels, not ad-hoc journey exploration
+nontrivial_gold_count: 2
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 16
   description: Funnel exploration logic + UI prototype — Elixir query modules + HEEx + React/JS in one
     commit
-notes: ''
+notes: Adds a new "exploration" feature letting superadmins interactively pick pageview journeys and see
+  next-step suggestions plus a dropoff funnel, spanning a new ClickHouse query module
+  (Plausible.Stats.Exploration), two new gated API endpoints, and a new React column-picker UI wired
+  into the existing Behaviours tab/mode system. string_indirection is true because router.ex dispatches
+  to controller actions by atom name and the SuperAdminOnlyPlug gate is applied via an `action in [...]`
+  guard rather than a static call.

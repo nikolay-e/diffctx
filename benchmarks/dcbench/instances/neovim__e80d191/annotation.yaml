@@ -2,13 +2,44 @@ repo: neovim
 base_commit: 46f538c210e2c1d53d71ddba83ec6cfa36f802e1
 commit: e80d19142bdb7b2856ef304f3a5ae05d22ba6532
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: src/nvim/api/tabpage.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'defines the new `nvim_open_tabpage(Buffer buffer, Dict(tabpage_config) *config, Error *err)` entrypoint: validates the buffer handle, branches on `enter` between win_new_tabpage() (existing) and the new win_new_tabpage_noenter(), then sets the target buffer via TRY_WRAP(win_set_buf(...)).'
+  - path: src/nvim/window.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'adds win_new_tabpage_noenter(after, err), a close line-for-line mirror of the pre-existing (unchanged, same file) win_new_tabpage() — same alloc_tabpage()/leave_tabpage()/win_alloc_firstwin()/position-insertion logic — but skipping enter_tabpage() at the end and firing only WINNEW/TABNEW autocmds (no WINENTER/TABENTER), since it must NOT switch the current tabpage.'
+  - path: src/nvim/api/keysets_defs.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'adds `typedef struct { OptionalKeys is_set__tabpage_config_; Boolean enter; Integer after; } Dict(tabpage_config);`, the opts struct nvim_open_tabpage''s HAS_KEY_X(config, enter)/HAS_KEY_X(config, after) checks are typed against.'
+  - path: test/functional/api/tabpage_spec.lua
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: 302-line addition covering enter/after semantics, positioning edge cases (after=1, after beyond last tab, before a middle tab), autocmd firing in the new tabpage's context, and buffer-deleted/tabpage-closed-by-autocmd error paths — pins the exact ordering behavior described only informally in the doc-comment.
+  - path: runtime/lua/vim/_meta/api_keysets.lua
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: 'adds the generated `vim.api.keyset.tabpage_config` class stub (`enter?: boolean`, `after?: integer`) mirroring keysets_defs.h, the user-facing type surface for the new opts dict.'
+forbidden:
+  - path: src/nvim/api/window.c
+    reason: sibling nvim_win_* API file with a superficially similar structure/style but untouched by and unrelated to this tabpage-specific addition.
+  - path: src/nvim/api/vim.c
+    reason: uses find_tab_by_handle() like tabpage.c does, but is not touched by and not needed to understand this new function.
+  - path: src/nvim/winfloat.c
+    reason: also calls win_set_buf() in a floating-window context, superficially similar call but unrelated to tabpage creation.
+  - path: runtime/doc/api.txt
+    reason: auto-generated help text mechanically mirroring the nvim_open_tabpage() doc-comment already visible in src/nvim/api/tabpage.c; adds no information beyond the source.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 9
-  description: 'feat(api): add nvim_open_tabpage — full API surface: C + meta + docs'
-notes: ''
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Adds nvim_open_tabpage(buffer, {enter, after}) to create a tabpage and optionally set its buffer without necessarily switching to it. The new low-level win_new_tabpage_noenter() in window.c is a deliberate near-duplicate of the pre-existing win_new_tabpage() in the same file (confirmed via grep: same helper calls, same position-insertion logic), omitting only the final enter_tabpage()/WINENTER/TABENTER steps — since that sibling function lives in the same already-gold file, no separate external nontrivial gold entry is needed, but it is called out in window.c''s rationale as the key structural precedent.'

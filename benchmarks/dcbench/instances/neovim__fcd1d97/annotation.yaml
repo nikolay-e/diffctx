@@ -2,13 +2,49 @@ repo: neovim
 base_commit: f562204a5cd0949376102f85a250c842e5951af4
 commit: fcd1d972657338eb9c4733848a6a532098ff67b8
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: runtime/lua/vim/_core/shared.lua
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'adds the three new global functions: vim.isnil(t) (`t == nil or t == vim.NIL`, absorbing the old vim._core.util.isnil), vim.nonnil(...) (moved verbatim from vim.F.if_nil), and vim.npcall(fn, ...) (reimplemented pcall-wrapper) — the actual new public API this commit introduces.'
+  - path: runtime/lua/vim/F.lua
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'F.if_nil/F.ok_or_nil/F.npcall/F.nil_wrap are marked `@deprecated`, each calling `vim.deprecate(''vim.F.x'', replacement, ''0.14'')` and delegating to vim.nonnil()/vim.npcall(), the shim layer that keeps old callers working while steering them to the new names.'
+  - path: runtime/lua/vim/_core/util.lua
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'removes the duplicate `M.isnil(value)` helper (identical body to the new vim.isnil) entirely — NOT kept as a deprecated shim, unlike vim.F.* — so every caller of `require(''vim._core.util'').isnil` had to be migrated in this same commit (completion.lua, lsp/util.lua) or it would break.'
+  - path: runtime/lua/vim/lsp/util.lua
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: drops the `local isnil = require('vim._core.util').isnil` alias and migrates three call sites (symbols_to_items' deprecated/tags/containerName checks, show_document's `focus` default) to vim.isnil()/vim.nonnil(), the most substantial caller migration.
+  - path: runtime/lua/vim/diagnostic/_jump.lua
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: 'renames its local `local api, if_nil = vim.api, vim.F.if_nil` alias to `local api, nonnil = vim.api, vim.nonnil`, representative of the same alias-rename pattern repeated in diagnostic/_float.lua.'
+  - path: test/functional/lua/vim_spec.lua
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: adds a new 'vim.isnil' test block, renames the 'vim.F.if_nil' describe block to 'vim.nonnil' (same assertions against the new name), and adds a new 'vim.npcall' test covering both the success and error-returns-nil paths.
+forbidden:
+  - path: runtime/lua/vim/pack.lua
+    reason: same mechanical vim.F.if_nil -> vim.nonnil migration already illustrated by diagnostic/_jump.lua; redundant as a second example.
+  - path: runtime/plugin/editorconfig.lua
+    reason: single-line vim.F.if_nil -> vim.nonnil substitution, same pattern already covered.
+  - path: runtime/lua/vim/treesitter/languagetree.lua
+    reason: single-line vim.F.if_nil -> vim.nonnil substitution in tree_for_range(), same pattern already covered.
+  - path: runtime/doc/lua.txt
+    reason: auto-generated help text mechanically mirroring the vim.isnil/vim.nonnil/vim.npcall doc-comments already visible in _core/shared.lua; adds no information beyond the source.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 22
-  description: 'feat(lua)!: vim.isnil/vim.nonnil, deprecate vim.F — wide runtime Lua ripple + vimdoc'
-notes: ''
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Promotes vim.F.if_nil/npcall to top-level vim.nonnil/vim.npcall, adds a new vim.isnil (absorbing the duplicate vim._core.util.isnil, which is deleted outright rather than deprecated), and deprecates the vim.F.* originals as thin vim.deprecate()-wrapped shims. Grepped the base commit for every `vim.F.if_nil/npcall/ok_or_nil/nil_wrap` and `vim._core.util.isnil` caller and confirmed all are updated within the 22-file diff, so the change is self-contained; vim.F.* itself is kept working (not removed) so any external plugin caller outside this tree is unaffected.'

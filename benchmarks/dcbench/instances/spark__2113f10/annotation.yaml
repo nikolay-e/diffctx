@@ -2,13 +2,73 @@ repo: spark
 base_commit: 738db079c0b65e8305b7a1349923ee017316f691
 commit: 2113f109b8d73cb8deb404664f25bd51308ca809
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/generators.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds `case class Collations() extends LeafExpression with Generator`, whose `eval` calls `CollationFactory.listCollations()`/`loadCollationMeta` and whose `elementSchema` defines the TVF's output columns (CATALOG, SCHEMA, NAME, LANGUAGE, ...) — the new behavior this commit introduces.
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Registers the new TVF via `generator[Collations]("collations")` in `TableFunctionRegistry`, the string key that makes `FROM collations()` resolvable.
+  - path: sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseParser.g4
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes the `SHOW COLLATIONS (LIKE? pattern=stringLit)? #showCollations` grammar rule and the `COLLATIONS` non-reserved-keyword entry, retiring the command syntax the TVF replaces.
+  - path: sql/api/src/main/antlr4/org/apache/spark/sql/catalyst/parser/SqlBaseLexer.g4
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Removes the `COLLATIONS: 'COLLATIONS';` lexer token definition, freeing the word up as an ordinary identifier now that the `SHOW COLLATIONS` grammar rule is gone."
+  - path: sql/core/src/main/scala/org/apache/spark/sql/execution/command/ShowCollationsCommand.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Deleted file — shows exactly the command/output schema (COLLATION_CATALOG, COLLATION_SCHEMA, ...) being replaced by `Collations()`, and that it built its rows from `sessionState.catalog.listCollations`.
+  - path: sql/core/src/main/scala/org/apache/spark/sql/execution/SparkSqlParser.scala
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Removes `visitShowCollations`, the AST-builder method that constructed `ShowCollationsCommand` from the now-deleted grammar rule.
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/catalog/SessionCatalog.scala
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Removes `SessionCatalog.listCollations(pattern)`, the helper `ShowCollationsCommand.run` called and that is now superseded by `Collations.eval` calling `CollationFactory` directly.
+  - path: sql/core/src/test/scala/org/apache/spark/sql/CollationSuite.scala
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Rewrites "show collations" into "TVF collations()", switching assertions from `SHOW COLLATIONS [LIKE pattern]` to `SELECT ... FROM collations() WHERE ...` and adding new filter/projection coverage (by COUNTRY, LANGUAGE, ICU_VERSION) that only a queryable TVF enables.
+forbidden:
+  - path: docs/sql-ref-ansi-compliance.md
+    reason: mechanical removal of the COLLATIONS row from the keyword reference table, not needed to understand the TVF or command removal.
+  - path: sql/catalyst/src/test/resources/ansi-sql-2016-reserved-keywords.txt
+    reason: reserved-keyword bookkeeping list, drops COLLATIONS mechanically alongside the grammar change.
+  - path: sql/core/src/test/resources/sql-tests/results/keywords.sql.out
+    reason: golden keyword-listing test output, a mechanical byproduct of removing the COLLATIONS token, not informative about the new TVF.
+  - path: sql/hive-thriftserver/src/test/scala/org/apache/spark/sql/hive/thriftserver/ThriftServerWithSparkContextSuite.scala
+    reason: unrelated Thrift/JDBC keyword-dump golden string that just drops COLLATIONS from a giant comma-joined list, not needed to understand this change.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: true
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 13
   description: Introduce TVF `collations()`, remove SHOW COLLATIONS (grammar + code + docs)
-notes: ''
+notes: >-
+  Replaces the `SHOW COLLATIONS [LIKE pattern]` command with a queryable table-valued
+  function `collations()` (`SELECT * FROM collations() WHERE LANGUAGE = ...`), removing
+  the grammar rule, lexer token, `ShowCollationsCommand`, `SparkSqlParser.visitShowCollations`
+  and `SessionCatalog.listCollations` in favor of a new `Collations` Generator expression
+  registered in `TableFunctionRegistry`. `CollationFactory`/`CollationMeta`
+  (common/unsafe/.../CollationFactory.java) back both the old command and the new TVF
+  identically and are large pre-existing shared infrastructure unrelated to this specific
+  change, so no_nontrivial_context is set instead of padding gold with them.
+  string_indirection is true because `TableFunctionRegistry` links "collations" to
+  `Collations` by string key.

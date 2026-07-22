@@ -2,13 +2,85 @@ repo: spark
 base_commit: 2235fa9590f2bb955c2824a5559746636a8b904d
 commit: 434aa30d23499ec66a12f1056c0b82000ff6b683
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: sql/core/src/main/scala/org/apache/spark/sql/artifact/ArtifactManager.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Renamed from `SparkConnectArtifactManager` and moved from the connect module into sql/core; now takes a plain `SparkSession` (not `SessionHolder`) and adds `def withResources[T](f: => T): T` — the class the whole PR relocates and generalizes."
+  - path: sql/core/src/main/scala/org/apache/spark/sql/SparkSession.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Adds `private[sql] def artifactManager: ArtifactManager = sessionState.artifactManager` — the new access point that makes artifacts available to any `SparkSession`, not just Spark Connect ones."
+  - path: sql/core/src/main/scala/org/apache/spark/sql/internal/SessionState.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Adds the `artifactManagerBuilder: () => ArtifactManager` constructor param and `lazy val artifactManager` that `SparkSession.artifactManager` reads."
+  - path: sql/core/src/main/scala/org/apache/spark/sql/internal/BaseSessionStateBuilder.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Adds `protected def artifactManager: ArtifactManager = new ArtifactManager(session)` and passes `() => artifactManager` into `SessionState`, wiring the new manager into every session's state."
+  - path: connector/connect/server/src/main/scala/org/apache/spark/sql/connect/service/SessionHolder.scala
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: "`artifactManager` becomes `def artifactManager = session.artifactManager` (delegating instead of owning a `SparkConnectArtifactManager`), and `withContextClassLoader` is replaced by `artifactManager.withResources` — the Connect-side proof that legacy behavior is preserved through the new `withResources` method described in the PR body."
+  - path: core/src/main/scala/org/apache/spark/storage/BlockId.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "`CacheId(userId, sessionId, hash)` collapses to `CacheId(sessionUUID, hash)` — since `ArtifactManager` is keyed solely by `SparkSession#sessionUUID` (the PR's stated justification for the move), the cache-block ID no longer needs the Connect-specific userId/sessionId pair."
+  - path: core/src/main/scala/org/apache/spark/storage/BlockManager.scala
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: "`removeCache(userId, sessionId)` becomes `removeCache(sessionUUID)` to match `CacheId`'s new shape, called from `ArtifactManager.cleanUpResources`."
+  - path: sql/core/src/test/scala/org/apache/spark/sql/artifact/ArtifactManagerSuite.scala
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Moved/rewritten from the connect module to use `spark.artifactManager` directly instead of constructing a `SessionHolder`, demonstrating the new non-Connect access path end-to-end.
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/internal/SQLConf.scala
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Adds `ARTIFACT_COPY_FROM_LOCAL_TO_FS_ALLOW_DEST_LOCAL` in sql/catalyst (general SQLConf) and deprecates the old Connect-only `spark.connect.copyFromLocalToFs.allowDestLocal`, following the manager out of the connect-only config space.
+  - path: project/MimaExcludes.scala
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Adds MiMa exclusions keyed on the fully-qualified strings `org.apache.spark.storage.CacheId.userId`/`.sessionId`/`.this` etc., documenting the breaking `CacheId` signature change as intentional.
+forbidden:
+  - path: connector/connect/server/src/main/scala/org/apache/spark/sql/connect/service/SparkConnectAddArtifactsHandler.scala
+    reason: mechanical import-path update to the renamed `ArtifactManager`/`ArtifactUtils`, not central to understanding the architecture move.
+  - path: connector/connect/server/src/main/scala/org/apache/spark/sql/connect/service/SparkConnectArtifactStatusesHandler.scala
+    reason: mechanical one-line `CacheId` constructor-arity update mirroring the BlockId.scala change already in gold.
+  - path: python/pyspark/sql/tests/connect/client/test_artifact.py
+    reason: one of four near-identical Python test config-key renames, redundant once SQLConf.scala's deprecation is understood.
+  - path: sql/core/src/test/resources/artifact-tests/udf_noA.jar
+    reason: opaque binary test fixture with no readable signal about the refactor.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 29
   description: Move ArtifactManager from Spark Connect into SparkSession (sql/core)
-notes: ''
+notes: >-
+  Renames `SparkConnectArtifactManager` to `ArtifactManager`, moves it from the connect
+  module into sql/core so any `SparkSession` (not just Spark Connect ones) can use
+  session-scoped artifacts, and exposes it via `SparkSession.artifactManager` /
+  `SessionState.artifactManager`. Legacy (non-Connect) behavior is preserved because the
+  new `withResources` method (context classloader + `JobArtifactState` propagation) is
+  opt-in; `SessionHolder` now calls it explicitly. `CacheId`/`BlockManager.removeCache`
+  are simplified from (userId, sessionId) to a single `sessionUUID` to match. All ~29
+  files are direct consequences of this one move; the semantic core is 7 essential files
+  plus tests/config. string_indirection is true because `project/MimaExcludes.scala`
+  keys its breaking-change acknowledgment on fully-qualified name strings, and
+  `ArtifactManager.uploadArtifactToFs` falls back to reading the deprecated
+  `spark.connect.copyFromLocalToFs.allowDestLocal` key by string when the new SQLConf
+  entry is unset.

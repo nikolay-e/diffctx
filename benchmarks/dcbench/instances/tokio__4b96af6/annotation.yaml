@@ -39,14 +39,14 @@ gold:
     in_diff: false
     rationale: defines LocalOptions, whose Default::default() is passed to build_local() in the macro-generated code.
 forbidden:
-  - path: tokio/src/runtime/scheduler/current_thread.rs
+  - path: tokio/src/runtime/scheduler/current_thread/mod.rs
     reason: the underlying current-thread scheduler executes both `current_thread` and `local` flavors identically; not itself touched or needed to understand the new macro flavor
   - path: tokio-macros/src/select.rs
     reason: sibling proc-macro implementation (select! internals), unrelated to the #[tokio::main]/#[tokio::test] flavor option
   - path: tokio/src/task/task_local.rs
     reason: similarly named but unrelated feature (thread/task-local storage via the `tokio::task_local!` macro), not the LocalSet/LocalRuntime "local" flavor
-  - path: tests-integration/tests/macros_test.rs
-    reason: sibling integration test file for #[tokio::test] (not #[tokio::main]), not modified by this commit
+  - path: tests-integration/tests/macros_select.rs
+    reason: sibling integration test file for select! (not #[tokio::main]), not modified by this commit
 nontrivial_gold_count: 3
 string_indirection: false
 annotator: llm/sonnet-5-2026-07-22

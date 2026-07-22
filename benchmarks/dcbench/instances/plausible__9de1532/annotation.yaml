@@ -2,13 +2,78 @@ repo: plausible
 base_commit: ea5358216505713e378b39711706b853c89b887a
 commit: 9de15326dc8bccb2362f5c74c933dcba16273894
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 10
-  description: Introduce schemas for SSO — new Ecto schemas wired into User/Team via alias
-notes: ''
+gold:
+  - path: extra/lib/plausible/auth/sso/integration.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new Plausible.Auth.SSO.Integration schema; its polymorphic_embeds_one :config declaration (types mapping :saml to SSO.SAMLConfig) is the central piece tying the new schemas together.
+  - path: extra/lib/plausible/auth/sso/saml_config.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: embedded schema plugged into Integration's polymorphic :config field as the :saml variant, holding idp_signin_url/idp_entity_id/idp_cert_pem/idp_metadata.
+  - path: extra/lib/plausible/auth/sso/domain.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new Plausible.Auth.SSO.Domain schema (sso_domains table) belonging to an Integration, tracking per-domain validation status.
+  - path: lib/plausible/auth/user.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the on_ee SSO fields (type, sso_identity_id, last_sso_login) and belongs_to :sso_integration to the User schema.
+  - path: lib/plausible/teams/policy.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new embedded Plausible.Teams.Policy schema holding force_sso/sso_default_role/sso_session_timeout_minutes, embedded on Team.
+  - path: lib/plausible/teams/team.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds "embeds_one :policy, Plausible.Teams.Policy" (on_ee) to the Team schema, wiring in the new Policy module.
+  - path: mix.exs
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: adds the polymorphic_embed dependency that Integration.ex's polymorphic_embeds_one/cast_polymorphic_embed calls require.
+  - path: .formatter.exs
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: adds :polymorphic_embed to import_deps so mix format recognizes the polymorphic_embeds_one macro used in integration.ex.
+  - path: test/plausible/auth/sso/integration_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: covers Integration.init_changeset/1 and update_changeset/2, demonstrating how the polymorphic :config embed resolves to a %SSO.SAMLConfig{} struct.
+  - path: priv/repo/migrations/20250520084130_add_sso_tables_columns.exs
+    tier: essential
+    role: config
+    in_diff: false
+    rationale: prior-commit migration creating the sso_integrations/sso_domains tables and the teams.policy/users.type/sso_identity_id/last_sso_login/sso_integration_id columns that every schema in this diff maps onto; without it none of the new field declarations have a backing column.
+forbidden:
+  - path: extra/lib/plausible/auth/sso.ex
+    reason: the main SSO context module (initiate/lookup/provisioning logic) referenced by directory proximity, but untouched — this commit only adds the underlying Ecto schemas.
+  - path: lib/plausible/auth/totp.ex
+    reason: another auth sub-feature schema/module sitting right next to the new SSO fields in user.ex, but unrelated to SSO and not modified.
+  - path: lib/plausible/teams/grace_period.ex
+    reason: sibling embedded schema also embedded on Team.ex via embeds_one, same pattern as the new Policy schema, but pre-existing and untouched.
+  - path: mix.lock
+    reason: mechanical lockfile update accompanying the mix.exs dependency addition; carries no information beyond what mix.exs already shows.
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >-
+  Purely additive commit introducing the Ecto schemas for SSO on top of a
+  migration landed in the immediately preceding commit
+  (20250520084130_add_sso_tables_columns.exs): a polymorphic Integration
+  schema (config currently only supports :saml via SAMLConfig), a Domain
+  schema for per-domain validation tracking, new on_ee fields on User, and
+  an embedded team-wide Policy schema on Team. Adds the polymorphic_embed
+  hex dependency to support the dynamically-typed :config embed.
+  string_indirection is true because polymorphic_embeds_one dispatches on
+  the stored __type__ atom (:saml) via the types: [saml: SSO.SAMLConfig]
+  keyword list, not a static module reference.

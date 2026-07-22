@@ -2,14 +2,70 @@ repo: plausible
 base_commit: a9dc4eadf91c4d71aef1bf1ebe11b9212327d7e6
 commit: db9bcf303763e40478c72c3b8acbef2e6f3f80fa
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: lib/plausible/ingestion/acquisition.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds ai_assistants?/1 and the "AI Assistants" cond branch to get_channel_lowered/5, plus the @custom_source_categories tuples (e.g. {"chatgpt", "SOURCE_CATEGORY_AI_ASSISTANTS"}) that drive the new channel classification.
+  - path: lib/plausible/ingestion/source.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renames src/1 to from_custom_sources/1 and parse/1 to from_referrer/1, and adds @custom_source_suffixes/from_custom_source_suffix/1 so subdomains like gemini.google.com resolve to "Google Gemini" instead of "Google".
+  - path: priv/custom_sources.json
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Host-to-canonical-name JSON table compiled into from_custom_sources/1's function clauses; this commit adds entries like "chatgpt.com":"ChatGPT" and "claude.ai":"Claude" that source.ex's new logic depends on.
+  - path: lib/plausible_web/plugs/favicon.ex
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: Adds @custom_icons entries (Claude, ChatGPT, DeepSeek, Grok, Google Gemini, etc.) so the new canonical source names introduced in custom_sources.json get a favicon instead of falling through to the placeholder.
+  - path: priv/data_migrations/AcquisitionChannel/sql/acquisition_channel_functions.sql.eex
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: Adds acquisition_channel_has_category_ai_assistants matching the literal string 'SOURCE_CATEGORY_AI_ASSISTANTS' used by acquisition.ex, so a one-off ClickHouse backfill categorizes historical events identically to live ingestion.
+  - path: lib/plausible/imported/google_analytics4.ex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: parse_source/1's fallback call site is updated from the removed Source.parse/1 to Source.from_referrer/1, keeping GA4-imported referrer sources normalized the same way as live ingestion (including the new AI-assistant/suffix handling).
+  - path: test/plausible/ingestion/source_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: New cases assert suffix-based matching (officeapps.live.com, wikipedia.org subdomains) and that Source.from_referrer/1 normalizes RefInspector aliases identically to resolve/1, covering the bug this refactor fixes for the GA4 import path.
+  - path: priv/ga4-source-categories.csv
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Base GA4 source-to-category CSV merged with @custom_source_categories in acquisition.ex to build @source_categories; explains why an explicit override list is needed at all, since GA4 has no "AI Assistants" category.
+forbidden:
+  - path: test/plausible_web/controllers/api/external_controller_test.exs
+    reason: 2400+ lines of this diff are an unrelated test-helper refactor (submit_event/assert_* extraction); its few new AI-assistant assertions duplicate source_test.exs/acquisition_test.exs coverage
+  - path: test/plausible_web/plugs/favicon_test.exs
+    reason: sibling test for favicon.ex but only mechanically re-asserts what the @custom_icons map already states
+  - path: test/plausible/ingestion/acquisition_test.exs
+    reason: small table-driven test whose relevant cases (Perplexity, X (Twitter)) are already covered more thoroughly by source_test.exs and acquisition.ex itself
+  - path: test/plausible_web/controllers/api/stats_controller/imported_test.exs
+    reason: single-line cascade from the Twitter to "X (Twitter)" rename, adds no information about AI-assistant source resolution
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 11
   description: Recognize new sources and AI Assistants channel — includes Ecto migration + code in one
     commit
-notes: ''
+notes: Adds a new "AI Assistants" acquisition channel (ChatGPT, Claude, Gemini, Copilot, DeepSeek, Grok,
+  Phind, Perplexity) plus subdomain-suffix source matching (officeapps.live.com, wikipedia.org), renaming
+  Source.src/1 and Source.parse/1 to from_custom_sources/1 and from_referrer/1 and fixing the GA4-import
+  path to reuse from_referrer/1 for identical normalization. string_indirection is true because the
+  category label "SOURCE_CATEGORY_AI_ASSISTANTS" is duplicated as a bare string between the Elixir
+  module attribute and the ClickHouse SQL/dictGet migration function, and because acquisition.ex's
+  category-lookup keys must match the lowercased canonical names produced by source.ex's
+  from_custom_sources/1.

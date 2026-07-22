@@ -2,13 +2,74 @@ repo: spark
 base_commit: 5a9d4c17dece96f7dd1e6621d8f248784534c9f7
 commit: 0666f5c00393acccecdd82d3794e5a2b88f3210b
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: python/pyspark/sql/functions.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the Python `octet_length`/`bit_length` wrapper functions (`_invoke_function_over_column`) that expose the pre-existing SQL expressions to the DataFrame API.
+  - path: R/pkg/R/functions.R
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the R `setMethod("bit_length", ...)`/`setMethod("octet_length", ...)` implementations that call into `org.apache.spark.sql.functions.bit_length`/`octet_length` via `callJStatic`.
+  - path: R/pkg/R/generics.R
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the `setGeneric("bit_length", ...)`/`setGeneric("octet_length", ...)` declarations that R/pkg/R/functions.R's `setMethod` calls require to dispatch on the `Column` class.
+  - path: sql/core/src/main/scala/org/apache/spark/sql/functions.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Adds the Scala `bit_length(e: Column)`/`octet_length(e: Column)` wrappers (`withExpr { BitLength(e.expr) }` / `withExpr { OctetLength(e.expr) }`) that the R implementation calls via `callJStatic`."
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/stringExpressions.scala
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Pre-existing `case class BitLength`/`case class OctetLength` (SPARK-36751 only adds Scala/Python/R wrappers around SQL expressions that already existed) — the actual byte/bit-length computation lives here, not in the diff.
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala
+    tier: essential
+    role: config
+    in_diff: false
+    rationale: Pre-existing `expression[BitLength]("bit_length")`/`expression[OctetLength]("octet_length")` string-keyed registrations that already exposed these expressions to SQL, explaining why this PR is "only add non-SQL APIs" and touches neither the expression nor the registry.
+  - path: python/pyspark/sql/tests/test_functions.py
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Adds `test_octet_length_function`/`test_bit_length_function` asserting `octet_length('cat')`/`bit_length('cat')` on ASCII vs. multi-byte input (3/4 bytes, 24/32 bits).
+  - path: sql/core/src/test/scala/org/apache/spark/sql/StringFunctionsSuite.scala
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Adds Scala-side coverage of `octet_length`/`bit_length` across string, binary, numeric and multi-byte-character inputs, pinning the expected byte/bit counts.
+  - path: R/pkg/tests/fulltests/test_sparkSQL.R
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Adds R-side `octet_length`/`bit_length` assertions on ASCII vs. emoji input, mirroring the Python/Scala test coverage.
+forbidden:
+  - path: R/pkg/NAMESPACE
+    reason: mechanical alphabetized export-list addition, carries no semantic information beyond what functions.R/generics.R already show.
+  - path: python/pyspark/sql/functions.pyi
+    reason: type stub mirroring functions.py's new signatures verbatim, adds nothing to understanding the change.
+  - path: python/docs/source/reference/pyspark.sql.rst
+    reason: alphabetized Sphinx doc index entry, bookkeeping only.
+nontrivial_gold_count: 2
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 10
   description: Add bit/octet_length APIs to Scala, Python and R simultaneously
-notes: ''
+notes: >-
+  Exposes the existing SQL-only `bit_length`/`octet_length` expressions as first-class
+  Scala, Python and R DataFrame APIs; no new expression semantics are added. Verified
+  via git grep at the pinned commit that `BitLength`/`OctetLength` (stringExpressions.scala)
+  and their `FunctionRegistry` string-key registrations already existed before this
+  commit and are untouched by the diff — they are genuine nontrivial gold explaining
+  why the PR is purely additive wrapper code. string_indirection is true because
+  FunctionRegistry links "bit_length"/"octet_length" to the case classes by string key,
+  and the R wrappers reach the Scala functions object by JVM class-name string via
+  `callJStatic("org.apache.spark.sql.functions", ...)`.

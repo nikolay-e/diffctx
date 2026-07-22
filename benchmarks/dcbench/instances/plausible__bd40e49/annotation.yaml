@@ -2,13 +2,100 @@ repo: plausible
 base_commit: e7ce652c0c74d382c02ae4de61fa3dff54ab9624
 commit: bd40e490a68ef99299f12f586ec540317aeb73fb
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 19
-  description: Pages report breakdown by hostname — ClickHouse query modules + React report components
-notes: ''
+gold:
+  - path: lib/plausible/stats/sql/expression.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds select_dimension/5 clauses for "visit:entry_page_hostname" (selecting t.hostname) and "visit:exit_page_hostname" (selecting t.exit_page_hostname), the core piece letting these become GROUP BY dimensions instead of just filters.
+  - path: lib/plausible/stats/query_optimizer.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: build_split_query/3 now renames both "event:page"->"visit:entry_page" and the new "event:hostname"->"visit:entry_page_hostname" via @event_page_dim_renames, so a hostname+page breakdown on the events table still routes through the existing entry-page split-query path.
+  - path: lib/plausible/stats/table_decider.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: extends the "event:page is a special case" cond clause to also accept event:page combined with event:hostname, so the new two-dimension pages breakdown doesn't get rejected as mixing session/event tables.
+  - path: lib/plausible/stats/query_builder.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: validate_metric(:exit_rate) now (after sorting dimensions) also accepts ["visit:exit_page", "visit:exit_page_hostname"], letting exit_rate be requested alongside the new exit-page-hostname breakdown.
+  - path: assets/js/dashboard/stats/reports/reports-config.ts
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the pagesWithHostname/entryPagesWithHostname/exitPagesWithHostname BreakdownReportKey variants with their two-dimension arrays (event:hostname+event:page etc.), detailsPath, and new searchDimension field.
+  - path: assets/js/dashboard/stats/pages/index.tsx
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the "Break down by" popover (Path/URL) driving breakdownMode state, getReportKey/2 mapping (tab, mode) to a BreakdownReportKey, and the hostname-aware DimensionElement/DimensionCell components that render "hostname+path" rows.
+  - path: assets/js/dashboard/stats/pages/details.tsx
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: mirrors the hostname breakdown support in the details modal (HOSTNAME_DIMENSION_ELEMENTS map, searchDimension passed through) so URL mode also works when a report is opened in the full-table modal.
+  - path: assets/js/dashboard/components/drilldown-link.tsx
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds extraFilters support so clicking a hostname+page row applies both an "is hostname" and an "is page" filter at once, rather than just the primary dimension's filter.
+  - path: assets/js/dashboard/util/url.ts
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: externalLinkForPage/3 gains an optional hostname parameter so the "view page" external link can point at the specific hostname shown in a URL-mode row instead of the site's default domain.
+  - path: assets/js/dashboard/router.tsx
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: registers the three *WithHostname detail routes (topPagesWithHostnameRoute etc.) that PagesDetails' modal navigates to for the hostname breakdown variants.
+  - path: assets/js/dashboard/stats/modals/details-breakdown.tsx
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: adds the searchDimension prop (so search filters the page dimension, not the hostname one, in URL mode) and changes getRowKey to join all dimensions, since rows are no longer uniquely identified by dimensions[0] alone.
+  - path: test/plausible_web/controllers/api/stats_controller/pages_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: new tests assert the exact dimensions/metrics shape and bounce_rate/exit_rate correctness for hostname+page breakdowns on the pages/entry-pages/exit-pages endpoints.
+  - path: e2e/tests/dashboard/breakdowns.spec.ts
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: new "pages breakdown - URL mode" e2e test drives the breakdown-mode popover end-to-end and asserts that clicking a URL-mode row applies both the hostname and page filters.
+  - path: lib/plausible/stats/filters/filters.ex
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines @visit_props including :entry_page_hostname and :exit_page_hostname as already-valid filter dimensions from an earlier commit; this diff's select_dimension/query_optimizer/table_decider changes only add the ability to use these as GROUP BY dimensions, they don't invent the dimension names themselves.
+forbidden:
+  - path: lib/plausible/stats/sql/where_builder.ex
+    reason: already builds WHERE clauses for entry_page_hostname/exit_page_hostname filters (matching filters.ex's visit_props), tempting due to name overlap, but this commit is about dimension selection, not filtering, and doesn't touch this file.
+  - path: lib/plausible/clickhouse_session_v2.ex
+    reason: defines the pre-existing exit_page_hostname Ecto field on the sessions schema that sql/expression.ex's new clause selects; untouched here and its existence is already evident from the field reference.
+  - path: assets/js/dashboard/stats/breakdowns.tsx
+    reason: defines defaultGetFilterInfo, imported by pages/index.tsx and pages/details.tsx as the non-hostname fallback, but this file itself is unmodified.
+  - path: assets/js/dashboard/nav-menu/dashboard-options-menu.tsx
+    reason: touched only for an unrelated icon-sizing tweak bundled into this commit, not part of the hostname-breakdown feature.
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >-
+  Adds a "Path / URL" breakdown-mode toggle to the Pages/Entry pages/Exit
+  pages reports: URL mode groups by hostname+page (event:hostname +
+  event:page, or the visit:*_page_hostname equivalents) instead of just
+  page, reusing the entry_page_hostname/exit_page_hostname filter
+  dimensions that already existed in filters.ex but had no GROUP BY
+  support. Requires coordinated changes across the query engine
+  (select_dimension, split-query renaming, table routing, exit_rate
+  validation) and the React report/detail-modal/drilldown-link components,
+  plus new external-link and search-by-page-not-hostname behavior.
+  string_indirection is true — dimension names ("visit:exit_page_hostname",
+  "event:hostname") are matched as strings/map keys throughout the query
+  engine, not through static references.

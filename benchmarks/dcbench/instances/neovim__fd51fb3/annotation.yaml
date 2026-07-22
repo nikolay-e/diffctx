@@ -2,13 +2,54 @@ repo: neovim
 base_commit: eb79cf5aeeb1d407b9da8f0d39c83cf23fbdaf29
 commit: fd51fb3fa0356d0f8eef7630e085c8f0b3964c69
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: runtime/lua/vim/lsp/util.lua
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'largest removal (189 lines): deletes M.set_lines/jump_to_location/trim_empty_lines/try_trim_markdown_code_blocks/lookup_section/_get_offset_encoding, and strips the `position_encoding == nil` notify_once-and-fallback-to-_get_offset_encoding branch from make_position_params/make_range_params/make_given_range_params, making position_encoding effectively mandatory.'
+  - path: runtime/lua/vim/lsp.lua
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'removes lsp.get_active_clients/buf_get_clients/for_each_buffer_client/with, all of which were `@deprecated ... ''0.12''` thin wrappers around lsp.get_clients()/vim.lsp.buf.* — the top-level vim.lsp.* namespace cleanup.'
+  - path: runtime/lua/vim/lsp/buf.lua
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes M.completion (deprecated in favor of vim.lsp.completion.trigger) and M.execute_command (deprecated in favor of client:exec_cmd), both `vim.deprecate(..., ''0.12'')`-marked.
+  - path: runtime/lua/vim/_core/shared.lua
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes vim.tbl_add_reverse_lookup (deprecated with no replacement) and vim.tbl_islist (deprecated in favor of vim.islist), both `@deprecated` since 0.12.
+  - path: runtime/lua/vim/lsp/diagnostic.lua
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: removes M.get_line_diagnostics, deprecated in favor of vim.diagnostic.get() since 0.12.
+  - path: runtime/lua/vim/loader.lua
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: removes M.disable, deprecated in favor of vim.loader.enable(false) since 0.12.
+  - path: test/functional/plugin/lsp/util_spec.lua
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: restructures the removed 'lsp.util.jump_to_location' describe block's test cases into equivalent 'show_document' tests (its replacement) and deletes the now-orphaned 'trim_empty_lines' test, evidencing what each removed function's replacement actually is.
+forbidden:
+  - path: runtime/lua/vim/lsp/handlers.lua
+    reason: 'contains stale @deprecated doc-comment EXAMPLES (M.hover/signature_help, themselves marked "remove in 0.13") that still show `vim.lsp.with(...)` usage — the exact function this commit deletes — but this is inert documentation text, not executable code calling the removed function, and is left unaddressed by this commit (a pre-existing inconsistency, not something needed to understand this diff).'
+  - path: test/functional/lua/vim_spec.lua
+    reason: only removes the small 'vim.tbl_add_reverse_lookup' test block, redundant with _core/shared.lua as the source of truth for that removal.
+  - path: runtime/doc/deprecated.txt
+    reason: 'checked at the base commit: none of the functions removed here (vim.lsp.with, jump_to_location, tbl_add_reverse_lookup, etc.) appear under "DEPRECATED IN 0.12" — those doc entries were already pruned in an earlier, separate commit, so this file provides no information about why these specific functions are removed now.'
+  - path: runtime/lua/vim/lsp/_tagfunc.lua
+    reason: calls util.make_position_params(win, client.offset_encoding) like every other internal caller, always passing offset_encoding explicitly, so it is unaffected by and irrelevant to the removed nil-fallback branch.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 8
-  description: 'refactor!: remove deprecated APIs — runtime Lua removals'
-notes: ''
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Deletes ~16 Lua functions that were `vim.deprecate(..., ''0.12'')`-marked (vim.tbl_add_reverse_lookup, vim.tbl_islist, vim.loader.disable, vim.lsp.get_active_clients/buf_get_clients/for_each_buffer_client/with, vim.lsp.buf.completion/execute_command, vim.lsp.diagnostic.get_line_diagnostics, vim.lsp.util.set_lines/jump_to_location/trim_empty_lines/try_trim_markdown_code_blocks/lookup_section/_get_offset_encoding), plus the position_encoding-nil fallback path built on the last one. Grepped the base commit for every removed function/field name across the whole runtime/ tree and found only internal callers already covered by the diff — all vim.lsp.util.make_*_params() callers already pass client.offset_encoding explicitly, so the removed nil-fallback never fires internally. One stale, non-functional loose end (vim.lsp.handlers.lua''s @deprecated doc-comment examples still show `vim.lsp.with(...)`) is left unaddressed by this commit but does not affect understanding it.'

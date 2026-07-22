@@ -2,13 +2,88 @@ repo: plausible
 base_commit: 3e06d924d489c97e01d2cda3cba1f6477f39107b
 commit: a9dc4eadf91c4d71aef1bf1ebe11b9212327d7e6
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: lib/plausible_web/views/layout_view.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: team_switcher/1 is rewritten to pin the current team to the top with a check icon and list every other team in a scrollable list, replacing the old top-3-plus-"Switch to Another Team" link that pointed at the deleted page.
+  - path: lib/plausible_web/controllers/auth_controller.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: deletes select_team/2, the action that rendered the standalone team-switcher page, now superseded by the topbar dropdown and the direct-link "Go to team sites" button.
+  - path: lib/plausible_web/router.ex
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: removes "get /team/select, AuthController, :select_team" from both the EE and CE scopes.
+  - path: lib/plausible_web/templates/auth/select_team.html.heex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: deleted template that rendered the list of switchable teams; its markup pattern (current-team highlight, owner names) is now subsumed by team_switcher/1 in layout_view.ex.
+  - path: lib/plausible_web/plugs/auth_plug.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes the Enum.take(3) cap, teams_count, and more_teams? assigns, now passing the full setup-complete teams list straight through so the dropdown (not a separate page) can show them all.
+  - path: lib/plausible_web/live/auth_context.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: mirrors the same change for LiveView-rendered pages — drops teams_count/more_teams?/take(3) and adds the setup_complete filter directly, keeping @teams consistent between conn- and socket-based rendering.
+  - path: lib/plausible_web/live/sites.ex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: the empty-state "Go to team sites" button now links directly to the single team's sites when @teams has one entry, or opens a PrimaDropdown listing all @teams when there are several, instead of linking to Routes.auth_path(_, :select_team).
+  - path: lib/plausible_web/plugs/require_account.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes ["team", "select"] from @force_2fa_exceptions since the path it protected no longer exists.
+  - path: lib/plausible_web/templates/layout/_header.html.heex
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: stops passing more_teams?={@more_teams?} into team_switcher (attribute removed) and constrains the dropdown menu to max-w-xs to accommodate the new always-shows-all-teams list.
+  - path: test/plausible_web/live/sites_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: asserts the "Go to team sites" link now points directly at /sites?__team=<identifier> instead of the removed /team/select page.
+  - path: test/plausible_web/plugs/require_account_plug_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: drops the "/team/select" case from the parametrized force-2FA-exceptions test, matching the plug's updated exception list.
+  - path: test/plausible_web/controllers/auth_controller_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: deletes the entire "GET /team/select" describe block, the direct evidence of what behavior (redirect-if-one-team, render-if-many) moved elsewhere.
+forbidden:
+  - path: lib/plausible/teams/users.ex
+    reason: defines Teams.Users.teams/1, called by the now-deleted select_team/2 action; tempting since it's directly referenced in the removed code, but it is untouched and not needed to understand the removal.
+  - path: lib/plausible_web/components/prima_dropdown.ex
+    reason: PrimaDropdown.dropdown/dropdown_item components used by the new "Go to team sites" dropdown in sites.ex, but this pre-existing generic component is unmodified.
+  - path: lib/plausible_web/plugs/authorize_team_access.ex
+    reason: another auth-adjacent plug in the same directory as require_account.ex/auth_plug.ex, but not touched or related to this page removal.
+  - path: lib/plausible_web/controllers/settings_controller.ex
+    reason: also renders team-related UI and is a frequent neighbor of auth_controller.ex in team-switching changes, but untouched by this commit.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 13
-  description: Remove the /team/select page — deletion ripple through router, controllers, templates
-notes: ''
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >-
+  Deletes the standalone /team/select page: the topbar team-switcher
+  dropdown now shows every setup-complete team (pinned active team on top,
+  scrollable list, no more three-item cap), and the sites-page empty-state
+  "Go to team sites" button routes directly to the team's sites (or opens an
+  inline dropdown when there's more than one) instead of navigating to the
+  now-removed page. Both the conn-pipeline (auth_plug.ex) and LiveView
+  (auth_context.ex) code paths that feed @teams are updated in lockstep so
+  behavior stays identical between controller- and LiveView-rendered pages.
+  string_indirection is true because RequireAccountPlug's exception
+  allowlist matches raw path segments, not named routes.

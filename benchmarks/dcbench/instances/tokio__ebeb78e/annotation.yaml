@@ -2,13 +2,83 @@ repo: tokio
 base_commit: b5709baa917494043e21589adb10347c57361f1f
 commit: ebeb78ed40027032feb77c89a1de4b58d2dcafbf
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: tokio/src/runtime/scheduler/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the new pub(crate) enum scheduler::Handle { CurrentThread(Arc<current_thread::Handle>), MultiThread(Arc<multi_thread::Handle>) } and its dispatch methods (driver/time/clock/blocking_spawner/spawn/shutdown/seed_generator/signal/metrics) — the central type this whole refactor introduces to replace the old runtime::HandleInner + runtime::Spawner pair.
+  - path: tokio/src/runtime/scheduler/multi_thread/handle.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New file defining multi_thread::Handle { spawner, driver, blocking_spawner, seed_generator } plus its metrics methods, one of the two per-scheduler Handle structs scheduler::Handle::MultiThread wraps in an Arc.
+  - path: tokio/src/runtime/scheduler/current_thread.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the sibling current_thread::Handle struct (same four fields as multi_thread::Handle) inline, and relocates the cfg_metrics! impl from Spawner onto Handle — the other variant scheduler::Handle::CurrentThread wraps.
+  - path: tokio/src/runtime/handle.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: The public runtime::Handle struct's inner field changes from Arc<HandleInner> (deleted) to scheduler::Handle; HandleInner and its accessor as_inner() are removed and every method (spawn_blocking, spawn_named, shutdown) now calls straight through self.inner.
+  - path: tokio/src/runtime/builder.rs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: build_current_thread_runtime/build_threaded_runtime construct the new current_thread::Handle/multi_thread::Handle structs directly and wrap them as scheduler::Handle::CurrentThread/MultiThread, replacing the old Spawner::CurrentThread/MultiThread + HandleInner construction.
+  - path: tokio/src/runtime/mod.rs
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Moves `pub(crate) mod scheduler;` out of the cfg_rt! block to compile unconditionally (scheduler::Handle must exist even without the "rt" feature) while `mod handle;`/HandleInner re-export move the other way, into cfg_rt!; also deletes `mod spawner;`.
+  - path: tokio/src/runtime/time/entry.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: TimerEntry's driver field type changes from runtime::Handle to scheduler::Handle, TimerEntry::new(&scheduler::Handle, ..) checks handle.time() instead of handle.as_time_handle(), and driver() now calls self.driver.time() directly instead of reaching into inner.driver.time.
+  - path: tokio/src/task/spawn.rs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: The free spawn() function drops the deleted context::spawn_handle() indirection entirely and instead calls Handle::current().inner.spawn(task, id) directly against the new scheduler::Handle.
+  - path: tokio/src/runtime/context.rs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Thread-local context accessors (io/signal/clock) switch from ctx.as_inner().driver.x to ctx.inner.driver()/.signal()/.clock(), and the cfg_rt! spawn_handle() function is deleted outright since task/spawn.rs no longer needs it.
+  - path: tokio/src/time/sleep.rs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Sleep::new_timeout is split into cfg_rt!/cfg_not_rt! variants and now passes Handle::current().inner (a scheduler::Handle) into TimerEntry::new, exercising both the mod.rs feature-gating change and entry.rs's new signature.
+  - path: tokio/src/runtime/driver.rs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Pre-existing driver::Handle struct (io/signal/time/clock fields) that scheduler::Handle::driver()/.time()/.clock() return references into — explains what those new accessor methods actually expose.
+forbidden:
+  - path: tokio/src/runtime/scheduler/multi_thread/worker.rs
+    reason: sibling file in the same scheduler/multi_thread/ directory implementing the work-stealing loop, untouched by and unrelated to the Handle-struct split
+  - path: tokio/src/runtime/blocking/mod.rs
+    reason: defines blocking::Spawner itself (returned by the new blocking_spawner() accessor) but the struct is untouched — only its call sites were rewired
+  - path: tokio/src/runtime/config.rs
+    reason: Config struct constructed alongside the new per-scheduler Handles in builder.rs but not itself part of the Handle/Spawner reorganization
+  - path: tokio/src/runtime/scheduler/multi_thread/mod.rs
+    reason: loses its cfg_metrics! impl block (moved to the new handle.rs) but is otherwise the pre-existing Spawner/worker-pool wiring, not a place to understand the new scheduler::Handle type itself
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 16
   description: 'rt: split internal `runtime::Handle` concerns — struct split threaded through schedulers'
-notes: ''
+notes: Splits the internal concerns previously bundled into runtime::HandleInner (spawner, driver,
+  blocking_spawner, seed_generator) into a new scheduler::Handle enum with per-scheduler-variant Handle
+  structs (current_thread::Handle, multi_thread::Handle — the latter in a brand-new file), deletes the
+  old top-level runtime::Spawner enum entirely, and moves the `scheduler` module to compile
+  unconditionally (outside cfg_rt!) since scheduler::Handle now underlies the public runtime::Handle in
+  all feature configurations. Every caller that used to reach through
+  handle.as_inner().{spawner,driver,...} now goes through handle.inner.{spawn(),driver(),blocking_spawner(),...}.
