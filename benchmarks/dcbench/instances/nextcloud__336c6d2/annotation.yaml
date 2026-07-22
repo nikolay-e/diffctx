@@ -55,6 +55,10 @@ string_indirection: false
 no_nontrivial_context: true
 annotator: llm/sonnet-5-2026-07-22
 candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 11
+  description: new OCP email-address validator — lib/public + lib/private impl + tests + autoload
 notes: >
   Adds a new OCP IEmailValidator interface + OC\Mail\EmailValidator implementation,
   extracting the RFC/strict email-validation logic that previously lived inline in

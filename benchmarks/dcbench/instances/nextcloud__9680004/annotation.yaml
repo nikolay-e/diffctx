@@ -56,6 +56,11 @@ nontrivial_gold_count: 1
 string_indirection: true
 annotator: llm/sonnet-5-2026-07-22
 candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 31
+  description: remove deprecated IServerContainer uses in lib/private — DI-graph ripple across 17 private
+    classes + tests
 notes: >
   Mechanically migrates ~16 lib/private classes off the deprecated IServerContainer
   (typed to the app-server-specific interface) onto the generic PSR-11

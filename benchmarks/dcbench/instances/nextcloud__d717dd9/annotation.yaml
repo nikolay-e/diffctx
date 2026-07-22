@@ -2,13 +2,69 @@ repo: nextcloud
 base_commit: bbc7041c071f9d7d5dd6cda95bd9b770429ba054
 commit: d717dd98507f6f97aff590be887fa9ed44994ed0
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: lib/public/AppFramework/Attribute/ASince.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: abstract base attribute providing getSince(), extended by Consumable/Implementable/Listenable/etc to declare a version alongside API-stability
+  - path: lib/public/AppFramework/Attribute/Consumable.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new attribute marking that apps may only consume (not implement) the annotated class/interface, applied to e.g. INotification
+  - path: lib/public/AppFramework/Attribute/Implementable.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new attribute marking that apps are expected to implement the annotated interface, applied to e.g. IApp/INotifier
+  - path: lib/public/AppFramework/Attribute/Listenable.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new attribute for event-like enums/classes, applied to CalendarEventStatus
+  - path: build/psalm/OcpSinceChecker.php
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: psalm plugin's checkStatementAttributes() enforces that lib/public/Notification/* and CalendarEventStatus (the pilot scope, gated by a path check) carry one of these attributes instead of an @since docblock, explaining why exactly these files were converted first
+  - path: lib/public/Notification/IApp.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: representative Implementable usage — '@since 9.0.0' docblock replaced by #[Implementable(since: '9.0.0')]
+  - path: lib/public/Notification/INotification.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: representative Consumable usage on a DTO-like interface apps only consume, not implement
+  - path: lib/public/Calendar/CalendarEventStatus.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: representative Listenable usage, the only enum converted in this diff, showing the attribute applies beyond interfaces/classes
+forbidden:
+  - path: lib/public/AppFramework/Attribute/Catchable.php
+    reason: new attribute defined for future exception use but not actually applied to any file converted in this diff
+  - path: lib/public/AppFramework/Attribute/Throwable.php
+    reason: new attribute defined for future exception-implementable use but not actually applied to any file converted in this diff
+  - path: lib/public/Notification/INotifier.php
+    reason: same Implementable pattern as IApp.php, redundant to include both
+  - path: lib/public/Notification/IManager.php
+    reason: same Consumable pattern as INotification.php, redundant to include both
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 24
   description: OCP Consumable vs Implementable API attributes — 21 lib/public files + autoload regeneration
-notes: ''
+notes: >
+  Introduces a new OCP\AppFramework\Attribute family (Consumable/Implementable/Listenable/
+  Catchable/Dispatchable/ExceptionalImplementable, all extending ASince) to replace the
+  plain '@since X.Y.Z' docblock convention with a machine-checkable declaration of whether
+  apps may only call an API or are also expected to implement/extend/listen-to it. Piloted
+  on lib/public/Notification/* and Calendar\CalendarEventStatus, gated by a path check in
+  the psalm plugin build/psalm/OcpSinceChecker.php, which is itself essential context for
+  why exactly this file set was converted. Fully self-contained within the diff.

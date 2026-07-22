@@ -2,13 +2,72 @@ repo: polars
 base_commit: b98df35e81065f66f054ca22188320ad67c87221
 commit: 52eea50752d0d65298aad5b6b33e61449e792620
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: crates/polars-plan/src/dsl/dt.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds DateLikeNameSpace::days_in_month(), the public DSL entry point mapping to FunctionExpr::TemporalExpr(TemporalFunction::DaysInMonth).
+  - path: crates/polars-plan/src/plans/aexpr/function_expr/datetime.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Adds IRTemporalFunction::DaysInMonth (Int8 return dtype) and the days_in_month(s: &Column) dispatch function that calls Series::days_in_month()."
+  - path: crates/polars-time/src/windows/calendar.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the core days_in_month(year, month) calendar computation using the pre-existing DAYS_PER_MONTH table and is_leap_year() already defined in this file.
+  - path: crates/polars-time/src/chunkedarray/kernels.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the to_calendar_value! macro and date_to_days_in_month / datetime_to_days_in_month_{ns,us,ms} kernels that apply calendar::days_in_month() element-wise over chunked arrays.
+  - path: crates/polars-time/src/series/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: TemporalMethods::days_in_month() dispatches on Series dtype (Date vs Datetime) to ChunkedArray::days_in_month(), the entry point called by the plan-level dispatch function.
+  - path: crates/polars-python/src/expr/datetime.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: PyExpr::dt_days_in_month FFI binding exposing the new method across the PyO3 boundary.
+  - path: py-polars/polars/expr/datetime.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Public ExprDateTimeNameSpace.days_in_month() Python method calling self._pyexpr.dt_days_in_month().
+  - path: py-polars/polars/series/datetime.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Series-side DateTimeNameSpace.days_in_month() added with an empty body — dispatched to the Expr implementation via the @expr_dispatch decorator on the class.
+  - path: py-polars/tests/unit/operations/namespaces/temporal/test_datetime.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Adds test_days_in_month covering Date/Datetime, all time units, timezones, and leap-year edge cases (1900, 2000, 2004, 2025).
+  - path: py-polars/polars/series/utils.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines expr_dispatch/call_expr — DateTimeNameSpace is decorated with @expr_dispatch, so the empty-bodied Series days_in_month() only works because this mechanism matches its signature by name against ExprDateTimeNameSpace.days_in_month and dispatches to it via getattr(expr_namespace, func.__name__) at call time.
+forbidden:
+  - path: crates/polars-time/src/chunkedarray/date.rs
+    reason: adds the parallel DateMethods::days_in_month for the Date-only path; understanding the Datetime-path equivalent in datetime.rs (already gold via series/mod.rs's dispatch) covers the same pattern, this is a same-shape sibling
+  - path: crates/polars-plan/src/dsl/function_expr/datetime.rs
+    reason: only adds the DSL-level TemporalFunction::DaysInMonth enum variant; the IR-level counterpart in aexpr/function_expr/datetime.rs already selected as gold carries the semantically interesting parts (dtype, dispatch fn)
+  - path: crates/polars-python/src/lazyframe/visitor/expr_nodes.rs
+    reason: only adds a PyTemporalFunction::DaysInMonth visitor-serialization arm following the exact same pattern as every other temporal function, adds no new understanding
+  - path: crates/polars-plan/dsl-schema-hashes.json
+    reason: mechanical schema-hash bump generated from the enum change, not needed to understand the feature
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 17
   description: Implement dt.days_in_month — temporal namespace across boundary
-notes: ''
+notes: Adds dt.days_in_month() end to end (DSL/IR TemporalFunction variant, chunked-array kernels using a pre-existing DAYS_PER_MONTH/is_leap_year calendar table, PyO3 binding, Expr.dt method, and Series.dt method dispatched to the Expr implementation via the expr_dispatch decorator).

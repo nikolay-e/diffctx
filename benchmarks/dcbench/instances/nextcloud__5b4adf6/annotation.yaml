@@ -61,6 +61,10 @@ nontrivial_gold_count: 1
 string_indirection: false
 annotator: llm/sonnet-5-2026-07-22
 candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 42
+  description: Move OC_Defaults to OCP\Defaults — lib/private→lib/public move rippling into apps + templates
 notes: >
   Wide (42-file) but largely mechanical refactor: unifies two ways of accessing theme
   defaults (\OC_Defaults directly vs OCP\Defaults) by extending OCP\Defaults with the

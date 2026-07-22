@@ -61,6 +61,10 @@ nontrivial_gold_count: 1
 string_indirection: true
 annotator: llm/sonnet-5-2026-07-22
 candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 15
+  description: files_sharing trusted-server-shares toggle — PHP controller/capability + Vue UI coupling
 notes: >
   Adds a per-instance "treat federated shares from trusted servers as internal" toggle:
   backend resolves is_trusted_server via federation's TrustedServers::isTrustedServer(),

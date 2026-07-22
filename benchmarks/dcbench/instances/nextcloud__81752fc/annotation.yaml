@@ -30,6 +30,10 @@ string_indirection: false
 no_nontrivial_context: true
 annotator: llm/sonnet-5-2026-07-22
 candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 117
+  description: '`Override` attribute added to all OCP classes — API-wide mechanical stress across lib/public'
 notes: >
   Purely mechanical chore: adds PHP 8.3's #[\Override] attribute to every method in
   lib/public/** that overrides a parent/interface method, across 117 files with the

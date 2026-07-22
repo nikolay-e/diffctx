@@ -2,10 +2,54 @@ repo: polars
 base_commit: 81df1409a32aebb69b465736923a56efb6a66cda
 commit: 3b6875ae98794c200b2227f303b69b1c9219debd
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: crates/polars-plan/src/dsl/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Expr::gather() gains a null_on_oob parameter that is threaded into the existing Expr::Gather { null_on_oob, .. } enum variant instead of hardcoding false.
+  - path: crates/polars-python/src/expr/general.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: PyExpr::gather adds #[pyo3(signature = (idx, null_on_oob=false))] exposing the new parameter across the PyO3 FFI boundary to Python.
+  - path: py-polars/src/polars/_plr.pyi
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: "Stub for PyExpr.gather updated to declare the new null_on_oob: bool parameter, keeping the FFI type stub in sync with general.rs."
+  - path: py-polars/src/polars/expr/expr.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Public Expr.gather() Python wrapper adds keyword-only null_on_oob=False and forwards it to self._pyexpr.gather(indices_lit_pyexpr, null_on_oob).
+  - path: py-polars/src/polars/series/series.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Series.gather() signature gains null_on_oob=False; its body is empty and dispatched to Expr.gather via the expr_dispatch mechanism.
+  - path: py-polars/tests/unit/operations/test_gather.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Adds test_expr_gather_null_on_oob and test_series_gather_null_on_oob asserting out-of-bounds indices resolve to null when null_on_oob=True.
+  - path: py-polars/src/polars/series/utils.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines expr_dispatch/call_expr, which requires Series.gather's argument names (co_varnames) to match Expr.gather's exactly and looks up the Expr method via getattr(expr, func.__name__) at call time — this is why Series.gather's signature had to mirror the new null_on_oob param verbatim with an empty body.
+forbidden:
+  - path: crates/polars-plan/src/plans/aexpr/mod.rs
+    reason: defines AExpr::Gather with an existing null_on_oob field but that field is unrelated/unchanged by this diff (only the DSL-level default plumbing changed)
+  - path: crates/polars-python/src/series/general.rs
+    reason: sibling PySeries FFI file with similar-sounding name but Series.gather is expr-dispatched in Python, so no Rust-side PySeries.gather binding change is needed
+  - path: crates/polars-plan/src/plans/conversion/dsl_to_ir/expr_to_ir.rs
+    reason: converts Expr::Gather to AExpr::Gather including null_on_oob but is generic pass-through plumbing untouched by this feature addition
+  - path: py-polars/tests/unit/dataframe/test_df.py
+    reason: same-repo test file with unrelated test_get coverage, not touched or needed for this gather-specific change
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07

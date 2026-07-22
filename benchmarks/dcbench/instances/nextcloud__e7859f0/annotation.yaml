@@ -2,14 +2,54 @@ repo: nextcloud
 base_commit: eb98e99530aaf430cd8759b1ade94e2686a06920
 commit: e7859f0dacbda051c2decb2e0d62345435ac2fd9
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: core/Migrations/Version32000Date20250402182800.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new migration that, once, copies allow_user_to_change_display_name into allow_user_to_change_email when the latter is unset, replacing the old runtime fallback with a one-time write
+  - path: lib/private/User/User.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: canChangeEmail() drops the runtime fallback to allow_user_to_change_display_name now that the migration has already materialized the value, defaulting plainly to true
+  - path: apps/provisioning_api/lib/Controller/UsersController.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: both getPermittedFields() call sites drop the same allow_user_to_change_display_name fallback for the 'allow_user_to_change_email' system value, mirroring User::canChangeEmail()
+  - path: apps/settings/lib/Settings/Personal/PersonalInfo.php
+    tier: essential
+    role: caller
+    in_diff: false
+    rationale: provides 'emailChangeSupported' => $user->canChangeEmail() to the personal-info settings UI, the concrete downstream consumer whose behavior depends on this migration/fallback change
+  - path: apps/provisioning_api/tests/Controller/UsersControllerTest.php
+    tier: helpful
+    role: test
+    in_diff: false
+    rationale: pre-existing test parametrizes 'allow_user_to_change_email' to cover getPermittedFields(), exercising exactly the code path this commit simplifies
+forbidden:
+  - path: lib/composer/composer/autoload_classmap.php
+    reason: generated autoload map, mechanical byproduct of the new migration class
+  - path: lib/composer/composer/autoload_static.php
+    reason: generated autoload map, same mechanical byproduct
+  - path: lib/private/User/LazyUser.php
+    reason: only proxies canChangeEmail() to the wrapped User instance unchanged, adds no new information about the migration/fallback logic
+  - path: lib/public/IUser.php
+    reason: pre-existing interface declaration of canChangeEmail(), unrelated to this change (signature untouched)
+nontrivial_gold_count: 2
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 5
   description: DB migration for email setting — core/Migrations + provisioning_api controller + User +
     autoload, compact coupling
-notes: ''
+notes: >
+  Replaces a runtime fallback (email-change permission defaulting to the display-name-change
+  setting when unset) with a one-time DB migration that copies the value forward, then
+  simplifies the three call sites that used to compute the fallback live. All coupling is
+  through the bare string literal 'allow_user_to_change_email' (no shared PHP constant),
+  independently hardcoded in the migration, User::canChangeEmail(), and both
+  UsersController call sites, hence string_indirection: true.

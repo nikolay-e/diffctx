@@ -65,6 +65,11 @@ string_indirection: false
 no_nontrivial_context: true
 annotator: llm/sonnet-5-2026-07-22
 candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 13
+  description: ISharedStorage made public API — OCP interface + apps/dav, files_sharing, files_versions
+    implementations
 notes: >
   Promotes files_sharing's private ISharedStorage to a public OCP interface
   (lib/public/Files/Storage/ISharedStorage.php), deprecates the app-private copy, and

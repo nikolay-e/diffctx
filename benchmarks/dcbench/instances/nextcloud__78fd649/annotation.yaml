@@ -67,6 +67,10 @@ string_indirection: false
 no_nontrivial_context: true
 annotator: llm/sonnet-5-2026-07-22
 candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 16
+  description: remove long-deprecated methods from OCP — lib/public + lib/private impls + tests + autoload
 notes: >
   Pure removal of three unrelated groups of long-deprecated OCP API surface (CSP
   eval-script/child-src knobs and the whole Strict*ContentSecurityPolicy class family,

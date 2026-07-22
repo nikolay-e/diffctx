@@ -76,6 +76,11 @@ nontrivial_gold_count: 0
 string_indirection: false
 annotator: llm/sonnet-5-2026-07-22
 candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 19
+  description: preview migration + DB layout simplification — core/Migrations + lib/private/Preview +
+    autoload noise
 notes: >
   Reworks the preview subsystem's DB layout: drops the per-row storage_id column in
   favor of a shared preview_locations table (bucket/object-store resolved once and

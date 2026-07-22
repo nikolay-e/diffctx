@@ -56,6 +56,10 @@ nontrivial_gold_count: 0
 string_indirection: true
 annotator: llm/sonnet-5-2026-07-22
 candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 36
+  description: remove deprecated jQuery/jQuery UI — mixed frontend deletion (js+scss+assets+php)
 notes: >
   Removes jQuery, jQuery UI, select2, snap.js and strengthify entirely from Nextcloud's
   core frontend, deleting core/src/jquery/** and its CSS/vendor assets, dropping the

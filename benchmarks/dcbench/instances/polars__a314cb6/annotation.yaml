@@ -64,4 +64,4 @@ curation:
   source: TOANALYZE-2026-07-07
   n_files: 86
   description: Scheduled removal of deprecated functionality — mass py+rs co-change
-notes: ''
+notes: Deletes ~50 independently-deprecated methods/parameters/top-level functions across DataFrame/LazyFrame/Series/Expr and their namespaces, each a self-contained removal (Python method + matching doc autosummary entry + test warning-filter cleanup, occasionally a paired Rust PyO3 binding as with cat.set_ordering). There is no single feature tying the removals together beyond the shared deprecation.py decorator machinery; gold picks the shared utility plus one fully-traced example (categorical.py/.rst/.rs/test) as representative of the repeated pattern, plus the three largest per-class removal sites.

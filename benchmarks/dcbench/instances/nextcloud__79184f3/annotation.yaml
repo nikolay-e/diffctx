@@ -66,6 +66,10 @@ nontrivial_gold_count: 0
 string_indirection: true
 annotator: llm/sonnet-5-2026-07-22
 candidates_from: [agent-exploration]
+curation:
+  source: TOANALYZE-2026-07-07
+  n_files: 15
+  description: settings setup checks migrated to Vue — compact-but-diverse (6 extensions)
 notes: >
   Migrates the admin "Security & setup warnings" panel from inline jQuery/PHP-rendered
   markup to a Vue 3 component tree fetching the same OCS checksetup endpoint via axios.
