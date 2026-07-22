@@ -2,13 +2,61 @@ repo: spark
 base_commit: 7858e534d3195d532874a3d90121353895ba3f42
 commit: f84cca2d84d67cee2877092d0354cf111c95eb8e
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: core/src/main/scala/org/apache/spark/api/java/JavaSparkContext.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "adds `def resources: JMap[String, ResourceInformation] = sc.resources.asJava`, the Java-facing bridge py4j uses to expose resources to Python."
+  - path: core/src/main/scala/org/apache/spark/api/python/PythonRunner.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: writes each task's `context.resources()` map onto the Python daemon socket in a fixed binary layout (count, then name/addresses per entry) that `worker.py` must decode identically.
+  - path: python/pyspark/worker.py
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: reads the exact binary layout written by PythonRunner.scala (`read_int`/`utf8_deserializer.loads` in matching order) to populate `taskContext._resources`; the two files form one coupled wire protocol.
+  - path: python/pyspark/context.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the `SparkContext.resources` property, calling `self._jsc.resources()` (the JavaSparkContext bridge) via py4j and wrapping each entry in `ResourceInformation`.
+  - path: python/pyspark/resourceinformation.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new Python `ResourceInformation` class, a field-for-field mirror of the JVM `ResourceInformation` class.
+  - path: python/pyspark/taskcontext.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds `TaskContext.resources()` reading the `_resources` dict populated by worker.py from the PythonRunner wire data.
+  - path: core/src/main/scala/org/apache/spark/resource/ResourceInformation.scala
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "pre-existing JVM class (`class ResourceInformation(val name: String, val addresses: Array[String])`) whose shape the new Python `ResourceInformation` class in resourceinformation.py exactly mirrors."
+  - path: core/src/main/scala/org/apache/spark/TaskContext.scala
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: "pre-existing abstract `def resources(): Map[String, ResourceInformation]` on TaskContext, the method PythonRunner.scala's `context.resources()` call actually invokes."
+  - path: core/src/main/scala/org/apache/spark/SparkContext.scala
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: "pre-existing `def resources: Map[String, ResourceInformation] = _resources` on SparkContext, which JavaSparkContext.resources delegates to via `sc.resources.asJava`."
+forbidden:
+  - path: core/src/main/scala/org/apache/spark/TaskContextImpl.scala
+    reason: concrete TaskContext subclass that carries a `resources` constructor param, but is not touched and adds no new understanding beyond the TaskContext trait definition.
+  - path: python/pyspark/rdd.py
+    reason: same module family (pyspark core) but has no resources-related method; not touched and not needed.
+  - path: python/pyspark/tests/test_taskcontext.py
+    reason: covering tests for the new TaskContext.resources() API, already touched in this same diff -- redundant with the worker.py/taskcontext.py gold pair rather than a distinct external dependency.
+nontrivial_gold_count: 3
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 9
-  description: Add resources API to Python and JavaSparkContext (core cross-language)
-notes: ''
+notes: 'Exposes the existing JVM resource-allocation API (SparkContext.resources / TaskContext.resources(), backing GPU/FPGA-aware scheduling) to Python via a new JavaSparkContext.resources bridge and a matching binary wire protocol between PythonRunner.scala (writer) and worker.py (reader). Linkage is by direct method/name correspondence (py4j attribute calls, positional binary fields), not by dynamic string dispatch, so string_indirection is false. The three pre-existing JVM definitions (ResourceInformation, TaskContext.resources, SparkContext.resources) are the nontrivial external context this new plumbing exposes.'

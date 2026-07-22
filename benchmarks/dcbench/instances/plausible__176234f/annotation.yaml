@@ -2,13 +2,82 @@ repo: plausible
 base_commit: db83948f4d58a0ddb7dab926d166a7b501985900
 commit: 176234f9f7f687e148099bd52b818c4f27765f8d
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 21
-  description: 24h time range for dashboard + Stats API v2 — full-stack query layer + TS frontend
-notes: ''
+gold:
+  - path: assets/js/dashboard/query-time-periods.ts
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds QueryPeriod['24h'], the "Last 24 Hours" picker entry, and the getCurrentPeriodDisplayName branch — the frontend definition of the new period.
+  - path: lib/plausible/stats/comparisons.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds get_comparison_datetime_range/1 with three clauses (previous_period+match_day_of_week, previous_period, year_over_year) that compute the comparison window when input_date_range is :"24h".
+  - path: lib/plausible/stats/query_builder.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds build_datetime_range(:"24h", ...) which turns the new period atom into a concrete DateTimeRange spanning now-24h to now.
+  - path: lib/plausible/stats/legacy/legacy_query_builder.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds put_input_date_range/2 clause for %{"period" => "24h"}, wiring the dashboard's legacy query path to set input_date_range to :"24h".
+  - path: lib/plausible/stats/api_query_parser.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds parse_input_date_range("24h") returning {:ok, :"24h"}, the Stats API v2 entry point for the new date_range shorthand.
+  - path: lib/plausible/stats/dashboard/query_parser.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds "24h" => :"24h" to the dashboard query period map, the dashboard-side entry point for the new period.
+  - path: extra/lib/plausible/stats/consolidated_view.ex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: query_24h_stats/1 and query_24h_intervals/2 are rewritten to pass input_date_range as :"24h" instead of manually computing datetime ranges, a concrete consumer of the new period.
+  - path: lib/plausible/stats/interval.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: adds :"24h" -> "hour" to default_for_query/1 and "24h" => ["minute", "hour"] to @valid_by_period, controlling which graph intervals are valid for the new period.
+  - path: priv/json-schemas/query-api-schema.json
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: adds the "24h" const to the date_range enum in the public Stats API v2 JSON schema, documenting the new value as part of the API contract.
+  - path: test/plausible/stats/comparisons_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: new "with period set to 24h" describe block asserts the exact comparison-window arithmetic (previous_period, year_over_year, match_day_of_week) added in comparisons.ex.
+  - path: lib/plausible/stats/query.ex
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines the Query struct's input_date_range field that every changed function (comparisons.ex, query_builder.ex, interval.ex, legacy_query_builder.ex) pattern-matches :"24h" against.
+forbidden:
+  - path: lib/plausible/stats/query_optimizer.ex
+    reason: pattern-matches on query.input_date_range (:month/:year/:day) in the same lib/plausible/stats/ directory but has no :"24h" clause added or needed by this commit.
+  - path: lib/plausible/stats/timeseries.ex
+    reason: pattern-matches on input_date_range (:realtime_30m) nearby but is untouched and unrelated to the 24h period.
+  - path: lib/plausible/stats/query_result.ex
+    reason: same directory and naming family as query_builder.ex/query.ex but not involved in date-range computation.
+  - path: assets/js/dashboard/query-time-periods.test.ts
+    reason: sibling test file for the same module already covered by the query-time-periods.ts gold entry; adds no new understanding of the change itself.
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >-
+  Adds a new "24h" (rolling last-24-hours) time period across the whole
+  stack: TS dashboard picker/labels, Stats API v2 parsing, dashboard legacy
+  query parsing, QueryBuilder's datetime-range construction, Comparisons'
+  window arithmetic for three compare modes, interval defaults, the EE
+  consolidated-view simplification, and the public JSON schema. The atom
+  :"24h" is a literal Elixir atom used consistently as a static value (not a
+  dynamic string lookup), so string_indirection is false; the one
+  out-of-diff file is the Query struct definition that all the pattern
+  matches target.

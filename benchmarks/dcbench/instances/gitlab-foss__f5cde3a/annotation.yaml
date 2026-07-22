@@ -2,13 +2,50 @@ repo: gitlab-foss
 base_commit: 4aaea7b3c7d52809824454c3977503485b849891
 commit: f5cde3a781a63ebd5630b0eb1fee79fc9750d6be
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: app/presenters/project_presenter.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renames tags_to_show/has_extra_tags?/count_of_extra_tags_not_shown to topics_to_show/has_extra_topics?/count_of_extra_topics_not_shown (and MAX_TAGS_TO_SHOW to MAX_TOPICS_TO_SHOW); these are the methods _home_panel.html.haml calls.
+  - path: app/views/projects/_home_panel.html.haml
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: "Switches to @project.topics_to_show/has_extra_topics? and the project-topic-list CSS class, but the '+ N more' line still calls @project.count_of_extra_tags_not_shown, a leftover call to the old method name the presenter just removed."
+  - path: app/views/projects/edit.html.haml
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Relabels the tag_list form field to "Topics" and updates its help text, while the underlying form field/model attribute stays :tag_list, showing this is a display-only rename.
+  - path: app/assets/stylesheets/pages/projects.scss
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Renames the .project-tag-list CSS selector to .project-topic-list to match the class now emitted by _home_panel.html.haml.
+  - path: spec/features/projects/settings/user_tags_project_spec.rb
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Updates the feature spec to fill in/expect the "Topics" label instead of "Tags", covering the edit.html.haml label rename.
+  - path: app/models/project.rb
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: "acts_as_ordered_taggable is what actually defines project.tag_list/tag_list=; this commit only renames display strings and helper methods around it, the underlying tags data model and :tag_list attribute name are untouched."
+forbidden:
+  - path: app/helpers/projects_helper.rb
+    reason: general project view helper; the tags/topics display logic being renamed lives in ProjectPresenter, not here
+  - path: app/models/label.rb
+    reason: separate labeling concept (issue/MR labels) unrelated to the project tag_list/topics being renamed
+  - path: spec/features/projects/settings/user_transfers_a_project_spec.rb
+    reason: similarly-located project-settings feature spec, unrelated to the tags/topics rename
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 8
   description: Rename tags to topics — 6 ext types across views/styles/model
-notes: ''
+notes: 'Purely a display/terminology rename of project "tags" to "topics" (presenter methods, CSS class, form label, help text, spec) — the underlying acts_as_ordered_taggable tag_list data model and form field name are intentionally left as tag_list. The rename is incomplete: _home_panel.html.haml still calls the old count_of_extra_tags_not_shown method that project_presenter.rb just renamed away, a genuine latent NoMethodError left in this real commit.'

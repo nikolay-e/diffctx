@@ -2,13 +2,32 @@ repo: spark
 base_commit: 8d0f6fb902219adfa5dd019a88c5ef4e8bf2ed7c
 commit: c0a1ea2a4c4218fc15b8f990ed2f5ea99755d322
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: common/kvstore/src/main/java/org/apache/spark/util/kvstore/LevelDB.java
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: representative instance of the `Throwables.propagate(e)` -> `Throwables.throwIfUnchecked(e); throw new RuntimeException(e);` mechanical rewrite applied identically across the diff.
+  - path: core/src/main/scala/org/apache/spark/util/collection/OpenHashSet.scala
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: representative instance of the `Hashing.murmur3_32()` -> `Hashing.murmur3_32_fixed()` rewrite, the only pattern in the diff with a (documented-safe) behavioral nuance.
+  - path: core/src/test/scala/org/apache/spark/FileSuite.scala
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: representative instance of the `Files.write/append/toString(..., charset)` -> `Files.asCharSink/asCharSource(...).write/read()` rewrite pattern used across dozens of test files.
+forbidden:
+  - path: common/network-common/src/main/java/org/apache/spark/network/ssl/SSLFactory.java
+    reason: imports `com.google.common.io.Files` like the touched files but only calls the non-deprecated `Files.asByteSource`, so it needed no change.
+  - path: common/network-shuffle/src/main/java/org/apache/spark/network/shuffle/ErrorHandler.java
+    reason: imports `com.google.common.base.Throwables` like the touched kvstore/network files but only calls the non-deprecated `getStackTraceAsString`, so it needed no change.
+  - path: core/src/main/scala/org/apache/spark/deploy/worker/ExecutorRunner.scala
+    reason: imports the same deprecated `com.google.common.io.Files` package and is touched, but is one of ~55 mechanically-identical siblings, not a distinguishing example.
 nontrivial_gold_count: 0
-annotator: pending
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 58
-  description: Clean up deprecated Guava API across 9 modules (CORE/SQL/SS/ML/K8S/YARN)
-notes: ''
+notes: 'Pure mechanical cleanup of five deprecated Guava APIs (Files.write/append/toString, Hashing.murmur3_32, Throwables.propagate/propagateIfPossible) across 58 files spanning CORE/SQL/SS/ML/K8S/YARN. Every hunk is a local, independent substitution fully explained by the PR description itself (which quotes the deprecated Guava source and its InlineMe replacement) -- no cross-file coupling or internal repo definitions are needed to understand any individual change, so no_nontrivial_context is set. Picked one representative file per distinct replacement pattern as gold rather than all 58 mechanically-identical siblings.'

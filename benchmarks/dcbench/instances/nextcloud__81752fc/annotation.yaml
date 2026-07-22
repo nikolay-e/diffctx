@@ -2,13 +2,39 @@ repo: nextcloud
 base_commit: 7055e9ce1df12742dbc2a82efdadfe01565dacff
 commit: 81752fc9edeae5687244fb272c031ae4d9387135
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: lib/public/Activity/ActivitySettings.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: representative example — every overriding/implementing method gains a #[\Override] attribute, e.g. getIdentifier()/canChangeMail()/isDefaultEnabledStream()
+  - path: lib/public/AppFramework/Http/JSONResponse.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: representative example — render() gains #[\Override] since it overrides Response::render(), same mechanical pattern applied identically across all 117 touched files
+  - path: lib/public/AppFramework/Http/Template/SimpleMenuAction.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: representative interface-implementation case — getId()/getLabel()/getLink()/getPriority()/render() each gain #[\Override] for implementing IMenuAction, showing the pattern also covers interface methods not just abstract/parent overrides
+forbidden:
+  - path: lib/public/AppFramework/Http/DataDisplayResponse.php
+    reason: identical one-line #[\Override] addition as JSONResponse.php, redundant to include as gold
+  - path: lib/public/AppFramework/Http/TemplateResponse.php
+    reason: identical one-line #[\Override] addition as JSONResponse.php, redundant to include as gold
+  - path: lib/public/AppFramework/Http/StreamResponse.php
+    reason: identical one-line #[\Override] addition, redundant with the chosen representative files
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 117
-  description: '`Override` attribute added to all OCP classes — API-wide mechanical stress across lib/public'
-notes: ''
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >
+  Purely mechanical chore: adds PHP 8.3's #[\Override] attribute to every method in
+  lib/public/** that overrides a parent/interface method, across 117 files with the
+  identical one-line-per-method pattern (no method bodies, signatures, or behavior
+  change). Three representative files (abstract-class override, parent-class override,
+  interface implementation) are gold enough to characterize the change; the remaining
+  114 are the same transformation applied file-by-file, so no external or additional
+  in-diff context is needed to understand it.

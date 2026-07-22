@@ -2,13 +2,41 @@ repo: spark
 base_commit: dfa3978d9191e02eabf65d1829c970644d25d57e
 commit: d082ad0abfe0bc26760626ae0ecb415a8d508a1f
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: python/pyspark/sql/functions.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds Python `acosh`/`asinh`/`atanh` wrappers calling `_invoke_function_over_column(name, col)`, the central Python-side edit.
+  - path: R/pkg/R/functions.R
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds R `setMethod("acosh", ...)` etc. calling `callJStatic("org.apache.spark.sql.functions", "acosh", x@jc)`, the central R-side edit.
+  - path: sql/core/src/main/scala/org/apache/spark/sql/functions.scala
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "pre-existing Scala `def acosh(e: Column): Column`/`asinh`/`atanh` (added earlier in SPARK-33061, per the PR description) is the actual JVM method both the Python `getattr(sc._jvm.functions, name)` reflection and R's `callJStatic(\"org.apache.spark.sql.functions\", name, ...)` resolve to by string name; this PR only adds the Python/R parity wrappers around it."
+  - path: R/pkg/NAMESPACE
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: exports the three new R methods (`acosh`, `asinh`, `atanh`) so they are visible outside the package namespace.
+  - path: python/pyspark/sql/tests/test_functions.py
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: adds `test_inverse_trig_functions`, the covering test asserting the new Python wrappers emit `ACOSH(a)`/`ASINH(a)`/`ATANH(a)` in their SQL repr.
+forbidden:
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/mathExpressions.scala
+    reason: likely defines the underlying `Acosh`/`Asinh`/`Atanh` catalyst expressions referenced from functions.scala, but is one layer further from the string-indirection link this PR concerns and is not touched.
+  - path: R/pkg/R/generics.R
+    reason: usually pairs with functions.R to declare a `setGeneric` for new SparkR column functions, but acosh/asinh/atanh are base-R Math-group generics already, so no new generic was needed here and this file is untouched.
+  - path: python/pyspark/sql/functions.pyi
+    reason: touched only to add three one-line type stubs mirroring functions.py; a mechanical sibling edit, not a distinct source of understanding.
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 7
-  description: Expose inverse hyperbolic trig functions in PySpark and SparkR
-notes: ''
+notes: 'Small feature-parity PR: exposes the inverse hyperbolic trig functions acosh/asinh/atanh (already present in the Scala functions API since SPARK-33061) to PySpark and SparkR. Both parity wrappers reach the pre-existing Scala method purely through string-keyed reflection -- Python via getattr(sc._jvm.functions, name) and R via callJStatic("org.apache.spark.sql.functions", name, ...) -- so this is a clean string_indirection case; the untouched sql/core/.../functions.scala Scala definitions are the one nontrivial external-context file.'

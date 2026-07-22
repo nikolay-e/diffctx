@@ -2,13 +2,41 @@ repo: spark
 base_commit: fb13344556af2e6f05e01b121f36e4448135b8eb
 commit: d4296539748e01986b8c60bc7ab6b58df0051f58
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: R/pkg/R/sparkR.R
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the runtime deprecation `warning(...)` inside `sparkR.session()`, gated by `Sys.getenv("SPARK_TESTING") == ""`, the only behavioral (non-docs) change in this commit.
+  - path: R/run-tests.sh
+    tier: essential
+    role: config
+    in_diff: false
+    rationale: sets `SPARK_TESTING=1` when invoking the R test suite via spark-submit, which is exactly what suppresses the new deprecation warning during `R/pkg/tests/run-all.R`; without it the warning's guard condition looks arbitrary.
+  - path: docs/sparkr.md
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: adds the user-facing deprecation notice to the main SparkR programming guide.
+  - path: docs/sparkr-migration-guide.md
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: adds an "Upgrading from SparkR 3.5 to 4.0" entry documenting the deprecation for users tracking version migration notes.
+  - path: R/pkg/README.md
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: retitles the package README to "R on Spark (deprecated)", the most visible marker of the deprecation for anyone browsing R/pkg.
+forbidden:
+  - path: R/pkg/DESCRIPTION
+    reason: package metadata file that would typically carry a deprecation/lifecycle badge, but is not touched by this commit.
+  - path: docs/index.md
+    reason: top-level Spark docs landing page links to sparkr.md but is not touched to reflect the deprecation.
+  - path: python/pyspark/sql/pandas/conversion.py
+    reason: unrelated Python/pandas conversion code; no connection to the SparkR-specific deprecation.
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 7
-  description: 'Deprecate SparkR: R source coupled with docs/ pages'
-notes: ''
+notes: 'Deprecates SparkR ahead of Spark 4.0: adds a startup warning in sparkR.session() plus deprecation notices across five doc/readme/vignette files. Purely additive, low-risk change; the one piece of external context needed is R/run-tests.sh, which sets SPARK_TESTING=1 for the test harness -- explaining why the new warning is gated on that env var (so CI/test runs stay quiet).'

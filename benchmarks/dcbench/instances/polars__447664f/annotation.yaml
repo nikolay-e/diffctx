@@ -2,10 +2,79 @@ repo: polars
 base_commit: 3d5a70be8de4968cbf1c33bb6cb76fbcb822f3ec
 commit: 447664f9922becde740bfba0f34fb4b621c8b806
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: crates/polars-plan/src/dsl/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the public Expr::has_nulls() DSL builder method, mapping to BooleanFunction::HasNulls instead of the previous Python-level null_count()>0 fallback.
+  - path: crates/polars-plan/src/plans/aexpr/function_expr/boolean.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds IRBooleanFunction::HasNulls and marks it as an aggregation with NON_ORDER_OBSERVING flag, defining how the optimizer treats the new function.
+  - path: crates/polars-plan/src/plans/aexpr/builder.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: AExprBuilder::has_nulls() rewritten from `null_count(arena).gt(0)` to directly emit the new IRBooleanFunction::HasNulls node — the actual behavior-changing rewrite this commit performs.
+  - path: crates/polars-expr/src/dispatch/boolean.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Scalar/elementwise dispatch for HasNulls calling the existing Column::has_nulls() validity check.
+  - path: crates/polars-expr/src/dispatch/groups_dispatch.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds groups_dispatch::has_nulls, a parallel per-group validity-bitmap scan used for the eager group_by aggregation path.
+  - path: crates/polars-expr/src/reduce/has_nulls.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New HasNullsReduce implementing GroupedReduction, the streaming-engine grouped/evicting reduction backend for has_nulls() in group_by aggregations.
+  - path: crates/polars-expr/src/reduce/convert.rs
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Wires IRBooleanFunction::HasNulls to HasNullsReduce::new() in into_reduction(), the switchboard that selects the streaming reduction for a given function.
+  - path: crates/polars-python/src/expr/general.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: PyExpr::has_nulls FFI binding exposing the new Rust-backed method across the PyO3 boundary to Python.
+  - path: py-polars/src/polars/_plr.pyi
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Type stub declares PyExpr.has_nulls() to keep the FFI signature in sync with general.rs.
+  - path: py-polars/src/polars/expr/expr.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Expr.has_nulls() body changed from the pure-Python `self.null_count() > 0` to `wrap_expr(self._pyexpr.has_nulls())`, the visible API-level effect of moving the implementation into Rust.
+  - path: py-polars/tests/unit/operations/test_has_nulls.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Adds group_by and streaming-engine coverage (test_has_nulls_group_by*, test_has_nulls_streaming_group_by*) exercising the new groups_dispatch and HasNullsReduce backends specifically.
+  - path: crates/polars-expr/src/reduce/is_empty.rs
+    tier: helpful
+    role: cochange
+    in_diff: false
+    rationale: IsEmptyReduce is the structural precedent HasNullsReduce is modeled on almost line-for-line (same MutableBitmap/evicted-bitmap/GroupedReduction pattern for a per-group boolean flag), making it the clearest reference for understanding the new reduction's design.
+forbidden:
+  - path: crates/polars-core/src/frame/column/mod.rs
+    reason: pre-existing Column::has_nulls() validity-check primitive that dispatch/boolean.rs merely calls; unmodified by this commit
+  - path: crates/polars-expr/src/reduce/count.rs
+    reason: sibling reduce module (NullCountReduce) with a similar null-related name but a separate, untouched implementation
+  - path: crates/polars-plan/src/plans/aexpr/function_expr/mod.rs
+    reason: top-level IRFunctionExpr enum aggregator, same directory as the changed boolean.rs but not itself touched or needed to understand the HasNulls variant
+  - path: py-polars/src/polars/series/series.py
+    reason: Series.has_nulls (if present) or other null-related Series methods are expr-dispatched separately; not touched by this Expr-focused commit
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07

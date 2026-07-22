@@ -2,13 +2,77 @@ repo: polars
 base_commit: bd328a007c8322e56baf7a691013bf50584bf98d
 commit: d8b617e4ce7b6fb34e842e5a6a9bc2a3152c8371
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: crates/polars-python/Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: new package manifest for the extracted `polars-python` library crate, absorbing nearly all dependencies and feature flags that used to live directly on `py-polars`
+  - path: crates/polars-python/src/lib.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new crate root for `polars-python`; declares the module tree (dataframe, expr, lazyframe, series, ...) and re-exports the top-level Py* types that py-polars now imports
+  - path: crates/polars-python/src/series/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new file hosting the `PySeries` struct definition and `ToSeries`/`ToPySeries` traits, split out of the old `py-polars/src/series/mod.rs` so the methods (now in `general.rs`) and the type definition live separately
+  - path: crates/polars-python/src/series/general.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: renamed from `py-polars/src/series/mod.rs`; keeps the `#[pymethods] impl PySeries` block but the struct itself moved to the new `series/mod.rs`, with several methods widened from private to `pub` for that split
+  - path: crates/polars-python/src/lazyframe/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new file hosting the `PyLazyFrame` struct definition, split out of the old `py-polars/src/lazyframe/mod.rs` the same way `PySeries` was split
+  - path: crates/polars-python/src/lazyframe/general.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: renamed from `py-polars/src/lazyframe/mod.rs`; keeps the `#[pymethods] impl PyLazyFrame` block after the struct definition moved to the new `lazyframe/mod.rs`
+  - path: py-polars/src/lib.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: py-polars crate root shrinks to importing `polars_python::{dataframe, expr, lazyframe, series, ...}` instead of declaring its own `mod`s, making the extension-module/library split concrete
+  - path: py-polars/Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: py-polars now depends on the single `polars-python` crate instead of polars-core/io/lazy/ops/etc. directly, with nearly every feature flag rewritten to forward into `polars-python/<feature>`
+  - path: Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: registers the new `polars-python` workspace member/dependency so both py-polars and (potentially) other consumers can depend on it
+forbidden:
+  - path: crates/polars-python/src/expr/general.rs
+    reason: pure 100%-similarity file rename from py-polars/src/expr/general.rs, no content change
+  - path: crates/polars-python/src/dataframe/mod.rs
+    reason: pure 100%-similarity file rename, no content change
+  - path: crates/polars-python/src/utils.rs
+    reason: pure 100%-similarity file rename, no content change
+  - path: crates/polars/tests/it/io/parquet/read/file.rs
+    reason: drops an unused `schema()` helper method as incidental cleanup bundled into this commit, unrelated to the py-polars/polars-python split
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 171
   description: Split `py-polars` crate → polars-python extraction, 88 crates/ + 81 py-polars/ files
-notes: ''
+notes: >-
+  Extracts the bulk of py-polars's PyO3 binding code into a new reusable library
+  crate `crates/polars-python`, leaving `py-polars` as a thin cdylib wrapper that
+  re-exports and registers the pymodule. Almost every file move is a 100%-similarity
+  git rename; the only real restructuring is splitting `series/mod.rs` and
+  `lazyframe/mod.rs` each into a `mod.rs` (struct definition) plus a `general.rs`
+  (methods), needed because the struct now must be visible to sibling submodules in
+  the new crate layout. Everything needed to understand the change is inside the
+  diff (old path, new path, and the Cargo.toml/feature-forwarding wiring), so no
+  nontrivial (out-of-diff) gold was found — set no_nontrivial_context: true.

@@ -2,13 +2,84 @@ repo: spark
 base_commit: 61d7b0f24fc9699d71d0f0c4ca7c162ea55507ea
 commit: 747846bd3ef38eaec204ae32e47bdcb192fd2797
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/collectionOperations.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the new `MapSort(base, ascendingOrder)` case class — eval sorts key/value pairs by the natural ordering of `keyType`, codegen (`sortCodegen`) does the same via `java.util.Arrays.sort`, and `checkInputDataTypes` enforces `RowOrdering.isOrderable` on the key type — the semantic core of the change.
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Registers `MapSort` under the SQL name via `expression[MapSort]("map_sort")`, the string key exposing it to the parser.
+  - path: sql/core/src/main/scala/org/apache/spark/sql/functions.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the public Scala/Java `functions.map_sort(e)`/`map_sort(e, asc)` API wrapping `Column.fn("map_sort", e, lit(asc))`.
+  - path: connector/connect/client/jvm/src/main/scala/org/apache/spark/sql/functions.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the identical Spark Connect JVM-client parity API, sending `"map_sort"` as a string function name over the Connect protocol.
+  - path: python/pyspark/sql/functions/builtin.py
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Adds the PySpark classic-API `map_sort(col, asc=True)` with doctests demonstrating ascending/descending map-key sorting.
+  - path: python/pyspark/sql/connect/functions/builtin.py
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Adds the PySpark Connect-client parity implementation reusing the classic module's docstring.
+  - path: R/pkg/R/functions.R
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Adds the R `setMethod("map_sort", ...)` implementation calling `org.apache.spark.sql.functions.map_sort` via `callJStatic`.
+  - path: R/pkg/R/generics.R
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Adds the `setGeneric("map_sort", function(x, asc = TRUE) {...})` declaration that R/pkg/R/functions.R's `setMethod` requires to dispatch.
+  - path: sql/catalyst/src/test/scala/org/apache/spark/sql/catalyst/expressions/CollectionExpressionsSuite.scala
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Unit-tests `MapSort.eval` directly across int/bool/string/array/nested-array/struct key types in both sort orders.
+  - path: sql/core/src/test/scala/org/apache/spark/sql/DataFrameFunctionsSuite.scala
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Integration-tests `map_sort` including the `INVALID_ORDERING_TYPE`, `NULL_MAP_KEY` and `DATATYPE_MISMATCH.UNEXPECTED_INPUT_TYPE` error paths defined in `checkInputDataTypes`.
+forbidden:
+  - path: R/pkg/NAMESPACE
+    reason: mechanical alphabetized export-list addition, carries no semantic information beyond functions.R/generics.R.
+  - path: python/docs/source/reference/pyspark.sql/functions.rst
+    reason: alphabetized Sphinx doc index entry, bookkeeping only.
+  - path: sql/core/src/test/resources/sql-functions/sql-expression-schema.md
+    reason: auto-generated function catalog row, redundant with collectionOperations.scala's own `@ExpressionDescription`.
+  - path: connector/connect/common/src/test/resources/query-tests/queries/function_map_sort.proto.bin
+    reason: opaque auto-generated binary golden fixture, no readable signal beyond its JSON sibling.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: true
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 19
   description: Add `map_sort` function across SQL/Scala + PySpark + R + Connect (cross-language parity)
-notes: ''
+notes: >-
+  Adds a new `map_sort(map[, asc])` builtin (enables sorting maps by key, a prerequisite
+  for GROUP BY on map types): a brand-new `MapSort` catalyst expression + string-keyed
+  FunctionRegistry entry + Scala/PySpark/R/Connect API parity + catalyst-unit and
+  DataFrame-integration tests + Connect golden plan fixtures. The expression is new
+  (not pre-existing), so the whole implementation is self-contained within this
+  commit's 19-file diff; the base traits MapSort extends (BinaryExpression,
+  NullIntolerant, QueryErrorsBase) are generic shared framework used by hundreds of
+  unrelated expressions, so no_nontrivial_context is set instead of padding gold with
+  them. string_indirection is true because FunctionRegistry links "map_sort" to
+  `MapSort` by string key, and the Connect client sends the same name as a string over
+  the wire.

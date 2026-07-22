@@ -2,13 +2,54 @@ repo: neovim
 base_commit: 07b4b7524fc7faefb69e5c94d2512eb0807f0593
 commit: de5cf09cf98e20d8d3296ad6933ff2741acf83f7
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: src/nvim/generators/gen_api_dispatch.lua
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'core of the change: instead of emitting only funcs_metadata.generated.h, it now assembles ONE combined msgpack blob (version + functions + ui_events + ui_options + error_types + types) via a hand-rolled fixdict()/put() emitter for reproducible builds, embeds it as `packed_api_metadata`, and extracts `ui_options` by regex-scanning the ui_ext_names array text out of one of the ${API_HEADERS} it is fed.'
+  - path: src/nvim/api/private/helpers.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'api_metadata() changes from building a Dictionary at runtime (piecing together version_dict()/unpack(funcs_metadata)/unpack(ui_events_metadata)/ui_options_metadata()/error_type_metadata()/type_metadata()) to simply unpacking the single `packed_api_metadata` blob; new api_metadata_raw() exposes the raw bytes directly for `--api-info`.'
+  - path: src/nvim/CMakeLists.txt
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: 'wires FUNCS_METADATA/UI_METADATA build variables and the new NVIM_VERSION_LUA configure_file() step into the dispatch-generator custom command; its UNCHANGED line 347 `file(GLOB API_HEADERS CONFIGURE_DEPENDS api/*.h)` only globs headers directly under src/nvim/api/ — this is the reason ui_ext_names had to move from src/nvim/ui.h into the new src/nvim/api/ui.h for gen_api_dispatch.lua''s regex scan to find it.'
+  - path: src/nvim/api/ui.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'new home of the `ui_ext_names[]` array (moved out of src/nvim/ui.h) precisely so it falls under the `api/*.h` glob that becomes part of ${API_HEADERS}, which gen_api_dispatch.lua text-scans with `string.match(text, ''ui_ext_names%[][^{]+{([^}]+)}'')` to build the `ui_options` metadata list.'
+  - path: src/nvim/generators/nvim_version.lua.in
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'new CMake-configured template (`{"major", ${NVIM_VERSION_MAJOR}}, ...`) that becomes `require ''nvim_version''` inside gen_api_dispatch.lua, replacing the runtime C version_dict()/#define NVIM_API_LEVEL approach with a build-time-baked Lua version table.'
+  - path: src/nvim/main.c
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: '--api-info handling switches from packing a Dictionary via msgpack_rpc_from_object/msgpack_packer to calling api_metadata_raw() and file_write()-ing the bytes directly, the reason msgpack_file_write() in fileio.c becomes dead code and is deleted.'
+  - path: src/nvim/generators/gen_api_ui_events.lua
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: no longer wraps its output with dump_bin_array()/a named C symbol; now writes the raw mpack.encode(exported_events) bytes directly to ${UI_METADATA}, which gen_api_dispatch.lua later splices verbatim into the combined blob via `io.open(ui_metadata_inputf, ''rb''):read(''*all'')`.
+forbidden:
+  - path: src/nvim/ui.h
+    reason: only loses the ui_ext_names array (moved to api/ui.h); the old file itself explains nothing about the new mechanism beyond what api/ui.h's addition already shows.
+  - path: src/nvim/os/fileio.c
+    reason: mechanical dead-code removal (msgpack_file_write, no longer called after main.c's rewrite) rather than part of the new metadata-generation mechanism.
+  - path: test/unit/os/fileio_spec.lua
+    reason: removes the now-orphaned msgpack_file_write unit test, a downstream consequence rather than something needed to understand the refactor.
+  - path: cmake.config/versiondef.h.in
+    reason: drops the now-unused NVIM_API_LEVEL/_COMPAT/_PRERELEASE #defines from a C header template; the replacement mechanism (nvim_version.lua.in) is the file that actually explains where those values now live.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 17
-  description: 'refactor(metadata): generate all metadata in lua — generators + C + CMake templates'
-notes: ''
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Consolidates API metadata generation (function signatures, ui_events, ui_options, error_types, types, version info) from several separately-packed C-embedded msgpack blobs assembled at C runtime into a single build-time-assembled blob (packed_api_metadata) emitted by gen_api_dispatch.lua, which C now just unpacks or serves raw. This forces two structural moves: ui_ext_names from src/nvim/ui.h to the new src/nvim/api/ui.h (to fall under the CMakeLists.txt api/*.h glob the generator scans) and version info from a runtime version_dict() into a build-time-configured nvim_version.lua.in template. All 17 touched files were confirmed self-contained via grep for other callers of the removed functions (msgpack_file_write, version_dict, api_metadata) at the base commit.'

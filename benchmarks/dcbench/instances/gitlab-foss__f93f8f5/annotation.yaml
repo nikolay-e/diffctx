@@ -2,13 +2,51 @@ repo: gitlab-foss
 base_commit: 60261d9d3cbad16f9846b01c994e7575430184d9
 commit: f93f8f569d51cdc738d1653a264a762b2c08fde0
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: lib/gitlab/sherlock/query.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "One of the few files needing a real code change beyond the magic comment: @query += ';' (in-place mutation of a now-frozen string) becomes @query = \"#{@query};\"."
+  - path: lib/gitlab/slash_commands/presenters/issue_show.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "text builds message via << (frozen literal mutation) on a string; rewritten to build an array and message.join, the largest logic change in this sweep (8 line diff vs the usual 2)."
+  - path: lib/gitlab/slash_commands/result.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Shows the frozen_string_literal comment being inserted above an existing `# rubocop:disable Naming/FileName` comment, the one file where magic-comment ordering itself is the notable detail.
+  - path: lib/gitlab/template/finders/global_template_finder.rb
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: "Second instance of the same in-place-mutation fix pattern: dir << '/' becomes dir = \"#{dir}/\" (identical fix also applied to repo_template_finder.rb)."
+  - path: lib/gitlab/testing/request_inspector_middleware.rb
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: "Different fix idiom for the same problem: full_body = '' becomes full_body = +'' (unary plus to force an unfrozen, mutable string) since body.each appends into it with <<."
+  - path: lib/gitlab/ci/config/entry/retry.rb
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: "Representative example of the overwhelming majority pattern in this commit: a bare frozen_string_literal magic comment insertion with no other code change required."
+forbidden:
+  - path: lib/gitlab/redis/cache.rb
+    reason: purely mechanical frozen_string_literal insertion identical to the representative retry.rb example, adds no new information
+  - path: lib/gitlab/quick_actions/dsl.rb
+    reason: purely mechanical frozen_string_literal insertion identical to the representative retry.rb example, adds no new information
+  - path: lib/gitlab/sql/cte.rb
+    reason: purely mechanical frozen_string_literal insertion identical to the representative retry.rb example, adds no new information
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 102
   description: frozen_string_literal sweep in lib/gitlab — 100+ file stress
-notes: ''
+notes: 'Mechanical `# frozen_string_literal: true` sweep across 18 lib/gitlab subdirectories (~100 files), each a 2-line no-op comment insertion. no_nontrivial_context is true because every file is self-contained: understanding any single file needs nothing outside that file. The only non-mechanical parts are 6-7 files where a prior in-place string mutation (+=, <<) had to be rewritten to avoid FrozenError, all included as gold; the rest of the 102 files are functionally identical to the retry.rb representative and were not individually re-annotated.'

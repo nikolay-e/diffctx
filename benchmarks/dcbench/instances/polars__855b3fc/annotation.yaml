@@ -2,10 +2,60 @@ repo: polars
 base_commit: e50a2c48db3f05e87768a36ae014221abe6dc0dc
 commit: 855b3fcb3af924f3e3e8c78b300e92aa17eab521
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: py-polars/polars/_utils/serde.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New shared serialize_polars_object() helper (file/StringIO/BytesIO/path dispatch) used identically by DataFrame.serialize, Expr.meta.serialize, and LazyFrame.serialize — the common plumbing this commit factors out.
+  - path: py-polars/polars/type_aliases.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the SerializationFormat = Literal["binary", "json"] type alias referenced by every serialize/deserialize signature touched in this commit.
+  - path: py-polars/src/dataframe/serde.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New PyDataFrame serde module splitting the old single serialize()/deserialize() into serialize_binary/serialize_json (ciborium vs serde_json) and deserialize_binary/deserialize_json, with binary now the default; also relocates the pre-existing pickle __getstate__/__setstate__ here.
+  - path: py-polars/polars/dataframe/frame.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: DataFrame.serialize/deserialize gain a format="binary" (default) parameter and select between self._df.serialize_binary/serialize_json based on it — the representative example of the format-selection pattern applied identically to Expr and LazyFrame.
+  - path: crates/polars-core/src/datatypes/_serde.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Fixes Wrap<Utf8ViewArray>'s Deserialize impl to collect owned String instead of borrowed &str — required for the new ciborium (non-self-describing/streaming) binary deserializer to work, unlike serde_json which could borrow from the input buffer.
+  - path: py-polars/tests/unit/dataframe/test_serde.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Rewrites DataFrame serde tests to cover both binary (default) and json formats and round-trip through deserialize(format=...).
+  - path: py-polars/polars/expr/meta.py
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Applies the identical format-selection pattern to Expr.meta.serialize/deserialize (self._pyexpr.serialize_binary/serialize_json), confirming the change is symmetric across DataFrame/Expr/LazyFrame rather than DataFrame-specific.
+  - path: py-polars/polars/lazyframe/frame.py
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Applies the identical format-selection pattern to LazyFrame.serialize/deserialize, the third of the three symmetric call sites.
+forbidden:
+  - path: py-polars/src/series/mod.rs
+    reason: has its own unrelated __getstate__/__setstate__ pickle support but no serialize()/deserialize() public API at all — not touched by or relevant to this DataFrame/Expr/LazyFrame-only change
+  - path: py-polars/polars/io/ipc.py
+    reason: unrelated IPC file-format read/write path; this commit is about the in-memory serialize()/deserialize() round-trip API, not file I/O formats
+  - path: py-polars/src/expr/general.rs
+    reason: loses its old inline serialize/deserialize methods (moved to the new expr/serde.rs) but the diff hunk itself is just deletions with no new logic to understand beyond what serde.rs (and the dataframe/serde.rs analog already in gold) show
+  - path: py-polars/tests/unit/io/test_pickle.py
+    reason: covers Python pickle (__getstate__/__setstate__ via IPC), a different serialization mechanism from the JSON/binary serialize()/deserialize() API this commit changes
 nontrivial_gold_count: 0
-annotator: pending
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07

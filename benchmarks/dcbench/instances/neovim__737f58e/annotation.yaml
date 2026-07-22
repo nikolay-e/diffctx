@@ -2,13 +2,44 @@ repo: neovim
 base_commit: 5acdc4499e2036c90172b2b085f207ee4d5cfee4
 commit: 737f58e23230ea14f1648ac1fc7f442ea0f8563c
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: src/nvim/api/private/defs.h
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'root of the rename: `typedef kvec_t(KeyValuePair) Dict;` (was Dictionary), `kObjectTypeDict` (was kObjectTypeDictionary), the `object.data.dict` union field, and the `DictionaryOf(...)` -> `DictOf(...)` macro that every other touched file ultimately depends on.'
+  - path: src/nvim/lua/converter.c
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: largest functional-code diff (149 lines) — the Lua<->API Object conversion routines (nlua_pop_Dictionary/push_Dict etc.) that construct/consume the renamed Dict type, most representative of the "type used everywhere" ripple.
+  - path: src/nvim/api/private/helpers.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines dict_get/dict_set_var and other Dict-manipulating helper functions used across every src/nvim/api/*.c file; their signatures switch from `Dictionary` to `Dict`.
+  - path: src/nvim/generators/gen_api_dispatch.lua
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: the code generator that emits src/api/private/dispatch_wrappers.generated.h from api metadata; its templates reference the `Dictionary`/`DictionaryOf` type names and must track the C-side rename or codegen breaks.
+  - path: runtime/lua/vim/_meta/api.lua
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: generated Lua type-annotation stub whose `vim.api.keyset.*` types and function signatures switch references from `Dictionary`/table<string,any> naming remnants to `Dict`, the user-facing surface of the rename.
+forbidden:
+  - path: src/nvim/eval.c
+    reason: contains many literal "Dictionary" strings (E719/E720/E721 error messages, Vimscript dict literal parsing) referring to the unrelated Vimscript dict_T concept, deliberately NOT renamed by this commit.
+  - path: src/nvim/eval/typval.c
+    reason: same — Vimscript VAR_DICT/dict_T machinery is a separate type system from the API Dictionary/Dict being renamed here; only incidentally touched for 2 lines unrelated to the core rename.
+  - path: src/nvim/eval/typval_defs.h
+    reason: defines the Vimscript dict_T struct (VAR_DICT), a same-named but functionally distinct concept from api/private/defs.h's Dict; easy to confuse but not part of this rename's definitional core.
+  - path: test/functional/lua/vim_spec.lua
+    reason: largest test-file diff (128 lines) but purely mechanical assertion-string updates mirroring the type rename, not needed to understand the mechanism.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 77
-  description: 'refactor(api)!: rename Dictionary => Dict — C API + generators + Lua bindings + docs'
-notes: ''
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Mass rename of the API-internal `Dictionary` C type (and kObjectTypeDictionary, DictionaryOf(...) macro) to `Dict`/kObjectTypeDict/DictOf(...), swept in one commit across the type definition, converters, generators, dispatch, every src/nvim/api/*.c consumer, and generated Lua/doc stubs. Grepped the base commit for any post-rename residual literal-C-type "Dictionary" usages and found only the unrelated Vimscript dict_T/VAR_DICT concept (error message strings, `:help dict`), confirming the commit is complete and self-contained with no missed external files.'

@@ -2,13 +2,43 @@ repo: neovim
 base_commit: 1740d51eded3cd9b8244470b3e79d467598301ed
 commit: 71ac4db335e00b03b27d2c4aa5ab90c083a3a3e7
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 8
-  description: 'refactor(api): rename "window" to "win" (positional parameters)'
-notes: ''
+gold:
+  - path: runtime/doc/dev.txt
+    tier: essential
+    role: doc
+    in_diff: false
+    rationale: '`:help dev-naming` (lines ~493-498) explicitly lists "win: Window" as preferred and "window: Use ''win'' instead" as deprecated-style guidance — the documented convention this whole commit mechanically enforces on positional parameter names.'
+  - path: src/nvim/api/window.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: largest single file in the diff; every nvim_win_* function''s `Window window` parameter is renamed to `Window win`, with the local win_T* variable renamed win->w to avoid shadowing (e.g. nvim_win_set_cursor).
+  - path: src/nvim/api/win_config.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: nvim_win_set_config/nvim_win_get_config rename their `Window window` parameter to `Window win`, with the local win_T* pointer renamed to `w`/`wp` to avoid the name clash.
+  - path: src/nvim/api/vim.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: nvim_set_current_win(Window window, ...) becomes nvim_set_current_win(Window win, ...), the entry point most representative of the shadowing fix (win_T *w = find_window_by_handle(win, err)).
+  - path: runtime/lua/vim/lsp/util.lua
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: make_position_param/make_position_params/make_range_params rename their `window` parameter to `win`, the one consumer outside src/nvim/api that mirrors the same convention across the C/Lua boundary.
+forbidden:
+  - path: runtime/lua/vim/_meta/api.gen.lua
+    reason: auto-generated stub mechanically mirroring the C doc-comment/parameter-name change; not needed beyond the vim.c/window.c/win_config.c sources it is generated from.
+  - path: runtime/doc/api.txt
+    reason: auto-generated help text reflecting the same parameter rename already visible in the .c source doc-comments; redundant as a second copy of the same information.
+  - path: runtime/doc/lsp.txt
+    reason: auto-generated help text mirroring lsp/util.lua's parameter rename, redundant with the source file.
+  - path: test/functional/lua/api_spec.lua
+    reason: only touched for two incidental error-message string updates that mention the renamed parameter, not a functional test of the rename itself.
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Purely cosmetic parameter rename (continues d0af4cd9094f, also in this benchmark) replacing "window" with "win" across nvim_win_*/nvim_set_current_win signatures, doc comments, generated meta stubs, and the LSP util.lua consumer, per the `:help dev-naming` convention in runtime/doc/dev.txt (not itself touched by the diff but the sole reason for the change). All C-side renames also introduce a local `w`/`wp` variable to avoid the parameter now shadowing the pre-existing win_T* local.'

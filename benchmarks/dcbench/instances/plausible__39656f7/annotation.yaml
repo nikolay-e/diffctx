@@ -2,13 +2,80 @@ repo: plausible
 base_commit: 785236c652ddd3b7ced892f38f4dcff4b577e5db
 commit: 39656f782c23358759afd1374113bff337e7a464
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 14
-  description: List/revoke SSO sessions from team settings — LiveView + context modules + HEEx templates
-notes: ''
+gold:
+  - path: extra/lib/plausible_web/controllers/sso_controller.ex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: adds team_sessions/2 and delete_session/2 actions calling Auth.UserSessions.list_sso_for_team/1 and revoke_sso_by_id/2, plus the [:owner, :admin] AuthorizeTeamAccess plug gating them.
+  - path: lib/plausible/auth/user_sessions.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds list_sso_for_team/2 and revoke_sso_by_id/2, the core Ecto queries that scope sessions to SSO members of a team and delete/disconnect a given session.
+  - path: extra/lib/plausible_web/templates/sso/team_sessions.html.heex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new template rendered by team_sessions/2, listing sso_sessions and posting deletes to Routes.sso_path(@conn, :delete_session, session.id).
+  - path: lib/plausible_web/router.ex
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: registers "get /sso/sessions" and "delete /sso/sessions/:session_id" routes to the new controller actions.
+  - path: lib/plausible_web/views/layout_view.ex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: account_settings_sidebar/1 turns the single SSO entry into a submenu with "Configuration" (sso/general) and "Sessions" (sso/sessions), the sidebar link into this feature.
+  - path: lib/plausible_web/components/layout.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: adds settings_sidebar/settings_top_tab/settings_tab function components that replace the deleted _settings_tab.html.heex/_site_settings_tab.html.heex partials and now render the new nested SSO submenu.
+  - path: lib/plausible_web/templates/layout/settings.html.heex
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: switches account/team settings rendering to Layout.settings_sidebar, the component that must support the new nested SSO Sessions entry.
+  - path: lib/plausible_web/templates/layout/site_settings.html.heex
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: switches site settings sidebar rendering to Layout.settings_sidebar with a domain-prefixed href, part of the same sidebar unification.
+  - path: lib/plausible_web/live/components/form.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: mobile_nav_dropdown now delegates to a new flatten_options/2 that mirrors the nested-submenu shape (key/value maps with list values) introduced for the SSO submenu.
+  - path: test/plausible/auth/user_sessions_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: covers list_sso_for_team/1 ordering/scoping and revoke_sso_by_id/2's team/guest/standard-user exclusions.
+  - path: lib/plausible_web/plugs/authorize_team_access.ex
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines the AuthorizeTeamAccess plug that sso_controller.ex invokes with [:owner, :admin] to gate team_sessions/delete_session, the access-control mechanism the feature relies on.
+forbidden:
+  - path: extra/lib/plausible/auth/sso.ex
+    reason: aliased in sso_controller.ex for the pre-existing login/SAML actions, but list_sso_for_team/revoke_sso_by_id live in user_sessions.ex, not this module.
+  - path: lib/plausible_web/templates/layout/app.html.heex
+    reason: the outer app layout wrapping settings pages, same directory as the touched templates but not modified or relevant to the sidebar/session-list change.
+  - path: lib/plausible_web/components/generic.ex
+    reason: defines the generic settings_tiles/tile/table components used by the new template, but those are pre-existing generic UI primitives, not part of the SSO-sessions logic.
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >-
+  Bundles two related changes: (1) unifies the account/site/team settings
+  sidebar rendering into shared Layout.settings_sidebar components
+  (replacing two near-duplicate HEEx partials) so a sidebar entry can now
+  have a nested submenu, and (2) uses that new submenu capability to add a
+  "SSO Sessions" page listing and revoking active SSO user sessions for a
+  team. string_indirection is true because routing ("/sso/sessions") and the
+  AuthorizeTeamAccess plug's action-name matching (`action in
+  [:team_sessions, :delete_session]`) are the linking mechanisms, not static
+  function references.

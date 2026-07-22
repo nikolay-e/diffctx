@@ -2,14 +2,43 @@ repo: tokio
 base_commit: 0c8e8248f8de281f22ad6f30b967053f44fff66e
 commit: a7bb054414acba8155c014ebb0636cc0a4d4cda8
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: tokio-stream/Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: 'bumps `edition = "2018"` to `"2021"`, the direct cause of the FromIterator prelude change in stream_map.rs.'
+  - path: tokio-stream/src/stream_map.rs
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: '`impl<K, V> std::iter::FromIterator<(K, V)> for StreamMap<K, V>` becomes `impl<K, V> FromIterator<(K, V)> ...` because Rust 2021''s prelude adds `std::iter::FromIterator`, making the fully-qualified path merely unidiomatic (would trigger a lint), not required.'
+  - path: tokio-test/Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: 'same `edition = "2018"` -> `"2021"` bump, bringing tokio-test in line with the other workspace crates.'
+  - path: tokio-util/Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: 'same `edition = "2018"` -> `"2021"` bump, bringing tokio-util in line with the other workspace crates.'
+forbidden:
+  - path: tokio/Cargo.toml
+    reason: looks like a sibling manifest that should be touched too, but tokio itself was already on edition 2021 — not part of this commit
+  - path: tokio-macros/Cargo.toml
+    reason: sibling crate manifest, but tokio-macros was already on edition 2021 and is not touched by this commit
+  - path: tokio-util/src/lib.rs
+    reason: crate root of one of the bumped crates, but edition changes don't require any code changes here — no FromIterator-style disambiguation was needed
+  - path: tokio-stream/src/lib.rs
+    reason: crate root of the bumped tokio-stream crate, not touched since the edition bump needed no further code changes beyond stream_map.rs
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 4
   description: 'tokio: update stream, util, test to 2021 edition — 3 crates in one commit, shallow toml
     touches'
-notes: ''
+notes: 'Catches tokio-stream, tokio-test, and tokio-util up to Rust 2021 edition (tokio itself and tokio-macros were already on 2021). The only resulting code change is in tokio-stream/src/stream_map.rs, where `std::iter::FromIterator` becomes bare `FromIterator` since 2021''s prelude now re-exports it. Fully self-contained within the 4 diff files; no external context needed.'

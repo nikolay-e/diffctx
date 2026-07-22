@@ -2,13 +2,73 @@ repo: spark
 base_commit: d0c174c0f83c45b214ef22e0c1952fb7b2234d08
 commit: 1e7e47d6220d1a578c2ddc6232a4a4e4d2f30b11
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/collectionOperations.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the new `ArrayPrepend(left, right)` case class — eval, codegen (`doGenCode`), type coercion (`inputTypes`) and error reporting (`ARRAY_FUNCTION_DIFF_TYPES`) — the semantic core of the change.
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Registers `ArrayPrepend` under the SQL name via `expression[ArrayPrepend]("array_prepend")`, the string key exposing it to the parser.
+  - path: sql/core/src/main/scala/org/apache/spark/sql/functions.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the public Scala/Java `functions.array_prepend(column, element)` API wrapping `ArrayPrepend(column.expr, lit(element).expr)`.
+  - path: python/pyspark/sql/functions.py
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Adds the PySpark parity API `array_prepend()` with a doctest matching the Scala semantics (new element positioned at the beginning).
+  - path: sql/catalyst/src/test/scala/org/apache/spark/sql/catalyst/expressions/CollectionExpressionsSuite.scala
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Unit-tests `ArrayPrepend.eval` directly across int/string/binary/nested-array element types and null handling.
+  - path: sql/core/src/test/scala/org/apache/spark/sql/DataFrameFunctionsSuite.scala
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Integration-tests the DataFrame API `array_prepend` including the `ARRAY_FUNCTION_DIFF_TYPES`/`UNEXPECTED_INPUT_TYPE` error paths defined in `checkInputDataTypes`.
+  - path: sql/core/src/test/resources/sql-tests/inputs/array.sql
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Adds the `array_prepend(...)` SQL test queries exercised by the golden `.sql.out` files, covering empty/null/CAST edge cases.
+  - path: sql/core/src/test/resources/sql-tests/results/array.sql.out
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Golden output pinning observable `array_prepend` behavior, e.g. `array_prepend(array(1,2,3), 4)` -> `[4,1,2,3]` and null-array input -> `NULL`.
+forbidden:
+  - path: sql/core/src/test/resources/sql-tests/results/ansi/array.sql.out
+    reason: duplicate golden output for ANSI mode, identical assertions to the already-included non-ansi results file.
+  - path: connector/connect/client/jvm/src/test/scala/org/apache/spark/sql/connect/client/CheckConnectJvmClientCompatibility.scala
+    reason: mechanical MiMa exclusion-list entry acknowledging the new Connect-client API gap, adds nothing about `array_prepend`'s semantics.
+  - path: python/docs/source/reference/pyspark.sql/functions.rst
+    reason: alphabetized Sphinx doc index entry, bookkeeping only.
+  - path: sql/core/src/test/resources/sql-functions/sql-expression-schema.md
+    reason: auto-generated function catalog row, redundant with collectionOperations.scala's own `@ExpressionDescription`.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: true
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 12
   description: 'Add `array_prepend` function: Scala + Python + SQL tests + docs'
-notes: ''
+notes: >-
+  Adds a new `array_prepend(array, element)` builtin (Snowflake-parity): a brand-new
+  `ArrayPrepend` catalyst expression + string-keyed FunctionRegistry entry + Scala/PySpark
+  API wrappers + catalyst-unit and DataFrame-integration tests + SQL golden tests. Unlike
+  the bit/octet_length case, the expression itself is new here (not pre-existing), so the
+  whole implementation is self-contained within this commit's 12-file diff; the base
+  traits ArrayPrepend extends (BinaryExpression, ImplicitCastInputTypes,
+  ComplexTypeMergingExpression, QueryErrorsBase) are generic shared framework used by
+  hundreds of unrelated expressions, not specific context for this change, so
+  no_nontrivial_context is set instead of padding gold with them. string_indirection is
+  true because FunctionRegistry links "array_prepend" to `ArrayPrepend` by string key.

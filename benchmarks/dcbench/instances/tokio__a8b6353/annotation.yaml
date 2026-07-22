@@ -2,13 +2,52 @@ repo: tokio
 base_commit: c748f4965eae883a2291945116d84cab5d657100
 commit: a8b6353535ffa08fc84aee93d315ec4df088c2c2
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: tokio/src/runtime/scheduler/inject.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new file — Inject's queue implementation moved verbatim from the deleted runtime/task/inject.rs into its new home under runtime::scheduler.
+  - path: tokio/src/runtime/task/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'drops `mod inject; pub(super) use self::inject::Inject;`, promotes `use self::raw::RawTask` to `pub(crate) use self::raw::RawTask`, and reworks Task/Notified::from_raw/into_raw to construct from/return a RawTask directly instead of a NonNull<Header> — the API surface the relocated Inject now depends on.'
+  - path: tokio/src/runtime/task/raw.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: '`RawTask` visibility widens from `pub(in crate::runtime)` to `pub(crate)`, and gains `get_queue_next`/`set_queue_next` methods explicitly documented "for usage by the injection queue" — the mechanism that lets scheduler::inject access the intrusive linked-list pointers without task::inject''s former in-module access.'
+  - path: tokio/src/runtime/scheduler/mod.rs
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: 'adds `mod inject; pub(crate) use inject::Inject;`, wiring the new scheduler::inject module into the re-export chain that current_thread.rs and multi_thread/worker.rs consume.'
+  - path: tokio/src/runtime/scheduler/multi_thread/worker.rs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: 'multi-thread worker''s global injection queue usage updated to import Inject from its new `runtime::scheduler` location instead of `runtime::task`.'
+  - path: tokio/src/runtime/scheduler/current_thread.rs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: current-thread scheduler's Inject usage updated to the new import path, confirming the type is shared across both scheduler flavors.
+forbidden:
+  - path: tokio/src/runtime/scheduler/multi_thread/queue.rs
+    reason: touched only for a mechanical Inject import-path fixup identical in shape to worker.rs/current_thread.rs, not independently informative
+  - path: tokio/src/runtime/task/trace/mod.rs
+    reason: touched only for a mechanical fallout of the RawTask visibility change, not central to the Inject move itself
+  - path: tokio/src/runtime/task/list.rs
+    reason: sibling task submodule (OwnedTasks/LocalOwnedTasks), unrelated to the intrusive injection-queue pointers
+  - path: tokio/src/runtime/tests/loom_queue.rs
+    reason: loom test file updated only for the Inject import-path move, not informative about the move's design
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 12
   description: 'rt: move Inject to `runtime::scheduler` — internal module move with re-export chain updates'
-notes: ''
+notes: 'Inject (the cross-thread injection queue) moves from runtime::task to runtime::scheduler, a setup step for a later change to drop its mutex. Since Inject needs the intrusive linked-list next/prev pointers that used to be accessible only within runtime::task, RawTask''s visibility is widened to pub(crate) and gains explicit get_queue_next/set_queue_next accessors "for usage by the injection queue" — this is the real coupling the curation description flags, not just an import-path rename. All necessary context is within the diff.'

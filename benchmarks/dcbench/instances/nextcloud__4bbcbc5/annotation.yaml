@@ -2,14 +2,74 @@ repo: nextcloud
 base_commit: cb1b366baf75da4c578bc534884eefa7f6b4b3d2
 commit: 4bbcbc520620b59c19f058fa79e107ee1a8ce275
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: lib/public/Files/Storage/ISharedStorage.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new OCP interface (extends IStorage, adds getShare():IShare) that all storage-type checks in this commit switch to
+  - path: apps/files_sharing/lib/SharedStorage.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: SharedStorage now implements both the legacy OCA\Files_Sharing\ISharedStorage and the new OCP\...\ISharedStorage
+  - path: apps/files_sharing/lib/ISharedStorage.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: legacy app-internal interface marked @deprecated 30.0.0 in favor of the new OCP interface, explaining the migration
+  - path: apps/dav/lib/Connector/Sabre/Node.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: getShareAttributes/getNoteFromShare replace method_exists('getShare') / hardcoded SharedStorage::class checks with instanceOfStorage(ISharedStorage::class)
+  - path: apps/dav/lib/DAV/ViewOnlyPlugin.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: checkViewOnly() switches its instanceOfStorage() check from the concrete SharedStorage class to the new ISharedStorage interface
+  - path: apps/dav/lib/Storage/PublicShareWrapper.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: now implements ISharedStorage directly so public-share DAV access satisfies the same interface as SharedStorage
+  - path: apps/files_versions/lib/Versions/LegacyVersionsBackend.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: getVersionsForFile switches instanceOfStorage(SharedStorage::class) to instanceOfStorage(ISharedStorage::class), decoupling from the app-private class
+  - path: apps/dav/lib/Connector/Sabre/FilesPlugin.php
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: SHARE_NOTE propfind handler return type widened to nullable to match getNoteFromShare()'s new '' -> null contract
+  - path: apps/dav/tests/unit/Connector/Sabre/NodeTest.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: covers Node::getShareAttributes/getNoteFromShare against the instanceOfStorage(ISharedStorage::class) branch
+  - path: apps/dav/tests/unit/DAV/ViewOnlyPluginTest.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: asserts instanceOfStorage() is now stubbed with ISharedStorage::class instead of the concrete SharedStorage class
+forbidden:
+  - path: build/integration/run-docker.sh
+    reason: unrelated CI Docker image PHP-version bump bundled in the same commit, no connection to ISharedStorage
+  - path: lib/composer/composer/autoload_classmap.php
+    reason: generated autoload map, mechanical byproduct of the new lib/public class
+  - path: lib/composer/composer/autoload_static.php
+    reason: generated autoload map, same mechanical byproduct
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 13
-  description: ISharedStorage made public API — OCP interface + apps/dav, files_sharing, files_versions
-    implementations
-notes: ''
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >
+  Promotes files_sharing's private ISharedStorage to a public OCP interface
+  (lib/public/Files/Storage/ISharedStorage.php), deprecates the app-private copy, and
+  migrates every consumer (dav Node/ViewOnlyPlugin/PublicShareWrapper, files_versions
+  LegacyVersionsBackend) from method_exists()/hardcoded-class instanceOfStorage() checks
+  to the new interface. instanceOfStorage() resolves via PHP is_a() on a ::class constant,
+  a compile-time-resolved reference rather than free-form string DI, so string_indirection
+  is false. Change is fully self-contained in the diff; no external nontrivial context found.

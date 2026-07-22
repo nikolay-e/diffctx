@@ -2,13 +2,83 @@ repo: polars
 base_commit: 7c3370ae10494ef4cafff4bfccbc7b8939c454f9
 commit: c70ec74213f68d430573c3f31be8a94d3d53d4d5
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: crates/polars-ops/src/series/ops/round.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds `RoundSeries::truncate`, sharing the newly-extracted `apply_float_rounding` helper with `round`, plus the decimal-scale truncation path
+  - path: crates/polars-plan/src/dsl/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds `Expr::truncate(decimals)` DSL builder mapping to `FunctionExpr::Truncate`
+  - path: crates/polars-plan/src/dsl/function_expr/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the `FunctionExpr::Truncate { decimals }` DSL-level enum variant with its Hash/Display impls
+  - path: crates/polars-plan/src/plans/aexpr/function_expr/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the mirrored `IRFunctionExpr::Truncate { decimals }` IR variant and marks it `FunctionOptions::elementwise()`
+  - path: crates/polars-expr/src/dispatch/round.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the `truncate` dispatch function that calls `Series::truncate`, wired into `function_expr_to_udf` for `F::Truncate`
+  - path: crates/polars-python/src/expr/general.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: PyO3 `PyExpr::truncate` binding exposing `Expr::truncate` across the FFI boundary
+  - path: py-polars/src/polars/expr/expr.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the public `Expr.truncate(decimals=0)` Python method calling `self._pyexpr.truncate(decimals)`
+  - path: py-polars/src/polars/series/series.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds `Series.truncate` with an empty body (docstring only, no `return`), relying on `expr_dispatch` to auto-wire it to `Expr.truncate`
+  - path: crates/polars-sql/src/functions.rs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: adds the SQL `TRUNCATE`/`TRUNC` function alias parsing that calls `Expr::truncate` from SQL query text
+  - path: py-polars/tests/unit/datatypes/test_decimal.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: adds `test_decimal_truncate`, the only test covering the decimal-scale truncation branch (distinct arithmetic path from the float branch)
+  - path: py-polars/src/polars/series/utils.py
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines `expr_dispatch`/`call_expr`, the class-decorator mechanism (`@expr_dispatch` on the `Series` class itself) that gives the empty-bodied `Series.truncate` its real implementation by matching it against `Expr.truncate` by name/signature
+forbidden:
+  - path: crates/polars-plan/src/plans/aexpr/function_expr/schema.rs
+    reason: only adds Truncate to an already-existing `with_same_dtype()` match arm, no new schema logic
+  - path: crates/polars-plan/src/plans/conversion/dsl_to_ir/functions.rs
+    reason: mechanical one-line match-arm addition mirroring existing Round/RoundSF conversion, no new logic
+  - path: py-polars/tests/unit/lazyframe/test_lazyframe.py
+    reason: duplicates float-path coverage already exercised by test_series.py, not the unique decimal-scale branch
+  - path: py-polars/docs/source/reference/sql/functions/math.rst
+    reason: doc-only prose addition for the SQL TRUNC function, not needed to understand the implementation
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 23
   description: Add `truncate` expression for numerics — rs core + py wrapper + docs
-notes: ''
+notes: >-
+  Adds a `truncate` numeric expression (float/decimal/int) alongside the existing
+  `round`/`round_sig_figs`, sharing a newly-extracted `apply_float_rounding` helper
+  with `round` in polars-ops. Threads through the full DSL/IR/dispatch/PyO3/Python/SQL
+  chain. `Series.truncate` is an empty-bodied stub whose real implementation is
+  injected by the `expr_dispatch` class decorator (same string/introspection-based
+  mechanism as other Series methods), hence string_indirection: true.

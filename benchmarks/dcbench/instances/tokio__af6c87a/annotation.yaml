@@ -2,14 +2,53 @@ repo: tokio
 base_commit: 6257712d6837fea36e1a201b7df75885b57a3148
 commit: af6c87a045f413f2ce41d89db55663653a2dca67
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: .github/workflows/ci.yml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: '`rustfmt --check --edition 2018` becomes `--edition 2021` in the workspace-wide rustfmt CI job — the driver forcing every remaining 2018-edition crate to be bumped in this same commit, since rustfmt is invoked once across all crates.'
+  - path: examples/Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: 'bumps `edition = "2018"` to `"2021"` for the examples crate, the direct cause of the TryFrom-import removal in examples/tinyhttp.rs.'
+  - path: examples/tinyhttp.rs
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: '`use std::{convert::TryFrom, env, error::Error, fmt, io};` drops `convert::TryFrom` since Rust 2021''s prelude re-exports TryFrom, making the explicit import an unused-import lint.'
+  - path: tests-integration/Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: 'bumps `edition = "2018"` to `"2021"` for the tests-integration crate, the direct cause of the TryInto-import removal in tests/process_stdio.rs.'
+  - path: tests-integration/tests/process_stdio.rs
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: 'drops `use std::convert::TryInto;`, same 2021-prelude reasoning as tinyhttp.rs''s TryFrom removal.'
+  - path: CONTRIBUTING.md
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: 'documents the same `rustfmt --check --edition 2018/2021` command bumped in ci.yml, keeping contributor-facing instructions in sync with the CI job.'
+forbidden:
+  - path: benches/Cargo.toml
+    reason: sibling workspace crate manifest bumping the same edition field mechanically, redundant with examples/Cargo.toml for understanding the change
+  - path: stress-test/Cargo.toml
+    reason: sibling workspace crate manifest, same mechanical edition bump, no accompanying code fallout
+  - path: tokio-macros/Cargo.toml
+    reason: sibling workspace crate manifest, same mechanical edition bump, no accompanying code fallout
+  - path: tokio/fuzz/Cargo.toml
+    reason: sibling fuzz-target manifest, same mechanical edition bump, no accompanying code fallout
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 12
   description: 'chore: upgrade remaining 2018 edition crates to 2021 — 7 workspace crates + CI, wide shallow
     change'
-notes: ''
+notes: 'Completes the edition-2021 rollout (companion to #5571 which handled tokio-stream/tokio-test/tokio-util) for the remaining 7 non-published/dev crates: benches, examples, stress-test, tests-build, tests-integration, tokio-macros, and the two fuzz crates. The workspace-wide rustfmt CI check is bumped once in ci.yml (mirrored in CONTRIBUTING.md), which is why all lagging crates had to move together. Two crates have real code fallout — examples/tinyhttp.rs and tests-integration/tests/process_stdio.rs drop now-redundant TryFrom/TryInto imports since 2021''s prelude includes them; the other 5 Cargo.toml bumps are mechanical duplicates.'

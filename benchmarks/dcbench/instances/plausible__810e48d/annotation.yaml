@@ -2,13 +2,58 @@ repo: plausible
 base_commit: 1991235492417e44a5c4797a47b03908a77ef6c8
 commit: 810e48da2cc88530b7a67624f860fff688d8da69
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 6
-  description: Top goal conversions in weekly/monthly email digest — EEx email template + stats query
-notes: ''
+gold:
+  - path: lib/workers/send_email_report.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: unifies the weekly/monthly perform/1 clauses into one, and replaces Stats.EmailReport/Query.from with stats_aggregates/2, pages/2, sources/2 and the new goals/2 built via Query.build/4 + Stats.query/2, the core of the change.
+  - path: lib/plausible/stats/email_report.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: deleted module whose aggregate_and_compare/put_top_5_pages/put_top_5_sources logic is reimplemented (and extended with goals) as private functions directly in send_email_report.ex.
+  - path: lib/plausible_web/mjml/templates/stats_report.mjml.eex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the "Goal / Conversions" table rendered from @stats.goals (with .goal-name/.goal-conversions CSS classes asserted in the test), and renames assigns @name/@date/@login_link to @report_name/@date_label/@site_member?.
+  - path: lib/plausible_web/email.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: stats_report/2 mailer tag/subject switch from the old @type/@name assigns to @interval/@report_name, matching the renamed assigns produced by send_email_report.ex.
+  - path: test/workers/send_email_report_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: new "includes goal conversions when goals exist" and "limits all stats sections to 5 entries" tests directly exercise the goals/2 addition and the pagination limit applied to every section.
+  - path: lib/plausible/stats/query.ex
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines build/4, the Stats API v2 query constructor now called four times (stats_aggregates/pages/sources/goals) with the :internal schema type, replacing the old Query.from/Query.set-based construction.
+forbidden:
+  - path: lib/workers/send_check_stats_emails.ex
+    reason: sibling worker in the same lib/workers/ directory with a similar "send X email" name, but an unrelated notification (traffic-drop check emails, not weekly/monthly digests).
+  - path: lib/plausible/site/weekly_report.ex
+    reason: defines the WeeklyReport schema whose :recipients field is read via Map.fetch!/2, but the schema itself is untouched and its shape is obvious from the call site.
+  - path: lib/plausible/site/monthly_report.ex
+    reason: same as weekly_report.ex — the MonthlyReport schema is preloaded but not touched or needed beyond its already-obvious :recipients field.
+  - path: lib/plausible_web/views/stats_view.ex
+    reason: defines large_number_format/2 used once in the new goals table markup, but it's a generic, pre-existing number-formatting helper unrelated to this commit's logic.
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >-
+  Adds a "Goal / Conversions" section to the weekly/monthly e-mail digest by
+  rewriting the report-building worker to query top goals (dimension
+  event:goal) alongside the existing pageview/visitor aggregates, top pages,
+  and top sources, all now built through Stats.Query.build/4 +
+  Stats.query/2 instead of the deleted Plausible.Stats.EmailReport module
+  and the old Query.from/Query.set API. Assign names sent to the MJML
+  template are renamed in lockstep across the worker, the mailer, and the
+  template. string_indirection is false: assigns flow through compile-time
+  bound template variables and direct function calls, not name-based
+  lookup.

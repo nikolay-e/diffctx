@@ -2,13 +2,64 @@ repo: nextcloud
 base_commit: e0a21e5927b1ecff0cb4eb4bb472b1c84403bb77
 commit: 336c6d29573f6ef901c775c681dade0a91622aa8
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: lib/public/Mail/IEmailValidator.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new OCP interface declaring isValid(string $email):bool that lib/private/Mail/EmailValidator.php implements and Mailer now depends on
+  - path: lib/private/Mail/EmailValidator.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new OC\Mail\EmailValidator implements IEmailValidator, moving the isValid logic out of Mailer::validateMailAddress
+  - path: lib/private/Mail/Mailer.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: gains IEmailValidator $emailValidator constructor param; validateMailAddress() now delegates to it and is marked @deprecated
+  - path: lib/private/Server.php
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: registerAlias(IEmailValidator::class, EmailValidator::class) wires the DI container and the IMailer factory closure passes IEmailValidator into Mailer's new constructor arg
+  - path: lib/public/Mail/IMailer.php
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: validateMailAddress() gains @deprecated 26.0.0 use IEmailValidator.isValid instead, documenting the migration path
+  - path: tests/lib/Mail/EmailValidatorTest.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: mailAddressProvider covers isValid() including the strict/non-strict RFC validation branch
+  - path: tests/lib/Mail/MailerTest.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: constructs Mailer with the new emailValidator mock, needed to see how the added constructor param is wired in tests
+  - path: tests/lib/Traits/EmailValidatorTrait.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: new shared trait getEmailValidatorWithStrictEmailCheck() builds a real EmailValidator for reuse across test suites
+forbidden:
+  - path: lib/composer/composer/autoload_static.php
+    reason: generated PSR-4 autoload map, mechanical byproduct of adding the new class, no semantic content
+  - path: lib/composer/composer/autoload_classmap.php
+    reason: generated autoload classmap, same mechanical byproduct
+  - path: build/psalm-baseline.xml
+    reason: generated static-analysis baseline update, not hand-written source
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 11
-  description: new OCP email-address validator — lib/public + lib/private impl + tests + autoload
-notes: ''
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >
+  Adds a new OCP IEmailValidator interface + OC\Mail\EmailValidator implementation,
+  extracting the RFC/strict email-validation logic that previously lived inline in
+  Mailer::validateMailAddress (now deprecated and delegating). All linkage (interface,
+  impl, DI wiring, and both direct call sites) is contained within the diff itself;
+  registerAlias in Server.php uses ::class constants, not free-form string DI, so no
+  external nontrivial context was found after checking for other Mailer constructors
+  and IMailer implementors.

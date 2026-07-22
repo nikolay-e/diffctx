@@ -2,13 +2,41 @@ repo: polars
 base_commit: 5ee1e62fbfa839a8bd453ed72d08dedad6e4f554
 commit: c7896b99c633517a7dc90630dab066bd21e14798
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: crates/polars-core/src/runtime.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: sole rename target — `pub struct POOL`/`impl POOL { install, join, current_num_threads, .. }` becomes `RAYON`; every other touched file is a mechanical call-site substitution of this identifier
+  - path: crates/polars-stream/src/execute.rs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: representative cross-crate call site importing via the public path `polars_core::runtime::{ASYNC, POOL}` -> `{ASYNC, RAYON}`, showing the rename crosses crate boundaries, not just internal polars-core usages
+forbidden:
+  - path: crates/polars-core/src/chunked_array/binary.rs
+    reason: pure mechanical POOL->RAYON substitution, identical pattern to dozens of other untouched-logic call sites
+  - path: crates/polars-expr/src/expressions/apply.rs
+    reason: pure mechanical POOL->RAYON substitution, no logic change
+  - path: crates/polars-io/src/parquet/read/read_impl.rs
+    reason: pure mechanical POOL->RAYON substitution, no logic change
+  - path: crates/polars-time/src/group_by/dynamic.rs
+    reason: pure mechanical POOL->RAYON substitution, no logic change
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 101
   description: Rename POOL to RAYON — 101-file cross-crate identifier rename
-notes: ''
+notes: >-
+  Pure identifier rename of the global rayon thread-pool singleton, `POOL` -> `RAYON`,
+  defined once in crates/polars-core/src/runtime.rs and referenced (as `crate::runtime::RAYON`
+  or `polars_core::runtime::RAYON`) from 100 other call-site files across polars-core,
+  polars-expr, polars-io, polars-mem-engine, polars-ops, polars-stream, polars-time and
+  a plugin example. No behavior changes anywhere. Everything needed to understand this
+  is the single definition plus the mechanical substitution pattern, already fully
+  visible inside the diff, so no nontrivial (out-of-diff) gold was found — set
+  no_nontrivial_context: true.

@@ -2,14 +2,48 @@ repo: kubernetes
 base_commit: 22c66784e03ccdbc423dcc6f56854ce784be0ffd
 commit: 29fad383dab0dd7b7b563ec9eae10156616a6f34
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: pkg/controller/endpointslice/endpointslice_controller.go
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: the primary consumer of the move — swaps the unexported local `&reconciler{...}` literal and lowercase helpers (managedByController, managedByChanged) for the new exported `endpointslicerec.NewReconciler(...)`, `.Reconcile`, `.DeleteService`, `ManagedByController`, `ManagedByChanged`, `GetReconcilerName` from the new `k8s.io/endpointslice` module.
+  - path: staging/src/k8s.io/endpointslice/reconciler.go
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: the moved-and-exported reconciler (renamed from pkg/controller/endpointslice/reconciler.go, similarity 90%) — its lowercase `reconciler`/`deleteService`/`reconcile` became the exported `Reconciler`/`DeleteService`/`Reconcile` API that endpointslice_controller.go now calls across the module boundary.
+  - path: go.mod
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: 'adds `k8s.io/endpointslice v0.0.0` to the root require block (go.mod:110), the module-graph change that makes the new staging package importable from pkg/controller/endpointslice at all.'
+  - path: staging/src/k8s.io/endpointslice/go.mod
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: declares the new standalone `k8s.io/endpointslice` staging module, turning what was internal-only reconciler code into an independently versioned, vendorable Go module (the actual point of the move).
+  - path: pkg/controller/util/endpointslice/errors.go
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: defines NewStaleInformerCache/StaleInformerCache, still referenced (via the renamed `endpointslicepkg` import alias) from both endpointslice_controller.go and endpointslicemirroring_controller.go — explains why `pkg/controller/util/endpointslice` keeps existing post-move even though its sibling files (endpointset.go, endpointslice_tracker.go, utils.go) were moved to or deleted in favor of staging/src/k8s.io/endpointslice/util.
+forbidden:
+  - path: pkg/controller/endpointslicemirroring/reconciler.go
+    reason: a different controller (EndpointSliceMirroring, mirrors legacy Endpoints -> EndpointSlices) that only got its import paths adjusted for the moved util package — not itself part of the move
+  - path: pkg/controller/endpoint/endpoints_controller.go
+    reason: the legacy v1 Endpoints controller, easily confused by name with EndpointSlice — only touched for an unrelated import-path fixup, not part of what moved
+  - path: pkg/controller/util/endpoint/OWNERS
+    reason: deleted ownership file superseded by staging/src/k8s.io/endpointslice/OWNERS — bookkeeping, not needed to understand the code move itself
+  - path: staging/src/k8s.io/endpointslice/go.sum
+    reason: mechanically generated checksum lockfile for the new module, no semantic content
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 61
   description: 'Move endpointslice reconciler from pkg/controller to staging endpointslice repo: 34 pkg
     + 25 staging files, code appears on both sides of the move'
-notes: ''
+notes: 'Extracts the EndpointSlice reconciler/topologycache/metrics/util code from internal pkg/controller into a new standalone staging module k8s.io/endpointslice, so it can be vendored by out-of-tree consumers. Not a pure rename: previously-unexported symbols (reconciler, deleteService, reconcile, managedByController, managedByChanged, controllerName) were exported (Reconciler, DeleteService, Reconcile, ManagedByController, ManagedByChanged, GetReconcilerName) to form the new package''s public API, and the ownership label written via discovery.LabelManagedBy is now sourced from GetReconcilerName() by string. pkg/controller/util/endpointslice only partially moved (endpointset.go/endpointslice_tracker.go relocated, utils.go deleted, errors.go left behind), which is easy to misread as a stray leftover rather than an intentional split.'

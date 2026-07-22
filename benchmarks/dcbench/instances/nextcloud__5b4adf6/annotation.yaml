@@ -2,13 +2,70 @@ repo: nextcloud
 base_commit: ca9d25169dcdd2923a356e2a797d8704506a3787
 commit: 5b4adf66e51e21b3ecbd683397a362b60f792a50
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 42
-  description: Move OC_Defaults to OCP\Defaults — lib/private→lib/public move rippling into apps + templates
-notes: ''
+gold:
+  - path: lib/public/Defaults.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: OCP\Defaults gains a nullable \OC_Defaults constructor param (was hard-coded to getThemingDefaults()) plus getLogo/getColorPrimary/buildDocLinkToKey/getTitle proxy methods, the API surface this commit extends
+  - path: lib/private/legacy/defaults.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: OC_Defaults gains getLogo()/defaultLogoUrl that OCP\Defaults::getLogo() now proxies to
+  - path: lib/private/Server.php
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: registers Defaults::class as a DI service wrapping getThemingDefaults(), the central wiring '$c->query(Defaults::class)' every migrated caller now uses
+  - path: lib/private/Mail/Mailer.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: representative call site whose constructor type-hint moves from '\OC_Defaults $defaults' to 'Defaults $defaults'
+  - path: core/Controller/LostController.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: representative controller-level call site with the same \OC_Defaults -> OCP\Defaults constructor type-hint migration
+  - path: lib/private/Template/JSConfigHelper.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: representative call site whose constructor type-hint migrates and whose caller (TemplateLayout.php) switches getThemingDefaults() to query(Defaults::class)
+  - path: lib/private/TemplateLayout.php
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: replaces \OC::$server->getThemingDefaults() with \OC::$server->query(Defaults::class) when constructing JSConfigHelper
+  - path: tests/lib/Mail/MailerTest.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: covers Mailer against the new Defaults type after the constructor signature change
+  - path: apps/theming/lib/ThemingDefaults.php
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: "class ThemingDefaults extends OC_Defaults is the concrete instance returned by getThemingDefaults() and wrapped by the new Defaults::class DI service, explaining why OC_Defaults couldn't just be deleted"
+forbidden:
+  - path: apps/provisioning_api/lib/Controller/UsersController.php
+    reason: same mechanical \OC_Defaults -> Defaults type-hint rename as LostController.php, redundant for understanding the change
+  - path: core/templates/404.php
+    reason: only a doc-comment type annotation update ('@var $theme OC_Theme' -> 'OCP\Defaults'), no logic
+  - path: tests/data/emails/new-account-email.html
+    reason: generated golden-file fixture reflecting output bytes, not source explaining the refactor
+  - path: apps/federatedfilesharing/settings-personal.php
+    reason: another mechanical call-site rename of the same pattern, redundant with the chosen representative callers
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >
+  Wide (42-file) but largely mechanical refactor: unifies two ways of accessing theme
+  defaults (\OC_Defaults directly vs OCP\Defaults) by extending OCP\Defaults with the
+  missing proxy methods and DI-registering it as Defaults::class (wrapping
+  getThemingDefaults()/ThemingDefaults, which extends OC_Defaults), then repointing
+  ~15 call sites' constructor type-hints from \OC_Defaults to OCP\Defaults. Gold picks
+  the semantic core (the two class definitions + Server.php DI wiring) plus a handful
+  of representative call sites rather than every renamed file, per the wide-diff rule.

@@ -2,13 +2,61 @@ repo: polars
 base_commit: f2fd6f8f1eb94f22d3af5dee59cbb4285bc3a66a
 commit: b35bc7be82f0c0631d2edd2789c3dc0f560d2fea
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: crates/polars-compute/src/rolling/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new home of the rolling module root; the `QuantileMethod` enum (with its strum/serde derives) is relocated here from `no_nulls/mod.rs`, becoming the crate's public rolling API surface
+  - path: crates/polars-compute/src/rolling/quantile_filter.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: introduces the new `SealedRolling` sealed trait, added as a bound to every generic rolling-quantile impl across the crates touched by this move
+  - path: crates/polars-core/src/frame/group_by/aggregations/mod.rs
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: largest downstream consumer; swaps `arrow::legacy::kernels::rolling::*` imports for `polars_compute::rolling::*` and adds the new `SealedRolling` bound to `rolling_quantile`/`rolling_var`-style generic functions
+  - path: crates/polars-compute/Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: adds the `serde`/`strum_macros` dependencies polars-compute now needs because `QuantileMethod`'s derives moved into this crate along with the rolling module
+  - path: crates/polars-arrow/src/legacy/kernels/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes `pub mod rolling;`, marking the old home of the relocated module and explaining why downstream `arrow::legacy::kernels::rolling` imports had to change
+  - path: crates/polars-time/src/chunkedarray/rolling_window/rolling_kernels/no_nulls.rs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: another downstream consumer requiring both the import-path switch to `polars_compute::rolling` and the new `SealedRolling` bound on `rolling_quantile`
+forbidden:
+  - path: crates/polars-compute/src/rolling/no_nulls/mean.rs
+    reason: pure 100%-similarity file rename with zero content changes, not informative about the move's semantics
+  - path: crates/polars-compute/src/rolling/nulls/sum.rs
+    reason: pure 100%-similarity file rename with zero content changes, not informative about the move's semantics
+  - path: crates/polars-core/src/series/implementations/floats.rs
+    reason: sibling implementations/*.rs file touched only for a mechanical `use polars_compute::rolling::QuantileMethod;` import add
+  - path: crates/polars-lazy/src/lib.rs
+    reason: only removes a stale doc-comment import line, no functional coupling to the move
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: false
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 63
   description: Move rolling to polars-compute — kernel relocation + workspace coupling
-notes: ''
+notes: >-
+  Relocates the rolling-window kernels from crates/polars-arrow/src/legacy/kernels/rolling
+  to crates/polars-compute/src/rolling (a pure file move via git rename), updating every
+  downstream `use` path across polars-core/polars-ops/polars-plan/polars-time/polars-lazy.
+  The only semantic additions are a new sealed `SealedRolling` trait bound (to keep the
+  generic float rolling-quantile impls crate-scoped) and relocating the `QuantileMethod`
+  enum one module level up. Everything needed to understand this is already inside the
+  diff (source, destination, Cargo.toml dep changes, and all call-site updates), so no
+  nontrivial (out-of-diff) gold was found — set no_nontrivial_context: true.

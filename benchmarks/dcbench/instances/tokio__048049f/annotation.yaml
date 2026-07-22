@@ -2,13 +2,47 @@ repo: tokio
 base_commit: 98d484e29c363b1b0b8b605ddb7d742367a8fb5c
 commit: 048049f8883f1bc73ee5d3fa3c94e61cf41d1e38
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: tokio/src/runtime/task/id.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new file receiving the moved Id struct, id(), and try_id() function bodies verbatim from runtime/task/mod.rs.
+  - path: tokio/src/runtime/task/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes the Id struct/id()/try_id()/Display/next()/as_u64() code and replaces it with `mod id; pub use id::{id, try_id, Id};`.
+  - path: tokio/src/task/mod.rs
+    tier: helpful
+    role: cochange
+    in_diff: false
+    rationale: 'the public task:: API surface re-exports `pub use crate::runtime::task::{Id, id, try_id};` unchanged by this commit — confirms the move is transparent to the public re-export chain.'
+  - path: tokio/src/runtime/task/join.rs
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: 'JoinHandle::id(&self) -> super::Id consumes the moved Id type, showing the move does not break its primary external consumer.'
+  - path: tokio/src/runtime/context.rs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines current_task_id(), called by id.rs's id() and try_id() to source the actual value.
+forbidden:
+  - path: tokio/src/runtime/task/error.rs
+    reason: sibling submodule (JoinError) in the same directory, untouched and unrelated to Id
+  - path: tokio/src/runtime/task/core.rs
+    reason: sibling submodule (Cell/Header internals), unrelated to the Id move
+  - path: tokio/src/runtime/task/list.rs
+    reason: sibling submodule (task linked list), unrelated to the Id move
+  - path: .github/workflows/ci.yml
+    reason: bundled but semantically unrelated CI tweak (drops -Dwarnings via RUSTFLAGS), not part of the Id move
+nontrivial_gold_count: 3
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 3
   description: 'rt: move `task::Id` into its own file — compact move, context lives behind `pub use` re-exports'
-notes: ''
+notes: 'Pure code-move refactor: the Id struct, id(), and try_id() are relocated from runtime/task/mod.rs into a new runtime/task/id.rs with no behavioral change. The .github/workflows/ci.yml hunk in the same commit is an unrelated bundled CI tweak, excluded from gold as non-central. Understanding the move requires seeing the pub-use re-export chain (task/mod.rs) and a consumer (JoinHandle::id) to confirm nothing broke.'

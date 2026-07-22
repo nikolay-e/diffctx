@@ -2,13 +2,85 @@ repo: polars
 base_commit: 7b0058f59e93000437b208d811618dbf4305589a
 commit: f33ad61dd8c5ac632d5b82f2610bcaedf5838bd0
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: crates/polars-utils/src/order_statistic_tree.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new 674-line `OrderStatisticTree` data structure (with `rank_range`/`rank_unique`) replacing the external `skiplist` crate; the foundational structure every rank policy is built on
+  - path: crates/polars-compute/src/rolling/rank.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new file defining the `RankPolicy` trait and its 5 implementations (Average/Min/Max/Dense/Random) that turn an `OrderStatisticTree` lookup into a rank value
+  - path: crates/polars-compute/src/rolling/no_nulls/rank.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new file implementing `RankWindow`/`rolling_rank` for non-null arrays via `RollingAggWindowNoNulls`, dispatching on `RollingRankMethod` to the matching `RankPolicy`
+  - path: crates/polars-compute/src/rolling/nulls/rank.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: null-aware counterpart of no_nulls/rank.rs via `RollingAggWindowNulls`
+  - path: crates/polars-compute/src/rolling/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds `RollingFnParams::Rank { method, seed }` and the `RollingRankMethod` enum (Average/Min/Max/Dense/Random) threaded through every layer of this feature
+  - path: crates/polars-plan/src/dsl/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds `Expr::rolling_rank`/`rolling_rank_by` DSL builders mapping to `RollingFunction::Rank`/`RollingFunctionBy::RankBy`
+  - path: crates/polars-time/src/chunkedarray/rolling_window/dispatch.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: defines `SeriesOpsTime::rolling_rank`/`rolling_rank_by`, the Series-level methods that dispatch by numeric dtype into the polars-compute rank kernels
+  - path: crates/polars-python/src/expr/rolling.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: PyO3 `PyExpr::rolling_rank`/`rolling_rank_by` bindings building `RollingOptionsFixedWindow`/`RollingOptionsDynamicWindow` with `RollingFnParams::Rank`
+  - path: py-polars/src/polars/expr/expr.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the public `Expr.rolling_rank`/`rolling_rank_by` Python methods
+  - path: py-polars/src/polars/series/series.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the public `Series.rolling_rank` Python method
+  - path: py-polars/tests/unit/operations/rolling/test_rolling.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: adds/extends the rolling_rank test coverage across method variants (average/min/max/dense/random) and windows
+forbidden:
+  - path: crates/polars-compute/src/rolling/window.rs
+    reason: migrates `SortedBuf`/`SortedBufNulls` from the external `OrderedSkipList` to the new `OrderStatisticTree`, but is quantile-window plumbing unrelated to the rank feature itself
+  - path: crates/polars-compute/src/rolling/no_nulls/mod.rs
+    reason: only widens `RollingAggWindowNoNulls`/`rolling_apply_agg_window` with a generic `Out` type parameter to support rank's differing output type, no rank-specific logic
+  - path: py-polars/tests/unit/series/test_rolling.py
+    reason: minimal duplicate Series-level smoke test; the substantive coverage lives in tests/unit/operations/rolling/test_rolling.py
+  - path: crates/polars-plan/src/plans/aexpr/function_expr/schema.rs
+    reason: only adds Rank to existing dtype-inference match arms (returns UInt32/Float64 depending on method), mechanical and already implied by RollingRankMethod's variants
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 46
   description: Implement {Expr,Series}.rolling_rank() — FFI feature + Cargo.toml/lock coupling
-notes: ''
+notes: >-
+  Implements rolling_rank (average/min/max/dense/random tie-breaking methods) for
+  both fixed-size and dynamic (by-time) rolling windows. Built on a new in-house
+  `OrderStatisticTree` (polars-utils) that replaces the external `skiplist` crate
+  dependency (removed from Cargo.lock/Cargo.toml) so the existing rolling-quantile
+  sorted-buffer code and the new rank window can share one data structure. Threads
+  through polars-compute kernels, polars-plan DSL/IR, polars-time Series dispatch,
+  PyO3 bindings, and Python Expr/Series wrappers. Self-contained: no nontrivial
+  out-of-diff context was needed.

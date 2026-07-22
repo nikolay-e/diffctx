@@ -2,13 +2,43 @@ repo: neovim
 base_commit: 1f53abf54b7085b8fbf0ea7b27f18b0b7104389a
 commit: d0af4cd9094f3439382622906da5b1c5cd82c294
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 9
-  description: 'refactor(api): rename buffer to buf (positional parameters) — API rename ripple'
-notes: ''
+gold:
+  - path: runtime/doc/dev.txt
+    tier: essential
+    role: doc
+    in_diff: false
+    rationale: '`:help dev-naming` (lines ~481-496) states "Use consistent names for {topic} in API functions: buffer is called ''buf'' everywhere, not ''buffer'' in some places and ''buf'' in others" and lists "buffer: Use ''buf'' instead" — the documented convention this whole commit mechanically enforces on positional parameter names, and continued one commit later by 71ac4db335e0 (window -> win, same benchmark).'
+  - path: src/nvim/api/buffer.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: largest single file in the diff (342 lines); every nvim_buf_* function's `Buffer buffer` parameter is renamed to `Buffer buf`, requiring the internal `buf_T *buf = find_buffer_by_handle(buf, err)` local to be renamed to avoid shadowing.
+  - path: src/nvim/api/extmark.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: second-largest diff (80 lines); nvim_buf_set_extmark/get_extmarks/etc. rename `Buffer buffer` to `Buffer buf`, same shadowing-avoidance pattern as buffer.c.
+  - path: src/nvim/api/vim.c
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: nvim_buf_call/nvim_win_set_buf-adjacent global entrypoints rename their `Buffer buffer` parameters to `Buffer buf`, representative of the ripple into non-buffer.c API files.
+  - path: runtime/lua/vim/_meta/api.gen.lua
+    tier: helpful
+    role: doc
+    in_diff: true
+    rationale: generated Lua type-annotation stub whose `@param buffer` tags and function signatures are mechanically updated to `@param buf`, the user-facing surface of the rename (154 lines, second-largest file after buffer.c).
+forbidden:
+  - path: src/nvim/api/deprecated.c
+    reason: 'still declares functions like `nvim_buf_get_number(Buffer buffer, ...)`/`buffer_insert(Buffer buffer, ...)` with the old "buffer" positional name — deliberately NOT touched, since deprecated/frozen API functions are excluded from the active dev-naming convention enforcement.'
+  - path: src/nvim/api/private/helpers.c
+    reason: '`find_buffer_by_handle(Buffer buffer, Error *err)` keeps the old parameter name — it is an internal C helper, not a public nvim_buf_* API entrypoint covered by :help dev-naming''s positional-parameter guideline.'
+  - path: src/nvim/api/window.c
+    reason: only a 12-line ripple (nvim_win_set_buf's `buf` parameter references) from the same mechanical rename, smaller and redundant with buffer.c/extmark.c as an illustration.
+  - path: runtime/doc/api.txt
+    reason: auto-generated help text (528 lines) mechanically mirroring the same parameter rename already visible in the .c source doc-comments; redundant as a second copy of the same information.
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: 'Purely cosmetic parameter rename replacing "buffer" with "buf" across nvim_buf_*/related C API signatures, generated Lua meta stubs, and help docs, per the `:help dev-naming` convention in runtime/doc/dev.txt (not itself touched by the diff but the sole reason for the change, and cited verbatim by the follow-up window->win rename in commit 71ac4db335e0 in this same benchmark set). Deprecated/frozen functions in deprecated.c and the internal find_buffer_by_handle() helper deliberately keep the old "buffer" name, confirming the rename''s scope is the active public API only.'

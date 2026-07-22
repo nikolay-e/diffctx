@@ -2,13 +2,73 @@ repo: spark
 base_commit: 16784fac9dfc5b2eae309a6d453be6890f40ffae
 commit: 00f1057a2c4049db22355b4af84cb3663d448ff8
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/expressions/stringExpressions.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Defines the new `Quote` case class (UnaryExpression/RuntimeReplaceable) whose `replacement` is a `StaticInvoke` calling `ExpressionImplUtils.quote` — the semantic core of the change.
+  - path: sql/catalyst/src/main/java/org/apache/spark/sql/catalyst/expressions/ExpressionImplUtils.java
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Implements the actual `quote(UTF8String)` runtime logic (backslash-escape + wrap in single quotes) that `Quote.replacement` invokes via `StaticInvoke`.
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Registers `Quote` under the SQL name via `expression[Quote]("quote")`, the string key that exposes the new expression to the SQL parser.
+  - path: sql/api/src/main/scala/org/apache/spark/sql/functions.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the public Scala/Java DataFrame API `functions.quote(str)` wrapping `Column.fn("quote", str)`, the entry point most callers use.
+  - path: python/pyspark/sql/functions/builtin.py
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Adds the PySpark classic API `quote()` with the doctest showing `quote("Don't")` -> `'Don\'t'`, the cross-language parity sibling of the Scala API.
+  - path: python/pyspark/sql/connect/functions/builtin.py
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Adds the Spark Connect parity implementation `quote()` reusing the classic module's docstring, required so Connect clients get the same builtin.
+  - path: sql/core/src/test/resources/sql-tests/inputs/string-functions.sql
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Adds the `quote('Spark')` / `quote("Don't")` / `quote(NULL)` SQL test queries exercised by the golden `.sql.out` files.
+  - path: sql/core/src/test/resources/sql-tests/results/string-functions.sql.out
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: Golden output proving observable behavior — `quote('Spark')` -> `'Spark'`, `quote("Don't")` -> `'Don\'t'`, `quote(NULL)` -> `NULL`.
+forbidden:
+  - path: sql/core/src/test/resources/sql-tests/analyzer-results/string-functions.sql.out
+    reason: intermediate analyzer-stage golden, redundant with the final query-result golden already covering the same three queries.
+  - path: sql/core/src/test/resources/sql-tests/analyzer-results/nonansi/string-functions.sql.out
+    reason: duplicate analyzer-stage golden for the ANSI-off variant, same three test queries as the ansi file.
+  - path: sql/core/src/test/resources/sql-tests/results/nonansi/string-functions.sql.out
+    reason: duplicate golden output for ANSI-off mode, identical assertions to the already-included ansi results file.
+  - path: sql/core/src/test/resources/sql-functions/sql-expression-schema.md
+    reason: auto-generated function catalog row, documents the signature but adds nothing beyond what stringExpressions.scala already shows.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: true
+no_nontrivial_context: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 12
   description: Add `quote` builtin function touching Scala, Java, Python, SQL golden files, docs
-notes: ''
+notes: >-
+  Adds a Hive-compatible `quote` builtin (backslash-escape single quotes, wrap in
+  single quotes): Quote expression + ExpressionImplUtils runtime helper + string-keyed
+  FunctionRegistry entry + Scala/PySpark/Connect API parity + SQL golden tests. Verified
+  via git grep that the whole implementation and its parity siblings are self-contained
+  within this commit's 12-file diff; the base traits Quote extends (UnaryExpression,
+  RuntimeReplaceable, DefaultStringProducingExpression) are generic shared framework
+  infrastructure used by hundreds of unrelated expressions, not specific context for
+  understanding this change, so no_nontrivial_context is set instead of padding gold
+  with them. string_indirection is true because FunctionRegistry links "quote" to
+  `Quote` by string key.

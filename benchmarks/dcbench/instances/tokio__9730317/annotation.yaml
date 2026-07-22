@@ -2,14 +2,58 @@ repo: tokio
 base_commit: 02311dcfa13d719c3f591c922f8a719d7c954ef0
 commit: 9730317e94cd5bfca237376549405a6feb815223
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: tokio-util/src/time/delay_queue.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'new file — DelayQueue moved here nearly verbatim from the deleted tokio/src/time/delay_queue.rs, with imports switched from `crate::time::*` to `tokio::time::*` and doc examples updated to `tokio_util::time::DelayQueue`.'
+  - path: tokio-util/src/time/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new file — declares the tokio-util `time` module (`pub mod wheel; mod delay_queue; pub use delay_queue::{DelayQueue, Key};`) that becomes DelayQueue's new home.
+  - path: tokio/src/time/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: 'removes `pub mod delay_queue; pub use delay_queue::DelayQueue;` and the doc-comment paragraph describing DelayQueue, since it no longer lives in this crate.'
+  - path: tokio-util/Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: 'adds the new `time = ["tokio/time","slab"]` feature and the `slab` dependency (comment: "Backs `DelayQueue`"), moved from tokio/Cargo.toml.'
+  - path: tokio/Cargo.toml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: '`time` feature drops its `slab` dependency (`time = ["slab"]` -> `time = []`) since slab was only needed to back the now-relocated DelayQueue.'
+  - path: tokio-util/src/lib.rs
+    tier: essential
+    role: cochange
+    in_diff: true
+    rationale: 'adds `#[cfg(feature = "time")] pub mod time;`, wiring the new tokio-util/src/time/mod.rs into the crate''s public module tree.'
+  - path: tokio/src/time/wheel/mod.rs
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: 'the source tokio-util/src/time/wheel/mod.rs is a near-verbatim duplicate of — the commit message explicitly says it "duplicate[s] the internal `time::wheel` structures in tokio-util rather than trying to refactor" so DelayQueue can keep its own wheel without depending on tokio-internal privates.'
+forbidden:
+  - path: tokio/src/time/driver/mod.rs
+    reason: the production Timer's wheel-driving driver, a sibling consumer of tokio/src/time/wheel but untouched and unrelated to the DelayQueue relocation
+  - path: tokio-util/src/time/wheel/level.rs
+    reason: new duplicated file, but a deeper internal (per-level slot bucketing) not needed beyond acknowledging wheel/mod.rs is copied
+  - path: tokio-util/src/codec/mod.rs
+    reason: sibling tokio-util top-level module (framed codec), unrelated to the time/DelayQueue move
+  - path: tokio/tests/time_delay_queue.rs
+    reason: deleted alongside the source move; its replacement tokio-util/tests/time_delay_queue.rs is the equivalent covering test, this one is dead code post-move
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 12
   description: 'time: move DelayQueue to tokio-util — cross-crate move tokio → tokio-util, Cargo.toml
     + code coupling'
-notes: ''
+notes: 'DelayQueue moves from tokio::time to tokio_util::time as part of unblocking the tokio 0.3 release (deferring a full refactor). Because DelayQueue is backed by the same hashed timing-wheel data structure that tokio''s internal Timer driver uses (tokio/src/time/wheel/{mod,level,stack}.rs), and that wheel is crate-private, the commit duplicates the wheel source verbatim into tokio-util/src/time/wheel/ rather than exposing it — tokio/src/time/wheel/mod.rs is genuinely necessary, out-of-diff context to understand why tokio-util/src/time/wheel/mod.rs exists byte-for-byte identical.'

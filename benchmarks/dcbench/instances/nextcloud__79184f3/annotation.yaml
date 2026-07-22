@@ -2,13 +2,74 @@ repo: nextcloud
 base_commit: 03332a1d13b5e891de8adc97ede0944e51135268
 commit: 79184f3aed1f94ca85887d2a1b92b60546fb5ef1
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: apps/settings/lib/Settings/Admin/Overview.php
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: getForm() now calls Util::addScript('settings','vue-settings-admin-overview') and provideInitialState('setup-checks-section', {...}), read via loadState() in AdminSettingsSetupChecks.vue
+  - path: apps/settings/templates/settings/admin/overview.php
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: the entire jQuery security-warning markup is replaced with a single mount point div id="vue-admin-settings-setup-checks"
+  - path: apps/settings/src/main-admin-overview.ts
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new Vue entry that mounts AdminSettingsSetupChecks.vue to el '#vue-admin-settings-setup-checks', matching the template's mount point id
+  - path: apps/settings/src/views/AdminSettingsSetupChecks.vue
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: loads 'setup-checks-section' initial state and fetches setup checks via axios.get(generateUrl('settings/ajax/checksetup')), replacing admin.js's jQuery setupChecks()
+  - path: apps/settings/lib/Controller/CheckSetupController.php
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: backend 'checksetup' OCS endpoint that AdminSettingsSetupChecks.vue's loadSetupChecks() calls via generateUrl('settings/ajax/checksetup')
+  - path: webpack.modules.js
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: registers the 'vue-settings-admin-overview' build entry pointing at main-admin-overview.ts, matched by name in Overview.php's Util::addScript() call
+  - path: apps/settings/src/components/SettingsSetupChecks/SettingsSetupChecksList.vue
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: renders the per-severity (error/warning/info) list of ISetupCheck items consumed by AdminSettingsSetupChecks.vue
+  - path: apps/settings/src/components/SettingsSetupChecks/SettingsSetupChecksListItem.vue
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: leaf renderer for a single setup-check entry, used by SettingsSetupChecksList.vue
+  - path: apps/settings/src/settings-types.ts
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: defines the shared ISetupCheck type imported by AdminSettingsSetupChecks.vue and both list components
+  - path: apps/settings/tests/Controller/CheckSetupControllerTest.php
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: covers the checksetup controller endpoint the new Vue view now depends on directly (previously only invoked from removed jQuery code)
+forbidden:
+  - path: apps/settings/css/settings.scss
+    reason: only removes stale styling rules for the deleted #security-warning/#postsetupchecks DOM, no logic
+  - path: core/js/setupchecks.js
+    reason: OC.SetupChecks helper used by the now-deleted jQuery code in admin.js, irrelevant once that caller is removed
+  - path: core/js/tests/specs/setupchecksSpec.js
+    reason: test for the deleted core/js/setupchecks.js helper, removed alongside it
+  - path: core/js/core.json
+    reason: generated build manifest entry removal, mechanical byproduct
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 15
-  description: settings setup checks migrated to Vue — compact-but-diverse (6 extensions)
-notes: ''
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >
+  Migrates the admin "Security & setup warnings" panel from inline jQuery/PHP-rendered
+  markup to a Vue 3 component tree fetching the same OCS checksetup endpoint via axios.
+  Every linkage is string-keyed: the addScript()/webpack entry name
+  'vue-settings-admin-overview', the DOM mount id 'vue-admin-settings-setup-checks', the
+  initial-state key 'setup-checks-section', and the ajax URL 'settings/ajax/checksetup' -
+  hence string_indirection. Fully self-contained within the diff.

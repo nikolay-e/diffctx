@@ -2,13 +2,77 @@ repo: plausible
 base_commit: b48bb69e6663ecff31892838cb351fd63df14da3
 commit: 7eb7d9af6432158be92aadd79468a64e2413df42
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 10
-  description: Move invoices into subscription settings — route + LiveView + template relocation
-notes: ''
+gold:
+  - path: lib/plausible_web/templates/settings/subscription.html.heex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: gains a new "Invoices" tile (guarded by @subscription) that reuses the exact case/table markup deleted from invoices.html.heex, but without a :thead slot.
+  - path: lib/plausible_web/templates/settings/invoices.html.heex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: deleted template whose invoice-listing markup was moved almost verbatim into subscription.html.heex, dropping the show-more threshold from 12 to 3 and removing the column headers.
+  - path: lib/plausible_web/controllers/settings_controller.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: subscription/2 now also fetches invoices via Billing.paddle_api().get_invoices/1 and passes them to the template, while the standalone invoices/2 action is deleted.
+  - path: lib/plausible_web/router.ex
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: removes "get /billing/invoices, SettingsController, :invoices" now that the page is merged into /billing/subscription.
+  - path: lib/plausible_web/views/layout_view.ex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: removes the conditional "Invoices" sidebar entry (account and team menus) since there is no longer a standalone invoices page to link to.
+  - path: lib/plausible_web/components/generic.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: table/1 component adds CSS to zero out cell padding for tables without a :thead, needed specifically because the merged invoices tile drops the column-header row that the old standalone page had.
+  - path: test/plausible_web/controllers/settings_controller_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: moves every invoice-related assertion from the deleted "GET /billing/invoices" describe block onto get(conn, Routes.settings_path(conn, :subscription)) and drops :invoices from the expected sidebar menu items.
+  - path: extra/lib/plausible_web/live/funnel_settings/list.ex
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: adds "flex flex-col gap-4 sm:gap-6" spacing to compensate for the row-padding this commit removed from thead-less tables in generic.ex.
+  - path: lib/plausible_web/live/props_settings/list.ex
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: same compensating gap-spacing fix as funnel_settings/list.ex, for the same table-padding change in generic.ex.
+  - path: lib/plausible_web/views/settings_view.ex
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines format_invoices/1, called unchanged by the invoice tile now embedded in subscription.html.heex; needed to know what shape @invoices is formatted into before rendering.
+forbidden:
+  - path: lib/plausible_web/plugs/authorize_team_access.ex
+    reason: named in the settings_controller.ex plug list edited by this commit (":invoices" removed from the action list), but its authorization implementation is unchanged and not needed to understand the page merge.
+  - path: lib/plausible_web/controllers/billing_controller.ex
+    reason: tempting due to "billing" naming next to settings_controller.ex, but this separate controller (choose_plan, webhooks) is untouched and unrelated to the invoices merge.
+  - path: lib/plausible_web/views/billing_view.ex
+    reason: sibling billing-related view module, not touched and not involved in moving the invoices tile.
+  - path: lib/plausible_web/templates/settings/api_keys.html.heex
+    reason: another settings-page template that also renders a .table, tempting because it's affected by the same generic.ex CSS change, but not touched by this commit and not part of the invoices move.
+nontrivial_gold_count: 1
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >-
+  Deletes the standalone /billing/invoices page and folds its content into
+  the /billing/subscription page as an extra tile (visible only when a
+  subscription exists), removing the now-redundant sidebar link and route.
+  A side effect (dropping the invoice table's column headers) required a
+  small CSS fix in the shared table component for tables without a thead,
+  which in turn required compensating gap spacing in two unrelated LiveView
+  list components that also render thead-less tables. string_indirection is
+  true because the sidebar-highlighting mechanism (is_current_tab) matches
+  string path segments like "billing/subscription", not static references.

@@ -2,13 +2,38 @@ repo: polars
 base_commit: 67bbd28c72e8894aad852b87719e2443c9510554
 commit: 79e41088e42b6841336bca667343cead8ff1060c
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: crates/polars-compute/src/rolling/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: det_offsets/det_offsets_center special-cases window_size == 0 to return an empty (i, i) range instead of underflowing/mis-sizing the window — the root fix, shared by every no_nulls/nulls rolling kernel (sum, mean, min_max, moment, quantile, rank).
+  - path: crates/polars-compute/src/rolling/no_nulls/quantile.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds a companion `window_size != 0` guard so the non-centered quantile path doesn't unwrap `params` / hit the dancing-links quantile filter for a zero-length window.
+  - path: py-polars/tests/unit/operations/test_rolling.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: test_rolling_window_size_zero_23434 parametrizes over all affected rolling_* methods, asserting window_size=0 matches "the aggregation of an empty series" — 0.0 for sum, None for the rest.
+  - path: crates/polars-compute/src/rolling/sum.rs
+    tier: helpful
+    role: caller
+    in_diff: false
+    rationale: Defines SumWindow, whose running total starts at (and never drops below) zero — this is why rolling_sum at window_size=0 evaluates to 0.0 in the new test while every other aggregation (which has no zero-element identity) evaluates to None; also a caller of det_offsets/det_offsets_center via rolling_apply_agg_window.
+forbidden:
+  - path: crates/polars-compute/src/rolling/nulls/quantile.rs
+    reason: has the analogous non-centered quantile branch but it is dead/commented-out code (TODO referencing #23480), so it needed no equivalent window_size!=0 fix despite looking like a missed sibling
+  - path: crates/polars-compute/src/rolling/no_nulls/min_max.rs
+    reason: also calls det_offsets/det_offsets_center directly and looks like it should need its own window_size=0 fix, but it is already covered transparently by the shared mod.rs fix with no separate change required
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 3
   description: Rolling aggregations with window_size=0 — polars-compute fix, py-side test
-notes: ''
+notes: Fixes rolling_* aggregations at window_size=0 (previously would underflow/misbehave via saturating_sub) by making the shared det_offsets/det_offsets_center helpers return an empty window range, plus a matching guard in the non-centered quantile path.

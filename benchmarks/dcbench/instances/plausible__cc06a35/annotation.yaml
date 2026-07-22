@@ -2,14 +2,65 @@ repo: plausible
 base_commit: 54a66c2fc895868e6c610f532736435ff68795db
 commit: cc06a351bd52eb78c47dd5d8e5cdc6a33b63fe38
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: extra/lib/plausible/consolidated_view.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Core module whose enable/1 now runs ensure_eligible/1 (replacing eligible?/1) and gains native_stats_start_at/1, called from do_enable/1 and Sites.stats_start_date/1 to seed the new persisted consolidated site.
+  - path: lib/plausible/site.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Deletes the virtual rollup field and Site.rollup/1 synthetic-struct constructor that the whole change replaces with the persisted consolidated boolean column plus Site.set_native_stats_start_at/2.
+  - path: lib/plausible/stats/sql/where_builder.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: filter_site_time_range/2 is split into filter_site_id/1 and filter_time_range/2 keyed on query.consolidated_site_ids, the SQL mechanism that actually implements cross-site querying for consolidated views.
+  - path: lib/plausible/stats/filters/query_parser.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: get_rollup_site_ids/1 is renamed to get_consolidated_site_ids/1 and switched from the deleted :site_ids Cache.Adapter entry to Plausible.ConsolidatedView.Cache.get/1, populating the renamed query.consolidated_site_ids field.
+  - path: lib/plausible/stats/legacy/legacy_query_builder.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: put_rollup_site_ids/2 is renamed to put_consolidated_site_ids/2, mirroring query_parser.ex's rename for the legacy dashboard-internal query-building path.
+  - path: lib/plausible_web/plugs/authorize_public_api.ex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: find_site/2 drops the "rollup:" <> team_identifier clause (which required Plausible.Auth.is_super_admin?/1) since consolidated views are now ordinary persisted rows resolvable via the regular domain lookup, now on Plausible.Site instead of Plausible.Site.regular/1.
+  - path: extra/lib/plausible/consolidated_view/cache.ex
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines Plausible.ConsolidatedView.Cache.get/1, the warmed cache that query_parser.ex's get_consolidated_site_ids/1 and legacy_query_builder.ex's put_consolidated_site_ids/2 call to resolve a consolidated view's member site_ids, replacing the removed :site_ids Cache.Adapter entry in application.ex.
+  - path: lib/plausible/teams.ex
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: Defines Plausible.Teams.owned_sites_count/1, called by ConsolidatedView.ensure_eligible/1 to decide whether enable/1 returns {:error, :no_sites}.
+forbidden:
+  - path: lib/plausible/site/cache.ex
+    reason: sibling "Cache" module (regular Site lookup caching) unrelated to the consolidated_site_ids resolution this commit changes
+  - path: test/plausible/consolidated_view/cache_test.exs
+    reason: tests ConsolidatedView.Cache directly but is untouched and not exercised by this commit's diff
+  - path: lib/plausible/cache.ex
+    reason: generic `use Plausible.Cache` behaviour/macro definition, not specific to the rollup-to-consolidated semantics of this change
+nontrivial_gold_count: 2
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 20
   description: Remove virtual rollups for persisted consolidated sites — refactor with module deletion
     ripple
-notes: ''
+notes: Replaces the synthetic, in-memory "rollup" Site struct (id 0, ETS-cached team site_ids) with a
+  real persisted `consolidated` Site row backed by Plausible.ConsolidatedView.Cache; renames
+  rollup_site_ids to consolidated_site_ids end-to-end through query parsing, legacy query building, and
+  SQL where-clause construction, and simplifies public-API/site-access authorization since consolidated
+  sites no longer need special "rollup:" domain-prefix handling.

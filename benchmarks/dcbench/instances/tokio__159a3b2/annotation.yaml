@@ -2,14 +2,58 @@ repo: tokio
 base_commit: ce87dcfbf08dc5330386433c1e62229a3c4d5571
 commit: 159a3b2c8587cd12ad54eb16489dad6eb674d4ca
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: tokio/src/runtime/scheduler/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: central Handle/Context dispatch enums drop the MultiThreadAlt variant and every match arm/macro branch that handled it, along with the `cfg_unstable! { pub(crate) mod multi_thread_alt; }` declaration.
+  - path: tokio/src/runtime/builder.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes the public unstable entry point `Builder::new_multi_thread_alt()`, the `Kind::MultiThreadAlt` variant, `build_alt_threaded_runtime()`, and the `local_queue_capacity` field that only the alt scheduler used.
+  - path: tokio/src/runtime/scheduler/multi_thread_alt/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: deleted file — was the alt scheduler's MultiThread struct/impl root that scheduler/mod.rs re-exported as `MultiThreadAlt`; understanding the removal requires seeing what module is being deleted.
+  - path: tokio/src/runtime/scheduler/multi_thread_alt/worker.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: deleted file — largest component of the removed scheduler, the alt worker run loop that builder.rs's build_alt_threaded_runtime() constructed via MultiThreadAlt::new.
+  - path: tokio/src/runtime/runtime.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: removes the public `RuntimeFlavor::MultiThreadAlt` enum variant and `Scheduler::MultiThreadAlt` dispatch arms in block_on/Drop — the public-API-visible half of the removal.
+  - path: tokio/src/runtime/config.rs
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: drops the `local_queue_capacity` config field that existed only to size the alt scheduler's local queues.
+  - path: tokio/src/runtime/handle.rs
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: drops MultiThreadAlt arms from Handle::runtime_flavor(), owned_id(), and the taskdump dispatch — shows the flavor enum's other consumers were kept in sync.
+forbidden:
+  - path: tokio/src/runtime/scheduler/multi_thread/mod.rs
+    reason: the surviving, production multi_thread scheduler — similarly named sibling but untouched by this removal
+  - path: tokio/src/runtime/scheduler/multi_thread_alt/queue.rs
+    reason: deleted alongside the module but a peripheral internal (local queue impl), not needed to understand the removal's shape
+  - path: tokio/src/runtime/tests/loom_multi_thread_alt.rs
+    reason: deleted loom test harness for the alt scheduler, mechanical fallout of the module deletion rather than central to it
+  - path: tokio/src/runtime/scheduler/current_thread.rs
+    reason: unrelated scheduler flavor, not affected by the alt multi-thread removal
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 33
   description: 'rt(unstable): remove alt multi-threaded runtime — large deletion with scheduler dispatch
     fallout'
-notes: ''
+notes: 'Deletes the experimental `multi_thread_alt` scheduler (gated tokio_unstable) entirely: the whole module tree under scheduler/multi_thread_alt/ plus its loom tests and tests/rt_threaded_alt.rs, and strips every dispatch site (scheduler/mod.rs Handle/Context enums, builder.rs Kind enum + public new_multi_thread_alt() constructor, runtime.rs RuntimeFlavor/Scheduler enums, handle.rs, config.rs, driver.rs, block_in_place.rs, task/trace/mod.rs) of the MultiThreadAlt match arm. All necessary context is within the diff itself — this is a self-contained removal, not a change requiring external understanding.'

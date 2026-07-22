@@ -2,13 +2,63 @@ repo: spark
 base_commit: 428f75942ecfccdcd87c9a0fdc50be5bafab6123
 commit: cb5938363ff582b5c32d81f1ec972fdbc6eb98e9
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: sql/api/src/main/scala/org/apache/spark/sql/api/TableValuedFunction.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new abstract class enumerating the DataFrame-style table-valued-function API (range/explode/inline/json_tuple/posexplode/stack/collations/sql_keywords/variant_explode) shared by classic and Connect.
+  - path: sql/core/src/main/scala/org/apache/spark/sql/TableValuedFunction.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: classic implementation; dispatches non-range functions through `UnresolvedTableValuedFunction(name, args)` keyed by the literal function-name string (e.g. `fn("explode", ...)`).
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/FunctionRegistry.scala
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: its `logicalPlans` map is the string-keyed table-function registry (`generatorBuilder("explode", ...)`, `generator[Stack]("stack")`, etc.) that resolves every name string the new API passes into `UnresolvedTableValuedFunction`; untouched by this patch but is the actual link giving each string meaning.
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/unresolved.scala
+    tier: helpful
+    role: definition
+    in_diff: false
+    rationale: defines `case class UnresolvedTableValuedFunction(name, functionArgs)`, the unresolved logical-plan node constructed by `TableValuedFunction.fn` and later matched against `FunctionRegistry.logicalPlans` by name.
+  - path: connector/connect/client/jvm/src/main/scala/org/apache/spark/sql/TableValuedFunction.scala
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Connect Scala client's parity implementation of the same API, building `tvf.<name>` proto messages instead of catalyst unresolved nodes.
+  - path: sql/connect/common/src/main/protobuf/spark/connect/relations.proto
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds the `Unknown`/named message fields for each new TVF (Explode, PosExplode, Inline, JsonTuple, Stack, etc.) on the Connect wire protocol, the cross-process parity contract.
+  - path: sql/connect/server/src/main/scala/org/apache/spark/sql/connect/planner/SparkConnectPlanner.scala
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: server-side translation from the new proto TVF messages back to catalyst `UnresolvedTableValuedFunction`/generator expressions, closing the Connect round trip.
+  - path: python/pyspark/sql/tvf.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: new Python classic-session `TableValuedFunction` mirroring the Scala API (`spark.tvf.explode(...)` etc.), the Python-side parity half.
+  - path: python/pyspark/sql/connect/tvf.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Python Connect-client parity implementation of the same TVF namespace, building Connect plan/proto objects.
+forbidden:
+  - path: python/pyspark/sql/functions/builtin.py
+    reason: "defines the pre-existing scalar/generator column function `explode(col)` (different call surface: `functions.explode` vs the new `spark.tvf.explode`), not touched by this patch."
+  - path: sql/catalyst/src/main/scala/org/apache/spark/sql/catalyst/analysis/ResolveTableValuedFunctions.scala
+    reason: does not exist in this repo revision (no separate TVF-resolution rule file); a plausible-sounding but nonexistent path.
+  - path: R/pkg/NAMESPACE
+    reason: R has no exported binding for the new TVF namespace in this commit -- despite the usual cross-language parity pattern, R was not included here.
+  - path: sql/core/src/main/scala/org/apache/spark/sql/SparkSession.scala
+    reason: "touched only to add the one-line `def tvf: TableValuedFunction` accessor; a minor wiring change, not needed beyond the TableValuedFunction.scala definition itself."
+nontrivial_gold_count: 2
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 22
-  description: DataFrame APIs for table-valued functions across Python/Scala/Connect proto
-notes: ''
+notes: 'Adds a new `spark.tvf` / `session.tvf` DataFrame-API namespace exposing existing SQL table-valued functions (explode, posexplode, inline, json_tuple, stack, collations, sql_keywords, variant_explode, range) programmatically, implemented in parallel across classic Scala, Connect Scala client+server, and Python classic+Connect, with matching proto messages. Classic-side dispatch goes through `UnresolvedTableValuedFunction(name: String, args)`, resolved later purely by string match against FunctionRegistry.logicalPlans -- a genuine string_indirection link entirely outside the diff, hence essential gold despite being untouched.'

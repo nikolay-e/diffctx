@@ -2,13 +2,87 @@ repo: polars
 base_commit: fdc4b5b41f4761089fd40b8269bab442ea016761
 commit: 4695423cb900818c5845ee4ccf6ebc8ca220e506
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
+gold:
+  - path: crates/polars-plan/src/dsl/statistics.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the public Expr::min_by(by)/max_by(by) DSL builders, constructing AggExpr::MinBy/MaxBy — the entry point of the whole feature.
+  - path: crates/polars-plan/src/dsl/expr/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds AggExpr::MinBy { input, by } / MaxBy { input, by } DSL-level enum variants that statistics.rs constructs and downstream conversion code matches on.
+  - path: crates/polars-plan/src/plans/aexpr/mod.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds the corresponding IRAggExpr::MinBy/MaxBy IR-level enum variants (the DSL AggExpr is lowered into these before physical planning).
+  - path: crates/polars-plan/src/plans/aexpr/builder.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Adds AExprBuilder::min_by/max_by, the arena-based constructors used by planning code paths to build IRAggExpr::MinBy/MaxBy nodes directly.
+  - path: crates/polars-expr/src/reduce/min_max_by.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: New 734-line file implementing new_min_by_reduction/new_max_by_reduction and SelectPayloadGroupedReduction — the core algorithm that tracks, per group, the running min/max of `by` and swaps in the corresponding `input` payload.
+  - path: crates/polars-expr/src/reduce/convert.rs
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: into_reduction() wires IRAggExpr::MinBy/MaxBy to new_min_by_reduction/new_max_by_reduction, the switchboard connecting the IR node to its streaming-reduction implementation.
+  - path: crates/polars-expr/src/planner.rs
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Eager-engine physical-expression construction (161 changed lines) updated to build AggQuantileExpr/other aggregation physical exprs consistently with the new arena-mutation signature needed for MinBy/MaxBy planning.
+  - path: crates/polars-stream/src/physical_plan/lower_group_by.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Streaming-engine group_by lowering (49 changed lines) taught to recognize and lower IRAggExpr::MinBy/MaxBy nodes into the new reduction.
+  - path: crates/polars-python/src/expr/general.rs
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: PyExpr::min_by/max_by FFI bindings exposing Expr::min_by/max_by across the PyO3 boundary.
+  - path: py-polars/src/polars/expr/expr.py
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Public Expr.min_by(by)/max_by(by) Python methods (marked @unstable) parsing `by` into an expression and calling self._pyexpr.min_by/max_by.
+  - path: py-polars/src/polars/series/series.py
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: Series.min_by/max_by convenience wrappers implemented via `self.to_frame().select_seq(F.col(self.name).min_by(by)).item()`, reusing the Expr implementation rather than a direct PySeries binding.
+  - path: py-polars/tests/unit/operations/aggregation/test_aggregations.py
+    tier: essential
+    role: test
+    in_diff: true
+    rationale: Adds the test coverage for min_by/max_by (including NaN-in-`by` handling), verifying the new reduction's group-by and scalar behavior.
+  - path: crates/polars-expr/src/reduce/first_last.rs
+    tier: essential
+    role: definition
+    in_diff: false
+    rationale: Defines new_last_reduction(), which SelectPayloadGroupedReduction (in min_max_by.rs) wraps as its "payload" reduction — the mechanism that actually stores/replaces the selected input value whenever a new min/max `by` candidate is found in a group.
+forbidden:
+  - path: crates/polars-expr/src/reduce/min_max.rs
+    reason: existing plain min()/max() reduction with a similar name in the same directory, imported by convert.rs but not used by or related to the new by-comparator logic
+  - path: crates/polars-expr/src/reduce/mod.rs
+    reason: only registers `mod min_max_by;` and hosts the pre-existing GroupedReduction trait; no MinBy/MaxBy-specific logic lives here
+  - path: crates/polars-plan/src/plans/aexpr/schema.rs
+    reason: mechanical schema-inference match arm added for MinBy/MaxBy following the exact same pattern as the existing Min/Max arms, adds no new understanding
+  - path: py-polars/docs/source/reference/expressions/aggregation.rst
+    reason: doc-index listing entry only (adds `min_by`/`max_by` to the autosummary), not needed to understand the implementation
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
 candidates_from: []
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 36
   description: Add pl.Expr.(min|max)_by — dual-method FFI feature commit
-notes: ''
+notes: Adds Expr.min_by(by)/max_by(by) and the Series equivalents, threaded through DSL Expr/AggExpr, IR IRAggExpr, both the eager (planner.rs) and streaming (lower_group_by.rs) execution engines, and a new SelectPayloadGroupedReduction that tracks the running min/max of `by` per group and swaps in the corresponding payload value via the pre-existing new_last_reduction() from first_last.rs.

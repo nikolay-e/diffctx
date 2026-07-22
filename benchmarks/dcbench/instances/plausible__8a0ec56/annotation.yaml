@@ -2,13 +2,79 @@ repo: plausible
 base_commit: 5949b9deedef83251e1d5606beb5fb8c0a27f459
 commit: 8a0ec566aaddd1d144772c54bdb22e6540f2ad7f
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: lib/plausible/teams/invitations.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: transfer_site_ownership/4 gains a skip_site_members_transfer? opt that guards recreating guest invitations/memberships and prior-owner-as-editor, and ensure_can_take_ownership/3 forwards it as skip_team_member_limit_check? to the quota check.
+  - path: lib/plausible/teams/invitations/accept.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: adds accept_transfer_no_members/3, the new entry point that calls Sites.Transfer.accept/4 with skip_site_members_transfer? set to true instead of the normal accept/3 path.
+  - path: lib/plausible/teams/sites/transfer.ex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: accept/4 gains an opts param threaded straight into ensure_can_take_ownership/3 and accept_site_transfer/3, the plumbing connecting the controller-level choice to the invitations logic.
+  - path: lib/plausible/billing/qouta/quota.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: ensure_within_plan_limits/3 renames ignore_pageview_limit to skip_pageview_limit_check? and adds skip_team_member_limit_check?, the check that ensure_can_take_ownership/3 bypasses when skipping members.
+  - path: lib/plausible_web/controllers/invitation_controller.ex
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: accept_invitation/2 branches on the "skip_site_members_transfer" query/body param to call accept_transfer_no_members/3 instead of accept/3.
+  - path: lib/plausible_web/components/team/notice.ex
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: site_ownership_invitation/1 computes can_accept_without_members? from ownership_check == {:error, {:over_plan_limits, [:team_member_limit]}} and renders a dropdown offering "Accept without members" that posts skip_site_members_transfer=true.
+  - path: lib/plausible_web/components/generic.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: adds an icon_class attr to the shared .notice component so notice.ex can hide the invitation icon on mobile to make room for the new dropdown.
+  - path: lib/plausible_web/components/prima_dropdown.ex
+    tier: helpful
+    role: definition
+    in_diff: true
+    rationale: adds "relative z-10" to the dropdown menu class so the new "Accept" dropdown in notice.ex renders above surrounding content.
+  - path: test/plausible/teams/invitations/accept_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: covers accept_transfer_no_members/3 end-to-end, asserting existing guests/invitations are dropped and a team-member-limit-exceeded transfer still succeeds when members are skipped.
+  - path: test/plausible_web/components/team/notice_test.exs
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: asserts the "Accept without members" dropdown link only appears when the only exceeded limit is :team_member_limit, directly exercising site_ownership_invitation/1's new branch.
+forbidden:
+  - path: lib/plausible/teams/memberships.ex
+    reason: general team-membership context module; tempting given "site members" in the commit title, but this commit's member-skipping logic lives entirely in invitations.ex, not here.
+  - path: lib/plausible/teams/invitations/reject.ex
+    reason: sibling service module in the same directory as accept.ex, handling invitation rejection, unrelated to the skip-members transfer flow.
+  - path: lib/plausible/billing/qouta/limits.ex
+    reason: sibling module in the same billing/qouta/ directory defining limit structs/error types, but not modified or needed beyond what quota.ex's diff already shows.
+  - path: lib/plausible/teams/invitations/remove_from_site.ex
+    reason: another invitations/ sibling module (removing a site member), similarly named to the touched files but not part of this transfer-skip feature.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
-curation:
-  source: TOANALYZE-2026-07-07
-  n_files: 14
-  description: Skip site members/invitations during transfer — Teams/Sites cross-context change
-notes: ''
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
+notes: >-
+  Lets a user accepting a site-ownership transfer skip carrying over the
+  site's existing guest members/invitations when doing so would push them
+  over their plan's team-member limit, via a skip_site_members_transfer?
+  option threaded from a new UI dropdown through the controller,
+  Sites.Transfer.accept/4, Invitations.ensure_can_take_ownership/3
+  (as skip_team_member_limit_check?), and transfer_site_ownership/4. Also
+  renames Quota's ignore_pageview_limit option to skip_pageview_limit_check?
+  for naming consistency with the new skip options. string_indirection is
+  true because the controller dispatches on a raw
+  "skip_site_members_transfer" request parameter string rather than a typed
+  value.

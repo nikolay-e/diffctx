@@ -2,13 +2,86 @@ repo: spark
 base_commit: 07c85a531f55319f884f49d88ad84b94f2bbada1
 commit: 6537153e2c7b122f04981f72f4ddb73dcf423787
 patch_stored: true
-gold: []
-forbidden: []
+gold:
+  - path: common/utils-java/src/main/java/org/apache/spark/network/util/JavaUtils.java
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Renamed from common/utils and gains ~15 new pure-Java static members (`contentEquals`, `toString(InputStream)`, `isTesting()`, `osName`/`isWindows`/`isMac`/`isUnix`/etc.) that reimplement what used to live only in Scala — the actual technical payload of "scala-free" utils.
+  - path: common/utils/src/main/scala/org/apache/spark/util/SparkSystemUtils.scala
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: Every `val` (`osName`, `isWindows`, `isMac`, `isUnix`, ...) is rewritten to delegate to the corresponding new `JavaUtils.*` field, inverting the old direction where Java code called into this Scala object via `SparkSystemUtils$.MODULE$`.
+  - path: common/utils/src/main/scala/org/apache/spark/util/SparkFileUtils.scala
+    tier: essential
+    role: caller
+    in_diff: true
+    rationale: "`contentEquals(file1, file2)` body is replaced by a one-line delegation to `JavaUtils.contentEquals`, the Java reimplementation."
+  - path: common/utils-java/pom.xml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: New Maven module `spark-common-utils-java` with no dependency on `scala-library`/`scala-reflect` — the build-level proof that this module is Java-only, which is the stated goal ("make YARN ESS scala-free again").
+  - path: common/network-common/pom.xml
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: "`network-common`'s dependency flips from `spark-common-utils_${scala.binary.version}` (Scala) to `spark-common-utils-java_${scala.binary.version}` — the dependency-graph change that removes `scala-library` from the YARN shuffle service's transitive closure."
+  - path: dev/sparktestsupport/modules.py
+    tier: essential
+    role: config
+    in_diff: true
+    rationale: Adds a new `utils_java` `Module` and switches `network_common`'s `dependencies` from `[tags, utils]` to `[tags, utils_java]`, the test/build-topology mirror of the pom.xml dependency flip.
+  - path: common/utils/src/main/scala/org/apache/spark/util/SparkStreamUtils.scala
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: "`toString(in: InputStream)` is rewritten to delegate to `JavaUtils.toString(in)`, the same delegation pattern as SparkFileUtils/SparkSystemUtils applied to stream utilities."
+  - path: common/network-common/src/test/java/org/apache/spark/network/RpcIntegrationSuite.java
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: "Representative real caller showing the consumer-side change: `SparkFileUtils$.MODULE$.contentEquals(...)` (Scala object access from Java) becomes plain `JavaUtils.contentEquals(...)`, eliminating the Scala runtime dependency at the call site."
+  - path: project/MimaExcludes.scala
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Adds MiMa exclusions keyed on fully-qualified strings (`org.apache.spark.QueryContext`, `org.apache.spark.api.java.function.*`, `org.apache.spark.network.util.JavaUtils`, ...) acknowledging that these classes' artifact/location changed.
+  - path: project/SparkBuild.scala
+    tier: helpful
+    role: config
+    in_diff: true
+    rationale: Adds `commonUtilsJava` to `BuildCommons.allProjects` and to the set of projects excluded from combined API docs, the SBT-side twin of the Maven module addition.
+forbidden:
+  - path: common/utils-java/src/main/java/org/apache/spark/internal/SparkLogger.java
+    reason: pure 100%-similarity rename, one of ~30 relocated files carrying zero information about why the split happened.
+  - path: common/utils-java/src/main/java/org/apache/spark/api/java/function/Function.java
+    reason: pure rename of a public functional-interface, unrelated to the Scala-to-Java migration this commit is about.
+  - path: common/network-shuffle/src/test/java/org/apache/spark/network/shuffle/ExternalShuffleBlockResolverSuite.java
+    reason: one of several near-identical test call-site updates (`SparkStreamUtils$.MODULE$.toString` -> `JavaUtils.toString`), redundant with RpcIntegrationSuite.java already in gold.
+  - path: common/utils-java/src/test/resources/log4j2.properties
+    reason: boilerplate test-logging config copy-pasted for the new module, no content specific to the split.
 nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+string_indirection: true
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 106
   description: Split common-utils Java code into new module (build + 100-file restructure)
-notes: ''
+notes: >-
+  Splits the Java portion of common/utils into a new common/utils-java module (except
+  StorageLevelMapper.java/SparkThrowable.java) so common/network-yarn's shaded shuffle
+  jar no longer transitively depends on scala-library. Several utility methods
+  previously only in Scala (SparkFileUtils.contentEquals, SparkStreamUtils.toString,
+  SparkSystemUtils's OS-detection vals) are reimplemented as static methods on the
+  relocated JavaUtils.java, and the Scala traits are rewritten to delegate to them —
+  inverting the old Java-calls-into-Scala-object direction. Of 106 changed files, ~30
+  are 100%-identical `git mv` renames of independent interfaces/classes (verified via
+  the patch's `similarity index 100%` rename headers) carrying no information about the
+  split's purpose; gold focuses on the module/dependency wiring and the handful of
+  files with real content changes. string_indirection is true because MimaExcludes
+  keys its exclusions on fully-qualified class-name strings and the Maven/SBT module
+  graph links network-common to the new module by artifact-coordinate string
+  (`spark-common-utils-java_${scala.binary.version}`).

@@ -2,13 +2,55 @@ repo: gitlab-foss
 base_commit: 397fd09ac4ba7353580f4d3a88c80105d51ff47a
 commit: fff7754186202cfcdeaa0962c28e5d43ddd705b7
 patch_stored: true
-gold: []
-forbidden: []
-nontrivial_gold_count: 0
-annotator: pending
-candidates_from: []
+gold:
+  - path: db/migrate/20181120082911_rename_repositories_pool_repositories.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: rename_table :repositories, :pool_repositories is the actual schema change this commit is named after, removing the need for PoolRepository's old self.table_name = 'repositories' override.
+  - path: app/models/pool_repository.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "Drops the now-unneeded self.table_name/POOL_PREFIX, and adds after_create :correct_disk_path calling Storage::HashedProject.new(self, prefix: POOL_PATH_PREFIX) to backfill disk_path once the DB assigns an id."
+  - path: db/migrate/20181123135036_drop_not_null_constraint_pool_repository_disk_path.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: Removes the NOT NULL constraint on pool_repositories.disk_path, required because PoolRepository#correct_disk_path can only compute the hashed path after the row (and its id) already exists.
+  - path: app/models/storage/hashed_project.rb
+    tier: essential
+    role: definition
+    in_diff: true
+    rationale: "ROOT_PATH_PREFIX renamed to REPOSITORY_PATH_PREFIX and a new POOL_PATH_PREFIX added, with initialize(project, prefix:) made configurable so PoolRepository#storage can reuse the same hashing logic with a different path prefix."
+  - path: lib/tasks/gitlab/cleanup.rake
+    tier: helpful
+    role: caller
+    in_diff: true
+    rationale: Two references updated from Storage::HashedProject::ROOT_PATH_PREFIX to the renamed REPOSITORY_PATH_PREFIX constant, the only other in-repo caller of that constant.
+  - path: spec/models/pool_repository_spec.rb
+    tier: helpful
+    role: test
+    in_diff: true
+    rationale: New spec covering the renamed model, including the after_create disk_path backfill behavior.
+  - path: app/models/project.rb
+    tier: essential
+    role: caller
+    in_diff: false
+    rationale: "Defines belongs_to :pool_repository, the other half of PoolRepository's has_many :member_projects, class_name: 'Project' association, which now relies on the default pool_repository_id foreign-key convention instead of the explicit foreign_key: :pool_repository_id removed in this commit."
+forbidden:
+  - path: app/models/repository.rb
+    reason: unrelated Gitaly-backed git Repository wrapper class; shares a name with the old repositories table but is not affected by this rename
+  - path: app/models/shard.rb
+    reason: target of PoolRepository's pre-existing belongs_to :shard; not touched or needed to follow the table rename
+  - path: app/models/storage/legacy_project.rb
+    reason: sibling non-hashed storage strategy class, unrelated to the hashed-path prefix refactor in this commit
+nontrivial_gold_count: 1
+string_indirection: false
+annotator: llm/sonnet-5-2026-07-22
+candidates_from: [agent-exploration]
 curation:
   source: TOANALYZE-2026-07-07
   n_files: 9
   description: Rename Repository table to PoolRepository — migration+schema+model rename
-notes: ''
+notes: 'Renames the repositories table to pool_repositories, drops its disk_path NOT NULL constraint, and generalizes Storage::HashedProject with a configurable path prefix so PoolRepository can compute its own @pools-prefixed disk_path via an after_create hook. Linkage is static Ruby/Rails (constant references, ActiveRecord conventions); no string-based indirection.'

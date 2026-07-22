@@ -43,7 +43,7 @@ gold:
     role: test
     in_diff: true
     rationale: regenerated golden RBAC data now includes the device-taint-eviction-controller ClusterRole because DRADeviceTaints defaults to true as of this commit; the resource name "devicetaintrules" here must string-match the one registered in storage_resource.go.
-  - path: pkg/apis/resource/v1alpha3/types.go
+  - path: staging/src/k8s.io/api/resource/v1alpha3/types.go
     tier: helpful
     role: definition
     in_diff: false
