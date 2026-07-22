@@ -61,26 +61,53 @@ notes: free text
 
 ## Annotation rules
 
-1. **Every new instance must have `nontrivial_gold_count >= 1`.** An instance
-   whose gold coincides with its diff measures retention and is rejected at
-   annotation time. (Legacy v0.1 imports are exempt but flagged.)
-2. **Candidate lists shown to annotators must come from multiple generators**
-   (co-change history, BM25, dependency graph, random distractors) — a
-   single-generator candidate list biases gold toward that generator's edges.
+1. **Nontrivial gold is the point.** Gold that coincides with the diff
+   measures retention; annotators must genuinely hunt context outside the
+   diff, and may set `no_nontrivial_context: true` (with justification)
+   only for verified self-contained changes — never invent gold to pad.
+2. **No single-generator bias.** Annotators must not be limited to what any
+   one retrieval signal surfaces. In the executed pipeline this is enforced
+   by free exploration (annotators run their own `git grep`/`show` hunts);
+   the optional `gen_candidates.py` shortlists (co-change, BM25, graph,
+   random distractors) are hints to judge, not a frame.
 3. Roles and tiers are mandatory for new annotations: role-stratified gold is
    what per-edge-category weight calibration consumes.
 4. Patches are never normalized; annotation text is English.
 
-## v0.1 provenance
+## How this benchmark was created (provenance)
 
-The 109 tier-R instances are converted by `convert_legacy_labels.py` from
-`benchmarks/real_world_diff_bench/gold_labels.json` (10-reviewer
-should_include/should_not_include labels over the react-native/gitpod/sentry
-corpus of `test-repos/TOANALYZE.md`). Legacy labels carry
-`role: unspecified`, `tier: essential`, `annotator: legacy-review-2026-06`;
-re-annotation with roles is incremental follow-up work. The ~120 hand-curated
-commit notes in `test-repos/AlekseiNikiforovIBM/` (mostly pytorch) are the
-next expansion pool.
+1. **Commits: hand-curated.** 109 from `real_world_diff_bench/commits.tsv`
+   (react-native/gitpod/sentry) + 263 hand-audited commits from
+   `test-repos/TOANALYZE.md` across 12 coverage repos (every SHA verified,
+   selection rationale recorded per commit). Extraction to instances:
+   `convert_legacy_labels.py` and `extract_toanalyze_commits.py`.
+2. **Reproducibility layer.** Byte-exact `git format-patch` per instance,
+   SHA pins in `repos.yaml`, strict-apply verification
+   (`verify_instances.py`, index-level `--cached` check; 372/372 pass).
+3. **Gold annotation (2026-07-22).** The 263 coverage instances were
+   annotated by ~35 parallel Claude Sonnet 5 reviewer agents following
+   `ANNOTATION_PROTOCOL.md`: per instance, the agent reads the patch,
+   explores the repository read-only at the pinned commit (`git
+   show`/`grep`/`diff-tree` only — no checkouts, shared clones), and writes
+   evidence-based gold entries (every entry carries a `rationale` naming the
+   linking symbol/mechanism), 2–4 `forbidden` distractors with reasons, and
+   the `string_indirection` flag. Agents self-validated YAML and path
+   existence; a final batch validator cross-checked schema and
+   `nontrivial_gold_count` consistency over all 372 (zero defects at close).
+   `annotator: llm/sonnet-5-2026-07-22` marks these.
+4. **Legacy import.** The 109 originals carry 10-reviewer
+   should_include/should_not_include labels (`annotator:
+   legacy-review-2026-06`, `role: unspecified`); role-enrichment and a
+   second-reviewer pass over the LLM annotations are follow-up work, as is
+   human spot-checking (the accepted QA mode for LLM-labeled sets).
+5. **Hop annotation** (`annotate_hops.py`) is applied where graph builds are
+   feasible; blocked on diffctx#116 for the three heavy legacy repos.
+
+Result snapshot at close: 372 instances, 2,999 gold entries, 392 nontrivial
+gold files, 201 instances (54%) with nontrivial gold, 114 flagged
+string_indirection. The ~120 hand-curated commit notes in
+`test-repos/AlekseiNikiforovIBM/` (mostly pytorch) are the next expansion
+pool.
 
 ## Expansion set (v0.2 targets)
 
