@@ -19,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Container image `ghcr.io/nikolay-e/diffctx` (linux amd64/arm64), built from
   the release tag and smoke-tested against a real repository before the tag
   moves: `docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1`.
+  Mirrored to Docker Hub as `nikolajer/diffctx`.
 - Packaging manifests generated from the release checksums: Scoop
   (`packaging/scoop/diffctx.json`), AUR (`packaging/aur/`) and an npm wrapper
   (`packaging/npm/`) that downloads the platform binary and verifies its
