@@ -49,7 +49,6 @@ pub const DEFAULT_PPR_ALPHA: f64 = 0.60;
 /// Surface flat and monotone (top-3 within 0.004) — choice is robust.
 pub const DEFAULT_STOPPING_THRESHOLD: f64 = 0.12;
 pub const DEFAULT_PIPELINE_TIMEOUT_SECONDS: u64 = 300;
-pub const DEFAULT_BUDGET_TOKENS: u32 = 4096;
 
 pub struct PPRConfig {
     pub alpha: f64,

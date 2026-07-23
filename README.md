@@ -191,6 +191,22 @@ filter, and the output file is always auto-ignored. `--no-default-ignores`
 disables the built-in patterns; `--no-ignores` disables all ignore rules
 (tree mode only).
 
+## Token cache
+
+Diff mode caches per-blob tokenization under
+`~/Library/Caches/diffctx/token-cache` (macOS),
+`$XDG_CACHE_HOME/diffctx/token-cache` (Linux) or
+`%LOCALAPPDATA%\diffctx\token-cache` (Windows). It is a pure speedup: deleting
+it only costs one cold run.
+
+| Variable | Effect |
+|----------|--------|
+| `DIFFCTX_TOKEN_CACHE_DIR` | Relocate the cache |
+| `DIFFCTX_TOKEN_CACHE_MAX_BYTES` | Size cap, default `536870912` (512 MB); `0` disables eviction |
+
+Eviction is amortized: each run trims one of the cache's 256 shards back under
+its share of the cap, oldest entries first.
+
 ## Exit codes
 
 | Code | Meaning |

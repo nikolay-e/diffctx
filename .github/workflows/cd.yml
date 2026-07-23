@@ -369,7 +369,10 @@ jobs:
           BIN=./diffctx/target/release/diffctx
           if [ "${RUNNER_OS}" = "Windows" ]; then BIN="${BIN}.exe"; fi
           "$BIN" --version
-          "$BIN" . --diff HEAD~1..HEAD --no-content > /dev/null
+          "$BIN" . --diff HEAD~1..HEAD --no-content > "${RUNNER_TEMP}/smoke.yaml"
+          grep -q '^type: diff_context' "${RUNNER_TEMP}/smoke.yaml"
+          "$BIN" . --diff HEAD~1..HEAD --no-content -f json > "${RUNNER_TEMP}/smoke.json"
+          head -c 1 "${RUNNER_TEMP}/smoke.json" | grep -q '{'
           echo "OK: standalone binary works"
 
       - name: Upload binary artifact

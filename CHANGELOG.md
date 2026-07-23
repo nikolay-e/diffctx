@@ -27,9 +27,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The native binary hard-capped every run at 4096 tokens.** `--budget`
+  carried a fixed clap default instead of leaving the budget unset, so the
+  auto-sizing the Python CLI has always used never ran on the binary shipped
+  via crates.io, npm, the container images, Scoop, AUR and the release
+  archives — the same command returned a truncated selection there (14-file
+  self-eat range: 15 fragments across 10 files, against 172 across 44). The
+  binary now defaults to auto sizing, and `--budget -1` means unlimited as it
+  does in Python.
+- The token cache grew without bound (a machine that had analyzed a few dozen
+  repositories reached 817k files / 4.0 GB). It is now capped at 512 MB,
+  overridable with `DIFFCTX_TOKEN_CACHE_MAX_BYTES` (`0` disables eviction);
+  each run trims one of the 256 shards back under its share of the cap,
+  oldest entries first (#122).
 - The native binary silently emitted YAML for every unrecognized `--format`,
   including `md` — the documented default of the Python CLI. It now accepts
   only `yaml`/`json` and exits 2 on anything else.
+
+### Changed
+
+- Native binary CLI parity: `-f` is accepted as the short form of `--format`,
+  bare `--diff` means the working tree against `HEAD`, `--scoring` advertises
+  its accepted values, and every option carries help text.
 
 ## [1.12.0] - 2026-07-23
 

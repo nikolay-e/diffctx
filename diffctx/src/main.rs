@@ -12,44 +12,74 @@ use clap::Parser;
 use tracing_subscriber::EnvFilter;
 
 use _diffctx::config::limits::{
-    DEFAULT_BUDGET_TOKENS, DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA,
-    DEFAULT_STOPPING_THRESHOLD,
+    DEFAULT_PIPELINE_TIMEOUT_SECONDS, DEFAULT_PPR_ALPHA, DEFAULT_STOPPING_THRESHOLD,
 };
 use _diffctx::mode::ScoringMode;
 use _diffctx::pipeline::build_diff_context;
 
+/// Mirrors `_UNLIMITED_BUDGET` in src/diffctx/diffctx/pipeline.py so `--budget -1`
+/// means the same thing in both CLIs.
+const UNLIMITED_BUDGET_TOKENS: u32 = 10_000_000;
+
 #[derive(Parser)]
 #[command(name = "diffctx", version, about = "Semantic diff context selector")]
 struct Cli {
+    /// Repository path to analyze
     #[arg(default_value = ".")]
     path: PathBuf,
 
-    #[arg(long, default_value_t = DEFAULT_BUDGET_TOKENS)]
-    budget: u32,
+    /// Token budget: omit = auto, N = fixed cap, -1 = unlimited, 0 = strict-zero
+    /// floor (empty selection; use --full for changed files only)
+    #[arg(long, allow_negative_numbers = true)]
+    budget: Option<i64>,
 
-    #[arg(long, default_value = "yaml", value_parser = ["yaml", "json"])]
+    /// Output format
+    #[arg(short = 'f', long, default_value = "yaml", value_parser = ["yaml", "json"])]
     format: String,
 
-    #[arg(long = "diff")]
+    /// Git diff range (e.g. HEAD~1..HEAD, main..feature); bare --diff uses the
+    /// working tree vs HEAD
+    #[arg(long = "diff", num_args = 0..=1, default_missing_value = "HEAD")]
     diff_ref: Option<String>,
 
+    /// PPR damping: how tightly context clusters around changes, 0-1 exclusive
     #[arg(long, default_value_t = DEFAULT_PPR_ALPHA)]
     alpha: f64,
 
+    /// Relevance threshold for full fragment content; lower = more context
     #[arg(long, default_value_t = DEFAULT_STOPPING_THRESHOLD)]
     tau: f64,
 
+    /// Skip fragment contents (structure only)
     #[arg(long)]
     no_content: bool,
 
+    /// Only the changed files, every fragment, no related-code context
     #[arg(long)]
     full: bool,
 
-    #[arg(long, default_value = "ego")]
+    /// Relevance scoring mode
+    #[arg(long, default_value = "ego", value_parser = ["ppr", "ego", "bm25"])]
     scoring: String,
 
+    /// Wall-clock deadline in seconds; on expiry diffctx exits 124
     #[arg(long, default_value_t = DEFAULT_PIPELINE_TIMEOUT_SECONDS)]
     timeout: u64,
+}
+
+fn resolve_budget(budget: Option<i64>) -> Option<u32> {
+    match budget {
+        None => None,
+        Some(n) if n < -1 => {
+            eprintln!(
+                "error: --budget must be >= -1 (-1 = unlimited, 0 = strict-zero floor; use --full \
+                 for changed files only), got {n}"
+            );
+            std::process::exit(2);
+        }
+        Some(n) if n < 0 => Some(UNLIMITED_BUDGET_TOKENS),
+        Some(n) => Some(u32::try_from(n).unwrap_or(UNLIMITED_BUDGET_TOKENS)),
+    }
 }
 
 fn main() -> Result<()> {
@@ -72,7 +102,7 @@ fn main() -> Result<()> {
     let timeout = cli.timeout;
     let path = cli.path.clone();
     let diff_ref = cli.diff_ref.clone();
-    let budget = cli.budget;
+    let budget = resolve_budget(cli.budget);
     let alpha = cli.alpha;
     let tau = cli.tau;
     let no_content = cli.no_content;
@@ -82,7 +112,7 @@ fn main() -> Result<()> {
         let result = build_diff_context(
             &path,
             diff_ref.as_deref(),
-            Some(budget),
+            budget,
             alpha,
             tau,
             no_content,

@@ -1,9 +1,9 @@
 #!/bin/bash
 # Generate diffctx-benchmark corpus. MD first; YAML only if MD succeeded (avoid double hang penalty).
 set -u
-D=/Users/nikolay/.local/bin/diffctx
-REPOS=/Users/nikolay/diffctx/test-repos
-BASE=/tmp/bench_corpus
+D=${DIFFCTX_BIN:-diffctx}
+REPOS=${TEST_REPOS_DIR:?set TEST_REPOS_DIR to the directory holding the upstream clones}
+BASE=${CORPUS_DIR:?set CORPUS_DIR to the output directory}
 CAP=30
 mkdir -p "$BASE"
 tok() {

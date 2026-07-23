@@ -16,6 +16,13 @@ use crate::git;
 // are invalidated instead of silently poisoning results.
 pub const TOKENIZER_EPOCH: u32 = 1;
 
+// Size cap for the on-disk token cache, overridable with
+// DIFFCTX_TOKEN_CACHE_MAX_BYTES (0 = unlimited). The cache is a pure speedup,
+// so the default trades a cold tokenization pass for bounded disk use.
+const DEFAULT_CACHE_MAX_BYTES: u64 = 512 * 1024 * 1024;
+const CACHE_SHARDS: u64 = 256;
+const SHARD_EVICTION_TARGET_FRACTION: f64 = 0.8;
+
 pub struct DocTokens {
     pub term_counts: FxHashMap<String, u32>,
     pub total_len: u32,
@@ -81,6 +88,10 @@ impl TokenCorpus {
                 Some((f.clone(), doc))
             })
             .collect();
+
+        if let Some(store) = store.as_ref() {
+            store.evict_one_shard();
+        }
 
         tracing::debug!(
             "token corpus: {} docs ({} cache hits, {} tokenized) in {:.3}s",
@@ -205,6 +216,86 @@ impl TokenCacheStore {
             let _ = std::fs::remove_file(&tmp);
         }
     }
+
+    // Entries are written once and never rewritten, so nothing ages out on its
+    // own and the cache grows with every repository ever analyzed. Walking all
+    // 256 shards per run would cost more than the cache saves, so each run
+    // enforces the per-shard share of the size cap on ONE shard; every shard is
+    // reached within a few hundred runs.
+    fn evict_one_shard(&self) {
+        let Some(max_bytes) = cache_max_bytes() else {
+            return;
+        };
+        let shard = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.subsec_nanos() as u64 % CACHE_SHARDS)
+            .unwrap_or(0);
+        evict_shard(
+            &self.dir.join(format!("{shard:02x}")),
+            max_bytes / CACHE_SHARDS,
+        );
+    }
+}
+
+fn cache_max_bytes() -> Option<u64> {
+    match std::env::var("DIFFCTX_TOKEN_CACHE_MAX_BYTES") {
+        Ok(raw) => cache_max_bytes_from(&raw),
+        Err(_) => Some(DEFAULT_CACHE_MAX_BYTES),
+    }
+}
+
+fn cache_max_bytes_from(raw: &str) -> Option<u64> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return Some(DEFAULT_CACHE_MAX_BYTES);
+    }
+    raw.parse::<u64>()
+        .map_or(Some(DEFAULT_CACHE_MAX_BYTES), |b| (b > 0).then_some(b))
+}
+
+fn evict_shard(shard_dir: &Path, shard_max_bytes: u64) {
+    let Ok(entries) = std::fs::read_dir(shard_dir) else {
+        return;
+    };
+    let mut files: Vec<(std::time::SystemTime, u64, PathBuf)> = entries
+        .flatten()
+        .filter_map(|e| {
+            let meta = e.metadata().ok()?;
+            if !meta.is_file() {
+                return None;
+            }
+            Some((
+                meta.modified().unwrap_or(std::time::UNIX_EPOCH),
+                meta.len(),
+                e.path(),
+            ))
+        })
+        .collect();
+
+    let mut total: u64 = files.iter().map(|(_, len, _)| len).sum();
+    if total <= shard_max_bytes {
+        return;
+    }
+
+    // Oldest first: entries are never touched after their single write, so
+    // mtime orders them by insertion, not by use.
+    files.sort_by_key(|(modified, _, _)| *modified);
+    let target = (shard_max_bytes as f64 * SHARD_EVICTION_TARGET_FRACTION) as u64;
+    let mut removed = 0usize;
+    for (_, len, path) in &files {
+        if total <= target {
+            break;
+        }
+        if std::fs::remove_file(path).is_ok() {
+            total -= len;
+            removed += 1;
+        }
+    }
+    tracing::debug!(
+        "token cache: evicted {} entries from {}",
+        removed,
+        shard_dir.display()
+    );
 }
 
 fn default_cache_root() -> Option<PathBuf> {
@@ -224,5 +315,59 @@ fn default_cache_root() -> Option<PathBuf> {
             .map(PathBuf::from)
             .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".cache")))
             .map(|c| c.join("diffctx/token-cache"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn write_entry(dir: &Path, name: &str, bytes: usize) {
+        std::fs::write(dir.join(name), vec![b'x'; bytes]).expect("write entry");
+    }
+
+    #[test]
+    fn evict_shard_drops_oldest_entries_until_under_target() {
+        let tmp = TempDir::new().expect("tempdir");
+        let shard = tmp.path().join("ab");
+        std::fs::create_dir_all(&shard).expect("shard dir");
+        // Written in order, so mtime order is insertion order - which is what
+        // eviction sorts on (entries are never rewritten after their save).
+        for name in ["oldest", "middle", "newest"] {
+            write_entry(&shard, name, 1000);
+        }
+
+        evict_shard(&shard, 2000);
+
+        let survivors: Vec<String> = std::fs::read_dir(&shard)
+            .expect("read shard")
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(survivors, vec!["newest".to_string()]);
+    }
+
+    #[test]
+    fn evict_shard_keeps_everything_under_the_cap() {
+        let tmp = TempDir::new().expect("tempdir");
+        let shard = tmp.path().join("cd");
+        std::fs::create_dir_all(&shard).expect("shard dir");
+        write_entry(&shard, "kept", 1000);
+
+        evict_shard(&shard, 4096);
+
+        assert!(shard.join("kept").exists());
+    }
+
+    #[test]
+    fn cache_max_bytes_honors_the_unlimited_and_override_settings() {
+        assert_eq!(cache_max_bytes_from("0"), None);
+        assert_eq!(cache_max_bytes_from("4096"), Some(4096));
+        assert_eq!(
+            cache_max_bytes_from("not-a-number"),
+            Some(DEFAULT_CACHE_MAX_BYTES)
+        );
+        assert_eq!(cache_max_bytes_from(""), Some(DEFAULT_CACHE_MAX_BYTES));
     }
 }
