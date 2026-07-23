@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- The Rust engine is published to crates.io as the `diffctx` crate
+  (`cargo install diffctx` for the native CLI, `cargo add diffctx` to embed the
+  selection pipeline). Previously the name held only a reservation stub; the
+  crate now carries the released engine, starting at 1.12.0.
+
 ## [1.12.0] - 2026-07-23
 
 ### Added

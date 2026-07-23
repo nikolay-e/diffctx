@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/nikolay-e/diffctx/actions/workflows/ci.yml/badge.svg)](https://github.com/nikolay-e/diffctx/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/diffctx)](https://pypi.org/project/diffctx/)
+[![crates.io](https://img.shields.io/crates/v/diffctx)](https://crates.io/crates/diffctx)
 [![License](https://img.shields.io/pypi/l/diffctx)](https://pypi.org/project/diffctx/)
 
 **diffctx selects the minimum code an LLM needs to review a git diff.**
@@ -38,6 +39,10 @@ A standalone binary (no Python required) is on the
 [releases page](https://github.com/nikolay-e/diffctx/releases/latest).
 The `[tree-sitter]` extra adds AST-level parsing for more accurate context
 selection across 30+ languages.
+
+The engine is also a Rust crate — `cargo install diffctx` for the native CLI,
+`cargo add diffctx` to embed the selection pipeline
+([docs.rs](https://docs.rs/diffctx)).
 
 ## Quick start
 

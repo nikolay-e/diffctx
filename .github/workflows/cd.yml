@@ -487,3 +487,14 @@ jobs:
           prerelease: false
           generate_release_notes: true
           files: ./release-assets/*
+
+  publish-crate:
+    name: Publish crate to crates.io
+    needs: [prepare-version, finalize-release]
+    if: github.event.inputs.publish_to_pypi == 'true'
+    permissions:
+      id-token: write
+    uses: ./.github/workflows/publish-crate.yml
+    with:
+      version: ${{ needs.prepare-version.outputs.version }}
+      ref: ${{ needs.prepare-version.outputs.tag_name }}
