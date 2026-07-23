@@ -26,9 +26,8 @@ COPY --from=builder /build/diffctx/target/release/diffctx /usr/local/bin/diffctx
 
 # Bind-mounted host repositories carry foreign ownership; without this git
 # refuses to read them ("dubious ownership") and every --diff run fails.
-RUN git config --system --add safe.directory '*'
-
-RUN useradd --system --uid 10001 --create-home diffctx
+RUN git config --system --add safe.directory '*' \
+    && useradd --system --uid 10001 --create-home diffctx
 USER 10001:10001
 
 WORKDIR /repo

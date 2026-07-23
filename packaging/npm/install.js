@@ -75,7 +75,7 @@ function systemBinary(candidates, name) {
 
 function extract(archivePath, archiveKind, destinationDir) {
   if (archiveKind === 'zip') {
-    const systemRoot = process.env.SystemRoot || 'C:\\Windows';
+    const systemRoot = process.env.SystemRoot || String.raw`C:\Windows`;
     const powershell = systemBinary(
       [
         path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
