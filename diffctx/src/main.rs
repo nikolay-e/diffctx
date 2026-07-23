@@ -27,7 +27,7 @@ struct Cli {
     #[arg(long, default_value_t = DEFAULT_BUDGET_TOKENS)]
     budget: u32,
 
-    #[arg(long, default_value = "yaml")]
+    #[arg(long, default_value = "yaml", value_parser = ["yaml", "json"])]
     format: String,
 
     #[arg(long = "diff")]
@@ -113,9 +113,12 @@ fn main() -> Result<()> {
             let json = serde_json::to_string_pretty(&output)?;
             println!("{}", json);
         }
-        _ => {
+        "yaml" => {
             let yaml = serde_yaml::to_string(&output)?;
             print!("{}", yaml);
+        }
+        other => {
+            anyhow::bail!("diffctx: unsupported --format '{other}' (native binary: yaml, json)")
         }
     }
 

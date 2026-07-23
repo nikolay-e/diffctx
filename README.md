@@ -35,13 +35,21 @@ pip install diffctx                     # or: into an active environment
 pipx install 'diffctx[mcp]'             # + MCP server for AI assistants
 ```
 
-A standalone binary (no Python required) is on the
-[releases page](https://github.com/nikolay-e/diffctx/releases/latest).
 The `[tree-sitter]` extra adds AST-level parsing for more accurate context
 selection across 30+ languages.
 
-The engine is also a Rust crate — `cargo install diffctx` for the native CLI,
-`cargo add diffctx` to embed the selection pipeline
+Without Python:
+
+```bash
+cargo install diffctx                   # native CLI from crates.io
+docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1
+```
+
+Prebuilt binaries for linux (x86_64/aarch64), macOS (arm64) and Windows (x64)
+are attached to every [release](https://github.com/nikolay-e/diffctx/releases/latest).
+The native binary covers diff mode with YAML/JSON output; tree mode, Markdown
+output, the `graph` subcommand and the MCP server live in the Python package.
+`cargo add diffctx` embeds the selection pipeline in a Rust project
 ([docs.rs](https://docs.rs/diffctx)).
 
 ## Quick start

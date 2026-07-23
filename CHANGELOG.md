@@ -16,6 +16,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (`cargo install diffctx` for the native CLI, `cargo add diffctx` to embed the
   selection pipeline). Previously the name held only a reservation stub; the
   crate now carries the released engine, starting at 1.12.0.
+- Container image `ghcr.io/nikolay-e/diffctx` (linux amd64/arm64), built from
+  the release tag and smoke-tested against a real repository before the tag
+  moves: `docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1`.
+- Packaging manifests generated from the release checksums: Scoop
+  (`packaging/scoop/diffctx.json`), AUR (`packaging/aur/`) and an npm wrapper
+  (`packaging/npm/`) that downloads the platform binary and verifies its
+  SHA-256 against the published checksum.
+
+### Fixed
+
+- The native binary silently emitted YAML for every unrecognized `--format`,
+  including `md` — the documented default of the Python CLI. It now accepts
+  only `yaml`/`json` and exits 2 on anything else.
 
 ## [1.12.0] - 2026-07-23
 

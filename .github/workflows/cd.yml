@@ -589,3 +589,169 @@ jobs:
     with:
       version: ${{ needs.prepare-version.outputs.version }}
       ref: ${{ needs.prepare-version.outputs.tag_name }}
+
+  build-image:
+    name: Build image (${{ matrix.platform }})
+    needs: [prepare-version, finalize-release]
+    if: github.event.inputs.publish_to_pypi == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            platform: linux/amd64
+            slug: amd64
+          - runner: ubuntu-22.04-arm
+            platform: linux/arm64
+            slug: arm64
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: read
+      packages: write
+    env:
+      IMAGE: ghcr.io/${{ github.repository_owner }}/diffctx
+    steps:
+      - name: Checkout release tag
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: ${{ needs.prepare-version.outputs.tag_name }}
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
+
+      - name: Login to ghcr
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a  # v7.3.0
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          build-args: |
+            VERSION=${{ needs.prepare-version.outputs.version }}
+          outputs: >-
+            type=image,name=${{ env.IMAGE }},push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          mkdir -p digests
+          echo -n "" > "digests/${DIGEST#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: image-digest-${{ matrix.slug }}
+          path: digests/*
+          retention-days: 1
+
+  publish-image:
+    name: Publish container image manifest
+    needs: [prepare-version, build-image]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download digests
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          path: ./digests
+          pattern: image-digest-*
+          merge-multiple: true
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c  # v4.2.0
+
+      - name: Login to ghcr
+        uses: docker/login-action@af1e73f918a031802d376d3c8bbc3fe56130a9b0  # v4.4.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push manifest list
+        working-directory: ./digests
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/diffctx
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: |
+          # shellcheck disable=SC2046
+          docker buildx imagetools create \
+            -t "${IMAGE}:${VERSION}" \
+            -t "${IMAGE}:latest" \
+            $(printf "${IMAGE}@sha256:%s " *)
+
+      - name: Smoke - image runs
+        env:
+          IMAGE: ghcr.io/${{ github.repository_owner }}/diffctx
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: |
+          docker run --rm "${IMAGE}:${VERSION}" --version
+          mkdir -p smoke && cd smoke
+          git init -q
+          git config user.email "smoke@test.local"
+          git config user.name "Smoke"
+          printf 'def add(a, b):\n    return a + b\n' > util.py
+          git add -A && git commit -q -m "initial"
+          printf 'def add(a, b):\n    return a + b\n\ndef sub(a, b):\n    return a - b\n' > util.py
+          git add -A && git commit -q -m "add sub"
+          docker run --rm -v "$PWD:/repo" "${IMAGE}:${VERSION}" . --diff HEAD~1..HEAD --no-content
+
+  update-packaging-manifests:
+    name: Refresh Scoop manifest and AUR PKGBUILD
+    needs: [prepare-version, finalize-release]
+    if: github.event.inputs.publish_to_pypi == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          ref: main
+          token: ${{ secrets.RELEASE_PUSH_TOKEN }}
+
+      - name: Download binary artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          path: ./release-binaries
+          pattern: binary-*
+          merge-multiple: true
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: '3.12'
+
+      - name: Render manifests
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: |
+          python scripts/render_packaging.py \
+            --version "$VERSION" \
+            --assets-dir ./release-binaries \
+            --scoop packaging/scoop/diffctx.json \
+            --pkgbuild packaging/aur/PKGBUILD \
+            --srcinfo packaging/aur/.SRCINFO \
+            --npm-checksums packaging/npm/checksums.json
+
+      - name: Commit and push
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add packaging/scoop/diffctx.json packaging/aur/PKGBUILD \
+            packaging/aur/.SRCINFO packaging/npm/checksums.json
+          if git diff --staged --quiet; then
+            echo "Manifests already current."
+            exit 0
+          fi
+          git commit -m "chore: packaging manifests for ${VERSION}"
+          git pull --rebase origin main
+          git push origin HEAD:main
