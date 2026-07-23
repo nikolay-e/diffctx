@@ -292,6 +292,95 @@ jobs:
           path: ./repo/dist/*.tar.gz
           retention-days: 1
 
+  build-binaries:
+    name: Build standalone binary (${{ matrix.target }})
+    needs: prepare-version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: tar.gz
+          - runner: ubuntu-22.04-arm
+            target: aarch64-unknown-linux-gnu
+            archive: tar.gz
+          - runner: macos-14
+            target: aarch64-apple-darwin
+            archive: tar.gz
+          - runner: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zip
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Download git bundle
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: git-repo-bundle
+
+      - name: Restore repository from bundle
+        shell: bash
+        env:
+          TAG_NAME: ${{ needs.prepare-version.outputs.tag_name }}
+        run: |
+          git clone repo.bundle repo
+          cd repo
+          git checkout "$TAG_NAME"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@2c7215f132e9ebf062739d9130488b56d53c060c  # stable
+        with:
+          toolchain: '1.92.0'
+
+      - name: Build release binary
+        working-directory: ./repo/diffctx
+        run: cargo build --release --locked --bin diffctx
+
+      - name: Package binary (tar.gz)
+        if: matrix.archive == 'tar.gz'
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p out
+          cp ./repo/diffctx/target/release/diffctx out/
+          cp ./repo/LICENSE ./repo/README.md out/
+          tar -czf "diffctx-${VERSION}-${TARGET}.tar.gz" -C out .
+          ls -la ./*.tar.gz
+
+      - name: Package binary (zip)
+        if: matrix.archive == 'zip'
+        shell: bash
+        env:
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+          TARGET: ${{ matrix.target }}
+        run: |
+          mkdir -p out
+          cp ./repo/diffctx/target/release/diffctx.exe out/
+          cp ./repo/LICENSE ./repo/README.md out/
+          7z a "diffctx-${VERSION}-${TARGET}.zip" ./out/*
+          ls -la ./*.zip
+
+      - name: Smoke - binary runs
+        shell: bash
+        working-directory: ./repo
+        run: |
+          BIN=./diffctx/target/release/diffctx
+          if [ "${RUNNER_OS}" = "Windows" ]; then BIN="${BIN}.exe"; fi
+          "$BIN" --version
+          "$BIN" . --diff HEAD~1..HEAD --no-content > /dev/null
+          echo "OK: standalone binary works"
+
+      - name: Upload binary artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: binary-${{ matrix.target }}
+          path: |
+            ./*.tar.gz
+            ./*.zip
+          retention-days: 1
+
   publish-to-pypi:
     name: Publish to PyPI
     needs: [prepare-version, build-wheels, build-sdist]
@@ -409,12 +498,13 @@ jobs:
 
   finalize-release:
     name: Push Release and Create GitHub Release
-    needs: [prepare-version, build-wheels, build-sdist, publish-to-pypi, smoke-pypi]
+    needs: [prepare-version, build-wheels, build-sdist, build-binaries, publish-to-pypi, smoke-pypi]
     if: |
       always() &&
       needs.prepare-version.result == 'success' &&
       needs.build-wheels.result == 'success' &&
       needs.build-sdist.result == 'success' &&
+      needs.build-binaries.result == 'success' &&
       (needs.publish-to-pypi.result == 'success' ||
        needs.publish-to-pypi.result == 'skipped') &&
       (needs.smoke-pypi.result == 'success' ||
@@ -469,13 +559,14 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
         with:
           path: ./artifacts
-          pattern: '@(wheel-*|sdist)'
+          pattern: '@(wheel-*|sdist|binary-*)'
           merge-multiple: true
 
       - name: Collect release assets
         run: |
           mkdir -p release-assets
-          find ./artifacts -type f \( -name '*.whl' -o -name '*.tar.gz' \) -exec cp {} release-assets/ \;
+          find ./artifacts -type f \( -name '*.whl' -o -name '*.tar.gz' -o -name '*.zip' \) \
+            -exec cp {} release-assets/ \;
           ls -la release-assets/
 
       - name: Create GitHub Release with wheel and sdist assets

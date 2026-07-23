@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Standalone native binaries (linux x86_64/aarch64, macOS arm64, Windows
+  x64) are built and attached to every GitHub release. The README had
+  promised them since 1.9.x; releases only ever carried wheels and an sdist.
 - The Rust engine is published to crates.io as the `diffctx` crate
   (`cargo install diffctx` for the native CLI, `cargo add diffctx` to embed the
   selection pipeline). Previously the name held only a reservation stub; the
