@@ -7,12 +7,12 @@
 [![License](https://img.shields.io/pypi/l/diffctx)](https://pypi.org/project/diffctx/)
 
 **diffctx selects the minimum code an LLM needs to review a git diff.**
-Instead of pasting whole files, it walks the dependency graph from the changed
-lines outward and stops as soon as additional context stops paying for itself.
+Instead of pasting whole files, it walks the dependency graph outward from the
+changed lines and stops once more context stops paying for itself.
 
 > Coming from [`treemapper`](https://pypi.org/project/treemapper/)? That name is
-> deprecated — it was a thin wrapper around diffctx. Every command, flag, and
-> API call works unchanged: `treemapper` → `diffctx`, `treemapper-mcp` → `diffctx-mcp`.
+> deprecated. Every command, flag, and API call works unchanged:
+> `treemapper` → `diffctx`, `treemapper-mcp` → `diffctx-mcp`.
 
 ## Why not just use `tree` or repomix?
 
@@ -54,7 +54,7 @@ Prebuilt binaries for linux (x86_64/aarch64), macOS (arm64) and Windows (x64)
 are attached to every [release](https://github.com/nikolay-e/diffctx/releases/latest).
 The native binary covers diff mode with YAML/JSON output; tree mode, Markdown
 output, the `graph` subcommand and the MCP server live in the Python package.
-`cargo add diffctx` embeds the selection pipeline in a Rust project
+`cargo add diffctx` embeds the pipeline in a Rust project
 ([docs.rs](https://docs.rs/diffctx)).
 
 ## Quick start
@@ -66,17 +66,16 @@ diffctx . -f md -c            # full codebase export → clipboard in Markdown
 
 ![diffctx demo](https://raw.githubusercontent.com/nikolay-e/diffctx/main/docs/demo.gif)
 
-*`diffctx . --diff HEAD~1` selects only the fragments — functions, imports,
-type definitions — that an LLM actually needs to review the last commit,
-instead of dumping every changed file in full.*
+*`diffctx . --diff HEAD~1` selects only the fragments an LLM needs to review the
+last commit, instead of dumping every changed file in full.*
 
 ## Diff context mode
 
-Finds the minimal set of code fragments needed to understand a change —
-imports, callers, type definitions, config dependencies — across 50+ file
-types. It builds a code graph (imports, co-changes, type refs), propagates
-relevance from the changed lines outward, and stops when relevance drops below
-`--tau` or the `--budget` token cap is reached.
+Finds the minimal set of fragments needed to understand a change — imports,
+callers, type definitions, config dependencies — across 50+ file types. It
+builds a code graph (imports, co-changes, type refs), propagates relevance
+outward from the changed lines, and stops when relevance drops below `--tau` or
+the `--budget` token cap is hit.
 
 | Flag        | Default | Description                                                              |
 |-------------|---------|--------------------------------------------------------------------------|
@@ -124,11 +123,11 @@ diffctx . --diff HEAD~1 -c               # diff context to clipboard
 <!-- END USAGE -->
 
 Every run reports token count and size on stderr — `12,847 tokens
-(o200k_base), 52.3 KB` (tiktoken, the GPT-4o tokenizer; `~`-prefixed
-approximation above 1 MB). `-c/--copy` sends output to the clipboard via
-`pbcopy` (macOS), `clip` (Windows), or `wl-copy`/`xclip`/`xsel` (Linux).
-Unreadable files are replaced by placeholders such as `<binary file: N bytes>`,
-`<file too large: N bytes>`, or `<unreadable content: not utf-8>`.
+(o200k_base), 52.3 KB` (tiktoken, the GPT-4o tokenizer; `~`-prefixed above
+1 MB). `-c/--copy` copies output via `pbcopy` (macOS), `clip` (Windows), or
+`wl-copy`/`xclip`/`xsel` (Linux). Unreadable files become placeholders like
+`<binary file: N bytes>`, `<file too large: N bytes>`, or
+`<unreadable content: not utf-8>`.
 
 ## Python API
 
@@ -165,7 +164,7 @@ print(to_yaml(tree))
 diffctx includes an [MCP](https://modelcontextprotocol.io) server that lets AI
 assistants (Claude Code, Cursor, Windsurf, etc.) call diff context analysis
 automatically during code review. Install with `pip install 'diffctx[mcp]'`
-and add to your MCP client config (e.g. `~/.claude/mcp.json` for Claude Code):
+and add it to your MCP client config (e.g. `~/.claude/mcp.json` for Claude Code):
 
 ```json
 {
@@ -185,11 +184,10 @@ Cursor, Continue, Windsurf, and Zed:
 ## Ignore patterns
 
 Respects `.gitignore` and `.diffctx/ignore` automatically — hierarchically at
-every directory level, with gitignore semantics (negation `!important.log`,
-anchored `/root_only.txt`). `.diffctx/whitelist` acts as an include-only
-filter, and the output file is always auto-ignored. `--no-default-ignores`
-disables the built-in patterns; `--no-ignores` disables all ignore rules
-(tree mode only).
+every directory level, with full gitignore semantics (negation `!important.log`,
+anchored `/root_only.txt`). `.diffctx/whitelist` acts as an include-only filter,
+and the output file is always auto-ignored. `--no-default-ignores` disables the
+built-in patterns; `--no-ignores` disables all ignore rules (tree mode only).
 
 ## Token cache
 
