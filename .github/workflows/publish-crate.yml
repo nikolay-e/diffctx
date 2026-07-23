@@ -17,14 +17,6 @@ concurrency:
         description: 'Git ref to publish from'
         required: false
         default: 'main'
-  workflow_call:
-    inputs:
-      version:
-        required: true
-        type: string
-      ref:
-        required: true
-        type: string
 
 jobs:
   publish:

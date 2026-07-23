@@ -583,12 +583,34 @@ jobs:
     name: Publish crate to crates.io
     needs: [prepare-version, finalize-release]
     if: github.event.inputs.publish_to_pypi == 'true'
+    runs-on: ubuntu-latest
     permissions:
-      id-token: write
-    uses: ./.github/workflows/publish-crate.yml
-    with:
-      version: ${{ needs.prepare-version.outputs.version }}
-      ref: ${{ needs.prepare-version.outputs.tag_name }}
+      actions: write
+    steps:
+      # Dispatched, not called as a reusable workflow: the OIDC token of a
+      # reusable workflow carries the CALLER's filename, which crates.io
+      # trusted publishing rejects (it is configured for publish-crate.yml).
+      - name: Dispatch the crate publish workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.prepare-version.outputs.version }}
+          TAG_NAME: ${{ needs.prepare-version.outputs.tag_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          gh workflow run publish-crate.yml \
+            --repo "$REPO" --ref main \
+            -f version="$VERSION" -f ref="$TAG_NAME"
+
+      - name: Wait for the crate publish workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          sleep 15
+          RUN_ID=$(gh run list --repo "$REPO" --workflow publish-crate.yml \
+            --event workflow_dispatch --limit 1 --json databaseId --jq '.[0].databaseId')
+          echo "Watching run $RUN_ID"
+          gh run watch "$RUN_ID" --repo "$REPO" --exit-status --interval 20
 
   build-image:
     name: Build image (${{ matrix.platform }})
