@@ -1,12 +1,12 @@
 #!/usr/bin/env node
 'use strict';
 
-const fs = require('fs');
-const os = require('os');
-const path = require('path');
-const crypto = require('crypto');
-const https = require('https');
-const { execFileSync } = require('child_process');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const crypto = require('node:crypto');
+const https = require('node:https');
+const { execFileSync } = require('node:child_process');
 
 const { version } = require('./package.json');
 const checksums = require('./checksums.json');
@@ -65,16 +65,33 @@ function verify(archivePath, expectedSha256) {
   }
 }
 
+function systemBinary(candidates, name) {
+  const found = candidates.find((candidate) => fs.existsSync(candidate));
+  if (!found) {
+    throw new Error(`cannot locate ${name}; expected one of ${candidates.join(', ')}`);
+  }
+  return found;
+}
+
 function extract(archivePath, archiveKind, destinationDir) {
   if (archiveKind === 'zip') {
+    const systemRoot = process.env.SystemRoot || 'C:\\Windows';
+    const powershell = systemBinary(
+      [
+        path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+        path.join(systemRoot, 'SysWOW64', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
+      ],
+      'powershell.exe'
+    );
     execFileSync(
-      'powershell',
+      powershell,
       ['-NoProfile', '-Command', `Expand-Archive -LiteralPath '${archivePath}' -DestinationPath '${destinationDir}' -Force`],
       { stdio: 'inherit' }
     );
     return;
   }
-  execFileSync('tar', ['-xzf', archivePath, '-C', destinationDir], { stdio: 'inherit' });
+  const tar = systemBinary(['/usr/bin/tar', '/bin/tar'], 'tar');
+  execFileSync(tar, ['-xzf', archivePath, '-C', destinationDir], { stdio: 'inherit' });
 }
 
 async function main() {
@@ -96,10 +113,12 @@ async function main() {
   extract(archivePath, archive, workDir);
 
   const binaryName = process.platform === 'win32' ? 'diffctx.exe' : 'diffctx';
-  fs.copyFileSync(path.join(workDir, binaryName), path.join(binDir, binaryName));
-  if (process.platform !== 'win32') {
-    fs.chmodSync(path.join(binDir, binaryName), 0o755);
-  }
+  const extracted = path.join(workDir, binaryName);
+  const installed = path.join(binDir, binaryName);
+  fs.copyFileSync(extracted, installed);
+  // Carry over the archive's mode instead of a hardcoded literal, so the
+  // binary stays executable without widening permissions beyond the release.
+  fs.chmodSync(installed, fs.statSync(extracted).mode & 0o777);
   fs.rmSync(workDir, { recursive: true, force: true });
 }
 

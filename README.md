@@ -47,6 +47,9 @@ npx diffctx . --diff HEAD~1             # npm wrapper over the native binary
 docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1
 ```
 
+The image runs as an unprivileged user and writes to stdout; to have `-o` write
+into the mounted repo, add `--user "$(id -u):$(id -g)"`.
+
 Prebuilt binaries for linux (x86_64/aarch64), macOS (arm64) and Windows (x64)
 are attached to every [release](https://github.com/nikolay-e/diffctx/releases/latest).
 The native binary covers diff mode with YAML/JSON output; tree mode, Markdown
