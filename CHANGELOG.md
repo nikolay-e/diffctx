@@ -7,13 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-07-23
+
+### Added
+
+- `--timeout SECONDS` — wall-clock deadline for `--diff` analysis (default
+  300); exceeding it exits `124` instead of hanging indefinitely (#70).
+- `--no-ignores` — turns off every ignore rule (built-in patterns, project
+  `.gitignore`, `.diffctx/ignore`). `--no-default-ignores` only disables the
+  built-in list; its help now says so. Not supported with `--diff`.
+- Output format is inferred from the `-o` extension when `-f` is omitted, so
+  `-o out.json` no longer writes Markdown into a `.json` file; a mismatch
+  between `-f` and the extension warns.
+
 ### Fixed
 
+- **All error logging was dead.** An import-time `NullHandler` made
+  `setup_logging` skip attaching a real handler, so `--log-level` was a no-op
+  and all 19 `logger.error/warning/exception` sites were silent — `diffctx . -o
+  /bad/path.md` exited 1 with no message at all.
 - **diffctx invoked from inside a git hook silently analyzed the wrong
   repository.** Git exports repo-locating env vars (`GIT_DIR`,
   `GIT_INDEX_FILE`, `GIT_WORK_TREE`, ...) to hook subprocesses; inherited,
   they overrode `-C` on every internal git call. All git spawns now scrub
   these variables (`git_command()` in `git.rs`).
+- YAML output preserved file content byte-exactly except for trailing
+  newlines; the block chomping indicator is now chosen per content.
+- Arrow-function fragments bound to variables were never stub-eligible (#106).
+- Decorated definitions rendered as a bare `@decorator` line without the
+  `class X:` / `def x():` header.
+- `--max-depth`-pruned directories were labelled `_(empty directory)_` — a
+  factual lie to the reader; they now read
+  `_(children omitted: --max-depth reached)_` (`truncated: true` in
+  YAML/JSON).
+- Mixed directory + glob arguments dropped the glob files' parent path from
+  node names.
+- Double Ctrl-C printed a ~60-line traceback.
+- Lock files `uv.lock`, `pdm.lock`, `bun.lock`, `bun.lockb`, `deno.lock` and
+  `flake.lock` leaked into output; they now join the other lock files in the
+  default ignore patterns.
 - Large-repo hangs/OOM on trivial diffs (#70, #95): discovery no longer
   re-reads and re-tokenizes the whole candidate universe per ensemble
   strategy (one shared pass + a persistent per-blob token cache keyed by
@@ -43,6 +75,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   ranking) and `peak_rss_bytes` (in-process peak memory). Release builds
   carry line tables (`debug = "line-tables-only"`) for profiling at no
   runtime cost.
+- CLI diagnostics are honest end to end: an exit-code table in `--help`
+  (2 usage, 3 environment, 4 empty diff, 124 timeout), flag-value validation
+  exits 2 instead of 1, git failures report a single line plus a
+  `git log --oneline` hint on unknown revisions, conflicting flags warn
+  (`-q`+`--log-level`, `--full`+selection flags, ...), a failed clipboard
+  copy warns before falling back to stdout, and `--tau` / `--scoring` /
+  `--alpha` / `--budget 0` help text describes what actually happens.
+- `graph --summary` reports category shares as percentages, suppresses
+  degenerate top-referenced lists, detects cycles over dominant-direction
+  edges only, derives churn from `git log --since`, and disambiguates
+  duplicate mermaid labels to relative paths.
 
 ## [1.11.0] - 2026-07-07
 
