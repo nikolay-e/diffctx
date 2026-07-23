@@ -3,6 +3,7 @@
 [![CI](https://github.com/nikolay-e/diffctx/actions/workflows/ci.yml/badge.svg)](https://github.com/nikolay-e/diffctx/actions/workflows/ci.yml)
 [![PyPI](https://img.shields.io/pypi/v/diffctx)](https://pypi.org/project/diffctx/)
 [![crates.io](https://img.shields.io/crates/v/diffctx)](https://crates.io/crates/diffctx)
+[![npm](https://img.shields.io/npm/v/diffctx)](https://www.npmjs.com/package/diffctx)
 [![License](https://img.shields.io/pypi/l/diffctx)](https://pypi.org/project/diffctx/)
 
 **diffctx selects the minimum code an LLM needs to review a git diff.**
@@ -42,6 +43,7 @@ Without Python:
 
 ```bash
 cargo install diffctx                   # native CLI from crates.io
+npx diffctx . --diff HEAD~1             # npm wrapper over the native binary
 docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1
 ```
 
