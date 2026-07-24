@@ -323,8 +323,19 @@ mod tests {
     use super::*;
     use tempfile::TempDir;
 
-    fn write_entry(dir: &Path, name: &str, bytes: usize) {
-        std::fs::write(dir.join(name), vec![b'x'; bytes]).expect("write entry");
+    // mtime is stamped explicitly: filesystems whose timestamp granularity is
+    // coarser than the writes (CI runners) would otherwise give all entries the
+    // same mtime, leaving eviction order up to readdir.
+    fn write_entry(dir: &Path, name: &str, bytes: usize, age_secs: u64) {
+        let path = dir.join(name);
+        std::fs::write(&path, vec![b'x'; bytes]).expect("write entry");
+        let stamp = std::time::SystemTime::now() - std::time::Duration::from_secs(age_secs);
+        std::fs::File::options()
+            .write(true)
+            .open(&path)
+            .expect("open entry")
+            .set_modified(stamp)
+            .expect("set mtime");
     }
 
     #[test]
@@ -332,10 +343,8 @@ mod tests {
         let tmp = TempDir::new().expect("tempdir");
         let shard = tmp.path().join("ab");
         std::fs::create_dir_all(&shard).expect("shard dir");
-        // Written in order, so mtime order is insertion order - which is what
-        // eviction sorts on (entries are never rewritten after their save).
-        for name in ["oldest", "middle", "newest"] {
-            write_entry(&shard, name, 1000);
+        for (age_secs, name) in [(3600, "oldest"), (1800, "middle"), (60, "newest")] {
+            write_entry(&shard, name, 1000, age_secs);
         }
 
         evict_shard(&shard, 2000);
@@ -353,7 +362,7 @@ mod tests {
         let tmp = TempDir::new().expect("tempdir");
         let shard = tmp.path().join("cd");
         std::fs::create_dir_all(&shard).expect("shard dir");
-        write_entry(&shard, "kept", 1000);
+        write_entry(&shard, "kept", 1000, 86_400);
 
         evict_shard(&shard, 4096);
 
