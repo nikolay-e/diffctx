@@ -25,6 +25,7 @@ pub enum FragmentKind {
     Definition,
     Section,
     Chunk,
+    Excerpt,
     FunctionSignature,
     ClassSignature,
     MethodSignature,
@@ -51,6 +52,7 @@ impl FragmentKind {
             "definition" => Self::Definition,
             "section" => Self::Section,
             "chunk" => Self::Chunk,
+            "excerpt" => Self::Excerpt,
             "function_signature" => Self::FunctionSignature,
             "class_signature" => Self::ClassSignature,
             "method_signature" => Self::MethodSignature,
@@ -78,6 +80,7 @@ impl FragmentKind {
             Self::Definition => "definition",
             Self::Section => "section",
             Self::Chunk => "chunk",
+            Self::Excerpt => "excerpt",
             Self::FunctionSignature => "function_signature",
             Self::ClassSignature => "class_signature",
             Self::MethodSignature => "method_signature",
@@ -121,6 +124,13 @@ impl FragmentKind {
                 | Self::InterfaceSignature
                 | Self::EnumSignature
         )
+    }
+
+    /// A cheap stand-in for a core fragment that does not fit the budget: a
+    /// signature for the kinds that have one, an excerpt for the kinds that
+    /// don't (chunks, sections — the fallbacks for flat and unparsed files).
+    pub fn is_stub(&self) -> bool {
+        self.is_signature() || matches!(self, Self::Excerpt)
     }
 }
 

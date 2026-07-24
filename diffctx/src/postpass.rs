@@ -8,7 +8,7 @@ use crate::fragmentation::create_whole_file_fragment;
 use crate::git::CatFileBatch;
 use crate::graph::Graph;
 use crate::interval::IntervalIndex;
-use crate::types::{Fragment, FragmentId};
+use crate::types::{Fragment, FragmentId, FragmentKind};
 
 fn find_dangling_semantic_names(
     selected: &[Fragment],
@@ -56,10 +56,13 @@ fn change_coverage_rank(f: &Fragment, core_ids: &FxHashSet<FragmentId>) -> u8 {
     if core_ids.contains(&f.id) {
         return 0;
     }
-    let is_core_stub = f.kind.is_signature()
-        && core_ids
-            .iter()
-            .any(|c| c.path == f.id.path && c.start_line == f.id.start_line);
+    // An excerpt is cut from a core fragment around the diff hunk, so it always
+    // covers the change; a signature only does when it belongs to a core.
+    let is_core_stub = f.kind == FragmentKind::Excerpt
+        || (f.kind.is_signature()
+            && core_ids
+                .iter()
+                .any(|c| c.path == f.id.path && c.start_line == f.id.start_line));
     if is_core_stub { 1 } else { 2 }
 }
 
@@ -227,6 +230,7 @@ pub fn ensure_changed_files_represented(
     preferred_revs: &[String],
     mut batch_reader: Option<&mut CatFileBatch>,
     core_ids: &FxHashSet<FragmentId>,
+    core_excerpts: &FxHashMap<FragmentId, Fragment>,
 ) {
     let selected_paths: FxHashSet<String> = selected
         .iter()
@@ -243,7 +247,7 @@ pub fn ensure_changed_files_represented(
     }
 
     let mut frags_by_path: FxHashMap<String, Vec<Fragment>> = FxHashMap::default();
-    for f in all_fragments {
+    for f in all_fragments.iter().chain(core_excerpts.values()) {
         let path_str = f.id.path.as_ref().to_string();
         if missing_paths
             .iter()
@@ -340,6 +344,7 @@ mod tests {
             &[],
             None,
             &core_ids,
+            &FxHashMap::default(),
         );
 
         assert_eq!(selected.len(), 1, "expected exactly one fallback fragment");
@@ -376,6 +381,7 @@ mod tests {
             &[],
             None,
             &core_ids,
+            &FxHashMap::default(),
         );
 
         assert_eq!(selected.len(), 1);

@@ -132,6 +132,7 @@ pub fn build_diff_context_in_memory(
         effective_budget,
         tau,
         None,
+        None,
     );
 
     let mut selected = selection.selected;
@@ -163,6 +164,7 @@ pub fn build_diff_context_in_memory(
         &[],
         None,
         &core_ids,
+        &FxHashMap::default(),
     );
 
     let dummy_root = Path::new(".");

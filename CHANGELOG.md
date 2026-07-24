@@ -53,6 +53,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   silenced by the new `-q/--quiet`.
 - `diffctx -v` was a usage error on the native binary while it printed the
   version on the Python CLI. Both short forms (`-v`, `-V`) now work.
+- **A diff could lose its change signal entirely.** When the only fragment
+  covering a hunk was a whole-file chunk — flat data files, languages without a
+  tree-sitter parser, parse degradation — that chunk had no cheap variant to
+  fall back on, so an oversized core was skipped and the output carried *zero*
+  `role: "changed"` fragments while rendering the unchanged rest of the file as
+  context. Such cores now fall back to an excerpt: the changed lines plus three
+  lines of context, cut from the chunk itself and rendered as `kind: excerpt`,
+  `role: "changed"`. On the elasticsearch `muted-tests.yml` repro the output
+  goes from 121 fragments and no change signal to 118 fragments carrying the
+  appended entry, 5,337 tokens instead of 5,970 (#103). The whole-file
+  fragmentation of flat lists that the same repro shows is the separate
+  granularity issue (#105) and is unchanged.
 - A diff whose selection came back empty rendered as a bare `name`/`type` stub
   in every format: the writer gated *all* diff metadata on there being
   fragments, so the commit message and the list of changed files — the only

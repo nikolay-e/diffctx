@@ -481,6 +481,7 @@ mod paper_claim_tests {
             budget,
             0.08,
             None,
+            None,
         );
 
         for (i, fi) in result.selected.iter().enumerate() {
@@ -557,6 +558,7 @@ mod paper_claim_tests {
             &needs,
             budget,
             0.08,
+            None,
             None,
         );
         let ratio = result.utility / optimal;

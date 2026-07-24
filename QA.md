@@ -279,6 +279,23 @@ than over-selection), (B) whole-file fragmentation of a flat list (overlaps #65)
 Tracked on #103, primarily for (A). A clean rc=0 with a plausible token
 count still hides this class — `role:`-absence is the tell.
 
+### Excerpt Fallback (the #103-A fix, 2026-07-25)
+
+`diffctx/src/excerpt.rs` gives every core fragment WITHOUT a signature variant
+(chunk, section) a narrow stand-in around its hunk, used only when the core
+itself does not fit the budget. Deliberate design constraints — keep them if
+you touch it: excerpts live in `ScoredState.core_excerpts`, NOT in
+`all_fragments`, so they are never graph nodes and never ordinary context
+candidates (that is what keeps the change E-class — the full local
+`yaml_cases` run stayed bit-identical at 2265/460), and `select_with_params`
+adds selected excerpt ids to a render-time core set so they carry
+`role: "changed"`. Deterministic repro (synthetic, no fixture needed):
+250 flat YAML entries whose `method:` values contain `{...}` flow-scalar
+braces, plus a 3-line EOF append — regression test
+`test_eof_append_to_flat_data_file_keeps_the_change_signal`. The remaining
+cost half of the class (whole file rendered when the chunk DOES fit, #105/#107)
+is untouched: the fallback only fires under budget pressure.
+
 ### Whole-File-Chunk-as-Core Defect Class (#103/#105/#107)
 
 When fragmentation yields no narrow fragment covering a hunk (flat data files,

@@ -4,6 +4,7 @@ pub mod config;
 pub mod core;
 pub mod discovery;
 pub mod edges;
+pub mod excerpt;
 pub mod filtering;
 pub mod fragmentation;
 pub mod git;

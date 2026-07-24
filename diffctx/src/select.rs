@@ -153,6 +153,7 @@ fn compute_r_cap(
 fn build_signature_lookup(
     fragments: &[Fragment],
     core_fragments: &[Fragment],
+    core_excerpts: Option<&FxHashMap<FragmentId, Fragment>>,
 ) -> FxHashMap<FragmentId, Fragment> {
     let mut sig_by_loc: FxHashMap<(Arc<str>, u32), Fragment> = FxHashMap::default();
     for f in fragments {
@@ -165,6 +166,13 @@ fn build_signature_lookup(
         let key = (cf.id.path.clone(), cf.start_line());
         if let Some(sig) = sig_by_loc.get(&key) {
             sig_lookup.insert(cf.id.clone(), sig.clone());
+            continue;
+        }
+        // Kinds without a signature (chunk, section) fall back to the excerpt
+        // around the hunk; without it an oversized core is skipped outright and
+        // the change signal disappears from the output (#103).
+        if let Some(excerpt) = core_excerpts.and_then(|e| e.get(&cf.id)) {
+            sig_lookup.insert(cf.id.clone(), excerpt.clone());
         }
     }
     sig_lookup
@@ -474,6 +482,7 @@ fn setup_and_select_core(
     needs: &[InformationNeed],
     budget_tokens: u32,
     file_importance: Option<&FxHashMap<Arc<str>, f64>>,
+    core_excerpts: Option<&FxHashMap<FragmentId, Fragment>>,
 ) -> (SelectionState, Vec<Fragment>, Vec<Fragment>, bool) {
     let mut core_fragments: Vec<Fragment> = fragments
         .iter()
@@ -502,7 +511,7 @@ fn setup_and_select_core(
         .cloned()
         .collect();
 
-    let sig_lookup = build_signature_lookup(fragments, &core_fragments);
+    let sig_lookup = build_signature_lookup(fragments, &core_fragments, core_excerpts);
     let mut state = init_selection_state(core_ids, rel, budget_tokens, file_importance);
     select_core_fragments(
         &core_fragments,
@@ -549,6 +558,7 @@ pub fn lazy_greedy_select(
     budget_tokens: u32,
     tau: f64,
     file_importance: Option<&FxHashMap<Arc<str>, f64>>,
+    core_excerpts: Option<&FxHashMap<FragmentId, Fragment>>,
 ) -> SelectionResult {
     if fragments.is_empty() {
         return SelectionResult {
@@ -569,6 +579,7 @@ pub fn lazy_greedy_select(
             needs,
             budget_tokens,
             file_importance,
+            core_excerpts,
         );
 
     if should_return_early {

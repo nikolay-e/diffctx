@@ -38,6 +38,10 @@ pub struct ScoredState {
     pub config: PipelineConfig,
     pub all_fragments: Vec<Fragment>,
     pub core_ids: FxHashSet<FragmentId>,
+    /// Narrow stand-ins for the core fragments that have no signature variant,
+    /// keyed by the core they replace. Deliberately outside `all_fragments`:
+    /// they are budget fallbacks, not graph nodes or context candidates.
+    pub core_excerpts: FxHashMap<FragmentId, Fragment>,
     pub scoring_result: ScoringResult,
     pub needs: Vec<InformationNeed>,
     pub changed_files: Vec<PathBuf>,
@@ -281,6 +285,10 @@ pub fn compute_scored_state(
 
     let core_ids = identify_core_fragments(&hunks, &all_fragments);
 
+    let mut core_excerpts =
+        crate::excerpt::generate_core_excerpts(&all_fragments, &core_ids, &hunks);
+    assign_excerpt_token_counts(&mut core_excerpts);
+
     let signature_frags = generate_signature_variants(&all_fragments);
     let mut sig_frags = signature_frags;
     assign_token_counts(&mut sig_frags);
@@ -349,6 +357,7 @@ pub fn compute_scored_state(
         config,
         all_fragments,
         core_ids,
+        core_excerpts,
         scoring_result,
         needs,
         changed_files,
@@ -414,6 +423,7 @@ pub fn select_with_params(
                 effective_budget,
                 tau,
                 Some(&file_importance),
+                Some(&state.core_excerpts),
             )
         }
     };
@@ -452,6 +462,7 @@ pub fn select_with_params(
         &state.preferred_revs,
         batch_reader.as_mut(),
         &state.core_ids,
+        &state.core_excerpts,
     );
     if let Some(mut r) = batch_reader {
         r.close();
@@ -483,11 +494,22 @@ pub fn select_with_params(
         deleted_files: state.deleted_files.clone(),
         renamed_files: state.renamed_files.clone(),
     };
+    // An excerpt stands in for a core fragment, so it carries the change and
+    // has to render as `role: "changed"` — otherwise the substitution keeps the
+    // content but still loses the signal it exists to preserve.
+    let mut render_core_ids = state.core_ids.clone();
+    render_core_ids.extend(
+        selected
+            .iter()
+            .filter(|f| f.kind == crate::types::FragmentKind::Excerpt)
+            .map(|f| f.id.clone()),
+    );
+
     let mut output = render::build_diff_context_output(
         &state.root_dir,
         &selected,
         no_content,
-        &state.core_ids,
+        &render_core_ids,
         &state.scoring_result.rel_scores,
         change,
     );
@@ -718,6 +740,7 @@ fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
         config,
         all_fragments: Vec::new(),
         core_ids: FxHashSet::default(),
+        core_excerpts: FxHashMap::default(),
         scoring_result: ScoringResult {
             rel_scores: FxHashMap::default(),
             filtered_fragments: Vec::new(),
@@ -825,6 +848,14 @@ fn assign_token_counts(fragments: &mut [Fragment]) {
             frag.token_count = count_tokens(&frag.content) + LIMITS.overhead_per_fragment;
         }
     });
+}
+
+fn assign_excerpt_token_counts(excerpts: &mut FxHashMap<FragmentId, Fragment>) {
+    for frag in excerpts.values_mut() {
+        if frag.token_count == 0 {
+            frag.token_count = count_tokens(&frag.content) + LIMITS.overhead_per_fragment;
+        }
+    }
 }
 
 fn select_full_mode(all_fragments: &[Fragment], changed_files: &[PathBuf]) -> Vec<Fragment> {
