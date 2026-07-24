@@ -160,6 +160,7 @@ impl DiffContextResult {
             changed_files: Vec::new(),
             deleted_files: Vec::new(),
             renamed_files: Vec::new(),
+            lockfile_changes: Vec::new(),
             fragment_count: self.fragment_count,
             fragments: self
                 .fragments
@@ -290,6 +291,9 @@ fn build_diff_context<'py>(
     }
     if !output.deleted_files.is_empty() {
         dict.set_item("deleted_files", &output.deleted_files)?;
+    }
+    if !output.lockfile_changes.is_empty() {
+        dict.set_item("lockfile_changes", &output.lockfile_changes)?;
     }
     if !output.renamed_files.is_empty() {
         let renames = PyList::empty(py);
@@ -436,6 +440,9 @@ fn diff_context_output_to_dict<'py>(
     }
     if !output.deleted_files.is_empty() {
         dict.set_item("deleted_files", &output.deleted_files)?;
+    }
+    if !output.lockfile_changes.is_empty() {
+        dict.set_item("lockfile_changes", &output.lockfile_changes)?;
     }
     if !output.renamed_files.is_empty() {
         let renames = PyList::empty(py);

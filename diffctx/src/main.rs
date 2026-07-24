@@ -137,7 +137,10 @@ fn print_token_summary(rendered: &str) {
 // are real signal even with zero fragments, so only a result carrying neither
 // counts as empty.
 fn diff_result_is_empty(output: &DiffContextOutput) -> bool {
-    output.deleted_files.is_empty() && output.renamed_files.is_empty() && output.fragment_count == 0
+    output.deleted_files.is_empty()
+        && output.renamed_files.is_empty()
+        && output.lockfile_changes.is_empty()
+        && output.fragment_count == 0
 }
 
 fn empty_diff_hint(budget: Option<i64>, diff_ref: &str) -> String {

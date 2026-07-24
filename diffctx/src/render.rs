@@ -18,6 +18,7 @@ pub struct ChangeSummary {
     pub changed_files: Vec<String>,
     pub deleted_files: Vec<String>,
     pub renamed_files: Vec<(String, String)>,
+    pub lockfile_changes: Vec<String>,
 }
 
 fn serialize_renames<S>(renames: &[(String, String)], serializer: S) -> Result<S::Ok, S::Error>
@@ -51,6 +52,10 @@ pub struct DiffContextOutput {
         serialize_with = "serialize_renames"
     )]
     pub renamed_files: Vec<(String, String)>,
+    /// Lock files touched by the range. Paths only — the raw hunks are
+    /// thousands of tokens of checksum churn for one line of signal (#112).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub lockfile_changes: Vec<String>,
     pub fragment_count: usize,
     pub fragments: Vec<FragmentEntry>,
     #[serde(skip)]
@@ -386,6 +391,7 @@ pub fn build_diff_context_output(
         changed_files: change.changed_files,
         deleted_files: change.deleted_files,
         renamed_files: change.renamed_files,
+        lockfile_changes: change.lockfile_changes,
         fragment_count: fragments_out.len(),
         fragments: fragments_out,
         latency: None,

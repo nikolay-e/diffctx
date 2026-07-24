@@ -47,6 +47,9 @@ pub struct ScoredState {
     pub changed_files: Vec<PathBuf>,
     pub deleted_files: Vec<String>,
     pub renamed_files: Vec<(String, String)>,
+    /// Lock files touched by the range, paths only: the dependency bump is
+    /// signal, the checksum churn is not (#112).
+    pub lockfile_changes: Vec<String>,
     pub preferred_revs: Vec<String>,
     pub commit_message: Option<String>,
     pub heavy_latency_ms: HeavyLatencyMs,
@@ -146,8 +149,19 @@ pub fn compute_scored_state(
     let ignored_rel_paths = resolve_ignored_paths(&root_dir, &hunks);
     hunks.retain(|h| !is_ignored_path(&root_dir, Path::new(&*h.path), &ignored_rel_paths));
 
+    let mut lockfile_display: Vec<String> = hunks
+        .iter()
+        .filter(|h| is_lockfile_path(Path::new(&*h.path)))
+        .filter_map(|h| rel_path_string(&root_dir, Path::new(&*h.path)))
+        .collect();
+    lockfile_display.sort();
+    lockfile_display.dedup();
+    hunks.retain(|h| !is_lockfile_path(Path::new(&*h.path)));
+
     if hunks.is_empty() {
-        return Ok(empty_scored_state_with_changes(root_dir, diff_range));
+        let mut state = empty_scored_state_with_changes(root_dir, diff_range);
+        state.lockfile_changes = lockfile_display;
+        return Ok(state);
     }
 
     let diff_text = git::get_diff_text(&root_dir, diff_range)?;
@@ -187,6 +201,7 @@ pub fn compute_scored_state(
             let resolved = f.canonicalize().unwrap_or_else(|_| f.clone());
             !excluded.contains(&resolved)
                 && !is_secret_path(f)
+                && !is_lockfile_path(f)
                 && !is_ignored_path(&root_dir, f, &ignored_rel_paths)
         })
         .collect();
@@ -363,6 +378,7 @@ pub fn compute_scored_state(
         changed_files,
         deleted_files: deleted_display,
         renamed_files: renamed_display,
+        lockfile_changes: lockfile_display,
         preferred_revs,
         commit_message,
         heavy_latency_ms,
@@ -493,6 +509,7 @@ pub fn select_with_params(
             .collect(),
         deleted_files: state.deleted_files.clone(),
         renamed_files: state.renamed_files.clone(),
+        lockfile_changes: state.lockfile_changes.clone(),
     };
     // An excerpt stands in for a core fragment, so it carries the change and
     // has to render as `role: "changed"` — otherwise the substitution keeps the
@@ -565,6 +582,41 @@ fn is_secret_path(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|e| e.to_str()),
         Some("pem" | "key" | "pfx" | "p12" | "keystore" | "jks")
+    )
+}
+
+/// Lock files, mirroring the tree-mode `DEFAULT_IGNORE_PATTERNS` list in
+/// `src/diffctx/ignore.py`. Tree mode drops them outright; diff mode cannot,
+/// because a bumped dependency IS part of the change — but rendering the raw
+/// hunks costs thousands of tokens of checksums for a fact that fits on one
+/// line, so the paths are reported and the content is left out (#112).
+fn is_lockfile_path(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    matches!(
+        name,
+        "Cargo.lock"
+            | "package-lock.json"
+            | "npm-shrinkwrap.json"
+            | "yarn.lock"
+            | "pnpm-lock.yaml"
+            | "bun.lock"
+            | "bun.lockb"
+            | "deno.lock"
+            | "Pipfile.lock"
+            | "poetry.lock"
+            | "uv.lock"
+            | "pdm.lock"
+            | "composer.lock"
+            | "Gemfile.lock"
+            | "flake.lock"
+            | "go.sum"
+            | "mix.lock"
+            | "packages.lock.json"
+            | "gradle.lockfile"
+            | "Package.resolved"
+            | "cabal.project.freeze"
     )
 }
 
@@ -693,6 +745,9 @@ fn build_diff_context_full(
             .collect(),
         deleted_files: deleted_display,
         renamed_files: git::get_rename_pairs(&root_dir, diff_range).unwrap_or_default(),
+        // `--full` is the escape hatch that promises every fragment of the
+        // changed files, so it keeps lockfile content instead of diverting it.
+        lockfile_changes: Vec::new(),
     };
     Ok(render::build_diff_context_output(
         &root_dir,
@@ -741,6 +796,7 @@ fn empty_scored_state(root_dir: PathBuf) -> ScoredState {
         all_fragments: Vec::new(),
         core_ids: FxHashSet::default(),
         core_excerpts: FxHashMap::default(),
+        lockfile_changes: Vec::new(),
         scoring_result: ScoringResult {
             rel_scores: FxHashMap::default(),
             filtered_fragments: Vec::new(),
@@ -775,6 +831,7 @@ fn empty_output(root_dir: &Path) -> DiffContextOutput {
         changed_files: Vec::new(),
         deleted_files: Vec::new(),
         renamed_files: Vec::new(),
+        lockfile_changes: Vec::new(),
         fragment_count: 0,
         fragments: Vec::new(),
         latency: None,
@@ -790,6 +847,7 @@ pub(crate) fn empty_output_from_state(state: &ScoredState) -> DiffContextOutput 
     output.commit_message = state.commit_message.clone();
     output.deleted_files = state.deleted_files.clone();
     output.renamed_files = state.renamed_files.clone();
+    output.lockfile_changes = state.lockfile_changes.clone();
     output
 }
 

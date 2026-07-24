@@ -134,6 +134,7 @@ def _has_diff_metadata(tree: dict[str, Any]) -> bool:
         or tree.get("renamed_files")
         or tree.get("changed_files")
         or tree.get("commit_message")
+        or tree.get("lockfile_changes")
     )
 
 
@@ -155,6 +156,8 @@ def _write_yaml_diff_metadata(file: TextIO, tree: dict[str, Any]) -> None:
         for pair in tree["renamed_files"]:
             file.write(f'  - from: "{_escape_yaml_string(str(pair.get("from", "")))}"\n')
             file.write(f'    to: "{_escape_yaml_string(str(pair.get("to", "")))}"\n')
+    if tree.get("lockfile_changes"):
+        _write_yaml_path_list(file, "lockfile_changes", tree["lockfile_changes"])
     if tree.get("fragments"):
         file.write(f"fragment_count: {len(tree['fragments'])}\n")
         file.write("fragments:\n")
@@ -248,6 +251,8 @@ def _write_tree_text_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
         file.write(f"  deleted files: {', '.join(str(p) for p in tree['deleted_files'])}\n")
     for pair in tree.get("renamed_files", []):
         file.write(f"  renamed: {pair.get('from', '')} -> {pair.get('to', '')}\n")
+    if tree.get("lockfile_changes"):
+        file.write(f"  lock files changed: {', '.join(str(p) for p in tree['lockfile_changes'])}\n")
     for frag in tree.get("fragments", []):
         _write_text_fragment(file, frag, "  ")
 
@@ -409,6 +414,11 @@ def _write_markdown_diff_context(file: TextIO, tree: dict[str, Any]) -> None:
             old_p = _escape_md_inline_code(str(pair.get("from", "")))
             new_p = _escape_md_inline_code(str(pair.get("to", "")))
             file.write(f"- {old_p} \u2192 {new_p}\n")
+        file.write("\n")
+    if tree.get("lockfile_changes"):
+        file.write("**Lock files changed:**\n\n")
+        for path in tree["lockfile_changes"]:
+            file.write(f"- {_escape_md_inline_code(str(path))}\n")
         file.write("\n")
     for frag in tree["fragments"]:
         _write_markdown_fragment(file, frag)

@@ -79,7 +79,7 @@ def _ensure_git_repo(root_dir: Path, prog: str) -> None:
 
 
 def _diff_result_is_empty(result: dict[str, Any]) -> bool:
-    if result.get("deleted_files") or result.get("renamed_files"):
+    if result.get("deleted_files") or result.get("renamed_files") or result.get("lockfile_changes"):
         return False
     count = result.get("fragment_count")
     if isinstance(count, int):

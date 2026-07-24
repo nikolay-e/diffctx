@@ -380,3 +380,70 @@ def test_eof_append_to_flat_data_file_keeps_the_change_signal(tmp_path):
     for f in changed:
         start, end = (int(x) for x in f["lines"].split("-"))
         assert end - start < 60, f"change signal should stay narrow, got lines {f['lines']}"
+
+
+def _lockfile_repo(tmp_path: Path) -> tuple[Pygit2Repo, str]:
+    def lock(patch: int) -> str:
+        entries = "".join(
+            f'[[package]]\nname = "dep{i}"\nversion = "1.0.{i}"\n' f'checksum = "{i:064x}"\ndependencies = ["dep{i + 1}"]\n\n'
+            for i in range(120)
+        )
+        return f'version = 4\n\n{entries}[[package]]\nname = "regex"\nversion = "1.12.{patch}"\n'
+
+    repo = Pygit2Repo(tmp_path / "repo")
+    repo.add_file("Cargo.lock", lock(3))
+    repo.add_file("src/lib.rs", "pub fn parse(input: &str) -> usize {\n    input.len()\n}\n")
+    base = repo.commit("base")
+    repo.add_file("Cargo.lock", lock(4))
+    repo.add_file(
+        "src/lib.rs",
+        "pub fn parse(input: &str) -> usize {\n    input.trim().len()\n}\n",
+    )
+    head = repo.commit("bump regex")
+    return repo, f"{base}..{head}"
+
+
+def test_lockfile_changes_are_reported_as_paths_not_content(tmp_path):
+    """A dependency bump is signal; the checksum churn that carries it is not.
+    Diff mode used to render the whole lock chunk — thousands of tokens of
+    hashes for one line of meaning (#112)."""
+    import json
+
+    repo, diff_range = _lockfile_repo(tmp_path)
+
+    stdout, _ = _run(repo.path, [".", "--diff", diff_range, "-f", "json"])
+    doc = json.loads(stdout)
+
+    assert doc["lockfile_changes"] == ["Cargo.lock"]
+    assert all(f["path"] != "Cargo.lock" for f in doc["fragments"]), "lock content must not render"
+    assert "checksum" not in stdout, "lock checksums leaked into the output"
+    assert any(f["path"] == "src/lib.rs" for f in doc["fragments"]), "real code must still render"
+
+
+def test_lockfile_only_diff_is_not_reported_as_empty(tmp_path):
+    """Diverting the hunks must not turn a lockfile-only commit into the
+    'no semantic context' error path: the bump is still a real change."""
+    import json
+
+    repo = Pygit2Repo(tmp_path / "repo")
+    repo.add_file("uv.lock", 'version = 1\n\n[[package]]\nname = "httpx"\nversion = "0.27.0"\n')
+    base = repo.commit("base")
+    repo.add_file("uv.lock", 'version = 1\n\n[[package]]\nname = "httpx"\nversion = "0.28.1"\n')
+    head = repo.commit("bump httpx")
+
+    stdout, _ = _run(repo.path, [".", "--diff", f"{base}..{head}", "-f", "json"])
+    doc = json.loads(stdout)
+
+    assert doc["lockfile_changes"] == ["uv.lock"]
+    assert doc["fragment_count"] == 0
+
+
+def test_full_mode_keeps_lockfile_content(tmp_path):
+    """`--full` promises every fragment of the changed files, so it stays the
+    escape hatch for the content the default mode diverts."""
+    repo, diff_range = _lockfile_repo(tmp_path)
+
+    stdout, _ = _run(repo.path, [".", "--diff", diff_range, "--full", "-f", "yaml"])
+
+    assert "Cargo.lock" in stdout
+    assert "checksum" in stdout

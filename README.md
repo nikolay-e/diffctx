@@ -213,7 +213,7 @@ its share of the cap, oldest entries first.
 | `1`  | Runtime error (bad path, permission denied, etc.) |
 | `2`  | Usage error (invalid flags/arguments) |
 | `3`  | Environment error (`--diff` outside a git repo, git not installed, no commits yet) |
-| `4`  | `--diff` produced no semantic context (clean tree, binary-only, everything filtered); output is still emitted. Deletion/rename-only diffs list `deleted_files`/`renamed_files` and exit `0` |
+| `4`  | `--diff` produced no semantic context (clean tree, binary-only, everything filtered); output is still emitted. Deletion/rename/lockfile-only diffs list `deleted_files`/`renamed_files`/`lockfile_changes` and exit `0` |
 | `130`| Interrupted (Ctrl-C) |
 | `141`| Broken pipe (e.g. piping into `head`) |
 

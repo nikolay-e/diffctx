@@ -296,6 +296,29 @@ braces, plus a 3-line EOF append — regression test
 cost half of the class (whole file rendered when the chunk DOES fit, #105/#107)
 is untouched: the fallback only fires under budget pressure.
 
+### Lock-File Policy in Diff Mode (#112, 2026-07-25)
+
+Diff mode diverts lock files (the `is_lockfile_path` list in `pipeline.rs`,
+mirroring tree mode's `DEFAULT_IGNORE_PATTERNS`) into a paths-only
+`lockfile_changes:` key: hunks dropped, the fact of the bump kept. Three
+consequences to remember when reading output: a lock-only diff is **not** the
+empty-diff error path (`lockfile_changes` counts as signal in both
+`_diff_result_is_empty` predicates, exit 0); `--full` deliberately still
+renders lock content, so it is the escape hatch when someone needs the
+checksums; and any new key like this must be threaded through **five**
+renderers — the Rust serializer plus writer.py's YAML/text/Markdown paths and
+`_has_diff_metadata` — or it silently disappears in the format nobody tested.
+
+### Merged Entries Report Only the FIRST Fragment's `kind`
+
+`merge_file_fragments` (render.rs) collapses adjacent same-role fragments into
+one entry that keeps the first fragment's `kind` while spanning the merged
+line range. So `lines: 40-470, kind: chunk` does NOT mean the file fragmented
+into one 431-line chunk — it can be a chunk merged with the definitions that
+follow it. Diagnose fragmentation from the parser, never from rendered
+`kind:`; a tree-sitter probe test (parse the real file, print node kinds and
+spans) settles it in a minute.
+
 ### Whole-File-Chunk-as-Core Defect Class (#103/#105/#107)
 
 When fragmentation yields no narrow fragment covering a hunk (flat data files,

@@ -73,6 +73,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Lock files no longer render their hunks in diff mode.** A dependency bump
+  is signal, the checksum churn carrying it is not: `diffctx . --diff` used to
+  spend 12 KB of a 48 KB output on a `Cargo.lock` chunk. The touched lock files
+  are now listed under `lockfile_changes:` (paths only, like `deleted_files:`),
+  mirroring the tree-mode ignore policy while keeping the fact that they
+  changed — on the reported range the output drops from 12,947 to 7,888 tokens
+  (#112). Recognized: `Cargo.lock`, `package-lock.json`, `npm-shrinkwrap.json`,
+  `yarn.lock`, `pnpm-lock.yaml`, `bun.lock(b)`, `deno.lock`, `Pipfile.lock`,
+  `poetry.lock`, `uv.lock`, `pdm.lock`, `composer.lock`, `Gemfile.lock`,
+  `flake.lock`, `go.sum`, `mix.lock`, `packages.lock.json`, `gradle.lockfile`,
+  `Package.resolved`, `cabal.project.freeze`. `--full` still renders their
+  content — it is the escape hatch that promises every fragment of the changed
+  files.
 - Native binary CLI parity: `-f` is accepted as the short form of `--format`,
   bare `--diff` means the working tree against `HEAD`, `--scoring` advertises
   its accepted values, and every option carries help text.
