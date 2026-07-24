@@ -110,6 +110,10 @@ jobs:
           DIFFCTX_YAML_CASES_LIMIT: "20"
         run: |
           cargo test --lib
+          # Dev profile: the release profile sets panic = "abort", and building
+          # the binary into a libtest target there mixes abort and unwind
+          # artifacts that break the harness-free yaml_cases build.
+          cargo test --test native_cli
           cargo build --release
           cargo test --release --test yaml_cases
 

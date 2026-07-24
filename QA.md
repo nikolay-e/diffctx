@@ -97,6 +97,19 @@ diffctx --diff -f yaml
   `/Users/nikolay/.local/bin/diffctx`; tests/builds/pre-commit need the venv
   binary, only the user-facing smoke needs the pipx one.
 
+## Issue Triage Is Gated by the E/Q-Class Discipline
+
+Every open issue in this repo (65, 93, 103, 105, 107, 112, 114, 116, 121, 123
+— written without the `#` here because markdownlint's autofix rewraps a line
+starting with `#nnn` into a heading) is a fragmentation or selection change:
+Q-class by the rule in `CLAUDE.md`, i.e. output-changing and frozen during an
+evaluation cycle, and each needs benchmark revalidation (`yaml_cases` plus
+`benchmarks/real_world_diff_bench`) rather than an in-pass edit. So a QA round
+does NOT clear them one by one; it adds fresh repro data (new shapes, new
+byte-share numbers) to the existing issue and leaves the fix to a dedicated
+calibration cycle. Do not re-litigate this per issue, and do not open new
+issues for shapes already listed under "Known #65 Repro Shapes".
+
 ## Pre-commit Caveats
 
 See `/qa` skill: Packaging QA for `language: system` venv-shebang rot (recover
@@ -106,6 +119,15 @@ with `rm -rf .venv && python3 -m venv .venv && pip install "maturin>=1.10,<1.14"
 
 diffctx-specific hygiene: stale `src/treemapper.egg-info/` from a rebrand-era
 `pip install` is gitignored but may linger — delete on hygiene pass.
+
+The `cargo-clippy` hook used to run `cargo clippy --release --lib 2>&1 | tail
+-5`: the pipe swallowed the exit code (the hook could never fail) and `--lib`
+left `src/main.rs` and the integration tests unlinted — the CLI-parity defects
+lived in exactly that blind spot. It is now `set -o pipefail` +
+`--all-targets`. Clippy is `warn`-level pedantic/nursery here (hundreds of
+standing warnings, no `-D warnings`), so the hook only fails on real errors;
+check that a new file adds no warnings with
+`cargo clippy --release --all-targets --message-format short`.
 
 ### Secret-Handling Test Fixtures Break the Secret Hooks
 
@@ -229,6 +251,13 @@ after one is filed.
   .cpp files): a single-file change fans out via sibling/structural edges to
   60+ declaration stubs of the siblings. Any repo with a large flat
   plugin/model/handler directory reproduces it.
+- **i18n locale string change** (cal.com `3894f37e`, one 2-line edit in
+  `packages/i18n/locales/he/common.json`): 52 fragments across 16 files, only 2
+  of them `role: "changed"`, **82% of bytes are context**, and the single
+  largest contributor is `scripts/seed-app-store.ts` (37.9%) — a DB seeding
+  script reached by lexical overlap alone. Sibling locale files (`ta`, `lv`,
+  `sk`, `id`) come along the same way. Tokens stay modest (5.6k), so only the
+  role split and the byte share expose it.
 - **Byte-share facet** (neovim): moderate file expansion that the file-count
   discriminator under-rates — two UNCHANGED files pulled via symbol edges
   carried the largest fragments of the whole output (~37% of bytes). Hence the
@@ -506,6 +535,26 @@ truncated every run while PyPI auto-sized. **Diff the two `--help` outputs every
 release-QA pass** — defaults, short flags, optional-value flags, accepted enum
 values — and treat any divergence not stated in README's "native binary covers
 …" paragraph as a bug.
+
+`diffctx/tests/native_cli.rs` now pins the contract (exit codes, both version
+flags, token summary, `--quiet`, format validation, budget handling) against
+real git repos, so regressions in *covered* behavior fail CI. The manual
+`--help` diff still matters for anything newly added on either side. Parity is
+not only flags: the 2026-07-24 pass also found the binary exiting `0` on an
+empty diff where Python exits `4`, and printing no token summary at all
+although README documents one "for every run" — **compare observable behavior
+(exit codes, stderr), not just the flag table.**
+
+**Never add a libtest-harness integration test under `--release`.**
+`[profile.release]` sets `panic = "abort"`; a harness test forces `unwind` and
+(via `CARGO_BIN_EXE_*`) drags the binary into the same invocation, leaving
+mixed-strategy artifacts in `target/release` that make the next
+`cargo test --release --test yaml_cases` (harness = false) fail with `requires
+panic strategy abort … incompatible with unwind`. Run such tests in the dev
+profile (`cargo test --test native_cli`, ~8s). The
+`output filename collision … lib_diffctx.rlib` warnings from the same builds
+are cargo#6313 for a `cdylib`+`rlib`+bin package — expected noise, not a
+finding.
 
 ## Rust Binary vs Python CLI Render Differences (grep traps)
 

@@ -43,12 +43,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - The native binary silently emitted YAML for every unrecognized `--format`,
   including `md` — the documented default of the Python CLI. It now accepts
   only `yaml`/`json` and exits 2 on anything else.
+- The native binary exited `0` on a diff that produced no semantic context
+  (clean tree, binary-only, everything over the size cap), so callers on the
+  binary channels could not tell an empty selection from a successful one. It
+  now mirrors the Python CLI: the `no semantic context` warning plus its hint
+  on stderr and exit code `4`.
+- The native binary printed no token summary, although the README documents
+  one for every run. It now writes `N tokens (o200k_base), SIZE` to stderr,
+  silenced by the new `-q/--quiet`.
+- `diffctx -v` was a usage error on the native binary while it printed the
+  version on the Python CLI. Both short forms (`-v`, `-V`) now work.
 
 ### Changed
 
 - Native binary CLI parity: `-f` is accepted as the short form of `--format`,
   bare `--diff` means the working tree against `HEAD`, `--scoring` advertises
   its accepted values, and every option carries help text.
+- The standalone binary is covered by its own integration suite
+  (`diffctx/tests/native_cli.rs`, run in CI): exit codes, both version flags,
+  the token summary, `--quiet`, format validation and budget handling are now
+  contract-tested against real git repositories. Every parity defect above
+  shipped because nothing exercised the clap parser.
 
 ## [1.12.0] - 2026-07-23
 

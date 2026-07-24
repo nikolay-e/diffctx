@@ -277,7 +277,10 @@ repos:
       - id: cargo-clippy
         name: cargo clippy (Rust linting)
         language: system
-        entry: bash -c 'cd diffctx && cargo clippy --release --lib 2>&1 | tail -5'
+        # pipefail: without it `| tail` swallows clippy's exit code and the hook
+        # can never fail. --all-targets: --lib alone left the standalone binary
+        # and the integration tests unlinted.
+        entry: bash -c 'set -o pipefail; cd diffctx && cargo clippy --release --all-targets 2>&1 | tail -5'
         pass_filenames: false
         files: ^diffctx/
         types: [file]
@@ -285,12 +288,16 @@ repos:
       - id: cargo-test
         name: cargo test (Rust unit tests)
         language: system
-        # Two-step: lib unit tests in dev profile (panic=unwind harness),
-        # yaml_cases integration test in release (harness=false, abort-safe).
+        # Dev profile for the harness-based targets (lib, native_cli): the
+        # release profile sets panic = "abort", and pulling the binary into a
+        # libtest target there mixes abort and unwind artifacts in
+        # target/release, which then breaks the harness-free yaml_cases build.
+        # yaml_cases stays on release (harness = false, so abort-safe).
         entry: |
           bash -c '
           cd diffctx &&
           cargo test --lib &&
+          cargo test --test native_cli &&
           DIFFCTX_YAML_CASES_LIMIT=20 cargo test --release --test yaml_cases'
         pass_filenames: false
         files: ^diffctx/.*\.rs$

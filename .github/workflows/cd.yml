@@ -369,9 +369,19 @@ jobs:
           BIN=./diffctx/target/release/diffctx
           if [ "${RUNNER_OS}" = "Windows" ]; then BIN="${BIN}.exe"; fi
           "$BIN" --version
-          "$BIN" . --diff HEAD~1..HEAD --no-content > "${RUNNER_TEMP}/smoke.yaml"
+          # Exit 4 is the empty-diff contract, a valid outcome for a release
+          # commit that carries no semantic context; only the output shape is
+          # asserted here.
+          smoke() {
+            set +e
+            "$BIN" . --diff HEAD~1..HEAD --no-content "$@"
+            rc=$?
+            set -e
+            [ "$rc" -eq 0 ] || [ "$rc" -eq 4 ]
+          }
+          smoke > "${RUNNER_TEMP}/smoke.yaml"
           grep -q '^type: diff_context' "${RUNNER_TEMP}/smoke.yaml"
-          "$BIN" . --diff HEAD~1..HEAD --no-content -f json > "${RUNNER_TEMP}/smoke.json"
+          smoke -f json > "${RUNNER_TEMP}/smoke.json"
           head -c 1 "${RUNNER_TEMP}/smoke.json" | grep -q '{'
           echo "OK: standalone binary works"
 
