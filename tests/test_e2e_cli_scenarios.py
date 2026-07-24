@@ -240,6 +240,13 @@ class TestDiffModeJourneys:
         assert result.returncode == EXIT_EMPTY_DIFF
         assert "no semantic context" in result.stderr
 
+    def test_empty_selection_still_names_the_changed_files(self, diff_repo):
+        result = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--budget", "0", "-f", "yaml"], cwd=diff_repo.path)
+        assert result.returncode == EXIT_EMPTY_DIFF
+        doc = yaml.safe_load(result.stdout)
+        assert doc["changed_files"], "an empty selection must still report the range's files"
+        assert doc["commit_message"]
+
     def test_full_includes_all_changed_fragments(self, diff_repo):
         smart = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "-f", "yaml"], cwd=diff_repo.path)
         full = run_diffctx_subprocess([".", "--diff", "HEAD~1..HEAD", "--full", "-f", "yaml"], cwd=diff_repo.path)

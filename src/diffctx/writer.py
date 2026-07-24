@@ -125,7 +125,16 @@ def _write_yaml_fragment(file: TextIO, frag: dict[str, Any], indent: str = "") -
 
 
 def _has_diff_metadata(tree: dict[str, Any]) -> bool:
-    return bool(tree.get("fragments") or tree.get("deleted_files") or tree.get("renamed_files"))
+    # changed_files counts: a selection that came back empty still has to say
+    # which files the range touched, or the only actionable fact about the run
+    # is dropped and the reader is left with a name/type stub.
+    return bool(
+        tree.get("fragments")
+        or tree.get("deleted_files")
+        or tree.get("renamed_files")
+        or tree.get("changed_files")
+        or tree.get("commit_message")
+    )
 
 
 def _write_yaml_path_list(file: TextIO, key: str, paths: list[Any]) -> None:

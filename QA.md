@@ -87,10 +87,15 @@ diffctx --diff -f yaml
 ```
 
 - Format flag is `-f / --format`, NOT `--output-format` (common typo).
-- Empty-diff result (docs-only HEAD, binary-only, clean tree) is **rc=4**
-  (`_EXIT_EMPTY_DIFF`) + a `diff produced no semantic context` warning + an
-  ~11-token YAML skeleton. That is the actionable-error contract, not a
-  regression — do NOT treat rc=4 as failure or expect rc=0 on an empty result.
+- Empty-diff result (docs-only HEAD, binary-only, clean tree, `--budget 0`) is
+  **rc=4** (`_EXIT_EMPTY_DIFF`), a `diff produced no semantic context` warning,
+  and a skeleton carrying the commit message and `changed_files`. That is the
+  actionable-error contract, not a regression — do NOT treat rc=4 as failure or
+  expect rc=0 on an empty result. Before 2026-07-24 the skeleton was ~11 tokens
+  of `name`/`type` only: `_has_diff_metadata` in `writer.py` gated every diff
+  field on `fragments`, so an empty selection silently dropped the change
+  signal in all four formats. If a skeleton ever shrinks back to name/type,
+  that predicate is the place to look.
 - Local `which diffctx` trap (see `/qa` skill: Packaging QA): with this
   project's venv active, `.venv/bin` is first on `$PATH`, so bare `diffctx`
   runs the working-tree build. For QA code-review smoke always use

@@ -53,6 +53,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   silenced by the new `-q/--quiet`.
 - `diffctx -v` was a usage error on the native binary while it printed the
   version on the Python CLI. Both short forms (`-v`, `-V`) now work.
+- A diff whose selection came back empty rendered as a bare `name`/`type` stub
+  in every format: the writer gated *all* diff metadata on there being
+  fragments, so the commit message and the list of changed files — the only
+  actionable facts about such a run — were dropped. They are now always
+  written.
 
 ### Changed
 
