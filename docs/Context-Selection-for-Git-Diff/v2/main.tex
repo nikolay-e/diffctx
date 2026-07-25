@@ -868,7 +868,7 @@ The reference implementation lives at \url{https://github.com/nikolay-e/diffctx}
 \midrule
 $\alpha$ (damping) & 0.50--0.65 & Start at 0.60; decrease for over-selection of distant code \\
 $\tau$ (threshold) & 0.04--0.16 (grid) & Deployed calibrated default 0.12; 0.08 is an uncalibrated heuristic for narrowly-scoped fixes \\
-Budget $B$ & 4k--20k tokens & 8k is the evaluated standard; the shipped CLI default is 4096 (\texttt{DEFAULT\_BUDGET\_TOKENS}); scale with diff complexity \\
+Budget $B$ & 4k--20k tokens & 8k is the evaluated standard; the CLI default at the rerun commit was 4096 (\texttt{DEFAULT\_BUDGET\_TOKENS}, since replaced by an auto-budget mode); scale with diff complexity \\
 Call weight & 0.55--0.70 & Matches \texttt{config/weights.rs} (Section~\ref{sec:weight-calibration}); tune via cross-validation on historical commits \\
 Lexical weight & 0.1--0.2 & Reduce if high false positive rate \\
 Overhead & 15--20 tokens & Measure actual serialization cost per fragment \\
@@ -960,7 +960,7 @@ Markdown (structural heading splitter), plain text, dotfiles, unparsed sources (
 \section{Symbol-to-Code Map}
 \label{sec:symbol-map}
 
-This appendix records the correspondence between symbols in the body of the paper and their identifiers in the reference Rust implementation. The map is the durable contract between the formalism and the code: a symbol that appears in the paper must resolve to a named field, function, or module in the codebase, and any drift surfaces here. Paths are relative to \texttt{diffctx/src/}.
+This appendix records the correspondence between symbols in the body of the paper and their identifiers in the reference Rust implementation. The map is the durable contract between the formalism and the code: a symbol that appears in the paper must resolve to a named field, function, or module in the codebase, and any drift surfaces here. Identifiers and counts reflect the rerun commit \texttt{9eed77aa}; later commits replaced the fixed 4096 CLI default (\texttt{DEFAULT\_BUDGET\_TOKENS}) with an auto-budget mode and added an \texttt{Excerpt} fragment kind (22nd, not counted in Table~\ref{tab:fragment-types}). Paths are relative to \texttt{diffctx/src/}.
 
 \begin{table}[h]
 \centering
