@@ -342,6 +342,27 @@ def test_evaluator_fragment_recall_counts_overlapping_lines():
     assert 0 < result.line_f1 < 1
 
 
+def test_evaluator_reports_line_precision_and_recall_beside_line_f1():
+    gold = (GoldenFragment(path="src/auth.py", start_line=10, end_line=19),)
+    selected = (GoldenFragment(path="src/auth.py", start_line=10, end_line=29),)
+    inst = BenchmarkInstance(
+        instance_id="x::1",
+        source_benchmark="x",
+        repo="o/r",
+        base_commit="abc",
+        gold_patch="",
+        gold_files=frozenset({"src/auth.py"}),
+        language="python",
+        gold_fragments=gold,
+    )
+    output = SelectionOutput(selected_files=frozenset({"src/auth.py"}), selected_fragments=selected)
+    result = UniversalEvaluator().evaluate(inst, output, budget=8000)
+    # 10 gold lines, all selected inside a 20-line span.
+    assert result.line_recall == pytest.approx(1.0)
+    assert result.line_precision == pytest.approx(0.5)
+    assert result.line_f1 == pytest.approx(2 / 3)
+
+
 def test_evaluator_whole_file_gold_satisfied_by_any_selection_on_path():
     gold = (GoldenFragment(path="README.md", start_line=None, end_line=None, kind="file"),)
     selected = (GoldenFragment(path="README.md", start_line=1, end_line=10),)

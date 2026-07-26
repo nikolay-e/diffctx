@@ -1,0 +1,117 @@
+# .github/workflows/action-smoke.yml
+name: Action smoke
+
+'on':
+  pull_request:
+    branches: ['**']
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Dogfood: run the published composite action against this repository's own
+  # diff so a broken flag mapping, a missing output, or a yanked pinned release
+  # fails here instead of in a consumer repo.
+  action-smoke:
+    name: Composite action (${{ matrix.label }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: md-ego
+            format: md
+            scoring: ego
+            budget: '6000'
+            full: 'false'
+          - label: json-bm25
+            format: json
+            scoring: bm25
+            budget: '3000'
+            full: 'false'
+          - label: yaml-full
+            format: yaml
+            scoring: ego
+            budget: ''
+            full: 'true'
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
+        with:
+          # Both endpoints of the analyzed range must exist locally.
+          fetch-depth: 0
+
+      - name: Build diff context
+        id: diffctx
+        uses: ./
+        with:
+          format: ${{ matrix.format }}
+          scoring: ${{ matrix.scoring }}
+          budget: ${{ matrix.budget }}
+          full: ${{ matrix.full }}
+
+      - name: Assert the action produced usable context
+        shell: bash
+        env:
+          CONTEXT_FILE: ${{ steps.diffctx.outputs.context-file }}
+          TOKEN_COUNT: ${{ steps.diffctx.outputs.token-count }}
+          BYTE_SIZE: ${{ steps.diffctx.outputs.byte-size }}
+          DIFF_RANGE: ${{ steps.diffctx.outputs.diff-range }}
+          EMPTY: ${{ steps.diffctx.outputs.empty }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "$DIFF_RANGE" ]; then
+            echo "diff-range output is empty"
+            exit 1
+          fi
+
+          if [ -z "$CONTEXT_FILE" ]; then
+            echo "context-file output is empty"
+            exit 1
+          fi
+
+          if [ ! -s "$CONTEXT_FILE" ]; then
+            echo "context file '$CONTEXT_FILE' is missing or empty"
+            exit 1
+          fi
+
+          case "$TOKEN_COUNT" in
+            '' | *[!0-9]*)
+              echo "token-count output is not a number: '$TOKEN_COUNT'"
+              exit 1
+              ;;
+          esac
+
+          if [ "$TOKEN_COUNT" -le 0 ]; then
+            echo "token-count output must be positive, got $TOKEN_COUNT"
+            exit 1
+          fi
+
+          case "$BYTE_SIZE" in
+            '' | *[!0-9]*)
+              echo "byte-size output is not a number: '$BYTE_SIZE'"
+              exit 1
+              ;;
+          esac
+
+          if [ "$EMPTY" != "true" ] && [ "$EMPTY" != "false" ]; then
+            echo "empty output must be true or false, got '$EMPTY'"
+            exit 1
+          fi
+
+          echo "range=$DIFF_RANGE tokens=$TOKEN_COUNT bytes=$BYTE_SIZE empty=$EMPTY"
+
+      - name: Upload context artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: diffctx-context-${{ matrix.label }}
+          path: ${{ steps.diffctx.outputs.context-file }}
+          if-no-files-found: error
+          retention-days: 7

@@ -252,6 +252,7 @@ class ParsedArgs:
     scoring: str = "ego"
     timeout: int = _DEFAULT_TIMEOUT
     full_diff: bool = False
+    with_raw_diff: bool = False
     command: str | None = None
     graph: GraphArgs | None = None
     extra_dirs: list[Path] | None = None
@@ -330,6 +331,7 @@ Examples:
   diffctx . --save             Save as tree.md
   diffctx . --diff             Context for uncommitted changes
   diffctx . --diff HEAD~1      Context for the last commit
+  diffctx . --diff HEAD~1 --with-raw-diff   Raw patch + selected context in one file
   diffctx . -c                 Copy output to clipboard
   diffctx . --no-content       Structure only, no file contents
   diffctx graph .              Build the project dependency graph (see: diffctx graph --help)
@@ -342,6 +344,18 @@ Output routing:
   --save:       write to tree.{ext} (tree.md by default; extension follows -f)
   -c:           copy to clipboard, suppress stdout
   -c -o FILE:   copy to clipboard AND write to FILE
+
+Token counting (--budget, and the summary line on stderr):
+  Every count comes from tiktoken's o200k_base encoder (the GPT-4o/GPT-4.1
+  family). It is exact for those models only. Claude, Gemini, Llama and other
+  families use different tokenizers, so their counts differ from the number
+  printed here — usually by single-digit to low-double-digit percent, in either
+  direction. Treat --budget as an upper bound in o200k tokens and leave
+  headroom (e.g. --budget 28000 for a 32k target) when the consumer is not an
+  OpenAI model. There is no --tokenizer flag; o200k_base is pinned so results
+  stay reproducible against the published evaluation.
+  --with-raw-diff output is NOT charged to --budget, but IS included in the
+  stderr token summary, which always reports the real size of what was written.
 
 Exit codes:
   0  success
@@ -490,7 +504,12 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         type=int,
         default=_UNSET,
         metavar="TOKENS",
-        help="Token budget: omit = auto (default), N = fixed cap, -1 = unlimited, 0 = strict-zero floor (empty selection; use --full for changed files only)",
+        help=(
+            "Token budget in o200k_base tokens (tiktoken, GPT-4o family — other model families "
+            "tokenize differently, so leave headroom; see 'Token counting' below): "
+            "omit = auto (default), N = fixed cap, -1 = unlimited, "
+            "0 = strict-zero floor (empty selection; use --full for changed files only)"
+        ),
     )
     diff_group.add_argument(
         "--alpha",
@@ -539,6 +558,17 @@ def _build_main_parser(prog: str = "diffctx", version: str = __version__) -> arg
         default=False,
         help="Include every fragment of the changed files and nothing else — no related-code context (ignores --budget/--tau/--alpha/--scoring)",
     )
+    diff_group.add_argument(
+        "--with-raw-diff",
+        action="store_true",
+        default=False,
+        help=(
+            "Also embed the raw unified diff (git's own +/- text) ahead of the selected fragments. "
+            "Additive only: selection is unchanged, and the diff does NOT count against --budget "
+            "(the stderr token summary counts it, reporting the real output size). "
+            "Lock-file, ignored, and secret-like sections stay omitted. Python CLI only — the native binary has no such flag"
+        ),
+    )
     return parser
 
 
@@ -554,6 +584,8 @@ def _warn_diff_only_flags(args: argparse.Namespace) -> None:
         used.append("--tau")
     if args.full:
         used.append("--full")
+    if args.with_raw_diff:
+        used.append("--with-raw-diff")
     if args.scoring is not _UNSET:
         used.append("--scoring")
     if args.timeout is not _UNSET:
@@ -690,6 +722,7 @@ def _build_tree_parsed_args(args: argparse.Namespace) -> ParsedArgs:
         scoring=scoring,
         timeout=timeout,
         full_diff=args.full,
+        with_raw_diff=args.with_raw_diff,
         extra_dirs=extra_dirs,
         extra_files=extra_files,
         no_explicit_paths=not args.paths,

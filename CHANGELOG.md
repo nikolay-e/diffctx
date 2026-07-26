@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `--with-raw-diff` bundles git's raw unified diff ahead of the selected
+  context in every Python-CLI format (md/yaml/json/txt) and in the Python API
+  (`build_diff_context(..., with_raw_diff=True)`). Additive only — selection is
+  byte-identical with and without it — and not charged to `--budget`; the
+  stderr token summary reports the real output size and breaks out the patch's
+  share. Lock-file (#112), ignored and secret-like sections stay omitted. Not
+  in the native binary or the MCP server yet (#150).
+- Token counting is documented explicitly: every count and `--budget` use
+  tiktoken `o200k_base` (GPT-4o family) and are approximate for other model
+  families — `docs/product/token-budget.md`, plus a `Token counting` section in
+  `--help` (#150).
+- A GitHub Action (`action.yml`) runs diffctx as a CI step and exposes the
+  context file, its exact token count and an `empty` flag as step outputs, so a
+  downstream job can feed an LLM without re-tokenizing
+  (`docs/product/github-action.md`, #145).
 - `diffctx mcp` starts the MCP server, alongside the existing `diffctx-mcp`
   console script. MCP registries publish a *package* name, and clients that
   derive the executable from it run `diffctx` — which started a tree-mapping
@@ -57,8 +72,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The native binary hard-capped every run at 4096 tokens.** `--budget`
   carried a fixed clap default instead of leaving the budget unset, so the
   auto-sizing the Python CLI has always used never ran on the binary shipped
-  via crates.io, npm, the container images, Scoop, AUR and the release
-  archives — the same command returned a truncated selection there (14-file
+  via crates.io, npm, the container images and the release archives — the
+  same command returned a truncated selection there (14-file
   self-eat range: 15 fragments across 10 files, against 172 across 44). The
   binary now defaults to auto sizing, and `--budget -1` means unlimited as it
   does in Python.
@@ -135,10 +150,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the release tag and smoke-tested against a real repository before the tag
   moves: `docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1`.
   Mirrored to Docker Hub as `nikolajer/diffctx`.
-- Packaging manifests generated from the release checksums: Scoop
-  (`packaging/scoop/diffctx.json`), AUR (`packaging/aur/`) and an npm wrapper
-  (`packaging/npm/`) that downloads the platform binary and verifies its
-  SHA-256 against the published checksum.
+- npm wrapper (`packaging/npm/`) that downloads the platform binary and
+  verifies its SHA-256 against the published checksum. Scoop
+  (`packaging/scoop/diffctx.json`) and AUR (`packaging/aur/`) manifests are
+  generated from the same checksums but are not published to any bucket or
+  to the AUR.
 
 ### Fixed
 

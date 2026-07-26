@@ -56,15 +56,22 @@ def test_diff_context_keeps_paths_reincluded_by_a_negation(tmp_path):
 
 def test_diff_context_excludes_nested_gitignore_pattern(tmp_path):
     """Regression (#85): a nested (non-root) .gitignore pattern had no
-    effect on --diff output — only the hardcoded secret-key filter applied."""
+    effect on --diff output — only the hardcoded secret-key filter applied.
+
+    The ignored file must be staged explicitly: `commit()` adds via
+    `index.add_all()`, which honours .gitignore, so an unstaged drop.tmp never
+    enters the diff at all and the assertions below would hold no matter what
+    diffctx does with nested patterns."""
     repo = Pygit2Repo(tmp_path / "repo")
     repo.add_file("sub/.gitignore", "*.tmp\n")
     repo.add_file("sub/app.py", "def a():\n    pass\n")
     repo.add_file("sub/drop.tmp", "unrelated\n")
+    repo.stage_file("sub/drop.tmp")
     repo.commit("initial")
 
     repo.add_file("sub/app.py", "def a():\n    return 1\n")
     repo.add_file("sub/drop.tmp", "LEAK_TMP_CHANGED\n")
+    repo.stage_file("sub/drop.tmp")
     repo.commit("change app and tmp file")
 
     for full in (False, True):

@@ -83,11 +83,12 @@ the `--budget` token cap is hit.
 | Flag        | Default | Description                                                              |
 |-------------|---------|--------------------------------------------------------------------------|
 | `--scoring` | `ego`   | `ego` = bounded expansion around changed nodes (fast, predictable radius); `ppr` = Personalized PageRank (global, smoother decay, slower); `bm25` = lexical retrieval against the diff hunks (baseline for sparse graphs) |
-| `--budget`  | auto    | Hard token cap: `N` enforces a fixed cap, `-1` disables it, `0` is a strict-zero floor (empty selection; use `--full` for changed files only) |
+| `--budget`  | auto    | Hard cap in o200k_base tokens (see [Token counting](docs/product/token-budget.md)): `N` enforces a fixed cap, `-1` disables it, `0` is a strict-zero floor (empty selection; use `--full` for changed files only) |
 | `--alpha`   | 0.60    | PPR damping; higher = context clusters tighter around changes (`--scoring ppr` only) |
 | `--tau`     | 0.12    | Relevance threshold for full fragment content; lower-scoring fragments are stubbed or dropped (lower = more context) |
 | `--full`    | false   | Only the changed files, every fragment, no related-code context          |
 | `--timeout` | 300     | Wall-clock deadline in seconds; on expiry diffctx exits 124 instead of hanging |
+| `--with-raw-diff` | false | Also embed git's raw unified diff ahead of the selected fragments — additive (selection unchanged), not charged to `--budget`, lock/ignored/secret-like sections omitted. Python CLI only |
 
 Calibration of `--alpha`, `--tau`, and the edge-weight priors:
 [`docs/engineering/parameter-strategy.md`](docs/engineering/parameter-strategy.md).
@@ -111,19 +112,20 @@ diffctx graph . --level file -f graphml -o g.xml # file-level graph as GraphML
 <!-- BEGIN USAGE -->
 ```bash
 # full codebase export:
-diffctx .                                # Markdown to stdout + token count
-diffctx . -f md -c                       # Markdown → clipboard
-diffctx . -f json -o tree.json           # JSON → file
-diffctx . --no-content                   # structure only, no file contents
-diffctx . --max-depth 3                  # limit depth
-diffctx . -i custom.ignore               # custom ignore patterns
+diffctx .                                 # Markdown to stdout + token count
+diffctx . -f md -c                        # Markdown → clipboard
+diffctx . -f json -o tree.json            # JSON → file
+diffctx . --no-content                    # structure only, no file contents
+diffctx . --max-depth 3                   # limit depth
+diffctx . -i custom.ignore                # custom ignore patterns
 
 # diff context mode (requires git repo):
-diffctx . --diff                         # uncommitted changes (working tree vs HEAD)
-diffctx . --diff HEAD~1                  # context for last commit
-diffctx . --diff main..feature           # context for feature branch
-diffctx . --diff HEAD~1 --budget 30000   # limit to ~30k tokens
-diffctx . --diff HEAD~1 -c               # diff context to clipboard
+diffctx . --diff                          # uncommitted changes (working tree vs HEAD)
+diffctx . --diff HEAD~1                   # context for last commit
+diffctx . --diff main..feature            # context for feature branch
+diffctx . --diff HEAD~1 --budget 30000    # limit to ~30k tokens
+diffctx . --diff HEAD~1 -c                # diff context to clipboard
+diffctx . --diff HEAD~1 --with-raw-diff   # raw patch + selected context
 ```
 <!-- END USAGE -->
 
@@ -133,6 +135,11 @@ Every run reports token count and size on stderr — `12,847 tokens
 `wl-copy`/`xclip`/`xsel` (Linux). Unreadable files become placeholders like
 `<binary file: N bytes>`, `<file too large: N bytes>`, or
 `<unreadable content: not utf-8>`.
+
+Counts come from tiktoken's `o200k_base` encoder and are exact only for the
+GPT-4o family; Claude, Gemini and others tokenize differently, so treat
+`--budget` as an upper bound in o200k tokens and leave headroom. Details:
+[`docs/product/token-budget.md`](docs/product/token-budget.md).
 
 ## Python API
 
@@ -149,6 +156,7 @@ ctx = build_diff_context(
     full=False,
     scoring_mode="ego",
     timeout=300,
+    with_raw_diff=False,      # True also embeds the raw unified diff (not charged to budget)
 )
 print(to_markdown(ctx))
 
@@ -238,6 +246,12 @@ Apache 2.0
 
 - [Documentation site](https://nikolay-e.github.io/diffctx/) — the pipeline
   end to end: diff → fragments → graph → relevance → selection
+- [GitHub Action](docs/product/github-action.md) — diff context as a CI step
+  for LLM review
+- [Token counting](docs/product/token-budget.md) — which encoder, and what
+  `--budget` means for non-GPT models
+- [Comparison](COMPARISON.md) — measured results, and when a whole-repo packer
+  or a persistent code-graph server fits better
 - [Changelog](CHANGELOG.md)
 - [Security policy](SECURITY.md) — threat model and vulnerability reporting
 - [Parameter strategy](docs/engineering/parameter-strategy.md) — how `--alpha`,

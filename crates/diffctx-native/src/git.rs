@@ -214,7 +214,7 @@ pub fn get_diff_text(repo_root: &Path, diff_range: Option<&str>) -> Result<Strin
     run_git(repo_root, &args)
 }
 
-fn unquote_c_style(quoted: &str) -> String {
+pub(crate) fn unquote_c_style(quoted: &str) -> String {
     if !(quoted.starts_with('"') && quoted.ends_with('"')) {
         return quoted.to_string();
     }
@@ -289,7 +289,7 @@ fn unquote_c_style(quoted: &str) -> String {
     String::from_utf8(result).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
 }
 
-fn parse_path_line(line: &str, repo_root: &Path) -> (&'static str, Option<PathBuf>) {
+pub(crate) fn parse_path_line(line: &str, repo_root: &Path) -> (&'static str, Option<PathBuf>) {
     let resolved_root = repo_root
         .canonicalize()
         .unwrap_or_else(|_| repo_root.to_path_buf());

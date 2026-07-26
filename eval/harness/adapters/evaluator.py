@@ -81,15 +81,17 @@ def _fragment_metrics(
     return _safe_div(gold_hits, len(gold)), _safe_div(sel_hits, len(selected))
 
 
-def _line_f1(
+def _line_metrics(
     selected: tuple[GoldenFragment, ...],
     gold: tuple[GoldenFragment, ...],
-) -> float:
-    """Per-file line set F1, averaged over files appearing in gold.
+) -> tuple[float, float, float]:
+    """Per-file line set (F1, precision, recall), averaged over files in gold.
 
-    Whole-file gold contributes nothing to line F1 (we lack a line count
-    without reading the file). Whole-file selected fragments are likewise
-    skipped — line-level F1 is only meaningful for hunk-level annotations.
+    Whole-file gold contributes nothing (we lack a line count without reading
+    the file). Whole-file selected fragments are likewise skipped — line-level
+    scoring is only meaningful for hunk-level annotations. Precision and recall
+    use the same macro average as F1 so the three numbers describe the same
+    population of files (a low F1 with high recall means over-selection).
     """
     sel_lines: dict[str, set[int]] = {}
     for s in selected:
@@ -100,22 +102,25 @@ def _line_f1(
 
     paths = [p for p, ls in gold_lines.items() if ls]
     if not paths:
-        return 0.0
-    total = 0.0
+        return 0.0, 0.0, 0.0
+    total_f1 = 0.0
+    total_precision = 0.0
+    total_recall = 0.0
     for path in paths:
         g = gold_lines[path]
         s = sel_lines.get(path, set())
-        if not g and not s:
-            continue
         tp = len(g & s)
         fp = len(s - g)
         fn = len(g - s)
         precision = _safe_div(tp, tp + fp)
         recall = _safe_div(tp, tp + fn)
+        total_precision += precision
+        total_recall += recall
         if precision + recall == 0:
             continue
-        total += 2 * precision * recall / (precision + recall)
-    return total / len(paths)
+        total_f1 += 2 * precision * recall / (precision + recall)
+    n = len(paths)
+    return total_f1 / n, total_precision / n, total_recall / n
 
 
 class UniversalEvaluator:
@@ -182,7 +187,10 @@ class UniversalEvaluator:
             frag_r, frag_p = _fragment_metrics(output.selected_fragments, instance.gold_fragments)
             result.fragment_recall = frag_r
             result.fragment_precision = frag_p
-            result.line_f1 = _line_f1(output.selected_fragments, instance.gold_fragments)
+            line_f1, line_precision, line_recall = _line_metrics(output.selected_fragments, instance.gold_fragments)
+            result.line_f1 = line_f1
+            result.line_precision = line_precision
+            result.line_recall = line_recall
             result.extra["n_selected_fragments"] = len(output.selected_fragments)
             result.extra["n_gold_fragments"] = len(instance.gold_fragments)
         return result

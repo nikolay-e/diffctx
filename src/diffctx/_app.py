@@ -109,6 +109,25 @@ def _warn_empty_diff_result(result: dict[str, Any], prog: str, args: ParsedArgs)
         )
 
 
+def _report_raw_diff_share(result: dict[str, Any], prog: str, args: ParsedArgs) -> None:
+    if not args.with_raw_diff:
+        return
+    from .tokens import count_tokens
+
+    raw_diff = result.get("raw_diff")
+    if not isinstance(raw_diff, str) or not raw_diff:
+        print(
+            f"{prog}: --with-raw-diff produced no patch text "
+            "(the range only touches untracked, lock, ignored, or secret-like files)",
+            file=sys.stderr,
+        )
+        return
+    print(
+        f"  of which {count_tokens(raw_diff).count:,} tokens are the raw diff (not charged to --budget)",
+        file=sys.stderr,
+    )
+
+
 def _call_with_wall_clock_deadline(build: Callable[[], dict[str, Any]], timeout_seconds: int, prog: str) -> dict[str, Any]:
     # The Rust extension releases the GIL but offers no cancellation, so a
     # pathological repo can hang far past any per-phase git timeout (#70).
@@ -166,6 +185,7 @@ def _build_diff_tree(args: ParsedArgs, prog: str) -> dict[str, Any]:
             whitelist_file=args.whitelist_file,
             scoring_mode=args.scoring,
             timeout=args.timeout,
+            with_raw_diff=args.with_raw_diff,
         ),
         args.timeout,
         prog,
@@ -408,6 +428,8 @@ def _run(argv: list[str] | None = None, *, prog: str = "diffctx", version: str =
     output_content = tree_to_string(directory_tree, args.output_format)
     if not args.quiet:
         print_token_summary(output_content)
+        if args.diff_range:
+            _report_raw_diff_share(directory_tree, prog, args)
         _warn_if_output_oversized(output_content, args)
 
     clipboard_ok = _handle_clipboard(output_content, args, prog)

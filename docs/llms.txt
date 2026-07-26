@@ -53,6 +53,15 @@ CSV artifact.
 
 Paper: https://doi.org/10.5281/zenodo.18824579
 
+## Token counting
+
+Budgets and printed counts use tiktoken `o200k_base` (GPT-4o family). Counts for
+Claude, Gemini, Llama and other families differ, so treat `--budget N` as an
+upper bound in o200k tokens and leave headroom. `--with-raw-diff` bundles the
+literal patch ahead of the selected context; it is not charged to the budget,
+and the stderr summary reports the real output size either way.
+See docs/product/token-budget.md.
+
 ## Links
 
 - Repository: https://github.com/nikolay-e/diffctx

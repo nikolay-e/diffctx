@@ -14,7 +14,7 @@ Their source, data, and generated outputs have different lifecycles:
 | `paper/` | Paper source, selected reproducibility artifacts, and releases |
 | `docs/` | Engineering, product, and architecture documentation |
 | `scripts/` | Repository automation (image builds, cache baking, sensitivity checks) |
-| `packaging/` | Release-channel manifests (npm wrapper) with pinned checksums |
+| `packaging/` | CD-generated channel manifests with pinned checksums: `npm/` is published, `scoop/` and `aur/` are manifest-only (see the release-channel policy in `docs/engineering/quality-strategy.md`) |
 | `results/` | Local or CI-generated evaluation output; not source-controlled |
 | `.github/` | CI/CD workflows and issue templates; owned by repo automation |
 
