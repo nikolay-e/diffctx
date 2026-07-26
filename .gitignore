@@ -1,438 +1,126 @@
-# Byte-compiled / optimized / DLL files
+# Python bytecode and tool caches
 __pycache__/
 *.py[cod]
 *$py.class
-test-repos
-TODO.md
-
-# C extensions
-*.so
-tree.yaml
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
-
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-mutants
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
+.cache/
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.pyre/
+.pytype/
+.import_linter_cache/
 .coverage
 .coverage.*
-.cache
-nosetests.xml
 coverage.xml
-*.cover
-*.py,cover
-.hypothesis/
-.pytest_cache/
-cover/
+htmlcov/
 
-# Translations
-*.mo
-*.pot
-
-# Django stuff:
-*.log
-local_settings.py
-db.sqlite3
-db.sqlite3-journal
-
-# Flask stuff:
-instance/
-.webassets-cache
-
-# Scrapy stuff:
-.scrapy
-
-# Sphinx documentation
-docs/_build/
-
-# PyBuilder
-.pybuilder/
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-# .python-version
-
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-#Pipfile.lock
-
-# poetry
-#   Similar to Pipfile.lock, it is generally recommended to include poetry.lock in version control.
-#   This is especially recommended for binary packages to ensure reproducibility, and is more
-#   commonly ignored for libraries.
-#   https://python-poetry.org/docs/basic-usage/#commit-your-poetrylock-file-to-version-control
-#poetry.lock
-
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#pdm.lock
-#   pdm stores project-wide configurations in .pdm.toml, but it is recommended to not include it
-#   in version control.
-#   https://pdm.fming.dev/latest/usage/project/#working-with-version-control
-.pdm.toml
-.pdm-python
-.pdm-build/
-
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
+# Python environments and packaging output
+.Python
+.venv/
+/venv/
+/env/
+/ENV/
 __pypackages__/
+*.egg-info/
+.eggs/
+*.so
+/build/
+/dist/
+/wheels/
 
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
+# Rust build output
+/target/
 
-# SageMath parsed files
-*.sage.py
-
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# Spyder project settings
-.spyderproject
-.spyproject
-
-# Rope project settings
-.ropeproject
-
-# mkdocs documentation
-/site
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# Pyre type checker
-.pyre/
-
-# pytype static type analyzer
-.pytype/
-
-# Cython debug symbols
-cython_debug/
-
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
+# Editor and OS metadata
+.DS_Store
+._*
+Thumbs.db
 .idea/
-
-directory_tree.yaml
-
-.pypirc
-**/.claude/settings.local.json
-
-# ==============================================================================
-# IDE & Editor Files
-# ==============================================================================
-# VS Code
 .vscode/
 *.code-workspace
-
-# Sublime Text
-*.sublime-project
-*.sublime-workspace
-
-# Vim
 *.swp
 *.swo
 *~
-.vim/
 
-# Emacs
-*~
-\#*\#
-/.emacs.desktop
-/.emacs.desktop.lock
-*.elc
-auto-save-list
-tramp
-.\#*
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+.pypirc
+/.mcp.json
+**/.claude/settings.local.json
+/.claude/worktrees/
+/.aider*
+/.pre-commit-local.yaml
 
-# ==============================================================================
-# OS Files
-# ==============================================================================
-# macOS
-.DS_Store
-.AppleDouble
-.LSOverride
-Icon
-._*
-.DocumentRevisions-V100
-.fseventsd
-.Spotlight-V100
-.TemporaryItems
-.Trashes
-.VolumeIcon.icns
-.com.apple.timemachine.donotpresent
-.AppleDB
-.AppleDesktop
-Network Trash Folder
-Temporary Items
-.apdisk
-
-# Windows
-Thumbs.db
-Thumbs.db:encryptable
-ehthumbs.db
-ehthumbs_vista.db
-*.stackdump
-[Dd]esktop.ini
-$RECYCLE.BIN/
-*.cab
-*.msi
-*.msix
-*.msm
-*.msp
-*.lnk
-
-# Linux
-.directory
-.Trash-*
-.nfs*
-
-# ==============================================================================
-# Quality Tools & Analysis Artifacts
-# ==============================================================================
-# Mutation testing
-.mutmut-cache
-mutmut-cache.db
-.mutmut_report/
-
-# SonarQube/SonarCloud
-.sonar/
-.sonarqube/
-.scannerwork/
-
-# Radon
-radon-report/
-
-# Pylint
-pylint-report.txt
-.pylintrc.local
-
-# Ruff
-.ruff_cache/
-
-# Pre-commit
-.pre-commit-local.yaml
-
-# Import linter
-.import-linter-cache/
-
-# ==============================================================================
-# Build & Release Artifacts
-# ==============================================================================
-# PyInstaller builds
-*.spec.bak
-/treemapper
-/treemapper.exe
-
-# GitHub release artifacts
-release-notes.md
-release-assets/
-
-# Git bundles (used in CD workflow)
-*.bundle
-
-# ==============================================================================
-# Testing & Coverage
-# ==============================================================================
-# pytest-xdist
-.pytest_cache_*
-
-# Test output files
-test-results/
-test-results.xml
-junit.xml
-test-output/
-
-# Coverage reports
-.coverage-html/
-coverage-report/
-htmlcov/
-
-# Property-based testing (Hypothesis)
-.hypothesis/
-
-# ==============================================================================
-# Documentation
-# ==============================================================================
-# Sphinx
-docs/_build/
-docs/_static/
-docs/_templates/
-docs/api/
-
-# MkDocs
-site/
-docs/site/
-
-# ==============================================================================
-# Temporary & Cache Files
-# ==============================================================================
-# Python
-*.pyc.bak
-*.pyo.bak
-
-# General temp files
-*.tmp
-*.temp
-*.bak
-*.backup
-*.orig
-*_backup
-*_old
-
-# Logs
-*.log.*
-logs/
-*.log.txt
-
-# ==============================================================================
-# Credentials & Secrets
-# ==============================================================================
-# Environment files
-.env.local
-.env.*.local
-.env.development
-.env.test
-.env.production
-
-# Credentials
-credentials.json
-secrets.json
-*.pem
-*.key
-*.cert
-*.crt
+# Explicit private-key locations and names
+/.secrets/
+/credentials/
 id_rsa*
 id_ed25519*
-
-# API keys
-.api_keys
+*.key
+*.pem
+*.crt
+*.cert
+credentials.json
+secrets.json
 apikeys.txt
+.api_keys
 
-# ==============================================================================
-# Project-Specific Output Files
-# ==============================================================================
-# treemapper output examples (don't commit generated outputs)
-output/
-examples/output/
-*.treemap.yaml
-*.treemap.json
-*.treemap.txt
-
-# ==============================================================================
-# Database & Storage
-# ==============================================================================
-*.db
-*.sqlite
-*.sqlite3
-
-# ==============================================================================
-# Go resolver binary
-src/treemapper/diffctx/resolvers/go_resolver/go-resolver
-src/treemapper/diffctx/resolvers/go_resolver/go.sum
-
-# JVM resolver compiled classes
-src/treemapper/diffctx/resolvers/jvm_resolver/classes/
-
-# Node.js (in case of future web UI or tools)
-# ==============================================================================
-node_modules/
-package-lock.json
-yarn.lock
-.pnp/
-.pnp.js
-
-# ==============================================================================
-# Miscellaneous
-# ==============================================================================
-# Backup files from editors
-*~
-*.bak
-
-# Local configuration overrides
-*.local
-local/
-
-# Benchmark results
-benchmarks/results/
-results/
-benchmarks/manifests/smoke/
-benchmarks/manifests/smoke_aider/
+# Repository-local scratch and generated output
+/test-repos/
+/mutants/
+/local/
+/output/
+/examples/output/
+/test-results/
+/test-output/
+test-results.xml
+repo.bundle
+full_eval.log
+/release-assets/
+/release-notes.md
+/logs/
+/results/*
+!/results/.gitignore
+/eval/results/
 *.benchmark
-
-# Profiling data
 *.prof
 *.lprof
 profile_*.txt
+tree.yaml
+directory_tree.yaml
 
-# Quality score tracking
-.scores/
+# Paper and documentation build products
+/docs/_build/
+/site/
+/paper/**/build/
+/paper/**/build-metadata/*.log
+/paper/**/build-metadata/*.blg
+*.aux
+*.fdb_latexmk
+*.fls
+*.out
+*.synctex.gz
+*.toc
 
-# Playwright MCP artifacts
-.playwright-mcp/
+# Project analysis and local agent artifacts
+/ANALYSIS.md
+/ANALYSIS_*.md
+/tests/TODO.md
+/.playwright-mcp/
+/.scores/
 
-# MCP client config (user-local)
-.mcp.json
-
-# Local analysis artifacts
-ANALYSIS.md
-ANALYSIS_*.md
-.claude/
-.aider*
-
-# treemapper internal scratch (whitelists, scoped diff outputs)
-.treemapper/
-
-# SonarCloud project config (managed in SonarCloud UI, not VCS)
-sonar-project.properties
+# Dependency/build caches
+node_modules/
+.pnp/
+.pnp.js
+.tox/
+.nox/
+.mutmut-cache
+mutmut-cache.db
+.mutmut_report/
+.sonar/
+.sonarqube/
+.scannerwork/

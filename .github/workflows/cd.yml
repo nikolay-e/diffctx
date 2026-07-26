@@ -99,13 +99,13 @@ jobs:
           assert n == 1, "pyproject.toml: [project].version not found"
           py.write_text(s, encoding="utf-8")
 
-          cargo = pathlib.Path("diffctx/Cargo.toml")
+          cargo = pathlib.Path("crates/diffctx-native/Cargo.toml")
           s = cargo.read_text(encoding="utf-8")
           s, n = re.subn(r'(?m)^version\s*=\s*"[^"]+"', f'version = "{ver}"', s, count=1)
           assert n == 1, "Cargo.toml: [package].version not found"
           cargo.write_text(s, encoding="utf-8")
 
-          lock = pathlib.Path("diffctx/Cargo.lock")
+          lock = pathlib.Path("Cargo.lock")
           s = lock.read_text(encoding="utf-8")
           s, n = re.subn(
               r'(\[\[package\]\]\nname = "diffctx"\nversion = ")[^"]+',
@@ -121,7 +121,7 @@ jobs:
           echo "pyproject.toml (version line):"
           grep -E '^version\s*=' pyproject.toml
           echo "Cargo.toml (version line):"
-          grep -E '^version\s*=' diffctx/Cargo.toml
+          grep -E '^version\s*=' crates/diffctx-native/Cargo.toml
 
       - name: Commit version bump (locally only, no push yet)
         id: commit_version
@@ -130,7 +130,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/diffctx/version.py pyproject.toml diffctx/Cargo.toml diffctx/Cargo.lock
+          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock
           if ! git diff --staged --quiet; then
             git commit -m "Release version ${VERSION}"
           else
@@ -282,7 +282,7 @@ jobs:
 
       - name: Verify sdist contains Rust sources
         run: |
-          tar tzf ./repo/dist/*.tar.gz | grep -E 'diffctx/src/.*\.rs$' | head -5
+          tar tzf ./repo/dist/*.tar.gz | grep -E 'crates/diffctx-native/src/.*\.rs$' | head -5
           echo "OK: sdist contains Rust sources"
 
       - name: Upload sdist artifact
@@ -333,7 +333,7 @@ jobs:
           toolchain: '1.92.0'
 
       - name: Build release binary
-        working-directory: ./repo/diffctx
+        working-directory: ./repo/crates/diffctx-native
         run: cargo build --release --locked --bin diffctx
 
       - name: Package binary (tar.gz)
@@ -344,7 +344,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           mkdir -p out
-          cp ./repo/diffctx/target/release/diffctx out/
+          cp ./repo/target/release/diffctx out/
           cp ./repo/LICENSE ./repo/README.md out/
           tar -czf "diffctx-${VERSION}-${TARGET}.tar.gz" -C out .
           ls -la ./*.tar.gz
@@ -357,7 +357,7 @@ jobs:
           TARGET: ${{ matrix.target }}
         run: |
           mkdir -p out
-          cp ./repo/diffctx/target/release/diffctx.exe out/
+          cp ./repo/target/release/diffctx.exe out/
           cp ./repo/LICENSE ./repo/README.md out/
           7z a "diffctx-${VERSION}-${TARGET}.zip" ./out/*
           ls -la ./*.zip
@@ -366,7 +366,7 @@ jobs:
         shell: bash
         working-directory: ./repo
         run: |
-          BIN=./diffctx/target/release/diffctx
+          BIN=./target/release/diffctx
           if [ "${RUNNER_OS}" = "Windows" ]; then BIN="${BIN}.exe"; fi
           "$BIN" --version
           # Exit 4 is the empty-diff contract, a valid outcome for a release

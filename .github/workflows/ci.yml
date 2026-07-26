@@ -70,8 +70,8 @@ jobs:
 
       - name: Run Linters and Formatters Check
         run: |
-          ruff check src tests
-          black --check src tests
+          ruff check src eval tests
+          black --check src eval tests
 
       - name: Run Type Checker (Mypy)
         run: |
@@ -100,12 +100,12 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            diffctx/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('diffctx/Cargo.lock') }}
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
       - name: Build and test
-        working-directory: diffctx
+        working-directory: crates/diffctx-native
         env:
           DIFFCTX_YAML_CASES_LIMIT: "20"
         run: |
@@ -114,12 +114,14 @@ jobs:
           # the binary into a libtest target there mixes abort and unwind
           # artifacts that break the harness-free yaml_cases build.
           cargo test --test native_cli
-          cargo build --release
+          cargo build --release --examples
           cargo test --release --test yaml_cases
 
+      # Informational full-suite run (2700+ cases): quality-threshold failures
+      # are tracked as an eval baseline, not a CI gate.
       - name: Run diffctx YAML test suite
-        working-directory: diffctx
-        run: ./target/release/diffctx-test || true
+        working-directory: crates/diffctx-native
+        run: ../../target/release/examples/diffctx-test || true
 
   # ============================================================================
   # Cross-platform Python Testing (diffctx core)
@@ -163,8 +165,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            diffctx/target
-          key: cargo-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('diffctx/Cargo.lock') }}
+            target
+          key: cargo-${{ runner.os }}-py${{ matrix.python-version }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-py${{ matrix.python-version }}-
 
       - name: Install build backend

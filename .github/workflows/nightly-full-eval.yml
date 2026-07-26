@@ -37,12 +37,12 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            diffctx/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('diffctx/Cargo.lock') }}
+            target
+          key: cargo-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: cargo-${{ runner.os }}-
 
       - name: Run full yaml_cases suite and gate on pass count
-        working-directory: diffctx
+        working-directory: crates/diffctx-native
         run: |
           set -o pipefail
           cargo test --release --test yaml_cases 2>&1 | tee full_eval.log || true

@@ -182,9 +182,9 @@ def test_ppr_alpha_one_does_not_degenerate(tmp_path):
 
 
 def test_release_profile_aborts_on_panic():
-    cargo_toml = (PROJECT_ROOT / "diffctx" / "Cargo.toml").read_text()
+    cargo_toml = (PROJECT_ROOT / "Cargo.toml").read_text()
     assert 'panic = "abort"' in cargo_toml, (
-        'diffctx/Cargo.toml release profile must set panic = "abort". '
+        'Root Cargo.toml release profile must set panic = "abort". '
         "Removing it reintroduces UB on panic propagation across the PyO3 FFI boundary."
     )
 

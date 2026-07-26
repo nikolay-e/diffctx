@@ -316,7 +316,7 @@ class TestDiffModeJourneys:
         in a real subprocess with a genuinely slow (sleeping) pipeline call."""
         watchdog_script = (
             "import time\n"
-            "from diffctx.main import _call_with_wall_clock_deadline\n"
+            "from diffctx._app import _call_with_wall_clock_deadline\n"
             "_call_with_wall_clock_deadline(lambda: time.sleep(60), 1, 'diffctx')\n"
         )
         env = os.environ.copy()

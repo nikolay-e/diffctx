@@ -108,15 +108,15 @@ urls.Changelog = "https://github.com/nikolay-e/diffctx/releases"
 urls.Homepage = "https://github.com/nikolay-e/diffctx"
 urls.Issues = "https://github.com/nikolay-e/diffctx/issues"
 urls.Repository = "https://github.com/nikolay-e/diffctx"
-scripts.diffctx = "diffctx.main:main"
-scripts.diffctx-mcp = "diffctx.mcp.__main__:main"
+scripts.diffctx = "diffctx.cli:main"
+scripts.diffctx-mcp = "diffctx.mcp.server:main"
 
 [tool.maturin]
 python-source = "src"
 module-name = "diffctx._diffctx"
-manifest-path = "diffctx/Cargo.toml"
+manifest-path = "crates/diffctx-native/Cargo.toml"
 features = [ "pyo3/extension-module", "python" ]
-# Single-source the wheel version from diffctx/Cargo.toml [package].version.
+# Single-source the wheel version from crates/diffctx-native/Cargo.toml [package].version.
 # Maturin >= 1.8 reads the Cargo manifest version when `[project].dynamic`
 # contains "version" and the explicit `[project].version` line is removed
 # (PEP 621). On the next release, replace `version = "..."` in [project] with
@@ -126,9 +126,10 @@ include = [
   { path = "LICENSE", format = "sdist" },
   { path = "README.md", format = "sdist" },
   { path = "CHANGELOG.md", format = "sdist" },
-  { path = "diffctx/Cargo.toml", format = "sdist" },
-  { path = "diffctx/Cargo.lock", format = "sdist" },
-  { path = "diffctx/src/**/*", format = "sdist" },
+  { path = "Cargo.toml", format = "sdist" },
+  { path = "Cargo.lock", format = "sdist" },
+  { path = "crates/diffctx-native/Cargo.toml", format = "sdist" },
+  { path = "crates/diffctx-native/src/**/*", format = "sdist" },
   { path = "rust-toolchain.toml", format = "sdist" },
 ]
 
@@ -256,6 +257,7 @@ name = "CLI should not import writer directly"
 type = "forbidden"
 source_modules = [ "diffctx.cli" ]
 forbidden_modules = [ "diffctx.writer" ]
+allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 id = "no-tree-cli"
@@ -266,9 +268,9 @@ forbidden_modules = [ "diffctx.cli" ]
 
 [[tool.importlinter.contracts]]
 id = "no-diffctx-writer"
-name = "Diffctx should not import writer"
+name = "Native adapters should not import writer"
 type = "forbidden"
-source_modules = [ "diffctx.diffctx" ]
+source_modules = [ "diffctx._native" ]
 forbidden_modules = [ "diffctx.writer" ]
 
 [[tool.importlinter.contracts]]
@@ -276,7 +278,7 @@ id = "no-mcp-cli"
 name = "MCP server must not import CLI"
 type = "forbidden"
 source_modules = [ "diffctx.mcp" ]
-forbidden_modules = [ "diffctx.cli", "diffctx.main" ]
+forbidden_modules = [ "diffctx.cli", "diffctx._app" ]
 
 [[tool.importlinter.contracts]]
 id = "no-writer-cli"

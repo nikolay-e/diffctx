@@ -1,0 +1,253 @@
+name: regression.selection.017_cross_directory_noise_terraform
+tags:
+- lang:python
+- lang:shell
+- lang:terraform
+- change:multi_file
+- change:config
+- context:same_file
+- distance:0hop
+- difficulty:easy
+repo:
+  initial_files:
+    infra/main.tf: |
+      provider "aws" {
+        region = "us-east-1"
+      }
+
+      resource "aws_s3_bucket" "data_bucket" {
+        bucket = "myapp-data-bucket"
+        acl    = "private"
+      }
+
+      resource "aws_iam_role" "lambda_role" {
+        name = "lambda-execution-role"
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Action = "sts:AssumeRole"
+            Effect = "Allow"
+            Principal = { Service = "lambda.amazonaws.com" }
+          }]
+        })
+      }
+    infra/variables.tf: |
+      variable "environment" {
+        type    = string
+        default = "staging"
+      }
+
+      variable "region" {
+        type    = string
+        default = "us-east-1"
+      }
+    scripts/deploy.sh: |
+      #!/bin/bash
+      set -euo pipefail
+
+      ENVIRONMENT="${1:-staging}"
+      REGION="${2:-us-east-1}"
+
+      echo "Deploying to $ENVIRONMENT in $REGION..."
+
+      aws s3 sync dist/ "s3://myapp-artifacts-${ENVIRONMENT}/" --delete
+      aws lambda update-function-code \
+          --function-name "myapp-${ENVIRONMENT}" \
+          --s3-bucket "myapp-artifacts-${ENVIRONMENT}" \
+          --s3-key "lambda.zip" \
+          --region "$REGION"
+
+      echo "Deployment complete."
+    scripts/teardown.sh: |
+      #!/bin/bash
+      set -euo pipefail
+
+      ENVIRONMENT="${1:-staging}"
+
+      echo "Tearing down $ENVIRONMENT resources..."
+
+      aws s3 rm "s3://myapp-data-${ENVIRONMENT}" --recursive
+      aws lambda delete-function --function-name "myapp-${ENVIRONMENT}"
+      aws iam delete-role --role-name "lambda-execution-role-${ENVIRONMENT}"
+
+      echo "Teardown complete."
+    src/lambda_handler.py: |
+      import json
+      import boto3
+      from typing import Dict, Any
+
+      s3_client = boto3.client("s3")
+
+      def handler(event: Dict[str, Any], context) -> Dict[str, Any]:
+          bucket = event.get("bucket", "myapp-data-bucket")
+          key = event.get("key")
+          if not key:
+              return {"statusCode": 400, "body": json.dumps({"error": "key required"})}
+          try:
+              response = s3_client.get_object(Bucket=bucket, Key=key)
+              content = response["Body"].read().decode("utf-8")
+              return {"statusCode": 200, "body": json.dumps({"content": content})}
+          except s3_client.exceptions.NoSuchKey:
+              return {"statusCode": 404, "body": json.dumps({"error": "not found"})}
+  changed_files:
+    infra/main.tf: |
+      provider "aws" {
+        region = var.region
+      }
+
+      resource "aws_s3_bucket" "data_bucket" {
+        bucket = "myapp-data-${var.environment}"
+
+        tags = {
+          Environment = var.environment
+          ManagedBy   = "terraform"
+        }
+      }
+
+      resource "aws_s3_bucket_versioning" "data_bucket_versioning" {
+        bucket = aws_s3_bucket.data_bucket.id
+        versioning_configuration {
+          status = "Enabled"
+        }
+      }
+
+      resource "aws_iam_role" "lambda_role" {
+        name = "lambda-execution-role-${var.environment}"
+        assume_role_policy = jsonencode({
+          Version = "2012-10-17"
+          Statement = [{
+            Action = "sts:AssumeRole"
+            Effect = "Allow"
+            Principal = { Service = "lambda.amazonaws.com" }
+          }]
+        })
+      }
+
+      resource "aws_iam_role_policy_attachment" "lambda_s3_access" {
+        role       = aws_iam_role.lambda_role.name
+        policy_arn = "arn:aws:iam::policy/AmazonS3ReadOnlyAccess"
+      }
+    infra/variables.tf: |
+      variable "environment" {
+        type    = string
+        default = "staging"
+      }
+
+      variable "region" {
+        type    = string
+        default = "us-east-1"
+      }
+
+      variable "enable_versioning" {
+        type    = bool
+        default = true
+      }
+    scripts/deploy.sh: |
+      #!/bin/bash
+      set -euo pipefail
+
+      ENVIRONMENT="${1:-staging}"
+      REGION="${2:-us-east-1}"
+
+      echo "Deploying to $ENVIRONMENT in $REGION..."
+
+      aws s3 sync dist/ "s3://myapp-artifacts-${ENVIRONMENT}/" --delete
+      aws lambda update-function-code \
+          --function-name "myapp-${ENVIRONMENT}" \
+          --s3-bucket "myapp-artifacts-${ENVIRONMENT}" \
+          --s3-key "lambda.zip" \
+          --region "$REGION"
+
+      echo "Deployment complete."
+    scripts/teardown.sh: |
+      #!/bin/bash
+      set -euo pipefail
+
+      ENVIRONMENT="${1:-staging}"
+
+      echo "Tearing down $ENVIRONMENT resources..."
+
+      aws s3 rm "s3://myapp-data-${ENVIRONMENT}" --recursive
+      aws lambda delete-function --function-name "myapp-${ENVIRONMENT}"
+      aws iam delete-role --role-name "lambda-execution-role-${ENVIRONMENT}"
+
+      echo "Teardown complete."
+    src/lambda_handler.py: |
+      import json
+      import boto3
+      from typing import Dict, Any
+
+      s3_client = boto3.client("s3")
+
+      def handler(event: Dict[str, Any], context) -> Dict[str, Any]:
+          bucket = event.get("bucket", "myapp-data-bucket")
+          key = event.get("key")
+          if not key:
+              return {"statusCode": 400, "body": json.dumps({"error": "key required"})}
+          try:
+              response = s3_client.get_object(Bucket=bucket, Key=key)
+              content = response["Body"].read().decode("utf-8")
+              return {"statusCode": 200, "body": json.dumps({"content": content})}
+          except s3_client.exceptions.NoSuchKey:
+              return {"statusCode": 404, "body": json.dumps({"error": "not found"})}
+  commit_message: Update files
+fragments:
+- id: main
+  selector:
+    path: infra/main.tf
+    anchor: aws_s3_bucket_versioning
+- id: main_1
+  selector:
+    path: infra/main.tf
+    anchor: aws_iam_role_policy_attachment
+- id: variables
+  selector:
+    path: infra/variables.tf
+    anchor: enable_versioning
+- id: no_deploy
+  selector:
+    path: scripts/deploy.sh
+- id: no_teardown
+  selector:
+    path: scripts/teardown.sh
+- id: no_lambda_handler
+  selector:
+    path: src/lambda_handler.py
+- id: no_global_0
+  selector:
+    anchor: aws s3 sync
+- id: no_global_1
+  selector:
+    anchor: aws lambda update-function-code
+- id: no_global_2
+  selector:
+    anchor: aws s3 rm
+- id: no_global_3
+  selector:
+    anchor: aws iam delete-role
+- id: no_global_4
+  selector:
+    anchor: s3_client
+- id: no_global_5
+  selector:
+    anchor: s3_client.get_object
+- id: no_global_6
+  selector:
+    anchor: NoSuchKey
+oracle:
+  required:
+  - main
+  - main_1
+  - variables
+  allowed: []
+  forbidden:
+  - no_deploy
+  - no_teardown
+  - no_lambda_handler
+  - no_global_0
+  - no_global_1
+  - no_global_2
+  - no_global_3
+  - no_global_4
+  - no_global_5
+  - no_global_6

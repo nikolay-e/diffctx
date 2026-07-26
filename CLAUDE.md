@@ -50,7 +50,7 @@ pre-commit run --all-files
 Every change is either **E-class** (bit-equivalent: identical selection
 output on identical input) or **Q-class** (output-changing). E-class
 changes may land any time but must pass
-`python -m benchmarks.equivalence_gate --a <old-run> --b <new-run>` on the
+`python -m eval equivalence --a <old-run> --b <new-run>` on the
 stratified 40-instance sample (`results/sweep_v2_local/equiv/manifests`),
 plus a double-run determinism check. Q-class changes are frozen during an
 evaluation cycle (calibration -> validation -> sweep) — they invalidate

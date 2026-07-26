@@ -64,7 +64,7 @@ diffctx . --diff HEAD~1       # smart context for last commit → paste into Cla
 diffctx . -f md -c            # full codebase export → clipboard in Markdown
 ```
 
-![diffctx demo](https://raw.githubusercontent.com/nikolay-e/diffctx/main/docs/demo.gif)
+![diffctx demo](https://raw.githubusercontent.com/nikolay-e/diffctx/main/docs/demo/demo.gif)
 
 *`diffctx . --diff HEAD~1` selects only the fragments an LLM needs to review the
 last commit, instead of dumping every changed file in full.*
@@ -87,7 +87,8 @@ the `--budget` token cap is hit.
 | `--timeout` | 300     | Wall-clock deadline in seconds; on expiry diffctx exits 124 instead of hanging |
 
 Calibration of `--alpha`, `--tau`, and the edge-weight priors:
-[`docs/parameter-strategy.md`](docs/parameter-strategy.md). Theory:
+[`docs/engineering/parameter-strategy.md`](docs/engineering/parameter-strategy.md).
+Theory:
 [Context-Selection for Git Diff (Zenodo, 2026)](https://doi.org/10.5281/zenodo.18824580).
 
 ### `graph` subcommand
@@ -217,6 +218,14 @@ its share of the cap, oldest entries first.
 | `130`| Interrupted (Ctrl-C) |
 | `141`| Broken pipe (e.g. piping into `head`) |
 
+## Repository layout
+
+Rust product code lives in `crates/diffctx-native/`; the Python CLI and MCP
+package live in `src/diffctx/`. Evaluation code, immutable datasets, and paper
+artifacts are intentionally separated under `eval/`, `datasets/`, and `paper/`.
+See [repository ownership boundaries](docs/architecture/repository-layout.md)
+for the lifecycle and entry point of each area.
+
 ## License
 
 Apache 2.0
@@ -225,5 +234,5 @@ Apache 2.0
 
 - [Changelog](CHANGELOG.md)
 - [Security policy](SECURITY.md) — threat model and vulnerability reporting
-- [Parameter strategy](docs/parameter-strategy.md) — how `--alpha`,
+- [Parameter strategy](docs/engineering/parameter-strategy.md) — how `--alpha`,
   `--tau`, and edge weights are calibrated

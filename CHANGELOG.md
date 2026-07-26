@@ -90,7 +90,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   bare `--diff` means the working tree against `HEAD`, `--scoring` advertises
   its accepted values, and every option carries help text.
 - The standalone binary is covered by its own integration suite
-  (`diffctx/tests/native_cli.rs`, run in CI): exit codes, both version flags,
+  (`crates/diffctx-native/tests/native_cli.rs`, run in CI): exit codes, both
+  version flags,
   the token summary, `--quiet`, format validation and budget handling are now
   contract-tested against real git repositories. Every parity defect above
   shipped because nothing exercised the clap parser.
@@ -143,7 +144,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   log instead of re-running the builders, so generation cost stays 1x.
   Verified: gitpod 8000s-hang -> 35.7s,
   pytorch 1848s-SIGKILL -> 7.4s, mui/material-ui OOM class recovered.
-  Outputs are bit-identical (gated by `benchmarks/equivalence_gate.py`).
+  Outputs are bit-identical (gated by `eval/analysis/equivalence_gate.py`).
 
 ### Known limitations
 
@@ -182,7 +183,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The default `--format` is now `md` (Markdown), previously `yaml`.** Markdown
   is ~7% more token-efficient than YAML on real diffs and is preferred by
   reviewers for code-fragment-heavy output (evidence:
-  `benchmarks/real_world_diff_bench/`). YAML remains available via `-f yaml`.
+  `datasets/real-world-diff/v1/`). YAML remains available via `-f yaml`.
   This also changes the default stdout format of `treemapper` (a passthrough
   wrapper over this engine); downstream scripts that parse the default output
   must now pass `-f yaml` explicitly. (#104)
@@ -317,7 +318,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   optional `diffctx-mcp` server confines its filesystem reach via
   `DIFFCTX_ALLOWED_PATHS`.
 - Footer of `README.md` links `CHANGELOG.md`, `SECURITY.md`, and
-  `docs/parameter-strategy.md` so they are no longer orphaned.
+  `docs/engineering/parameter-strategy.md` so they are no longer orphaned.
 
 ### Changed
 

@@ -2,11 +2,12 @@ FROM rust:1.92-bookworm AS builder
 
 WORKDIR /build
 COPY README.md ./
-COPY diffctx/Cargo.toml diffctx/Cargo.lock ./diffctx/
-COPY diffctx/src ./diffctx/src
-COPY diffctx/tests ./diffctx/tests
+COPY Cargo.toml Cargo.lock ./
+COPY crates/diffctx-native/Cargo.toml ./crates/diffctx-native/
+COPY crates/diffctx-native/src ./crates/diffctx-native/src
+COPY crates/diffctx-native/tests ./crates/diffctx-native/tests
 
-WORKDIR /build/diffctx
+WORKDIR /build/crates/diffctx-native
 RUN cargo build --release --locked --bin diffctx
 
 FROM debian:bookworm-slim AS runtime
@@ -22,7 +23,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates git \
     && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /build/diffctx/target/release/diffctx /usr/local/bin/diffctx
+COPY --from=builder /build/target/release/diffctx /usr/local/bin/diffctx
 
 # Bind-mounted host repositories carry foreign ownership; without this git
 # refuses to read them ("dubious ownership") and every --diff run fails.

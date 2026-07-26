@@ -9,15 +9,15 @@ ci-lint:
 	pip install pre-commit
 	pip install -e ".[dev]"
 	pre-commit run --all-files
-	ruff check src tests
-	black --check src tests
+	ruff check src eval tests
+	black --check src eval tests
 	mypy src
 
 ci-rust:
-	cd diffctx && DIFFCTX_YAML_CASES_LIMIT="20" cargo test --lib
-	cd diffctx && cargo build --release
-	cd diffctx && DIFFCTX_YAML_CASES_LIMIT="20" cargo test --release --test yaml_cases
-	cd diffctx && ./target/release/diffctx-test || true
+	cd crates/diffctx-native && DIFFCTX_YAML_CASES_LIMIT="20" cargo test --lib
+	cd crates/diffctx-native && cargo build --release --examples
+	cd crates/diffctx-native && DIFFCTX_YAML_CASES_LIMIT="20" cargo test --release --test yaml_cases
+	cd crates/diffctx-native && ../../target/release/examples/diffctx-test || true
 
 ci-test:
 	$(PYTHON) -m pip install --upgrade pip

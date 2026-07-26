@@ -1,0 +1,129 @@
+# syntax=docker/dockerfile:1.7
+#
+# Runtime evaluation image (code only, ~1-2 GB).
+# Repo cache (~20 GB) is populated at provision time by bake_eval_cache.py
+# running inside this image and mounted at /cache/contextbench_repos via a
+# shared host bind-mount on the CCX63 server (see eval-sweep.yml cloud-init).
+#
+# Layers:
+#   1. python base + system deps             (rare changes)
+#   2. python deps (requirements-eval.txt)  (weekly changes)
+#   3. diffctx wheel (cross-compiled)        (per-commit changes)
+#   4. evaluation code and dataset manifests (changes most often)
+
+ARG PYTHON_VERSION=3.12
+ARG RUST_VERSION=1.92.0
+
+# Accepted for build_eval_image.sh compatibility; the repo cache is baked at
+# provision time, not into this image.
+ARG BAKE_DATASET=full
+ARG BAKE_LIMIT=0
+ARG BAKE_PARALLELISM=4
+
+# ============================================================================
+# Stage A — Rust cross-compiler (runs on BUILDPLATFORM, targets TARGETPLATFORM)
+# ============================================================================
+FROM --platform=$BUILDPLATFORM python:${PYTHON_VERSION}-slim-bookworm AS rust-builder
+ARG TARGETPLATFORM
+ARG RUST_VERSION
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential ca-certificates curl \
+    gcc-aarch64-linux-gnu gcc-x86-64-linux-gnu git \
+    libc6-dev-amd64-cross libc6-dev-arm64-cross \
+    libssl-dev pkg-config \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV RUSTUP_HOME=/usr/local/rustup CARGO_HOME=/usr/local/cargo PATH=/usr/local/cargo/bin:$PATH
+# rustup-init pinned by version + per-arch sha256 (no curl|sh of a mutable script).
+ARG RUSTUP_VERSION=1.29.0
+RUN set -eux; \
+    arch="$(uname -m)"; \
+    case "$arch" in \
+      x86_64)  triple=x86_64-unknown-linux-gnu;  sha=4acc9acc76d5079515b46346a485974457b5a79893cfb01112423c89aeb5aa10 ;; \
+      aarch64) triple=aarch64-unknown-linux-gnu; sha=9732d6c5e2a098d3521fca8145d826ae0aaa067ef2385ead08e6feac88fa5792 ;; \
+      *) echo "unsupported build arch: $arch" >&2; exit 1 ;; \
+    esac; \
+    curl --proto '=https' --tlsv1.2 -sSfo /tmp/rustup-init \
+      "https://static.rust-lang.org/rustup/archive/${RUSTUP_VERSION}/${triple}/rustup-init"; \
+    echo "$sha  /tmp/rustup-init" | sha256sum -c -; \
+    chmod +x /tmp/rustup-init; \
+    /tmp/rustup-init -y --default-toolchain "${RUST_VERSION}" --profile minimal; \
+    rm /tmp/rustup-init
+
+# Pick Rust target triple + cross-linker from TARGETPLATFORM
+RUN set -eux; \
+    case "${TARGETPLATFORM}" in \
+      linux/amd64) TGT=x86_64-unknown-linux-gnu;  LINKER=x86_64-linux-gnu-gcc ;; \
+      linux/arm64) TGT=aarch64-unknown-linux-gnu; LINKER=aarch64-linux-gnu-gcc ;; \
+      *) echo "Unsupported TARGETPLATFORM=${TARGETPLATFORM}" >&2; exit 1 ;; \
+    esac; \
+    echo "$TGT" > /target_triple; \
+    echo "$LINKER" > /linker; \
+    rustup target add "$TGT"
+
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv "$VIRTUAL_ENV"
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+RUN pip install --no-cache-dir --only-binary :all: "maturin==1.10.2"
+
+# Maturin builds the top-level package from the repo root: python source in
+# src/, Rust crate in crates/diffctx-native/ (see [tool.maturin] in pyproject.toml).
+WORKDIR /build
+COPY pyproject.toml README.md LICENSE Cargo.toml Cargo.lock ./
+COPY src ./src
+COPY crates/diffctx-native/Cargo.toml ./crates/diffctx-native/
+COPY crates/diffctx-native/src ./crates/diffctx-native/src
+# Cargo.toml declares [[test]] targets; cargo refuses to parse the manifest
+# if their files are absent.
+COPY crates/diffctx-native/tests ./crates/diffctx-native/tests
+
+RUN set -eux; \
+    TGT=$(cat /target_triple); \
+    LINKER=$(cat /linker); \
+    LINKER_VAR="CARGO_TARGET_$(echo "$TGT" | tr '[:lower:]-' '[:upper:]_')_LINKER"; \
+    export "${LINKER_VAR}=${LINKER}"; \
+    export PYO3_USE_ABI3_FORWARD_COMPATIBILITY=1; \
+    maturin build --release --target "$TGT" --out /wheels
+
+# ============================================================================
+# Stage B — Runtime
+# ============================================================================
+FROM python:${PYTHON_VERSION}-slim-bookworm AS runtime
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    git ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+ENV VIRTUAL_ENV=/opt/venv
+RUN python3 -m venv "$VIRTUAL_ENV"
+ENV PATH="$VIRTUAL_ENV/bin:$PATH"
+
+WORKDIR /app
+
+# Layer 2: Python deps (heavy, slow — install BEFORE source).
+# uv is required by the Aider baseline (`uv tool run --from aider-chat ...`);
+# without it, every aider cell crashes on first request with
+# "RuntimeError: `uv` not found on PATH".
+COPY requirements-eval.lock ./
+RUN pip install --no-cache-dir --only-binary :all: --require-hashes -r requirements-eval.lock && \
+    pip install --no-cache-dir --only-binary :all: "uv==0.11.30"
+
+# Layer 3: diffctx wheel with the compiled _diffctx extension
+COPY --from=rust-builder /wheels/*.whl /tmp/wheels/
+RUN pip install --no-cache-dir --only-binary :all: /tmp/wheels/*.whl && rm -rf /tmp/wheels
+
+# Layer 4: Benchmarks code (changes most often)
+COPY eval ./eval
+COPY datasets ./datasets
+COPY scripts/bake_eval_cache.py ./scripts/bake_eval_cache.py
+
+ENV CB_REPOS_DIR=/cache/contextbench_repos
+ENV PYTHONUNBUFFERED=1
+
+LABEL org.opencontainers.image.source="https://github.com/nikolay-e/diffctx"
+LABEL org.opencontainers.image.description="diffctx evaluation runtime image (repo cache mounted separately)"
+LABEL org.opencontainers.image.licenses="Apache-2.0"
+
+ENTRYPOINT ["python", "-m", "eval"]
+CMD ["cb", "--help"]

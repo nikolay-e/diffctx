@@ -1,0 +1,18 @@
+schema_version = 1
+dataset = "eval-splits"
+version = "v1"
+instance_reference_count = 3854
+split_seed = 42
+validation_fraction = 0.10
+generator_package = "eval.datasets.build_splits"
+external_revisions = "../../external-revisions.json"
+inventory = "checksums.sha256"
+provenance = "SPLIT_REPORT.md"
+licenses = "LICENSES.md"
+
+[splits]
+calibration = 2119
+validation = 235
+test_contextbench_verified = 500
+test_polybench500 = 500
+test_swebench_verified = 500

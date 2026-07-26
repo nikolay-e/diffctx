@@ -285,7 +285,7 @@ xfail:
 
 Two runners execute these YAML cases.
 
-| Feature | `cargo test --test yaml_cases` | `cargo run --bin diffctx-test` |
+| Feature | `cargo test --test yaml_cases` | `cargo run --example diffctx-test` |
 |---------|-------------------------------|--------------------------------|
 | `oracle.required` | enforced | enforced |
 | `oracle.forbidden` | enforced | enforced |
@@ -299,8 +299,8 @@ Two runners execute these YAML cases.
 | Use case | CI regression gate | bulk benchmarking, JSON reports |
 
 Both runners share schema parsing, oracle evaluation and budget calculation
-via `diffctx/tests/common/mod.rs`. Per-case `min_score` is supported in the
-YAML schema:
+via `crates/diffctx-native/tests/common/mod.rs`. Per-case `min_score` is
+supported in the YAML schema:
 
 ```yaml
 min_score: 50.0
