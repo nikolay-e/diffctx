@@ -43,7 +43,7 @@ each.
 ## Test Suite Layout
 
 - pytest-xdist runs tests in parallel (`addopts = "-n auto --dist worksteal"`).
-- 500+ pytest tests; 18 of them live in `tests/test_mcp.py` and are gated
+- 500+ pytest tests; 19 of them live in `tests/test_mcp.py` and are gated
   by `pytest.importorskip("mcp")`. They use `pytest-asyncio` with
   `asyncio_mode = auto` (in `pyproject.toml`).
 - `tests/test_mcp.py` is the ONLY async-using test module. If you add
@@ -57,7 +57,7 @@ each.
 
 See `/qa` skill: Packaging QA (Test-Gating Trap) for the general lesson. Here
 it bites at the intersection of two extras: `[mcp]` must be in the CI install
-extras (else `importorskip("mcp")` silently skips all 18 `test_mcp.py` tests),
+extras (else `importorskip("mcp")` silently skips all 19 `test_mcp.py` tests),
 AND `pytest-asyncio` + `asyncio_mode = auto` must be present (else the async
 tests collect but never await — they "pass" by never running). Re-check this
 every time someone adds a new `[<extra>]` that ships a tool with its own tests.

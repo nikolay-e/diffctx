@@ -74,6 +74,17 @@ class TestMcpMainEntrypoint:
         assert "unrecognized arguments" in captured.err
 
 
+class TestServerIdentity:
+    """The `initialize` response is how a client learns which diffctx it is
+    talking to. FastMCP takes no version argument, so an unset version makes
+    the SDK report its own — clients saw the mcp package version instead."""
+
+    def test_reports_package_version_not_sdk_version(self, server):
+        from diffctx.version import __version__
+
+        assert server._mcp_server.version == __version__
+
+
 @pytest.mark.timeout(30)
 class TestGetDiffContext:
     @pytest.mark.asyncio

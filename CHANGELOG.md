@@ -9,6 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The MCP server advertised the SDK's version as its own.** `FastMCP` takes
+  no version argument, so `initialize` reported the installed `mcp` package
+  version (e.g. `1.28.1`) as the diffctx server version — a number that drifts
+  with every SDK bump and never matched the shipped package. Clients now see
+  the real version.
 - **The native binary hard-capped every run at 4096 tokens.** `--budget`
   carried a fixed clap default instead of leaving the budget unset, so the
   auto-sizing the Python CLI has always used never ran on the binary shipped

@@ -9,6 +9,7 @@ import anyio
 from mcp.server.fastmcp import FastMCP
 
 from diffctx._native import GitError, build_diff_context
+from diffctx.version import __version__
 
 from .formatting import format_diff_context_as_markdown
 from .security import validate_dir_path, validate_repo_path
@@ -41,6 +42,10 @@ def _over_token_budget_notice(tool: str, token_count: int, max_tokens: int, hint
 
 
 mcp = FastMCP("diffctx")
+# FastMCP takes no version argument, so the SDK reports its own version as the
+# server version during initialize. Clients then see the mcp package version
+# instead of ours, drifting on every SDK bump.
+mcp._mcp_server.version = __version__
 
 _DIFF_DESCRIPTION = (
     "PREFERRED tool for understanding git diffs. Returns the most relevant "
