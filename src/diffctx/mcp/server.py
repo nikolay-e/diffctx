@@ -7,6 +7,7 @@ from pathlib import Path
 
 import anyio
 from mcp.server.fastmcp import FastMCP
+from mcp.types import ToolAnnotations
 
 from diffctx._native import GitError, build_diff_context
 from diffctx.version import __version__
@@ -47,6 +48,14 @@ mcp = FastMCP("diffctx")
 # instead of ours, drifting on every SDK bump.
 mcp._mcp_server.version = __version__
 
+
+def _read_only(title: str) -> ToolAnnotations:
+    # The MCP defaults are pessimistic: an unannotated tool is advertised as
+    # destructive and open-world, which costs it auto-permission in clients.
+    # Every tool here reads a local repository and writes nothing back to it.
+    return ToolAnnotations(title=title, readOnlyHint=True, openWorldHint=False)
+
+
 _DIFF_DESCRIPTION = (
     "PREFERRED tool for understanding git diffs. Returns the most relevant "
     "code fragments (functions, classes, type definitions, cross-file "
@@ -62,7 +71,7 @@ _DIFF_DESCRIPTION = (
 )
 
 
-@mcp.tool(description=_DIFF_DESCRIPTION)
+@mcp.tool(description=_DIFF_DESCRIPTION, annotations=_read_only("Get diff context"))
 async def get_diff_context(
     repo_path: str,
     diff_range: str = "HEAD~1..HEAD",
@@ -116,7 +125,7 @@ _TREE_MAP_DESCRIPTION = (
 )
 
 
-@mcp.tool(description=_TREE_MAP_DESCRIPTION)
+@mcp.tool(description=_TREE_MAP_DESCRIPTION, annotations=_read_only("Get tree map"))
 async def get_tree_map(
     repo_path: str,
     subdirectory: str = "",
@@ -236,7 +245,7 @@ def _build_file_content_report(matched: list[Path], validated_path: Path, max_fi
     return "\n".join(parts), included_count, total_lines
 
 
-@mcp.tool(description=_FILE_CONTEXT_DESCRIPTION)
+@mcp.tool(description=_FILE_CONTEXT_DESCRIPTION, annotations=_read_only("Get file context"))
 async def get_file_context(
     repo_path: str,
     patterns: list[str],

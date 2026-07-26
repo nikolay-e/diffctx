@@ -227,6 +227,10 @@ for the lifecycle and entry point of each area.
 
 Apache 2.0
 
+<!-- mcp-name: io.github.nikolay-e/diffctx -->
+<!-- Ownership marker read from the PyPI description by the MCP registry. -->
+<!-- Must survive edits verbatim: one space after the colon, case-sensitive. -->
+
 ---
 
 - [Documentation site](https://nikolay-e.github.io/diffctx/) — the pipeline

@@ -84,7 +84,7 @@ jobs:
         run: |
           echo "Setting version to $VERSION"
           python - <<'PY'
-          import os, re, pathlib
+          import json, os, re, pathlib
           ver = os.environ["VERSION"]
 
           p = pathlib.Path("src/diffctx/version.py")
@@ -104,6 +104,13 @@ jobs:
           s, n = re.subn(r'(?m)^version\s*=\s*"[^"]+"', f'version = "{ver}"', s, count=1)
           assert n == 1, "Cargo.toml: [package].version not found"
           cargo.write_text(s, encoding="utf-8")
+
+          srv = pathlib.Path("server.json")
+          doc = json.loads(srv.read_text(encoding="utf-8"))
+          doc["version"] = ver
+          for pkg in doc["packages"]:
+              pkg["version"] = ver
+          srv.write_text(json.dumps(doc, indent=2) + "\n", encoding="utf-8")
 
           lock = pathlib.Path("Cargo.lock")
           s = lock.read_text(encoding="utf-8")
@@ -130,7 +137,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock
+          git add src/diffctx/version.py pyproject.toml crates/diffctx-native/Cargo.toml Cargo.lock server.json
           if ! git diff --staged --quiet; then
             git commit -m "Release version ${VERSION}"
           else

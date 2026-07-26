@@ -1,0 +1,31 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.nikolay-e/diffctx",
+  "title": "diffctx",
+  "description": "Selects the minimum code an LLM needs to review a git diff",
+  "version": "1.12.1",
+  "websiteUrl": "https://nikolay-e.github.io/diffctx/",
+  "repository": {
+    "url": "https://github.com/nikolay-e/diffctx",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "diffctx",
+      "version": "1.12.1",
+      "runtimeHint": "uvx",
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--from",
+          "value": "diffctx[mcp]"
+        }
+      ],
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

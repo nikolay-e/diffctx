@@ -84,6 +84,19 @@ class TestServerIdentity:
 
         assert server._mcp_server.version == __version__
 
+    @pytest.mark.asyncio
+    async def test_every_tool_is_annotated_read_only(self, server):
+        """MCP defaults are pessimistic: an unannotated tool is advertised as
+        destructive and open-world, which costs it auto-permission in clients.
+        Every diffctx tool only reads."""
+        tools = await server.list_tools()
+        assert tools
+        for tool in tools:
+            assert tool.annotations is not None, f"{tool.name} has no annotations"
+            assert tool.annotations.title, f"{tool.name} has no title"
+            assert tool.annotations.readOnlyHint is True, f"{tool.name} is not read-only"
+            assert tool.annotations.openWorldHint is False, f"{tool.name} is open-world"
+
 
 @pytest.mark.timeout(30)
 class TestGetDiffContext:
