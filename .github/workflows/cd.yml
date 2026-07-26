@@ -747,14 +747,13 @@ jobs:
           docker run --rm -v "$PWD:/repo" "${IMAGE}:${VERSION}" . --diff HEAD~1..HEAD --no-content
 
   update-packaging-manifests:
-    name: Refresh Scoop manifest and AUR PKGBUILD
+    name: Publish Scoop bucket manifest
     needs: [prepare-version, finalize-release]
     if: github.event.inputs.publish_to_pypi == 'true'
     runs-on: ubuntu-latest
-    # Frozen, manifest-only channels: nothing here is installable by a user, so
-    # a failure must not fail the release nor gate the publish-extras dispatch
-    # that depends on this job.
-    continue-on-error: true
+    # `bucket/` makes this repository itself the Scoop bucket, so pushing the
+    # refreshed manifest to main IS the publication step — a failure here means
+    # Windows users stay on the previous version.
     steps:
       - name: Checkout main
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0  # v7.0.0
@@ -781,9 +780,7 @@ jobs:
           python scripts/render_packaging.py \
             --version "$VERSION" \
             --assets-dir ./release-binaries \
-            --scoop packaging/scoop/diffctx.json \
-            --pkgbuild packaging/aur/PKGBUILD \
-            --srcinfo packaging/aur/.SRCINFO \
+            --scoop bucket/diffctx.json \
             --npm-checksums packaging/npm/checksums.json
 
       - name: Commit and push
@@ -792,8 +789,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add packaging/scoop/diffctx.json packaging/aur/PKGBUILD \
-            packaging/aur/.SRCINFO packaging/npm/checksums.json
+          git add bucket/diffctx.json packaging/npm/checksums.json
           if git diff --staged --quiet; then
             echo "Manifests already current."
             exit 0
@@ -805,8 +801,8 @@ jobs:
   publish-extras:
     name: Publish npm wrapper and mirror to Docker Hub
     # No edge to update-packaging-manifests: publish-extras.yml re-renders the
-    # npm checksums from the release tag, so the frozen Scoop/AUR refresh is
-    # never a prerequisite for shipping npm or the Docker Hub mirror.
+    # npm checksums from the release tag, so a Scoop bucket failure can never
+    # hold back npm or the Docker Hub mirror.
     needs: [prepare-version, publish-image]
     if: github.event.inputs.publish_to_pypi == 'true'
     runs-on: ubuntu-latest
@@ -817,7 +813,6 @@ jobs:
       # re-runnable on their own after a partial release. Left un-dispatched,
       # npm and Docker Hub silently keep serving the previous version — that is
       # how 1.12.1 stayed live on both while every other channel moved on.
-      # AUR is excluded: it needs credentials this repository does not hold.
       - name: Dispatch the downstream publish workflow
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -828,8 +823,7 @@ jobs:
             --repo "$REPO" --ref main \
             -f version="$VERSION" \
             -f publish_npm=true \
-            -f mirror_dockerhub=true \
-            -f publish_aur=false
+            -f mirror_dockerhub=true
 
       - name: Wait for the downstream publish workflow
         env:

@@ -134,9 +134,9 @@ repos:
     hooks:
       - id: detect-secrets
         args: ["--baseline", ".secrets.baseline"]
-        # packaging/ holds generated release manifests whose SHA-256 digests
-        # of public artifacts read as high-entropy strings.
-        exclude: ^packaging/
+        # packaging/ and bucket/ hold generated release manifests whose SHA-256
+        # digests of public artifacts read as high-entropy strings.
+        exclude: ^(packaging|bucket)/
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.29.0
@@ -242,9 +242,6 @@ repos:
       - id: shfmt
         name: shfmt (shell script formatting)
         args: [-w, -i, '2']
-        # PKGBUILD is makepkg input, not a script: no shebang, and its
-        # formatting is fixed by the generator in scripts/render_packaging.py.
-        exclude: ^packaging/aur/
 
   - repo: https://github.com/shellcheck-py/shellcheck-py
     rev: v0.11.0.1
@@ -252,7 +249,6 @@ repos:
       - id: shellcheck
         name: shellcheck (shell script linting)
         args: [-x]
-        exclude: ^packaging/aur/
 
   # ============================================================================
   # MARKDOWN LINTING

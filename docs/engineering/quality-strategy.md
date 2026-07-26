@@ -631,21 +631,27 @@ they do not carry the same guarantee, so each sits in one of three tiers:
 | MCP registry | maintainer, `mcp-publisher` from `server.json` | no | yes | supported |
 | npm | `publish-extras.yml`, dispatched by `cd.yml` | yes | yes | best-effort |
 | Docker Hub `nikolajer/diffctx` | `publish-extras.yml`, dispatched by `cd.yml` | yes | yes | best-effort |
-| Scoop `packaging/scoop/diffctx.json` | nobody — no bucket repository exists | manifest only | no | manifest-only |
-| AUR `packaging/aur/` | nobody — the repo holds no AUR credentials | manifest only | no | manifest-only |
+| Scoop `bucket/diffctx.json` | `cd.yml` (`update-packaging-manifests`) | yes | yes | best-effort |
+
+AUR was dropped in 1.12.3: `diffctx-bin` had never been submitted, the job
+gated on a credential this repository does not hold, and Arch users are already
+served by `pipx install diffctx` and `cargo install diffctx`.
 
 Only `publish_to_pypi == 'true'` arms the crates.io and publish-extras
 dispatches; a dry run publishes nowhere.
 
-The frozen channels (npm, Docker Hub, Scoop, AUR) get no feature work, no new
-manifest kinds and no manual release steps. CD regenerates their checksums via
-`scripts/render_packaging.py` in `update-packaging-manifests`, which carries
-`continue-on-error: true` and is not in `publish-extras`' `needs`, so a
-frozen-channel failure can block neither the release nor the npm and Docker Hub
-dispatch. Promoting a manifest-only channel means adding the missing publishing
-path — AUR credentials, or a Scoop bucket repository — AND an
-install-verification step in release QA. Until both exist the channel stays out
-of the README, the docs site and `llms.txt`.
+**The Scoop bucket is this repository.** `bucket/diffctx.json` is what
+`scoop bucket add diffctx https://github.com/nikolay-e/diffctx` clones, so the
+push of the regenerated manifest to `main` *is* the publication — there is no
+second repository and no extra credential. That makes
+`update-packaging-manifests` a real publishing job: it must not carry
+`continue-on-error`, and a failure means Windows users stay on the previous
+version. It is still absent from `publish-extras`' `needs`, so a Scoop failure
+cannot block npm or the Docker Hub mirror.
+
+The best-effort tier (npm, Docker Hub, Scoop) gets no feature work and no
+manual release steps, but each one is published automatically and verified by
+installing.
 
 A release QA pass verifies every live channel by INSTALLING it, not by reading
 the workflow log:
@@ -658,7 +664,7 @@ the workflow log:
 | GitHub Release | assets = 4 wheels + sdist + 4 binary archives (tar.gz ×3, zip) |
 | ghcr / Docker Hub | `docker run --rm <img>:<v> --version` + a bind-mounted repo `--diff`. Hub repo is `nikolajer/diffctx` — NOT the ghcr owner name |
 | MCP registry | `curl -s 'https://registry.modelcontextprotocol.io/v0/servers?search=diffctx'` reports the new version and `status: active` |
-| Scoop / AUR | manifest-only: assert the `packaging/` checksums match the release assets. There is nothing installable to test |
+| Scoop | on Windows: `scoop bucket add diffctx https://github.com/nikolay-e/diffctx`, `scoop install diffctx/diffctx`, `diffctx --version`. Without Windows, assert `bucket/diffctx.json` carries the release `.zip` SHA-256 |
 
 Traps found the hard way:
 
@@ -669,18 +675,11 @@ Traps found the hard way:
   `cd.yml` now dispatches it; if that job is ever skipped, check both channels
   BY INSTALLING before calling a release complete. A green CD run is not
   evidence that npm shipped.
-- **AUR has never been published at all.** `publish-extras.yml` gates its AUR
-  job on `AUR_SSH_PRIVATE_KEY`, which this repository does not hold, and
-  `cd.yml` dispatches with `publish_aur=false` regardless. The PKGBUILD and
-  `.SRCINFO` in `packaging/aur/` are regenerated with the right checksums and
-  never pushed. Confirm with
-  `curl -s 'https://aur.archlinux.org/rpc/v5/info?arg[]=diffctx-bin'` →
-  `resultcount: 0`. Do not read a skipped AUR job as a failure, and do not
-  claim AUR as a live channel.
-- **Scoop has no bucket either.** `packaging/scoop/diffctx.json` is a valid,
-  correctly checksummed manifest that lives only in this repository, so
-  `scoop search diffctx` finds nothing. It is manifest-only for the same reason
-  AUR is: the last publishing hop was never built.
+- **`bucket/` is a published surface, not scratch space.** Renaming it, moving
+  the manifest or adding unrelated JSON there changes what every
+  `scoop update` sees. A manifest whose `hash` does not match the release asset
+  makes `scoop install` refuse the download, so the checksum regeneration in
+  `update-packaging-manifests` is load-bearing, not cosmetic.
 - **CD pushes the release tag to GitHub only.** The Forgejo remote (`origin`)
   does not receive it, so after every release run
   `git fetch github --tags && git push origin v<version>`. Both remotes must
@@ -698,11 +697,13 @@ Traps found the hard way:
 - **Publishing an old draft steals the `Latest` marker** (GitHub marks the most
   recently published release latest). Restore with
   `gh release edit v<newest> --latest`.
-- **CD-generated `packaging/` manifests trip three pre-commit hooks**:
-  `detect-secrets` reads SHA-256 digests as high-entropy strings, `shfmt`
-  reformats PKGBUILD, `shellcheck` rejects it (SC2148 — makepkg input has no
-  shebang). All three carry `exclude: ^packaging/`; keep the exclusions when
-  adding manifest kinds, or CD's own push turns main red.
+- **Generated manifests trip `detect-secrets`**: the SHA-256 digests of public
+  release artifacts read as high-entropy strings. The hook carries
+  `exclude: ^(packaging|bucket)/`. Moving a manifest outside those two
+  directories, or adding a third manifest kind elsewhere, turns CD's own push
+  red — this is exactly what happened when the Scoop manifest moved from
+  `packaging/scoop/` to `bucket/`. (The `shfmt`/`shellcheck` exclusions that
+  used to sit alongside it were for the AUR PKGBUILD and went with it.)
 - **OIDC in a reusable workflow carries the CALLER's filename.** crates.io
   trusted publishing configured for `publish-crate.yml` rejects a run invoked
   via `uses: ./.github/workflows/publish-crate.yml` from `cd.yml` (HTTP 400,

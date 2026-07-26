@@ -47,6 +47,13 @@ npx diffctx . --diff HEAD~1             # npm wrapper over the native binary
 docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1
 ```
 
+On Windows, via Scoop (this repository is the bucket):
+
+```powershell
+scoop bucket add diffctx https://github.com/nikolay-e/diffctx
+scoop install diffctx/diffctx
+```
+
 The image runs as a non-root user (uid 10001) and writes to stdout — the
 native binary has no `-o` flag, so redirect to capture: `... --diff HEAD~1 >
 context.yaml`.

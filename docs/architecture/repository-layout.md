@@ -14,7 +14,8 @@ Their source, data, and generated outputs have different lifecycles:
 | `paper/` | Paper source, selected reproducibility artifacts, and releases |
 | `docs/` | Engineering, product, and architecture documentation |
 | `scripts/` | Repository automation (image builds, cache baking, sensitivity checks) |
-| `packaging/` | CD-generated channel manifests with pinned checksums: `npm/` is published, `scoop/` and `aur/` are manifest-only (see the release-channel policy in `docs/engineering/quality-strategy.md`) |
+| `packaging/` | CD-generated npm manifest with pinned checksums (see the release-channel policy in `docs/engineering/quality-strategy.md`) |
+| `bucket/` | The Scoop bucket itself — `scoop bucket add` clones this repository and reads manifests from here; CD regenerates `diffctx.json` on each release |
 | `results/` | Local or CI-generated evaluation output; not source-controlled |
 | `.github/` | CI/CD workflows and issue templates; owned by repo automation |
 

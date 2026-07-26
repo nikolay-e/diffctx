@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Scoop install on Windows.** This repository is now itself the bucket:
+  `scoop bucket add diffctx https://github.com/nikolay-e/diffctx` then
+  `scoop install diffctx/diffctx`. The manifest moved from `packaging/scoop/`
+  to `bucket/diffctx.json`, where `scoop bucket add` reads it, so CD pushing
+  the regenerated manifest to `main` is the publication step. Previously the
+  manifest was correct but unreachable — no bucket existed, so
+  `scoop search diffctx` found nothing.
+
 - `--with-raw-diff` bundles git's raw unified diff ahead of the selected
   context in every Python-CLI format (md/yaml/json/txt) and in the Python API
   (`build_diff_context(..., with_raw_diff=True)`). Additive only — selection is
@@ -109,6 +117,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   fragments, so the commit message and the list of changed files — the only
   actionable facts about such a run — were dropped. They are now always
   written.
+
+### Removed
+
+- **AUR support.** `diffctx-bin` had never been submitted (the AUR RPC reported
+  `resultcount: 0`), the publishing job gated on a credential this repository
+  does not hold, and every release regenerated a PKGBUILD nobody could install.
+  Arch users are served by `pipx install diffctx` and `cargo install diffctx`.
 
 ### Changed
 
