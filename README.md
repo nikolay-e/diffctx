@@ -229,6 +229,8 @@ Apache 2.0
 
 ---
 
+- [Documentation site](https://nikolay-e.github.io/diffctx/) — the pipeline
+  end to end: diff → fragments → graph → relevance → selection
 - [Changelog](CHANGELOG.md)
 - [Security policy](SECURITY.md) — threat model and vulnerability reporting
 - [Parameter strategy](docs/engineering/parameter-strategy.md) — how `--alpha`,
