@@ -53,7 +53,7 @@ _DIFF_DESCRIPTION = (
     "- Analyzing impact of a refactor\n"
     "- Investigating why tests broke after a commit\n\n"
     "Set clipboard=true to copy to clipboard without flooding context.\n"
-    "Supports 50+ languages."
+    "Supports 30+ languages."
 )
 
 

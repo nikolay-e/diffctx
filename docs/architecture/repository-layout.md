@@ -9,13 +9,14 @@ Their source, data, and generated outputs have different lifecycles:
 | `Cargo.toml`, `Cargo.lock` | Rust workspace definition and committed release lock |
 | `src/diffctx/` | Python package, CLI, MCP server, and thin Rust adapters |
 | `tests/` | Product tests, `tests/eval/`, and stable declarative golden cases |
-| `eval/` | Evaluation CLI, workflows, dataset tooling, harness, baselines, and analysis |
+| `eval/` | Evaluation CLI, orchestration modules (`eval/workflows/`, Python — not CI YAML), dataset tooling, harness, baselines, and analysis |
 | `datasets/` | Versioned immutable corpora, split manifests, and revision pins |
 | `paper/` | Paper source, selected reproducibility artifacts, and releases |
 | `docs/` | Engineering, product, and architecture documentation |
 | `scripts/` | Repository automation (image builds, cache baking, sensitivity checks) |
 | `packaging/` | Release-channel manifests (npm wrapper) with pinned checksums |
 | `results/` | Local or CI-generated evaluation output; not source-controlled |
+| `.github/` | CI/CD workflows and issue templates; owned by repo automation |
 
 ## Executable surfaces
 

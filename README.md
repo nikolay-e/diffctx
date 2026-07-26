@@ -36,9 +36,6 @@ pip install diffctx                     # or: into an active environment
 pipx install 'diffctx[mcp]'             # + MCP server for AI assistants
 ```
 
-The `[tree-sitter]` extra adds AST-level parsing for more accurate context
-selection across 30+ languages.
-
 Without Python:
 
 ```bash
@@ -165,21 +162,16 @@ print(to_yaml(tree))
 
 diffctx includes an [MCP](https://modelcontextprotocol.io) server that lets AI
 assistants (Claude Code, Cursor, Windsurf, etc.) call diff context analysis
-automatically during code review. Install with `pip install 'diffctx[mcp]'`
-and add it to your MCP client config (e.g. `~/.claude/mcp.json` for Claude Code):
+automatically during code review. Install with `pip install 'diffctx[mcp]'`,
+then register it — for Claude Code:
 
-```json
-{
-  "mcpServers": {
-    "diffctx": {
-      "command": "diffctx-mcp"
-    }
-  }
-}
+```bash
+claude mcp add diffctx -- diffctx-mcp
 ```
 
-The server exposes a `get_diff_context` tool that assistants call when
-reviewing PRs, explaining changes, or investigating broken tests. Configs for
+The server exposes three tools — `get_diff_context`, `get_tree_map`, and
+`get_file_context` — that assistants call when reviewing PRs, explaining
+changes, or investigating broken tests. Tool reference and configs for
 Cursor, Continue, Windsurf, and Zed:
 [`src/diffctx/mcp/README.md`](src/diffctx/mcp/README.md).
 
@@ -216,6 +208,7 @@ its share of the cap, oldest entries first.
 | `2`  | Usage error (invalid flags/arguments) |
 | `3`  | Environment error (`--diff` outside a git repo, git not installed, no commits yet) |
 | `4`  | `--diff` produced no semantic context (clean tree, binary-only, everything filtered); output is still emitted. Deletion/rename/lockfile-only diffs list `deleted_files`/`renamed_files`/`lockfile_changes` and exit `0` |
+| `124`| `--diff` exceeded the `--timeout` wall-clock deadline |
 | `130`| Interrupted (Ctrl-C) |
 | `141`| Broken pipe (e.g. piping into `head`) |
 

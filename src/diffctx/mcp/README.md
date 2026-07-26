@@ -10,7 +10,11 @@ pip install diffctx[mcp]
 
 ### Claude Code
 
-Add to `~/.claude/mcp.json`:
+```bash
+claude mcp add diffctx -- diffctx-mcp
+```
+
+Or add to your project's `.mcp.json`:
 
 ```json
 {
@@ -87,9 +91,9 @@ Add to `~/.config/zed/settings.json`:
 
 ## Environment Variables
 
-- `DIFFCTX_ALLOWED_PATHS` — colon-separated list of directories the server is
-  allowed to access. When set, requests for repositories outside these paths are
-  rejected.
+- `DIFFCTX_ALLOWED_PATHS` — OS-pathsep-separated list (`:` on POSIX, `;` on
+  Windows) of directories the server is allowed to access. When set, requests
+  for repositories outside these paths are rejected.
 
 ## Available Tools
 

@@ -1,5 +1,8 @@
 # CORRECTNESS — /review-correctness findings log
 
+Paths in entries dated before 2026-07 predate the workspace refactor:
+`src/` there refers to the Rust core now at `crates/diffctx-native/src/`.
+
 ## 2026-06-14 · 71bf302 · diffctx Rust core (10.2k LOC, all of src/)
 
 ### TL;DR
@@ -103,6 +106,8 @@ correct. Real defects are three 🟡 edge/efficiency issues and a handful of
   threshold), NOT a regression. The suite is mildly flaky (~5
   threshold-boundary cases flip per run). My changes hold the aggregate
   within that noise band — no real regression.
+  [2026-07-26 update: the standing baseline is now 2265 passed /
+  460 failed; the nightly-full-eval.yml gate is MIN_PASS_COUNT=2260.]
 
 ### Scouts/synthesis
 
@@ -182,7 +187,9 @@ not parallelism (reproduced with `RAYON_NUM_THREADS=1`).
 - `cargo build`, `cargo clippy --lib` clean (only a pre-existing
   float-`!=` warning in `edges/mod.rs`); `cargo test --lib` 57/57.
 - Determinism proof: two consecutive `cargo test --test yaml_cases` runs →
-  **identical** failure sets (was ~463–466 fluctuating; now stable at 467).
+  **identical** failure sets (was ~463–466 fluctuating; stable at 467 as
+  of this entry — [2026-07-26 update: current standing baseline is
+  2265 passed / 460 failed, nightly gate MIN_PASS_COUNT=2260]).
   gap_008 (the Python-import eval case) went from ~50/50 flaky to 10/10
   stable. Aggregate pass count within prior noise band → no regression.
 - The 467 standing eval-threshold failures are a ranking-quality tuning
@@ -263,6 +270,8 @@ claim both flipped to refuted only at R2/R3).
   identical to pre-fix baseline** (self-edge guard + import anchor fix edge
   cases the synthetic suite doesn't exercise; no regression). pytest 413 passed,
   1 skipped; test_mcp + test_cli 27 passed.
+  [2026-07-26 update: current standing baseline is 2265 passed / 460
+  failed; nightly-full-eval.yml gate MIN_PASS_COUNT=2260.]
 
 ### Scouts/synthesis
 

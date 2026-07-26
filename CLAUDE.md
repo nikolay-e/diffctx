@@ -32,18 +32,24 @@ to YAML/JSON/text/Markdown. Deterministic, side-effect-free.
 **Diff Context Mode** (`diffctx . --diff`) — Semantics-focused.
 Analyzes a git diff to intelligently select the minimal set of
 code fragments needed to understand a change. For the formal
-theoretical foundation, see the research paper:
-[Context-Selection for Git Diff][paper].
+theoretical foundation, see the research paper
+([source in `paper/v2/`, snapshot at git tag `paper-v2`][paper]).
 
-[paper]: https://nikolay-eremeev.com/blog/context-selection-git-diff/
+[paper]: https://doi.org/10.5281/zenodo.18824579
 
 ## Development
 
 ```bash
-pip install -e ".[dev,tree-sitter]"
+pip install "maturin>=1.10,<1.11"
+pip install -e ".[dev,full,mcp]" --no-build-isolation
 pytest
 pre-commit run --all-files
 ```
+
+Rust core: `cd crates/diffctx-native && cargo test --lib` (CI runs the
+YAML suite on a 20-case sample via `DIFFCTX_YAML_CASES_LIMIT=20`; the
+full suite carries a known score-threshold failure baseline gated
+nightly). Full setup: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Performance-change discipline (E/Q classes)
 
@@ -60,8 +66,9 @@ fragmentation or scoring changes are Q-class.
 
 ## Testing
 
-Integration tests only — test against real filesystem and real git
-repos. No mocking.
+The Python suite is integration-only — real filesystem, real git
+repos, no mocking. The Rust crate additionally carries inline
+`#[test]` units run via `cargo test --lib`.
 
 The diff context tests use a **YAML-based declarative framework**:
 each test case defines initial files, changed files, and expected
@@ -88,7 +95,3 @@ are unambiguously detectable.
 | Selection   | Lazy greedy       | Near-optimal, linear time    |
 | Git         | subprocess UTF-8  | Platform-safe, non-ASCII     |
 | Diff        | git diff unified=0| Exact line ranges            |
-
-## License
-
-Apache 2.0

@@ -21,104 +21,12 @@ exhaustively.
 
 ---
 
-### DO — act now (in-scope, high-confidence)
+### DO — applied
 
-## [🟡] `[tool.mutmut]` is a fully orphaned phantom gate
-
-Category: Delete / phantom gate · Location: `pyproject.toml:303-309` · Evidence:
-`do_not_mutate = [ "src/diffctx/_native/parsers/__init__.py",
-"src/diffctx/_native/stopwords.py" ]` — both paths are **gone** (`ls` → "No such
-file or directory"; only a stale `stopwords.cpython-312.pyc` orphan remains).
-`mutmut` is **not** a declared dep (absent from `optional-dependencies.dev`) and
-appears in **no** workflow or pre-commit hook (`rg mutmut .github/
-.pre-commit-config.yaml` → 0). · Problem: the mutation-testing gate advertised
-by CLAUDE.md/memory does not run and points at deleted files — false confidence,
-worst-class dead weight. · Recommendation: remove the whole `[tool.mutmut]`
-block (or re-arm: add `mutmut` to dev deps + a workflow + fix the paths, if
-mutation testing is still wanted). · Expected benefit: −7 lines, removes a lie.
-· Effort: Easy · Confidence: High · Verification: `rg mutmut pyproject.toml` → 0
-(or a green mutmut CI job).
-
-## [🟡] Phantom mypy overrides for deleted internal modules
-
-Category: Delete / phantom config · Location: `pyproject.toml:233-235,245` ·
-Evidence: overrides list `"diffctx._native.edges"`, `"diffctx._native.edges.*"`,
-`"diffctx._native.embeddings"` and `"diffctx._native.universe"` — none exist
-under `src/diffctx/_native/` (only
-`__init__/graph_analytics/graph_export/pipeline/project_graph.py` are tracked;
-`embeddings`/`universe` survive only as orphaned `.pyc`). · Problem: stale
-config masquerading as active type policy; a mypy override on a non-existent
-module is a silent no-op. · Recommendation: delete the 4 dead module entries. ·
-Expected benefit: −4 lines, honest config. · Effort: Easy · Confidence: High ·
-Verification: `mypy src` still clean; every remaining override module resolves.
-
-## [🟡] `_normalize_budget` duplicated inline + dead keep-alive line
-
-Category: DRY / cut · Location: `src/diffctx/_native/pipeline.py:102-110` ·
-Evidence: the `if/elif/elif/else` chain assigning `effective_budget` is
-behaviourally identical to `_normalize_budget()` (line 17) — the `elif
-budget_tokens == 0: effective_budget = 0` case collapses into the helper's else
-(`_normalize_budget(0)` returns `0`). Line 110 is a literal no-op: `_ =
-_normalize_budget  # keep helper available; mirrors the same semantics`. ·
-Problem: two copies of the same 4-way policy plus a dead statement that only
-exists because the helper was otherwise unused in this function. ·
-Recommendation: replace 102-110 with `effective_budget: int | None =
-_normalize_budget(budget_tokens)`. · Expected benefit: −9 LOC, single source of
-budget semantics. · Effort: Easy · Confidence: High · Verification: `pytest
-tests/test_diffctx_invariants.py` + an E-class equivalence run
-(behaviour-preserving).
-
-## [🟡] Rust: unused `smallvec` dep + duplicate `serde_yaml` dev-dep
-
-Category: Delete / dep hygiene · Location: `crates/diffctx-native/Cargo.toml:121,129` ·
-Evidence: `rg -in smallvec crates/diffctx-native/src` → 0 hits (only the Cargo.toml line);
-`serde_yaml = "0.9"` appears in both `[dependencies]:111` and
-`[dev-dependencies]:129` (same version, no extra features — dev targets already
-inherit normal deps). · Problem: a declared-but-unused crate and a redundant
-dev-dep line. · Recommendation: delete both lines. · Expected benefit: −2 lines,
-−1 crate from the graph. · Effort: Easy · Confidence: High · Verification: `cd
-diffctx && cargo build --all-features` clean.
-
-## [🔵] Dead `numpy` optional-dependency extra + paired mypy override
-
-Category: Delete · Location: `pyproject.toml:80-82,225` · Evidence:
-`optional-dependencies.diffctx = [ "numpy>=1.24,<3.0" ]` but `rg 'import numpy'
-src/` → 0, and `diffctx[diffctx]` is referenced by nothing (not `full`, not
-scripts). The `numpy` mypy override (line 225) is paired dead weight. · Problem:
-published extra that installs a heavy dep no `src/` code path uses. ·
-Recommendation: remove the `diffctx` extra + the numpy override. · Expected
-benefit: −4 lines, smaller install surface. · Effort: Easy · Confidence: High ·
-Verification: `rg -n numpy src/` → 0 (re-add only if embeddings return).
-
-## [🔵] Dead exception class `DiffContextTimeoutError`
-
-Category: Delete · Location: `src/diffctx/_native/pipeline.py:7-8` · Evidence:
-`class DiffContextTimeoutError(Exception):` — `rg DiffContextTimeoutError src
-tests eval` matches only this definition; not in `__all__` (nested
-`__init__` exports `GitError, build_diff_context, compute_scored_state,
-select_with_params`), never raised, never imported. The Rust backend enforces
-`timeout` and surfaces its own error. · Recommendation: delete the class. ·
-Expected benefit: −2 LOC. · Effort: Easy · Confidence: High · Verification:
-`pytest tests/` green; `rg DiffContextTimeoutError` → 0.
-
-## [🔵] Micro-cuts (dead branches / aliases / defensive no-ops)
-
-Category: Cut · Confidence: High · Effort: Easy · verdict DO (each
-independently):
-
-- `src/diffctx/tokens.py:46-49` — `print_token_summary` branches on
-  `result.is_exact`,
-but `count_tokens` hard-codes `is_exact=True` (line 25, the only constructor),
-so the `else` is unreachable. Drop the `else` (−2 LOC). Keep the dataclass field
-(asserted in tests) — field removal is VERIFY, not DO.
-- `src/diffctx/writer.py:32-33` — `_YAML_STRING_ESCAPE_MAP =
-  _YAML_BASE_ESCAPE_MAP` is a
-pure alias (three names for two maps). Name the base map directly, drop the
-alias (−1 LOC).
-- `src/diffctx/_app.py:167` — `getattr(args, "scoring", "ego")` on a
-  `ParsedArgs` dataclass
-field that always exists (`cli.py:252 scoring: str = "ego"`). Use `args.scoring`
-(readability).
+The full DO batch of this run (phantom `[tool.mutmut]` gate, phantom mypy
+overrides, `_normalize_budget` dedup, unused `smallvec` + duplicate
+`serde_yaml` dev-dep, dead `numpy` extra, `DiffContextTimeoutError`,
+micro-cuts) was applied and verified — items removed from this log.
 
 ---
 
@@ -202,10 +110,10 @@ the evaluator stamping n_gold, gold_to_changed_ratio …"; 142 LOC, zero refs (n
 CI, no `__main__` dispatch, no RESUME.md, no import). · Problem: backfill for
 artifacts predating current field-stamping. · Recommendation: delete once
 obsolete. · Expected benefit: −142 LOC. · Effort: Easy · Confidence: Medium ·
-verdict **VERIFY(gate: confirm the active `sweep_v2_local` evaluator stamps
+verdict **VERIFY(gate: confirm the `sweep_v2_local` evaluator stamps
 every field `cell_metrics.py` reads, so no legacy checkpoint needs backfilling —
-then delete)**. NOTE: active paper-v2 sweep is paused mid-run; do not delete
-while any resumable checkpoint could still need enrichment.
+then delete)**. The paper-v2 sweep is finished and frozen (tags `paper-v2`,
+`paper-v2-freeze`), so the gate is checkable at any time.
 
 ## [🔵] Rust: cargo-cult no-op `_used` fn; `serde_yaml` unmaintained
 
@@ -259,8 +167,9 @@ but load-bearing for the evaluation/sweep harness and test skip-guards; keep).
 - **`eval/` research scaffolding** (`stratified_analysis`,
   `dataset_describe`,
 `render_comparison`, all `harness/adapters/`/`baselines/`, `cell_metrics` numpy-free
-`_percentile`) — DON'T(active paper-v2 cycle; reachable via `python -m
-eval <cmd>`, CI workflows, or the pending paper-table regen;
+`_percentile`) — DON'T(live research tooling; reachable via `python -m
+eval <cmd>` and CI workflows, and needed to reproduce the frozen paper-v2
+results (tags `paper-v2`, `paper-v2-freeze`);
 `cell_metrics` being numpy-free is a deliberate hot-CI-module choice).
 - **`black`→`ruff format` as an unconditional DO** — DON'T-without-gate(mature
   working tool;
@@ -277,36 +186,6 @@ to `/review-correctness`.
   only, not
 exhaustively. Re-run with `cargo install cargo-machete` for full coverage.
 
----
-
-### Total Estimated Savings
-
-**DO (immediate, verified):**
-
-- Config phantom/dead: mutmut block (−7), mypy phantom modules (−4), numpy
-  extra+override
-(−4) = **−15 config lines**, removes 2 phantom gates.
-- Rust deps: `smallvec` + duplicate `serde_yaml` dev-dep = **−2 lines, −1
-  crate**.
-- Code micro-cuts: pipeline budget dedup (−9), `DiffContextTimeoutError` (−2),
-  tokens dead
-branch (−2), writer alias (−1), main.py getattr (0) = **≈ −14 LOC**.
-- **DO subtotal: ≈ −31 lines + −1 Rust crate + 2 phantom gates removed.**
-
-**VERIFY (gated, larger upside):**
-
-- Tests parametrize/dedup: **≈ −290 LOC** (gate: pytest green).
-- `eval/workflows/backfill_checkpoints.py`: **−142 LOC** (gate: evaluator stamps all
-  fields; not while sweep paused).
-- Rust `is_*_file` DRY: **−60…80 LOC** (gate: E-class equivalence).
-- `once_cell`→`LazyLock`: **−1 crate** (gate: cargo build + equivalence).
-- `tree-sitter` Python extra: **−19 lines**, big install-surface trim (gate: no
-  downstream consumer).
-- `mcp/formatting.py` inline: **−9 LOC / −1 file**; `pybridge.rs _used`: −3 LOC.
-- **VERIFY subtotal: ≈ −520 LOC + −2 crates + smaller published-install
-  surface**, all gated.
-
-**Grand total if all DO + passing VERIFY applied: ≈ −550 LOC, −3 Rust crates, −2
-phantom gates, 1 dead published extra, 1 formatter removed.** The repo is
-genuinely lean; the highest-value work is removing phantom config that lies
-about what runs, not bulk deletion.
+The repo is genuinely lean; the highest-value work was removing phantom
+config that lies about what runs, not bulk deletion. The remaining upside
+lives entirely in the gated VERIFY items above.

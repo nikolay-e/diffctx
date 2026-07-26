@@ -19,7 +19,7 @@ diffctx is a **local-only command-line tool**. The core CLI:
 
 It does **not** open network sockets, does **not** download remote content,
 and does **not** execute any code it reads. Untrusted repositories are read
-as bytes; tree-sitter parsers (when the `[tree-sitter]` extra is installed)
+as bytes; the tree-sitter parsers bundled in the native extension
 operate on those bytes in memory without `exec`/`eval`. The blast radius of
 a malicious file in a scanned tree is therefore bounded to "diffctx
 produces wrong output" — not "diffctx compromises the host".

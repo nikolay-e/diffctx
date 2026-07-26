@@ -7,24 +7,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- Standalone native binaries (linux x86_64/aarch64, macOS arm64, Windows
-  x64) are built and attached to every GitHub release. The README had
-  promised them since 1.9.x; releases only ever carried wheels and an sdist.
-- The Rust engine is published to crates.io as the `diffctx` crate
-  (`cargo install diffctx` for the native CLI, `cargo add diffctx` to embed the
-  selection pipeline). Previously the name held only a reservation stub; the
-  crate now carries the released engine, starting at 1.12.0.
-- Container image `ghcr.io/nikolay-e/diffctx` (linux amd64/arm64), built from
-  the release tag and smoke-tested against a real repository before the tag
-  moves: `docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1`.
-  Mirrored to Docker Hub as `nikolajer/diffctx`.
-- Packaging manifests generated from the release checksums: Scoop
-  (`packaging/scoop/diffctx.json`), AUR (`packaging/aur/`) and an npm wrapper
-  (`packaging/npm/`) that downloads the platform binary and verifies its
-  SHA-256 against the published checksum.
-
 ### Fixed
 
 - **The native binary hard-capped every run at 4096 tokens.** `--budget`
@@ -40,9 +22,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   overridable with `DIFFCTX_TOKEN_CACHE_MAX_BYTES` (`0` disables eviction);
   each run trims one of the 256 shards back under its share of the cap,
   oldest entries first (#122).
-- The native binary silently emitted YAML for every unrecognized `--format`,
-  including `md` — the documented default of the Python CLI. It now accepts
-  only `yaml`/`json` and exits 2 on anything else.
 - The native binary exited `0` on a diff that produced no semantic context
   (clean tree, binary-only, everything over the size cap), so callers on the
   binary channels could not tell an empty selection from a successful one. It
@@ -95,6 +74,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the token summary, `--quiet`, format validation and budget handling are now
   contract-tested against real git repositories. Every parity defect above
   shipped because nothing exercised the clap parser.
+
+## [1.12.1] - 2026-07-23
+
+### Added
+
+- Standalone native binaries (linux x86_64/aarch64, macOS arm64, Windows
+  x64) are built and attached to every GitHub release. The README had
+  promised them since 1.9.x; releases only ever carried wheels and an sdist.
+- The Rust engine is published to crates.io as the `diffctx` crate
+  (`cargo install diffctx` for the native CLI, `cargo add diffctx` to embed the
+  selection pipeline). Previously the name held only a reservation stub; the
+  crate now carries the released engine, starting at 1.12.0.
+- Container image `ghcr.io/nikolay-e/diffctx` (linux amd64/arm64), built from
+  the release tag and smoke-tested against a real repository before the tag
+  moves: `docker run --rm -v "$PWD:/repo" ghcr.io/nikolay-e/diffctx . --diff HEAD~1`.
+  Mirrored to Docker Hub as `nikolajer/diffctx`.
+- Packaging manifests generated from the release checksums: Scoop
+  (`packaging/scoop/diffctx.json`), AUR (`packaging/aur/`) and an npm wrapper
+  (`packaging/npm/`) that downloads the platform binary and verifies its
+  SHA-256 against the published checksum.
+
+### Fixed
+
+- The native binary silently emitted YAML for every unrecognized `--format`,
+  including `md` — the documented default of the Python CLI. It now accepts
+  only `yaml`/`json` and exits 2 on anything else.
 
 ## [1.12.0] - 2026-07-23
 
@@ -377,5 +382,5 @@ Earlier releases shipped as `treemapper`; see
 <https://github.com/nikolay-e/diffctx/releases> for the corresponding GitHub
 release notes (`1.0.0` through `1.6.1`).
 
-[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.7.0...HEAD
+[Unreleased]: https://github.com/nikolay-e/diffctx/compare/v1.12.1...HEAD
 [1.7.0]: https://github.com/nikolay-e/diffctx/compare/v1.6.1...v1.7.0
