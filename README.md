@@ -89,7 +89,8 @@ the `--budget` token cap is hit.
 Calibration of `--alpha`, `--tau`, and the edge-weight priors:
 [`docs/engineering/parameter-strategy.md`](docs/engineering/parameter-strategy.md).
 Theory:
-[Context-Selection for Git Diff (Zenodo, 2026)](https://doi.org/10.5281/zenodo.18824580).
+[diffctx: Budgeted Typed-Graph Retrieval for Diff-Aware Code Context
+Selection (Zenodo, 2026)](https://doi.org/10.5281/zenodo.18824579).
 
 ### `graph` subcommand
 
